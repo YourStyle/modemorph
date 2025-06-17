@@ -1,0 +1,315 @@
+"use client"
+
+import { useState, useEffect, useCallback } from "react"
+import { WardrobeItemCard } from "@/components/wardrobe-item-card"
+import { WardrobeFilters } from "@/components/wardrobe-filters"
+import { Button } from "@/components/ui/button"
+import { Loader2, Shirt, Plus, Settings, EyeOff, Eye } from "lucide-react"
+import type { WardrobeItem } from "@/lib/wardrobe"
+import { SelectedItemsBar } from "@/components/selected-items-bar"
+import { useSelectedItems } from "@/contexts/selected-items-context"
+import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
+
+export default function WardrobePage() {
+  const [items, setItems] = useState<WardrobeItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [isUpdatingAll, setIsUpdatingAll] = useState(false)
+  const { setItems: setSelectedItems, setEditingOutfitId } = useSelectedItems()
+  const [editingOutfit, setEditingOutfit] = useState<any>(null)
+  const { toast } = useToast()
+
+  // Проверяем URL параметры для редактирования
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search)
+    const editId = urlParams.get("edit")
+
+    if (editId) {
+      loadOutfitForEditing(Number(editId))
+    }
+  }, [])
+
+  const loadOutfitForEditing = async (outfitId: number) => {
+    try {
+      const response = await fetch(`/api/outfits/${outfitId}`)
+      if (!response.ok) {
+        throw new Error("Failed to load outfit")
+      }
+
+      const data = await response.json()
+      const outfit = data.outfit
+
+      // Загружаем элементы образа в контекст
+      const outfitItems = outfit.outfit_items
+        .sort((a: any, b: any) => a.position - b.position)
+        .map((item: any) => ({
+          ...item.wardrobe_items,
+          image_url: item.wardrobe_items.image_url,
+        }))
+
+      setSelectedItems(outfitItems)
+      setEditingOutfitId(outfitId)
+      setEditingOutfit(outfit)
+
+      toast({
+        title: "Режим редактирования",
+        description: `Загружен образ "${outfit.name}" для редактирования`,
+      })
+    } catch (error) {
+      console.error("Error loading outfit for editing:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось загрузить образ для редактирования",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const fetchItems = useCallback(async (filters: { search: string; types: string[] }) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const params = new URLSearchParams()
+      if (filters.search) params.append("search", filters.search)
+      if (filters.types.length > 0) params.append("types", filters.types.join(","))
+
+      const response = await fetch(`/api/wardrobe?${params.toString()}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch wardrobe items")
+      }
+
+      const data = await response.json()
+      setItems(data.items || [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+      console.error("Error fetching wardrobe items:", err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchItems({ search: "", types: [] })
+  }, [fetchItems])
+
+  const handleFilterChange = useCallback(
+    (filters: { search: string; types: string[] }) => {
+      setSelectedTypes(filters.types)
+      fetchItems(filters)
+    },
+    [fetchItems],
+  )
+
+  const handleRetry = () => {
+    fetchItems({ search: "", types: selectedTypes })
+  }
+
+  const handleHideAll = async () => {
+    setIsUpdatingAll(true)
+
+    try {
+      const response = await fetch("/api/wardrobe/visibility", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ hideAll: true }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to hide all items")
+      }
+
+      toast({
+        title: "Все вещи скрыты",
+        description: "Все элементы гардероба скрыты из публичного просмотра",
+      })
+
+      // Обновляем список
+      fetchItems({ search: "", types: selectedTypes })
+    } catch (error) {
+      console.error("Error hiding all items:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось скрыть все вещи",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdatingAll(false)
+    }
+  }
+
+  const handleShowAll = async () => {
+    setIsUpdatingAll(true)
+
+    try {
+      const response = await fetch("/api/wardrobe/visibility", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ hideAll: false }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to show all items")
+      }
+
+      toast({
+        title: "Все вещи показаны",
+        description: "Все элементы гардероба теперь видны",
+      })
+
+      // Обновляем список
+      fetchItems({ search: "", types: selectedTypes })
+    } catch (error) {
+      console.error("Error showing all items:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось показать все вещи",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdatingAll(false)
+    }
+  }
+
+  const handleVisibilityChange = () => {
+    fetchItems({ search: "", types: selectedTypes })
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-red-600 text-lg font-semibold">Ошибка загрузки данных</div>
+          <p className="text-gray-600">{error}</p>
+          <Button onClick={handleRetry}>Попробовать снова</Button>
+        </div>
+      </div>
+    )
+  }
+
+  const hiddenCount = items.filter((item) => item.is_hidden).length
+  const visibleCount = items.length - hiddenCount
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-32">
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-6xl mx-auto">
+          {/* Заголовок */}
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Shirt className="h-8 w-8 text-gray-700" />
+                <h1 className="text-3xl font-bold text-gray-900">Мой гардероб</h1>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={handleShowAll}
+                  disabled={isUpdatingAll || hiddenCount === 0}
+                  className="flex items-center gap-2"
+                >
+                  <Eye className="h-4 w-4" />
+                  Показать все
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleHideAll}
+                  disabled={isUpdatingAll || visibleCount === 0}
+                  className="flex items-center gap-2"
+                >
+                  <EyeOff className="h-4 w-4" />
+                  Скрыть все
+                </Button>
+                <Link href="/admin/wardrobe/basics">
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    Базовые элементы
+                  </Button>
+                </Link>
+                <Link href="/admin/wardrobe/add">
+                  <Button className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Добавить вещь
+                  </Button>
+                </Link>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-sm text-gray-600">
+              <p>
+                Коллекция одежды с фотографиями и подробной информацией.
+                <span className="font-medium ml-1">Нажмите на карточку, чтобы выбрать вещь для образа.</span>
+              </p>
+              {hiddenCount > 0 && (
+                <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-xs font-medium">
+                  {hiddenCount} скрыто
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Фильтры */}
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+            <WardrobeFilters onFilterChange={handleFilterChange} selectedTypes={selectedTypes} />
+          </div>
+
+          {/* Результаты */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">Загрузка...</span>
+              </div>
+            ) : items.length === 0 ? (
+              <div className="text-center py-12">
+                <Shirt className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Ничего не найдено</h3>
+                <p className="text-gray-600">Попробуйте изменить параметры поиска или фильтры</p>
+                <Link href="/admin/wardrobe/add" className="mt-4 inline-block">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Добавить первую вещь
+                  </Button>
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-semibold text-gray-900">
+                    Найдено: {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
+                    {selectedTypes.length > 0 && (
+                      <span className="text-sm text-gray-500 ml-2">
+                        (фильтр: {selectedTypes.length}{" "}
+                        {selectedTypes.length === 1 ? "тип" : selectedTypes.length < 5 ? "типа" : "типов"})
+                      </span>
+                    )}
+                  </h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {items.map((item) => (
+                    <WardrobeItemCard
+                      key={item.id}
+                      item={item}
+                      isAdmin={true}
+                      onVisibilityChange={handleVisibilityChange}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Панель выбранных элементов */}
+      <SelectedItemsBar />
+    </div>
+  )
+}
