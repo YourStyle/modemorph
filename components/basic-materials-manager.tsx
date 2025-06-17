@@ -9,9 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Loader2, Plus, Trash2, Upload, ImageIcon, Edit } from "lucide-react"
+import { Loader2, Plus, Trash2, Edit } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import Image from "next/image"
 import { supabase, checkSupabaseConnection } from "@/lib/supabase/client"
 
 interface BasicMaterial {
@@ -291,20 +290,6 @@ export function BasicMaterialsManager() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {material.image_url ? (
-                    <div className="relative h-40 w-full overflow-hidden rounded-md">
-                      <Image
-                        src={material.image_url || "/placeholder.svg"}
-                        alt={material.name_ru}
-                        fill
-                        className="object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="h-40 w-full bg-gray-100 rounded-md flex items-center justify-center">
-                      <ImageIcon className="h-8 w-8 text-gray-400" />
-                    </div>
-                  )}
                   <div>
                     <span className="font-medium">Название (EN):</span> {material.name_en || "Не указано"}
                   </div>
@@ -385,38 +370,6 @@ export function BasicMaterialsManager() {
                   placeholder="Свойства материала (например: мягкий, дышащий, прочный)"
                   rows={3}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="image">Изображение</Label>
-                <div className="flex items-center gap-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => document.getElementById("image")?.click()}
-                    className="w-full"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Выбрать изображение
-                  </Button>
-                  <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                </div>
-                {imagePreview && (
-                  <div className="mt-2 relative h-40 w-full overflow-hidden rounded-md">
-                    <Image src={imagePreview || "/placeholder.svg"} alt="Preview" fill className="object-cover" />
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="sm"
-                      className="absolute top-2 right-2"
-                      onClick={() => {
-                        setImageFile(null)
-                        setImagePreview(null)
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
               </div>
             </div>
             <DialogFooter>

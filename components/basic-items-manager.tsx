@@ -9,10 +9,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Loader2, Plus, Trash2, Upload, ImageIcon, Edit } from "lucide-react"
+import { Loader2, Plus, Trash2, Upload, ImageIcon, Edit, Copy } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
 import { supabase, checkSupabaseConnection } from "@/lib/supabase/client"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface BasicItem {
   id: number
@@ -20,6 +21,12 @@ interface BasicItem {
   name_en: string
   description: string | null
   image_url: string | null
+}
+
+interface BasicMaterial {
+  id: number
+  name_ru: string
+  name_en: string
 }
 
 export function BasicItemsManager() {
@@ -38,6 +45,8 @@ export function BasicItemsManager() {
     description: "",
   })
   const { toast } = useToast()
+  const [basicMaterials, setBasicMaterials] = useState<BasicMaterial[]>([])
+  const [selectedMaterials, setSelectedMaterials] = useState<number[]>([])
 
   useEffect(() => {
     fetchItems()
@@ -62,6 +71,12 @@ export function BasicItemsManager() {
       }
 
       setItems(data || [])
+
+      const { data: materialsData } = await supabase
+        .from("basic_materials")
+        .select("id, name_ru, name_en")
+        .order("name_ru")
+      setBasicMaterials(materialsData || [])
     } catch (err) {
       console.error("Error fetching basic items:", err)
       const errorMessage = err instanceof Error ? err.message : "Неизвестная ошибка при загрузке базовых вещей"
@@ -228,6 +243,31 @@ export function BasicItemsManager() {
     }
   }
 
+  const handleCopy = async (id: number) => {
+    try {
+      const response = await fetch("/api/basic-items/copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      })
+
+      if (!response.ok) throw new Error("Failed to copy item")
+
+      toast({
+        title: "Успешно",
+        description: "Базовая вещь успешно скопирована",
+      })
+
+      fetchItems()
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось скопировать базовую вещь",
+        variant: "destructive",
+      })
+    }
+  }
+
   if (!supabase) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -279,6 +319,9 @@ export function BasicItemsManager() {
                   <div className="flex gap-1">
                     <Button variant="ghost" size="sm" onClick={() => openEditDialog(item)}>
                       <Edit className="h-4 w-4 text-blue-500" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleCopy(item.id)}>
+                      <Copy className="h-4 w-4 text-green-500" />
                     </Button>
                     <Button variant="ghost" size="sm" onClick={() => handleDelete(item.id)}>
                       <Trash2 className="h-4 w-4 text-red-500" />
@@ -364,6 +407,29 @@ export function BasicItemsManager() {
                   placeholder="Дополнительная информация о базовой вещи"
                   rows={3}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Материалы</Label>
+                <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded p-2">
+                  {basicMaterials.map((material) => (
+                    <div key={material.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`material-${material.id}`}
+                        checked={selectedMaterials.includes(material.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedMaterials([...selectedMaterials, material.id])
+                          } else {
+                            setSelectedMaterials(selectedMaterials.filter((id) => id !== material.id))
+                          }
+                        }}
+                      />
+                      <Label htmlFor={`material-${material.id}`} className="text-sm">
+                        {material.name_ru}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="image">Изображение</Label>

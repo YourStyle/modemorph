@@ -13,7 +13,7 @@ export async function isUserAdmin(userId?: string): Promise<boolean> {
       userId = user.id
     }
 
-    // Проверяем, есть ли запись в user_profiles с is_admin = true
+    // ИСПРАВЛЕНО: используем user_id вместо id
     const { data, error } = await supabase.from("user_profiles").select("is_admin").eq("user_id", userId).single()
 
     if (error) {
@@ -40,6 +40,7 @@ export async function getUserProfile(userId?: string) {
       userId = user.id
     }
 
+    // ИСПРАВЛЕНО: используем user_id вместо id
     const { data, error } = await supabase.from("user_profiles").select("*").eq("user_id", userId).single()
 
     if (error) {

@@ -131,7 +131,7 @@ export function CombinationsManager() {
   }
 
   const addElement = () => {
-    const maxElements = formData.combination_type === "items" ? 3 : 2
+    const maxElements = formData.combination_type === "items" ? 4 : 2
     if (selectedElements.length < maxElements) {
       const newTempId = Date.now().toString()
       setSelectedElements([...selectedElements, { id: null, tempId: newTempId }])
@@ -417,7 +417,7 @@ export function CombinationsManager() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="items">Сочетание вещей (до 3 элементов)</SelectItem>
+                    <SelectItem value="items">Сочетание вещей (до 4 элементов)</SelectItem>
                     <SelectItem value="materials">Сочетание материалов (до 2 элементов)</SelectItem>
                   </SelectContent>
                 </Select>
@@ -492,7 +492,7 @@ export function CombinationsManager() {
                   })}
                 </div>
 
-                {selectedElements.length < (formData.combination_type === "items" ? 3 : 2) && (
+                {selectedElements.length < (formData.combination_type === "items" ? 4 : 2) && (
                   <Button type="button" variant="outline" size="sm" onClick={addElement} className="w-full">
                     <Plus className="h-4 w-4 mr-2" />
                     Добавить элемент

@@ -5,14 +5,14 @@ import type React from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, Package, Shirt, Check, Star, Eye, EyeOff } from "lucide-react"
+import { ExternalLink, Shirt, Check, Star, Eye, EyeOff } from "lucide-react"
 import type { WardrobeItem } from "@/lib/wardrobe"
-import Image from "next/image"
 import { useSelectedItems } from "@/contexts/selected-items-context"
 import { cn } from "@/lib/utils"
 import { ColorDisplay } from "@/components/color-display"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { CachedWardrobeImage } from "@/components/cached-wardrobe-image"
 
 interface WardrobeItemCardProps {
   item: WardrobeItem
@@ -129,25 +129,18 @@ export function WardrobeItemCard({ item, isAdmin = false, onVisibilityChange }: 
           </div>
         )}
 
-        {/* Изображение */}
+        {/* Изображение - ЗАМЕНИЛ НА CachedWardrobeImage */}
         <div className="relative aspect-square mb-4 bg-gray-100 rounded-lg overflow-hidden">
-          {item.image_url ? (
-            <Image
-              src={item.image_url || "/placeholder.svg"}
-              alt={item.item_name}
-              fill
-              className={cn(
-                "object-cover group-hover:scale-105 transition-transform duration-200",
-                selected && "opacity-90",
-                isHidden && "grayscale",
-              )}
-              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-400">
-              <Package className="h-12 w-12" />
-            </div>
-          )}
+          <CachedWardrobeImage
+            itemName={item.item_name}
+            alt={item.item_name}
+            className={cn(
+              "object-cover group-hover:scale-105 transition-transform duration-200",
+              selected && "opacity-90",
+              isHidden && "grayscale",
+            )}
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+          />
         </div>
 
         {/* Информация о вещи */}
