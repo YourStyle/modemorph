@@ -17,19 +17,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log("[WARDROBE API] User ID:", user.id)
+    // Проверяем, является ли пользователь админом
+    const { data: profile } = await supabase.from("user_profiles").select("isAdmin").eq("id", user.id).single()
 
-    // Проверяем, является ли пользователь админом - ИСПРАВИЛ ПОЛЯ!
-    const { data: profile, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("is_admin")
-      .eq("user_id", user.id) // ИСПРАВИЛ: user_id вместо id
-      .single()
-
-    console.log("[WARDROBE API] Profile:", profile, "Error:", profileError)
-
-    const isAdmin = profile?.is_admin || false // ИСПРАВИЛ: is_admin вместо isAdmin
-    console.log("[WARDROBE API] Is admin:", isAdmin)
+    const isAdmin = profile?.isAdmin || false
 
     let query = supabase.from("wardrobe_items").select(`
         *,
@@ -43,12 +34,8 @@ export async function GET(request: Request) {
       `)
 
     // Для обычных пользователей показываем только видимые элементы
-    // Для админов показываем ВСЕ элементы
     if (!isAdmin) {
-      console.log("[WARDROBE API] Filtering for non-admin user")
       query = query.eq("is_hidden", false)
-    } else {
-      console.log("[WARDROBE API] Admin user - showing all items")
     }
 
     // Поиск
@@ -64,8 +51,6 @@ export async function GET(request: Request) {
     query = query.order("item_name")
 
     const { data: items, error } = await query
-
-    console.log("[WARDROBE API] Items count:", items?.length, "Error:", error)
 
     if (error) {
       console.error("Error fetching wardrobe items:", error)

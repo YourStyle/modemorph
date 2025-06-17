@@ -29,8 +29,6 @@ export function BasicMaterialsManager() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingMaterial, setEditingMaterial] = useState<BasicMaterial | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     name_ru: "",
@@ -82,24 +80,8 @@ export function BasicMaterialsManager() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0]
-      setImageFile(file)
-
-      // Создаем превью изображения
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
   const openAddDialog = () => {
     setFormData({ name_ru: "", name_en: "", description: "", properties: "" })
-    setImageFile(null)
-    setImagePreview(null)
     setEditingMaterial(null)
     setIsAddDialogOpen(true)
   }
@@ -111,8 +93,6 @@ export function BasicMaterialsManager() {
       description: material.description || "",
       properties: material.properties || "",
     })
-    setImageFile(null)
-    setImagePreview(material.image_url)
     setEditingMaterial(material)
     setIsEditDialogOpen(true)
   }
@@ -126,18 +106,11 @@ export function BasicMaterialsManager() {
         throw new Error("Supabase не настроен")
       }
 
-      // Для демонстрации создаем placeholder URL для изображения
-      let imageUrl = null
-      if (imageFile) {
-        imageUrl = `/placeholder.svg?height=200&width=200&text=${encodeURIComponent(formData.name_ru)}`
-      }
-
       const materialData = {
         name_ru: formData.name_ru,
         name_en: formData.name_en || formData.name_ru,
         description: formData.description || null,
         properties: formData.properties || null,
-        image_url: imageUrl,
       }
 
       if (editingMaterial) {
@@ -161,7 +134,7 @@ export function BasicMaterialsManager() {
         setMaterials((prev) => prev.map((material) => (material.id === editingMaterial.id ? data : material)))
         setIsEditDialogOpen(false)
       } else {
-        // Создание (существующий код)
+        // Создание
         const { data, error } = await supabase.from("basic_materials").insert([materialData]).select().single()
 
         if (error) {
@@ -173,23 +146,21 @@ export function BasicMaterialsManager() {
           description: "Базовый материал успешно создан",
         })
 
-        // Обновляем список и закрываем диалог
         setMaterials((prev) => [...prev, data])
         setIsAddDialogOpen(false)
-        setFormData({
-          name_ru: "",
-          name_en: "",
-          description: "",
-          properties: "",
-        })
-        setImageFile(null)
-        setImagePreview(null)
       }
+
+      setFormData({
+        name_ru: "",
+        name_en: "",
+        description: "",
+        properties: "",
+      })
     } catch (error) {
-      console.error("Error creating basic material:", error)
+      console.error("Error saving basic material:", error)
       toast({
         title: "Ошибка",
-        description: error instanceof Error ? error.message : "Не удалось создать базовый материал",
+        description: error instanceof Error ? error.message : "Не удалось сохранить базовый материал",
         variant: "destructive",
       })
     } finally {
@@ -218,7 +189,6 @@ export function BasicMaterialsManager() {
         description: "Базовый материал успешно удален",
       })
 
-      // Обновляем список
       setMaterials((prev) => prev.filter((material) => material.id !== id))
     } catch (error) {
       console.error("Error deleting basic material:", error)
@@ -310,7 +280,7 @@ export function BasicMaterialsManager() {
         </div>
       )}
 
-      {/* Диалог добавления базового материала */}
+      {/* Диалог добавления/редактирования базового материала */}
       <Dialog
         open={isAddDialogOpen || isEditDialogOpen}
         onOpenChange={(open) => {

@@ -118,6 +118,7 @@ export function BasicItemsManager() {
     setImageFile(null)
     setImagePreview(null)
     setEditingItem(null)
+    setSelectedMaterials([])
     setIsAddDialogOpen(true)
   }
 
@@ -130,7 +131,36 @@ export function BasicItemsManager() {
     setImageFile(null)
     setImagePreview(item.image_url)
     setEditingItem(item)
+    setSelectedMaterials([])
     setIsEditDialogOpen(true)
+  }
+
+  // Функция для загрузки изображения через API
+  const uploadImage = async (file: File): Promise<{ success: boolean; url?: string; error?: string }> => {
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("prefix", "basic_elements/items")
+
+      const response = await fetch("/api/upload-image", {
+        method: "POST",
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to upload image")
+      }
+
+      return { success: true, url: result.url }
+    } catch (error) {
+      console.error("Error uploading image:", error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      }
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -143,8 +173,25 @@ export function BasicItemsManager() {
       }
 
       let imageUrl = editingItem?.image_url || null
+
+      // Загружаем изображение через API если выбрано новое
       if (imageFile) {
-        imageUrl = `/placeholder.svg?height=200&width=200&text=${encodeURIComponent(formData.name_ru)}`
+        toast({
+          title: "Загрузка изображения...",
+          description: "Пожалуйста, подождите",
+        })
+
+        const uploadResult = await uploadImage(imageFile)
+
+        if (uploadResult.success && uploadResult.url) {
+          imageUrl = uploadResult.url
+          toast({
+            title: "Изображение загружено",
+            description: "Изображение успешно сохранено в облаке",
+          })
+        } else {
+          throw new Error(`Ошибка загрузки изображения: ${uploadResult.error}`)
+        }
       }
 
       const itemData = {
@@ -199,6 +246,7 @@ export function BasicItemsManager() {
       setImageFile(null)
       setImagePreview(null)
       setEditingItem(null)
+      setSelectedMaterials([])
     } catch (error) {
       console.error("Error saving basic item:", error)
       toast({
@@ -332,16 +380,16 @@ export function BasicItemsManager() {
               <CardContent>
                 <div className="space-y-4">
                   {item.image_url ? (
-                    <div className="relative h-40 w-full overflow-hidden rounded-md">
+                    <div className="relative aspect-square w-full overflow-hidden rounded-md bg-gray-50">
                       <Image
                         src={item.image_url || "/placeholder.svg"}
                         alt={item.name_ru}
                         fill
-                        className="object-cover"
+                        className="object-contain"
                       />
                     </div>
                   ) : (
-                    <div className="h-40 w-full bg-gray-100 rounded-md flex items-center justify-center">
+                    <div className="aspect-square w-full bg-gray-100 rounded-md flex items-center justify-center">
                       <ImageIcon className="h-8 w-8 text-gray-400" />
                     </div>
                   )}
@@ -446,8 +494,8 @@ export function BasicItemsManager() {
                   <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </div>
                 {imagePreview && (
-                  <div className="mt-2 relative h-40 w-full overflow-hidden rounded-md">
-                    <Image src={imagePreview || "/placeholder.svg"} alt="Preview" fill className="object-cover" />
+                  <div className="mt-2 relative aspect-square w-full overflow-hidden rounded-md bg-gray-50">
+                    <Image src={imagePreview || "/placeholder.svg"} alt="Preview" fill className="object-contain" />
                     <Button
                       type="button"
                       variant="destructive"

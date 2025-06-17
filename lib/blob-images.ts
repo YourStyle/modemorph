@@ -50,6 +50,11 @@ export async function uploadToBlob(file: File, prefix = "") {
       throw new Error("No file provided")
     }
 
+    // Проверяем наличие токена
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      throw new Error("BLOB_READ_WRITE_TOKEN environment variable is not configured")
+    }
+
     // Создаем уникальное имя файла
     const fileName = `${prefix ? prefix + "-" : ""}${nanoid(8)}`
     const fileExtension = file.name.split(".").pop()?.toLowerCase() || "jpg"
@@ -58,6 +63,7 @@ export async function uploadToBlob(file: File, prefix = "") {
     // Загружаем файл в Vercel Blob
     const blob = await put(fullFileName, file, {
       access: "public",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
     })
 
     return {
