@@ -425,68 +425,74 @@ export function CombinationsManager() {
 
               <div className="space-y-2">
                 <Label>Элементы сочетания * (перетащите для изменения порядка)</Label>
-                <div className="space-y-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {selectedElements.map((element, index) => {
                     const elementData = getElementData(element.id)
                     return (
                       <div
                         key={element.tempId}
-                        className="flex gap-2 items-center p-2 border rounded-lg bg-white"
+                        className="relative border rounded-lg bg-white p-3 cursor-grab"
                         draggable
                         onDragStart={(e) => handleDragStart(e, index)}
                         onDragOver={handleDragOver}
                         onDrop={(e) => handleDrop(e, index)}
                       >
-                        <GripVertical className="h-4 w-4 text-gray-400 cursor-grab" />
+                        <div className="flex flex-col items-center space-y-2">
+                          <GripVertical className="h-4 w-4 text-gray-400 absolute top-2 left-2" />
 
-                        {elementData && (
-                          <div className="relative w-10 h-10 rounded overflow-hidden border">
-                            {elementData.image_url ? (
+                          {selectedElements.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="absolute top-1 right-1 h-6 w-6 p-0"
+                              onClick={() => removeElement(element.tempId)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          )}
+
+                          <div className="relative w-20 h-20 rounded-lg overflow-hidden border bg-gray-50">
+                            {elementData?.image_url ? (
                               <Image
                                 src={elementData.image_url || "/placeholder.svg"}
                                 alt={elementData.name_ru}
                                 fill
-                                className="object-cover"
+                                className="object-contain"
                               />
                             ) : (
                               <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                                <ImageIcon className="h-4 w-4 text-gray-400" />
+                                <ImageIcon className="h-8 w-8 text-gray-400" />
                               </div>
                             )}
                           </div>
-                        )}
 
-                        <Select
-                          value={element.id?.toString() || ""}
-                          onValueChange={(value) =>
-                            updateElement(element.tempId, value ? Number.parseInt(value) : null)
-                          }
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue
-                              placeholder={`Выберите ${formData.combination_type === "items" ? "вещь" : "материал"}`}
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {formData.combination_type === "items"
-                              ? basicItems.map((item) => (
-                                  <SelectItem key={item.id} value={item.id.toString()}>
-                                    {item.name_ru}
-                                  </SelectItem>
-                                ))
-                              : basicMaterials.map((material) => (
-                                  <SelectItem key={material.id} value={material.id.toString()}>
-                                    {material.name_ru}
-                                  </SelectItem>
-                                ))}
-                          </SelectContent>
-                        </Select>
-
-                        {selectedElements.length > 1 && (
-                          <Button type="button" variant="ghost" size="sm" onClick={() => removeElement(element.tempId)}>
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
+                          <Select
+                            value={element.id?.toString() || ""}
+                            onValueChange={(value) =>
+                              updateElement(element.tempId, value ? Number.parseInt(value) : null)
+                            }
+                          >
+                            <SelectTrigger className="w-full text-xs">
+                              <SelectValue
+                                placeholder={`Выберите ${formData.combination_type === "items" ? "вещь" : "материал"}`}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {formData.combination_type === "items"
+                                ? basicItems.map((item) => (
+                                    <SelectItem key={item.id} value={item.id.toString()}>
+                                      {item.name_ru}
+                                    </SelectItem>
+                                  ))
+                                : basicMaterials.map((material) => (
+                                    <SelectItem key={material.id} value={material.id.toString()}>
+                                      {material.name_ru}
+                                    </SelectItem>
+                                  ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     )
                   })}
