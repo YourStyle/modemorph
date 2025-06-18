@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { uploadToBlob } from "@/lib/blob-images"
+import { put } from "@vercel/blob"
+import { nanoid } from "nanoid"
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,27 +12,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    const result = await uploadToBlob(file, prefix)
-
-    if (result.success) {
-      return NextResponse.json({
-        success: true,
-        url: result.url,
-        fileName: result.fileName,
-      })
-    } else {
-      return NextResponse.json(
-        {
-          error: result.error,
-        },
-        { status: 500 },
-      )
+    // Проверяем токен
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      return NextResponse.json({ error: "Blob storage not configured" }, { status: 500 })
     }
+
+    // Генерируем уникальное имя файла
+    const fileExtension = file.name.split(".").pop()
+    const fileName = `${nanoid()}.${fileExtension}`
+    const filePath = prefix ? `${prefix}/${fileName}` : fileName
+
+    // Загружаем файл в Blob storage
+    const blob = await put(filePath, file, {
+      access: "public",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    })
+
+    return NextResponse.json({
+      success: true,
+      url: blob.url,
+      pathname: blob.pathname,
+    })
   } catch (error) {
-    console.error("Error in upload API:", error)
+    console.error("Error uploading to blob:", error)
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unknown error",
+        error: `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`,
       },
       { status: 500 },
     )

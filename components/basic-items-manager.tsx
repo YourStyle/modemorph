@@ -21,6 +21,7 @@ interface BasicItem {
   name_en: string
   description: string | null
   image_url: string | null
+  materials?: BasicMaterial[]
 }
 
 interface BasicMaterial {
@@ -63,15 +64,35 @@ export function BasicItemsManager() {
 
       await checkSupabaseConnection()
 
-      const { data, error } = await supabase.from("basic_wardrobe_items").select("*").order("name_ru")
+      // Получаем базовые вещи с их материалами
+      const { data, error } = await supabase
+        .from("basic_wardrobe_items")
+        .select(`
+          *,
+          basic_item_materials (
+            basic_materials (
+              id,
+              name_ru,
+              name_en
+            )
+          )
+        `)
+        .order("name_ru")
 
       if (error) {
         console.error("Error fetching basic items:", error)
         throw new Error(`Ошибка загрузки базовых вещей: ${error.message}`)
       }
 
-      setItems(data || [])
+      // Преобразуем данные для удобства использования
+      const itemsWithMaterials = (data || []).map((item: any) => ({
+        ...item,
+        materials: item.basic_item_materials?.map((rel: any) => rel.basic_materials) || [],
+      }))
 
+      setItems(itemsWithMaterials)
+
+      // Загружаем все доступные материалы
       const { data: materialsData } = await supabase
         .from("basic_materials")
         .select("id, name_ru, name_en")
@@ -131,7 +152,8 @@ export function BasicItemsManager() {
     setImageFile(null)
     setImagePreview(item.image_url)
     setEditingItem(item)
-    setSelectedMaterials([])
+    // Устанавливаем выбранные материалы
+    setSelectedMaterials(item.materials?.map((m) => m.id) || [])
     setIsEditDialogOpen(true)
   }
 
@@ -160,6 +182,34 @@ export function BasicItemsManager() {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
       }
+    }
+  }
+
+  // Функция для сохранения связей с материалами
+  const saveMaterialRelations = async (itemId: number, materialIds: number[]) => {
+    if (!supabase) return
+
+    try {
+      // Удаляем старые связи
+      await supabase.from("basic_item_materials").delete().eq("basic_item_id", itemId)
+
+      // Добавляем новые связи
+      if (materialIds.length > 0) {
+        const relations = materialIds.map((materialId) => ({
+          basic_item_id: itemId,
+          basic_material_id: materialId,
+        }))
+
+        const { error } = await supabase.from("basic_item_materials").insert(relations)
+
+        if (error) {
+          console.error("Error saving material relations:", error)
+          throw new Error(`Ошибка сохранения материалов: ${error.message}`)
+        }
+      }
+    } catch (error) {
+      console.error("Error in saveMaterialRelations:", error)
+      throw error
     }
   }
 
@@ -214,12 +264,14 @@ export function BasicItemsManager() {
           throw new Error(`Ошибка обновления базовой вещи: ${error.message}`)
         }
 
+        // Сохраняем связи с материалами
+        await saveMaterialRelations(editingItem.id, selectedMaterials)
+
         toast({
           title: "Успешно",
           description: "Базовая вещь успешно обновлена",
         })
 
-        setItems((prev) => prev.map((item) => (item.id === editingItem.id ? data : item)))
         setIsEditDialogOpen(false)
       } else {
         // Создание
@@ -229,14 +281,19 @@ export function BasicItemsManager() {
           throw new Error(`Ошибка создания базовой вещи: ${error.message}`)
         }
 
+        // Сохраняем связи с материалами
+        await saveMaterialRelations(data.id, selectedMaterials)
+
         toast({
           title: "Успешно",
           description: "Базовая вещь успешно создана",
         })
 
-        setItems((prev) => [...prev, data])
         setIsAddDialogOpen(false)
       }
+
+      // Обновляем список
+      await fetchItems()
 
       setFormData({
         name_ru: "",
@@ -299,7 +356,10 @@ export function BasicItemsManager() {
         body: JSON.stringify({ id }),
       })
 
-      if (!response.ok) throw new Error("Failed to copy item")
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to copy item")
+      }
 
       toast({
         title: "Успешно",
@@ -308,9 +368,10 @@ export function BasicItemsManager() {
 
       fetchItems()
     } catch (error) {
+      console.error("Error copying item:", error)
       toast({
         title: "Ошибка",
-        description: "Не удалось скопировать базовую вещь",
+        description: error instanceof Error ? error.message : "Не удалось скопировать базовую вещь",
         variant: "destructive",
       })
     }
@@ -401,6 +462,11 @@ export function BasicItemsManager() {
                       <span className="font-medium">Описание:</span> {item.description}
                     </div>
                   )}
+                  {item.materials && item.materials.length > 0 && (
+                    <div>
+                      <span className="font-medium">Материалы:</span> {item.materials.map((m) => m.name_ru).join(", ")}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -418,7 +484,7 @@ export function BasicItemsManager() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingItem ? "Редактировать базовую вещь" : "Добавить базовую вещь"}</DialogTitle>
           </DialogHeader>
@@ -494,7 +560,7 @@ export function BasicItemsManager() {
                   <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </div>
                 {imagePreview && (
-                  <div className="mt-2 relative aspect-square w-full overflow-hidden rounded-md bg-gray-50">
+                  <div className="mt-2 relative w-48 h-48 mx-auto overflow-hidden rounded-md bg-gray-50">
                     <Image src={imagePreview || "/placeholder.svg"} alt="Preview" fill className="object-contain" />
                     <Button
                       type="button"
@@ -512,7 +578,7 @@ export function BasicItemsManager() {
                 )}
               </div>
             </div>
-            <DialogFooter>
+            <DialogFooter className="sticky bottom-0 bg-white pt-4 border-t">
               <Button
                 type="button"
                 variant="outline"
