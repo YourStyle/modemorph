@@ -1,7 +1,45 @@
+"use client"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Settings, Palette, Bell, Shield, Database } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Settings, Palette, Bell, Shield, Database, RefreshCw } from "lucide-react"
+import { useState } from "react"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SettingsPage() {
+  const [isMigrating, setIsMigrating] = useState(false)
+  const [migrationResult, setMigrationResult] = useState<any>(null)
+  const { toast } = useToast()
+
+  const handleMigrateImages = async () => {
+    setIsMigrating(true)
+    setMigrationResult(null)
+
+    try {
+      const response = await fetch("/api/migrate/populate-image-urls")
+      const result = await response.json()
+
+      if (response.ok) {
+        setMigrationResult(result)
+        toast({
+          title: "Миграция завершена!",
+          description: `Обработано ${result.processed} вещей, найдено ${result.found} изображений`,
+        })
+      } else {
+        throw new Error(result.error || "Migration failed")
+      }
+    } catch (error) {
+      console.error("Migration error:", error)
+      toast({
+        title: "Ошибка миграции",
+        description: "Не удалось выполнить миграцию изображений",
+        variant: "destructive",
+      })
+    } finally {
+      setIsMigrating(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
@@ -11,6 +49,46 @@ export default function SettingsPage() {
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Настройки</h1>
             <p className="text-gray-600">Управление настройками приложения и аккаунта</p>
           </div>
+
+          {/* Миграции данных */}
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-3">
+                <RefreshCw className="h-5 w-5" />
+                Миграции данных
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <h4 className="font-medium mb-2">Заполнить image_url для вещей</h4>
+                <p className="text-sm text-gray-600 mb-3">
+                  Автоматически найти и привязать изображения из blob storage к вещам в гардеробе
+                </p>
+                <Button onClick={handleMigrateImages} disabled={isMigrating} className="mb-3">
+                  {isMigrating ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Выполняется миграция...
+                    </>
+                  ) : (
+                    "Заполнить image_url для всех вещей"
+                  )}
+                </Button>
+
+                {migrationResult && (
+                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded">
+                    <h5 className="font-medium text-green-800 mb-2">Результат миграции:</h5>
+                    <ul className="text-sm text-green-700 space-y-1">
+                      <li>• Обработано вещей: {migrationResult.processed}</li>
+                      <li>• Найдено изображений: {migrationResult.found}</li>
+                      <li>• Обновлено записей: {migrationResult.updated}</li>
+                      {migrationResult.notFound > 0 && <li>• Не найдено изображений: {migrationResult.notFound}</li>}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Сетка настроек */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

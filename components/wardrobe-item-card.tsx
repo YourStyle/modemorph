@@ -137,7 +137,7 @@ export function WardrobeItemCard({ item, isAdmin = false, onVisibilityChange }: 
               alt={item.item_name}
               fill
               className={cn(
-                "object-cover group-hover:scale-105 transition-transform duration-200",
+                "object-contain group-hover:scale-105 transition-transform duration-200",
                 selected && "opacity-90",
                 isHidden && "grayscale",
               )}
@@ -146,6 +146,9 @@ export function WardrobeItemCard({ item, isAdmin = false, onVisibilityChange }: 
           ) : (
             <div className="flex items-center justify-center h-full text-gray-400">
               <Package className="h-12 w-12" />
+              <div className="absolute bottom-2 left-2 right-2 text-xs text-center text-gray-500 bg-white/80 rounded px-1">
+                Нет изображения
+              </div>
             </div>
           )}
         </div>
@@ -225,7 +228,7 @@ export function WardrobeItemCard({ item, isAdmin = false, onVisibilityChange }: 
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 transition-colors"
-              onClick={(e) => e.stopPropagation()} // Предотвращаем выбор элемента при клике на ссылку
+              onClick={(e) => e.stopPropagation()}
             >
               <ExternalLink className="h-4 w-4" />
               Посмотреть товар

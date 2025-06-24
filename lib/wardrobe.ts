@@ -13,7 +13,7 @@ export interface WardrobeItem {
   url: string
   created_at: string
   updated_at: string
-  image_url?: string
+  image_url?: string | null
   is_basic?: boolean
   is_hidden?: boolean
   basic_item_id?: number
