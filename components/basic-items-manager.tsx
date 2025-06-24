@@ -484,118 +484,122 @@ export function BasicItemsManager() {
           }
         }}
       >
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle>{editingItem ? "Редактировать базовую вещь" : "Добавить базовую вещь"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name_ru">Название (RU) *</Label>
-                <Input
-                  id="name_ru"
-                  name="name_ru"
-                  value={formData.name_ru}
-                  onChange={handleInputChange}
-                  placeholder="Например: Белая рубашка"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="name_en">Название (EN)</Label>
-                <Input
-                  id="name_en"
-                  name="name_en"
-                  value={formData.name_en}
-                  onChange={handleInputChange}
-                  placeholder="Например: White shirt"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Описание</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  value={formData.description}
-                  onChange={handleInputChange}
-                  placeholder="Дополнительная информация о базовой вещи"
-                  rows={3}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Материалы</Label>
-                <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded p-2">
-                  {basicMaterials.map((material) => (
-                    <div key={material.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`material-${material.id}`}
-                        checked={selectedMaterials.includes(material.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setSelectedMaterials([...selectedMaterials, material.id])
-                          } else {
-                            setSelectedMaterials(selectedMaterials.filter((id) => id !== material.id))
-                          }
-                        }}
-                      />
-                      <Label htmlFor={`material-${material.id}`} className="text-sm">
-                        {material.name_ru}
-                      </Label>
-                    </div>
-                  ))}
+
+          <div className="flex-1 overflow-y-auto">
+            <form onSubmit={handleSubmit}>
+              <div className="space-y-4 py-4 pb-20">
+                <div className="space-y-2">
+                  <Label htmlFor="name_ru">Название (RU) *</Label>
+                  <Input
+                    id="name_ru"
+                    name="name_ru"
+                    value={formData.name_ru}
+                    onChange={handleInputChange}
+                    placeholder="Например: Белая рубашка"
+                    required
+                  />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="image">Изображение</Label>
-                <div className="flex items-center gap-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => document.getElementById("image")?.click()}
-                    className="w-full"
-                  >
-                    <Upload className="h-4 w-4 mr-2" />
-                    Выбрать изображение
-                  </Button>
-                  <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                <div className="space-y-2">
+                  <Label htmlFor="name_en">Название (EN)</Label>
+                  <Input
+                    id="name_en"
+                    name="name_en"
+                    value={formData.name_en}
+                    onChange={handleInputChange}
+                    placeholder="Например: White shirt"
+                  />
                 </div>
-                {imagePreview && (
-                  <div className="mt-2 relative w-48 h-48 mx-auto overflow-hidden rounded-md bg-gray-50">
-                    <Image src={imagePreview || "/placeholder.svg"} alt="Preview" fill className="object-contain" />
+                <div className="space-y-2">
+                  <Label htmlFor="description">Описание</Label>
+                  <Textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    placeholder="Дополнительная информация о базовой вещи"
+                    rows={3}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Материалы</Label>
+                  <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto border rounded p-2">
+                    {basicMaterials.map((material) => (
+                      <div key={material.id} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`material-${material.id}`}
+                          checked={selectedMaterials.includes(material.id)}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedMaterials([...selectedMaterials, material.id])
+                            } else {
+                              setSelectedMaterials(selectedMaterials.filter((id) => id !== material.id))
+                            }
+                          }}
+                        />
+                        <Label htmlFor={`material-${material.id}`} className="text-sm">
+                          {material.name_ru}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="image">Изображение</Label>
+                  <div className="flex items-center gap-4">
                     <Button
                       type="button"
-                      variant="destructive"
-                      size="sm"
-                      className="absolute top-2 right-2"
-                      onClick={() => {
-                        setImageFile(null)
-                        setImagePreview(null)
-                      }}
+                      variant="outline"
+                      onClick={() => document.getElementById("image")?.click()}
+                      className="w-full"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Upload className="h-4 w-4 mr-2" />
+                      Выбрать изображение
                     </Button>
+                    <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                   </div>
-                )}
+                  {imagePreview && (
+                    <div className="mt-2 relative w-48 h-48 mx-auto overflow-hidden rounded-md bg-gray-50">
+                      <Image src={imagePreview || "/placeholder.svg"} alt="Preview" fill className="object-contain" />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-2 right-2"
+                        onClick={() => {
+                          setImageFile(null)
+                          setImagePreview(null)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-            <DialogFooter className="sticky bottom-0 bg-white pt-4 border-t">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setIsAddDialogOpen(false)
-                  setIsEditDialogOpen(false)
-                }}
-                disabled={isSubmitting}
-              >
-                Отмена
-              </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {editingItem ? "Сохранить" : "Добавить"}
-              </Button>
-            </DialogFooter>
-          </form>
+            </form>
+          </div>
+
+          <DialogFooter className="flex-shrink-0 sticky bottom-0 bg-white pt-4 border-t mt-auto">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setIsAddDialogOpen(false)
+                setIsEditDialogOpen(false)
+              }}
+              disabled={isSubmitting}
+            >
+              Отмена
+            </Button>
+            <Button type="submit" disabled={isSubmitting} onClick={handleSubmit}>
+              {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {editingItem ? "Сохранить" : "Добавить"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
