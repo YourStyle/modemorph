@@ -20,7 +20,7 @@ export default async function AppLayout({
   return (
     <>
       <Navigation user={{ email: user.email, isAdmin: false }} />
-      <main>{children}</main>
+      <main className="min-h-screen bg-gray-50">{children}</main>
     </>
   )
 }
