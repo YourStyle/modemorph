@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TrendingUp, Calendar, Palette, Sparkles } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { isUserAdmin } from "@/lib/admin"
+import { ImageUploadForm } from "@/components/image-upload-form"
 
 export default async function AppPage() {
   const supabase = createClient()
@@ -27,6 +28,11 @@ export default async function AppPage() {
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">Добро пожаловать, {user.email?.split("@")[0]}!</h1>
           <p className="text-xl text-gray-600">Создавайте стильные образы с помощью ИИ</p>
+        </div>
+
+        {/* Форма загрузки изображения */}
+        <div className="mb-8">
+          <ImageUploadForm />
         </div>
 
         {/* Быстрые действия для обычных пользователей */}
