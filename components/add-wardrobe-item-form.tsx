@@ -172,7 +172,7 @@ export function AddWardrobeItemForm() {
     } catch (error) {
       console.error("Error adding wardrobe item:", error)
       toast({
-        title: "Ошибка",
+        title: "��шибка",
         description: error instanceof Error ? error.message : "Не удалось добавить вещь в гардероб",
         variant: "destructive",
       })

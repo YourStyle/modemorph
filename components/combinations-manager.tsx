@@ -436,7 +436,7 @@ export function CombinationsManager() {
     if (element.basic_materials) {
       return element.basic_materials.name_ru
     }
-    return "Неизвестный элемент"
+    return "Неизвест��ый элемент"
   }
 
   const getElementImage = (element: CombinationElement) => {
