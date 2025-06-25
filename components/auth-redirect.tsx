@@ -24,17 +24,18 @@ export function AuthRedirect({ userId }: AuthRedirectProps) {
           .single()
 
         if (error || !profile) {
-          // Если профиля нет, создаем его как админа
+          // Если профиля нет, создаем его как обычного пользователя
           const { error: insertError } = await supabase.from("user_profiles").insert({
             user_id: userId,
-            is_admin: true,
+            is_admin: false, // По умолчанию обычный пользователь
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
 
           if (!insertError) {
-            router.push("/admin")
+            router.push("/app") // Перенаправляем в пользовательскую зону
           } else {
+            console.error("Error creating profile:", insertError)
             router.push("/app")
           }
         } else {
@@ -47,7 +48,7 @@ export function AuthRedirect({ userId }: AuthRedirectProps) {
         }
       } catch (error) {
         console.error("Error checking user role:", error)
-        router.push("/app")
+        router.push("/app") // По умолчанию в пользовательскую зону
       }
     }
 
