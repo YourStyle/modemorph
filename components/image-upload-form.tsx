@@ -85,7 +85,7 @@ export function ImageUploadForm() {
       formData.append("image", selectedFile)
 
       const response = await fetch(
-        "https://primary-production-84ad.up.railway.app/webhook-test/eb22a974-7fdf-4038-b21b-132697314679",
+        "https://primary-production-84ad.up.railway.app/webhook-test/ai-photo-parse",
         {
           method: "POST",
           body: formData,
