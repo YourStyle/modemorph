@@ -59,7 +59,7 @@ export const clothingCategories = {
     types: ["jeans", "pants", "sporty-pants"],
   },
   sets: {
-    name: "Комплекты",
+    name: "Комп��екты",
     types: ["classic", "knitted-suit", "tracksuit"],
   },
   outerwear: {

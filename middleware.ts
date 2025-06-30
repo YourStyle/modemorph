@@ -8,7 +8,7 @@ export async function middleware(request: NextRequest) {
     return response
   } catch (error) {
     console.error("Middleware error:", error)
-    // В случае ошибки просто пропускаем запрос дальше
+    // В случае ошибки просто пропускаем за��рос дальше
     return NextResponse.next()
   }
 }
