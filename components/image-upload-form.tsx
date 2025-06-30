@@ -24,11 +24,15 @@ interface ResponseItem {
   b64_json?: string
 }
 
+interface ItemWithImage extends ResponseItem {
+  imageUrl?: string
+}
+
 export function ImageUploadForm() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
-  const [responseItems, setResponseItems] = useState<ResponseItem[]>([])
+  const [responseItems, setResponseItems] = useState<ItemWithImage[]>([])
   const [savedItems, setSavedItems] = useState<number[]>([])
   const { toast } = useToast()
 
@@ -81,9 +85,37 @@ export function ImageUploadForm() {
     setSavedItems([])
   }
 
+  const loadBasicItemImages = async (items: ResponseItem[]) => {
+    const itemsWithImages: ItemWithImage[] = []
+
+    for (const item of items) {
+      let imageUrl = ""
+
+      if (item.b64_json) {
+        imageUrl = `data:image/png;base64,${item.b64_json}`
+      } else if (item.basic_item_id) {
+        try {
+          const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
+          if (response.ok) {
+            const basicItem = await response.json()
+            imageUrl = basicItem.image_url || ""
+          }
+        } catch (error) {
+          console.error("Error loading basic item image:", error)
+        }
+      }
+
+      itemsWithImages.push({
+        ...item,
+        imageUrl,
+      })
+    }
+
+    return itemsWithImages
+  }
+
   const saveBase64ToBlob = async (base64Data: string): Promise<string | null> => {
     try {
-      // Конвертируем base64 в blob
       const byteCharacters = atob(base64Data)
       const byteNumbers = new Array(byteCharacters.length)
       for (let i = 0; i < byteCharacters.length; i++) {
@@ -92,10 +124,8 @@ export function ImageUploadForm() {
       const byteArray = new Uint8Array(byteNumbers)
       const blob = new Blob([byteArray], { type: "image/png" })
 
-      // Создаем File объект
       const file = new File([blob], `wardrobe-item-${Date.now()}.png`, { type: "image/png" })
 
-      // Отправляем в API для сохранения в blob storage
       const formData = new FormData()
       formData.append("file", file)
       formData.append("prefix", "users-wardrobe")
@@ -139,7 +169,7 @@ export function ImageUploadForm() {
         },
         body: JSON.stringify({
           item_name: item.item_name,
-          size_type: "unknown", // Можно добавить в ответ API если нужно
+          size_type: "unknown",
           material: item.material,
           style: item.style,
           has_print: item.has_print,
@@ -163,20 +193,16 @@ export function ImageUploadForm() {
     }
   }
 
-  const handleSaveItem = async (item: ResponseItem, index: number) => {
+  const handleSaveItem = async (item: ItemWithImage, index: number) => {
     try {
       let imageUrl: string | null = null
 
-      // Если есть base64 изображение, сохраняем в blob
       if (item.b64_json) {
         imageUrl = await saveBase64ToBlob(item.b64_json)
-      }
-      // Если есть basic_item_id, получаем изображение из базовых вещей
-      else if (item.basic_item_id) {
+      } else if (item.basic_item_id) {
         imageUrl = await getBasicItemImage(item.basic_item_id)
       }
 
-      // Сохраняем в базу данных
       const success = await saveItemToDatabase(item, imageUrl)
 
       if (success) {
@@ -220,7 +246,7 @@ export function ImageUploadForm() {
       formData.append("image", selectedFile)
 
       const response = await fetch(
-        "https://primary-production-84ad.up.railway.app/webhook-test/ai-photo-parse",
+        "https://primary-production-84ad.up.railway.app/webhook/ai-photo-parse",
         {
           method: "POST",
           body: formData,
@@ -231,7 +257,8 @@ export function ImageUploadForm() {
         const data = await response.json()
 
         if (Array.isArray(data) && data.length > 0) {
-          setResponseItems(data)
+          const itemsWithImages = await loadBasicItemImages(data)
+          setResponseItems(itemsWithImages)
           toast({
             title: "Успешно!",
             description: `Найдено ${data.length} вещей для добавления в гардероб`,
@@ -332,69 +359,47 @@ export function ImageUploadForm() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {responseItems.map((item, index) => (
-                <div key={index} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="flex items-start gap-4">
-                    {/* Изображение */}
-                    <div className="flex-shrink-0">
-                      {item.b64_json ? (
-                        <img
-                          src={`data:image/png;base64,${item.b64_json}`}
-                          alt={item.item_name}
-                          className="w-20 h-20 object-cover rounded-lg border"
-                        />
-                      ) : (
-                        <div className="w-20 h-20 bg-gray-200 rounded-lg border flex items-center justify-center">
-                          <ImageIcon className="h-8 w-8 text-gray-400" />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Информация о вещи */}
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg">{item.item_name}</h3>
-                      <p className="text-gray-600 text-sm mb-2">{item.description}</p>
-                      <div className="grid grid-cols-2 gap-2 text-sm">
-                        <div>
-                          <span className="font-medium">Цвет:</span> {item.color} ({item.shade})
-                        </div>
-                        <div>
-                          <span className="font-medium">Материал:</span> {item.material}
-                        </div>
-                        <div>
-                          <span className="font-medium">Стиль:</span> {item.style}
-                        </div>
-                        <div>
-                          <span className="font-medium">Принт:</span> {item.has_print}
-                        </div>
-                        <div>
-                          <span className="font-medium">Детали:</span> {item.has_details}
-                        </div>
-                        {item.basic_item_id && (
-                          <div>
-                            <span className="font-medium">Базовая вещь ID:</span> {item.basic_item_id}
-                          </div>
-                        )}
+                <div key={index} className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow">
+                  {/* Изображение - основной акцент */}
+                  <div className="mb-4">
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl || "/placeholder.svg"}
+                        alt={item.item_name}
+                        className="w-full h-48 object-contain rounded-lg border bg-gray-50"
+                      />
+                    ) : (
+                      <div className="w-full h-48 bg-gray-200 rounded-lg border flex items-center justify-center">
+                        <ImageIcon className="h-12 w-12 text-gray-400" />
                       </div>
-                    </div>
+                    )}
+                  </div>
 
-                    {/* Кнопка сохранения */}
-                    <div className="flex-shrink-0">
-                      {savedItems.includes(index) ? (
-                        <Button disabled className="bg-green-600">
-                          <Check className="h-4 w-4 mr-2" />
-                          Сохранено
-                        </Button>
-                      ) : (
-                        <Button
-                          onClick={() => handleSaveItem(item, index)}
-                          className="bg-indigo-600 hover:bg-indigo-700"
-                        >
-                          Добавить в гардероб
-                        </Button>
-                      )}
-                    </div>
+                  {/* Основная информация */}
+                  <div className="space-y-2 mb-4">
+                    <h3 className="font-semibold text-lg text-center">{item.item_name}</h3>
+                    <p className="text-gray-600 text-center">
+                      <span className="font-medium">Материал:</span> {item.material}
+                    </p>
+                  </div>
+
+                  {/* Кнопка сохранения */}
+                  <div className="w-full">
+                    {savedItems.includes(index) ? (
+                      <Button disabled className="w-full bg-green-600">
+                        <Check className="h-4 w-4 mr-2" />
+                        Сохранено
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => handleSaveItem(item, index)}
+                        className="w-full bg-indigo-600 hover:bg-indigo-700"
+                      >
+                        Добавить в гардероб
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
