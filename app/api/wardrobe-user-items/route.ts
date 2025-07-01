@@ -5,7 +5,6 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
 
-    // Получаем текущего пользователя
     const {
       data: { user },
       error: userError,
@@ -38,7 +37,6 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
 
-    // Получаем текущего пользователя
     const {
       data: { user },
       error: userError,
@@ -49,12 +47,22 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    console.log("Received item data:", body)
 
-    // Добавляем user_id к данным
     const itemData = {
-      ...body,
       user_id: user.id,
+      name: body.name || body.item_name,
+      clothing_type: body.clothing_type || body.clothing_item,
+      material: body.material || "",
+      color: body.color || "",
+      style: body.style || "",
+      print: body.print || "нет",
+      image_url: body.image_url || body.img_url,
+      basic_item_id: body.basic_item_id || null,
+      is_hidden: false,
     }
+
+    console.log("Saving item data:", itemData)
 
     const { data, error } = await supabase.from("wardrobe_user_items").insert([itemData]).select().single()
 

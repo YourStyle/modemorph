@@ -37,7 +37,7 @@ export function UserWardrobeGrid() {
         }
 
         const data = await response.json()
-        console.log("Received data:", data)
+        console.log("Received wardrobe data:", data)
 
         setItems(Array.isArray(data) ? data : [])
       } catch (err) {
@@ -98,7 +98,6 @@ export function UserWardrobeGrid() {
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                 onError={(e) => {
                   console.log("Image failed to load:", item.image_url)
-                  e.currentTarget.style.display = "none"
                 }}
               />
             ) : (
@@ -119,7 +118,7 @@ export function UserWardrobeGrid() {
               )}
 
               {item.color && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-xs" style={{ backgroundColor: item.color, color: "#fff" }}>
                   {item.color}
                 </Badge>
               )}

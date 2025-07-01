@@ -2,130 +2,59 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Upload, X, Loader2, Check } from "lucide-react"
-import { CachedWardrobeImage } from "@/components/cached-wardrobe-image"
+import { Upload, Loader2, Check } from "lucide-react"
+import Image from "next/image"
+import { useToast } from "@/hooks/use-toast"
 
-interface ResponseItem {
-  name: string
-  clothing_type: string
-  color: string
+interface DetectedItem {
+  index: number
+  basic_item_id: string | null
+  need_gen: boolean
+  clothing_item: string
+  description: string
+  item_name: string
   material: string
-  style?: string
-  print?: string
-  img_url?: string
-  image_url?: string
-  basic_item_id?: string
-}
-
-interface ItemWithImage extends ResponseItem {
-  finalImageUrl?: string
-  isAdding?: boolean
-  isAdded?: boolean
+  style: string
+  has_print: string
+  color: string
+  shade: string
+  has_details: string
+  img_url: string
 }
 
 export function ImageUploadForm() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<ItemWithImage[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([])
+  const [isSaving, setIsSaving] = useState(false)
+  const [savedItems, setSavedItems] = useState<Set<number>>(new Set())
+  const { toast } = useToast()
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       setSelectedFile(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setPreview(e.target?.result as string)
-      }
-      reader.readAsDataURL(file)
-      setResults([])
-      setError(null)
+      const url = URL.createObjectURL(file)
+      setPreviewUrl(url)
+      setDetectedItems([])
+      setSavedItems(new Set())
     }
   }
 
-  const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
-    try {
-      // Скачиваем изображение
-      const response = await fetch(imageUrl)
-      if (!response.ok) {
-        throw new Error("Failed to download image")
-      }
-
-      const blob = await response.blob()
-      const file = new File([blob], "image.jpg", { type: blob.type })
-
-      // Загружаем в blob storage
-      const formData = new FormData()
-      formData.append("file", file)
-
-      const uploadResponse = await fetch("/api/upload-image", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload image")
-      }
-
-      const { url } = await uploadResponse.json()
-      return url
-    } catch (error) {
-      console.error("Error downloading and uploading image:", error)
-      throw error
-    }
-  }
-
-  const loadBasicItemImages = async (items: ResponseItem[]): Promise<ItemWithImage[]> => {
-    const itemsWithImages: ItemWithImage[] = []
-
-    for (const item of items) {
-      let finalImageUrl = item.image_url
-
-      try {
-        // Если есть img_url, скачиваем и загружаем в blob
-        if (item.img_url) {
-          finalImageUrl = await downloadAndUploadImage(item.img_url)
-        }
-        // Если есть basic_item_id, получаем изображение базовой вещи
-        else if (item.basic_item_id) {
-          const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
-          if (response.ok) {
-            const basicItem = await response.json()
-            finalImageUrl = basicItem.image_url
-          }
-        }
-      } catch (error) {
-        console.error("Error loading image for item:", item.name, error)
-      }
-
-      itemsWithImages.push({
-        ...item,
-        finalImageUrl,
-      })
-    }
-
-    return itemsWithImages
-  }
-
-  const handleAnalyze = async () => {
+  const analyzeImage = async () => {
     if (!selectedFile) return
 
-    setLoading(true)
-    setError(null)
-
+    setIsAnalyzing(true)
     try {
       const formData = new FormData()
       formData.append("image", selectedFile)
 
-      // Используем переменную окружения для AI API
-      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
-      const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+      const response = await fetch("/api/upload-image", {
         method: "POST",
         body: formData,
       })
@@ -135,35 +64,44 @@ export function ImageUploadForm() {
       }
 
       const data = await response.json()
-      console.log("AI Response:", data)
+      console.log("Received analysis data:", data)
 
-      if (data.items && Array.isArray(data.items)) {
-        const itemsWithImages = await loadBasicItemImages(data.items)
-        setResults(itemsWithImages)
+      if (Array.isArray(data) && data.length > 0) {
+        setDetectedItems(data)
+        toast({
+          title: "Анализ завершен",
+          description: `Найдено ${data.length} вещей на изображении`,
+        })
       } else {
-        setError("Не удалось найти вещи на изображении")
+        toast({
+          title: "Вещи не найдены",
+          description: "На изображении не удалось найти одежду",
+          variant: "destructive",
+        })
       }
-    } catch (err) {
-      console.error("Error analyzing image:", err)
-      setError("Ошибка при анализе изображения")
+    } catch (error) {
+      console.error("Error analyzing image:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось проанализировать изображение",
+        variant: "destructive",
+      })
     } finally {
-      setLoading(false)
+      setIsAnalyzing(false)
     }
   }
 
-  const handleSaveItem = async (item: ItemWithImage, index: number) => {
+  const saveItem = async (item: DetectedItem) => {
+    setIsSaving(true)
     try {
-      // Обновляем состояние - показываем что добавляем
-      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: true } : r)))
-
       const itemData = {
-        name: item.name,
-        clothing_type: item.clothing_type,
-        color: item.color,
+        name: item.item_name,
+        clothing_type: item.clothing_item,
         material: item.material,
-        style: item.style || "",
-        print: item.print || "",
-        image_url: item.finalImageUrl,
+        color: item.color,
+        style: item.style,
+        print: item.has_print === "yes" ? "есть" : "нет",
+        image_url: item.img_url,
         basic_item_id: item.basic_item_id,
       }
 
@@ -179,151 +117,160 @@ export function ImageUploadForm() {
         throw new Error("Ошибка сохранения вещи")
       }
 
-      // Обновляем состояние - показываем что добавлено
-      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false, isAdded: true } : r)))
+      setSavedItems((prev) => new Set([...prev, item.index]))
+      toast({
+        title: "Вещь сохранена",
+        description: `${item.item_name} добавлена в ваш гардероб`,
+      })
     } catch (error) {
       console.error("Error saving item:", error)
-      // Сбрасываем состояние при ошибке
-      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false } : r)))
+      toast({
+        title: "Ошибка",
+        description: "Не удалось сохранить вещь",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const clearAll = () => {
-    setSelectedFile(null)
-    setPreview(null)
-    setResults([])
-    setError(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
+  const saveAllItems = async () => {
+    setIsSaving(true)
+    try {
+      for (const item of detectedItems) {
+        if (!savedItems.has(item.index)) {
+          await saveItem(item)
+          // Небольшая задержка между запросами
+          await new Promise((resolve) => setTimeout(resolve, 500))
+        }
+      }
+      toast({
+        title: "Все вещи сохранены",
+        description: "Все найденные вещи добавлены в ваш гардероб",
+      })
+    } catch (error) {
+      console.error("Error saving all items:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось сохранить все вещи",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSaving(false)
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Upload Section */}
       <Card>
-        <CardContent className="p-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Загрузить фото одежды</h3>
-              {(selectedFile || results.length > 0) && (
-                <Button variant="outline" size="sm" onClick={clearAll}>
-                  <X className="h-4 w-4 mr-2" />
-                  Очистить
-                </Button>
-              )}
-            </div>
-
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="file-upload"
-              />
-              <label
-                htmlFor="file-upload"
-                className="cursor-pointer flex flex-col items-center justify-center space-y-2"
-              >
-                <Upload className="h-8 w-8 text-gray-400" />
-                <span className="text-sm text-gray-600">Нажмите для выбора фото или перетащите сюда</span>
-              </label>
-            </div>
-
-            {preview && (
-              <div className="mt-4">
-                <img
-                  src={preview || "/placeholder.svg"}
-                  alt="Preview"
-                  className="max-w-full h-64 object-contain mx-auto rounded-lg"
-                />
+        <CardHeader>
+          <CardTitle>Загрузить фото одежды</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-center w-full">
+            <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                <Upload className="w-8 h-8 mb-4 text-gray-500" />
+                <p className="mb-2 text-sm text-gray-500">
+                  <span className="font-semibold">Нажмите для загрузки</span> или перетащите файл
+                </p>
+                <p className="text-xs text-gray-500">PNG, JPG или WEBP (макс. 10MB)</p>
               </div>
-            )}
-
-            {selectedFile && (
-              <Button onClick={handleAnalyze} disabled={loading} className="w-full">
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Анализируем изображение...
-                  </>
-                ) : (
-                  "Найти вещи на фото"
-                )}
-              </Button>
-            )}
-
-            {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg">{error}</div>}
+              <input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} />
+            </label>
           </div>
+
+          {previewUrl && (
+            <div className="mt-4">
+              <div className="relative w-full h-64 bg-gray-100 rounded-lg overflow-hidden">
+                <Image src={previewUrl || "/placeholder.svg"} alt="Preview" fill className="object-contain" />
+              </div>
+              <div className="mt-4 flex gap-2">
+                <Button onClick={analyzeImage} disabled={isAnalyzing} className="flex-1">
+                  {isAnalyzing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Анализируем...
+                    </>
+                  ) : (
+                    "Найти одежду"
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Results Section */}
-      {results.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Найденные вещи</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {results.map((item, index) => (
-              <Card key={index} className="overflow-hidden">
-                <div className="aspect-square relative bg-gray-50">
-                  <CachedWardrobeImage
-                    src={item.finalImageUrl}
-                    alt={item.name}
-                    className="w-full h-full object-cover"
-                    basicItemId={item.basic_item_id}
-                  />
-                </div>
-                <CardContent className="p-4">
-                  <h4 className="font-semibold text-lg mb-2">{item.name}</h4>
-
-                  <div className="space-y-2 mb-4">
-                    <Badge variant="secondary" className="text-xs">
-                      {item.material}
-                    </Badge>
-                    {item.color && (
-                      <Badge variant="outline" className="text-xs ml-1">
-                        {item.color}
-                      </Badge>
-                    )}
-                    {item.style && (
-                      <Badge variant="outline" className="text-xs ml-1">
-                        {item.style}
-                      </Badge>
-                    )}
-                    {item.print && item.print !== "нет" && (
-                      <Badge variant="outline" className="text-xs ml-1">
-                        {item.print}
-                      </Badge>
-                    )}
+      {detectedItems.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle>Найденные вещи ({detectedItems.length})</CardTitle>
+            <Button
+              onClick={saveAllItems}
+              disabled={isSaving || detectedItems.every((item) => savedItems.has(item.index))}
+              size="sm"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Сохраняем...
+                </>
+              ) : (
+                "Сохранить все"
+              )}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {detectedItems.map((item) => (
+                <Card key={item.index} className="overflow-hidden">
+                  <div className="aspect-square relative bg-gray-100">
+                    <Image
+                      src={item.img_url || "/placeholder.svg"}
+                      alt={item.item_name}
+                      fill
+                      className="object-cover"
+                    />
                   </div>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold mb-2">{item.item_name}</h3>
+                    <p className="text-sm text-gray-600 mb-3">{item.description}</p>
 
-                  <Button
-                    onClick={() => handleSaveItem(item, index)}
-                    disabled={item.isAdding || item.isAdded}
-                    className="w-full"
-                    variant={item.isAdded ? "secondary" : "default"}
-                  >
-                    {item.isAdding ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Добавляем...
-                      </>
-                    ) : item.isAdded ? (
-                      <>
-                        <Check className="h-4 w-4 mr-2" />
-                        Добавлено
-                      </>
-                    ) : (
-                      "Добавить в гардероб"
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      <Badge variant="secondary">{item.material}</Badge>
+                      <Badge variant="outline">{item.style}</Badge>
+                      <Badge variant="outline" style={{ backgroundColor: item.color, color: "#fff" }}>
+                        {item.shade}
+                      </Badge>
+                    </div>
+
+                    <Button
+                      onClick={() => saveItem(item)}
+                      disabled={isSaving || savedItems.has(item.index)}
+                      className="w-full"
+                      size="sm"
+                    >
+                      {savedItems.has(item.index) ? (
+                        <>
+                          <Check className="w-4 h-4 mr-2" />
+                          Сохранено
+                        </>
+                      ) : isSaving ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Сохраняем...
+                        </>
+                      ) : (
+                        "Добавить в гардероб"
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
