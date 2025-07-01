@@ -17,6 +17,14 @@ export default async function AppLayout({
     redirect("/auth/login")
   }
 
+  // Проверяем роль пользователя
+  const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
+
+  // Если это админ, перенаправляем в админку
+  if (profile?.is_admin) {
+    redirect("/admin")
+  }
+
   return (
     <div className="min-h-screen">
       <Navigation user={{ email: user.email, isAdmin: false }} />

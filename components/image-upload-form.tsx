@@ -4,163 +4,107 @@ import type React from "react"
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, ImageIcon, X, Check } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Upload, Loader2, Plus, Check } from "lucide-react"
+import { CachedWardrobeImage } from "@/components/cached-wardrobe-image"
 
-interface ResponseItem {
-  index?: number
-  basic_item_id?: number | null
-  need_gen?: boolean
-  clothing_item: string
-  description: string
-  item_name: string
-  material: string
-  style: string
-  has_print: string
-  color: string
-  shade: string
-  has_details: string
-  b64_json?: string
+interface MatchedItem {
+  id: string
+  name: string
+  material?: string
+  image_url?: string
+  basic_item_id?: string
 }
 
-interface ItemWithImage extends ResponseItem {
+interface ItemWithImage extends MatchedItem {
   imageUrl?: string
 }
 
 export function ImageUploadForm() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [isUploading, setIsUploading] = useState(false)
-  const [responseItems, setResponseItems] = useState<ItemWithImage[]>([])
-  const [savedItems, setSavedItems] = useState<number[]>([])
-  const { toast } = useToast()
+  const [preview, setPreview] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [matchedItems, setMatchedItems] = useState<ItemWithImage[]>([])
+  const [addingItems, setAddingItems] = useState<Set<string>>(new Set())
+  const [addedItems, setAddedItems] = useState<Set<string>>(new Set())
 
-  const handleFileSelect = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast({
-        title: "Ошибка",
-        description: "Пожалуйста, выберите изображение",
-        variant: "destructive",
-      })
-      return
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      toast({
-        title: "Ошибка",
-        description: "Размер файла не должен превышать 10MB",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setSelectedFile(file)
-    const url = URL.createObjectURL(file)
-    setPreviewUrl(url)
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    const file = e.dataTransfer.files[0]
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (file) {
-      handleFileSelect(file)
-    }
-  }
-
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      handleFileSelect(file)
-    }
-  }
-
-  const removeFile = () => {
-    setSelectedFile(null)
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl)
-      setPreviewUrl(null)
-    }
-    setResponseItems([])
-    setSavedItems([])
-  }
-
-  const loadBasicItemImages = async (items: ResponseItem[]) => {
-    const itemsWithImages: ItemWithImage[] = []
-
-    for (const item of items) {
-      let imageUrl = ""
-
-      if (item.b64_json) {
-        imageUrl = `data:image/png;base64,${item.b64_json}`
-      } else if (item.basic_item_id) {
-        try {
-          const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
-          if (response.ok) {
-            const basicItem = await response.json()
-            imageUrl = basicItem.image_url || ""
-          }
-        } catch (error) {
-          console.error("Error loading basic item image:", error)
-        }
+      setSelectedFile(file)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setPreview(e.target?.result as string)
       }
-
-      itemsWithImages.push({
-        ...item,
-        imageUrl,
-      })
+      reader.readAsDataURL(file)
+      setMatchedItems([])
+      setAddedItems(new Set())
     }
+  }
 
+  const loadBasicItemImages = async (items: MatchedItem[]): Promise<ItemWithImage[]> => {
+    const itemsWithImages = await Promise.all(
+      items.map(async (item) => {
+        if (item.basic_item_id && !item.image_url) {
+          try {
+            const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
+            if (response.ok) {
+              const basicItem = await response.json()
+              return {
+                ...item,
+                imageUrl: basicItem.image_url,
+              }
+            }
+          } catch (error) {
+            console.error("Error loading basic item image:", error)
+          }
+        }
+        return {
+          ...item,
+          imageUrl: item.image_url,
+        }
+      }),
+    )
     return itemsWithImages
   }
 
-  const saveBase64ToBlob = async (base64Data: string): Promise<string | null> => {
+  const handleUpload = async () => {
+    if (!selectedFile) return
+
+    setLoading(true)
     try {
-      const byteCharacters = atob(base64Data)
-      const byteNumbers = new Array(byteCharacters.length)
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i)
-      }
-      const byteArray = new Uint8Array(byteNumbers)
-      const blob = new Blob([byteArray], { type: "image/png" })
-
-      const file = new File([blob], `wardrobe-item-${Date.now()}.png`, { type: "image/png" })
-
       const formData = new FormData()
-      formData.append("file", file)
-      formData.append("prefix", "users-wardrobe")
+      formData.append("image", selectedFile)
 
-      const response = await fetch("/api/upload-image", {
+      const response = await fetch("/api/images/match", {
         method: "POST",
         body: formData,
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        return data.url
+      if (!response.ok) {
+        throw new Error("Ошибка при обработке изображения")
       }
-      return null
+
+      const data = await response.json()
+
+      if (data.matches && data.matches.length > 0) {
+        const itemsWithImages = await loadBasicItemImages(data.matches)
+        setMatchedItems(itemsWithImages)
+      } else {
+        setMatchedItems([])
+      }
     } catch (error) {
-      console.error("Error saving base64 to blob:", error)
-      return null
+      console.error("Upload error:", error)
+      alert("Ошибка при загрузке изображения")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const getBasicItemImage = async (basicItemId: number): Promise<string | null> => {
-    try {
-      const response = await fetch(`/api/basic-items/${basicItemId}`)
-      if (response.ok) {
-        const data = await response.json()
-        return data.image_url || null
-      }
-      return null
-    } catch (error) {
-      console.error("Error getting basic item image:", error)
-      return null
-    }
-  }
+  const handleAddToWardrobe = async (item: ItemWithImage) => {
+    setAddingItems((prev) => new Set(prev).add(item.id))
 
-  const saveItemToDatabase = async (item: ResponseItem, imageUrl: string | null): Promise<boolean> => {
     try {
       const response = await fetch("/api/wardrobe-user-items", {
         method: "POST",
@@ -168,242 +112,131 @@ export function ImageUploadForm() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          item_name: item.item_name,
-          size_type: "unknown",
-          material: item.material,
-          style: item.style,
-          has_print: item.has_print,
-          color: item.color,
-          shade: item.shade,
-          has_details: item.has_details,
-          url: "",
-          image_url: imageUrl,
-          is_basic: false,
           basic_item_id: item.basic_item_id,
-          notes: item.description,
-          basic_material_id: null,
-          is_hidden: false,
+          name: item.name,
+          material: item.material,
+          image_url: item.imageUrl || item.image_url,
         }),
       })
 
-      return response.ok
-    } catch (error) {
-      console.error("Error saving item to database:", error)
-      return false
-    }
-  }
-
-  const handleSaveItem = async (item: ItemWithImage, index: number) => {
-    try {
-      let imageUrl: string | null = null
-
-      if (item.b64_json) {
-        imageUrl = await saveBase64ToBlob(item.b64_json)
-      } else if (item.basic_item_id) {
-        imageUrl = await getBasicItemImage(item.basic_item_id)
+      if (!response.ok) {
+        throw new Error("Ошибка при добавлении в гардероб")
       }
 
-      const success = await saveItemToDatabase(item, imageUrl)
-
-      if (success) {
-        setSavedItems((prev) => [...prev, index])
-        toast({
-          title: "Успешно!",
-          description: `Вещь "${item.item_name}" добавлена в гардероб`,
-        })
-      } else {
-        toast({
-          title: "Ошибка",
-          description: "Не удалось сохранить вещь",
-          variant: "destructive",
-        })
-      }
+      setAddedItems((prev) => new Set(prev).add(item.id))
     } catch (error) {
-      toast({
-        title: "Ошибка",
-        description: "Произошла ошибка при сохранении",
-        variant: "destructive",
-      })
-    }
-  }
-
-  const handleSubmit = async () => {
-    if (!selectedFile) {
-      toast({
-        title: "Ошибка",
-        description: "Пожалуйста, выберите изображение",
-        variant: "destructive",
-      })
-      return
-    }
-
-    setIsUploading(true)
-    setResponseItems([])
-    setSavedItems([])
-
-    try {
-      const formData = new FormData()
-      formData.append("image", selectedFile)
-
-      const response = await fetch(
-        "https://primary-production-84ad.up.railway.app/webhook/ai-photo-parse",
-        {
-          method: "POST",
-          body: formData,
-        },
-      )
-
-      if (response.ok) {
-        const data = await response.json()
-
-        if (Array.isArray(data) && data.length > 0) {
-          const itemsWithImages = await loadBasicItemImages(data)
-          setResponseItems(itemsWithImages)
-          toast({
-            title: "Успешно!",
-            description: `Найдено ${data.length} вещей для добавления в гардероб`,
-          })
-        } else {
-          toast({
-            title: "Успешно!",
-            description: "Изображение обработано",
-          })
-        }
-      } else {
-        throw new Error("Ошибка отправки")
-      }
-    } catch (error) {
-      toast({
-        title: "Ошибка",
-        description: "Не удалось отправить изображение",
-        variant: "destructive",
-      })
+      console.error("Error adding to wardrobe:", error)
+      alert("Ошибка при добавлении в гардероб")
     } finally {
-      setIsUploading(false)
+      setAddingItems((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(item.id)
+        return newSet
+      })
     }
   }
 
   return (
-    <div className="space-y-6">
-      <Card className="bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-indigo-900">
-            <Upload className="h-5 w-5" />
-            Загрузить фото для анализа
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div
-            className="border-2 border-dashed border-indigo-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors cursor-pointer"
-            onDrop={handleDrop}
-            onDragOver={(e) => e.preventDefault()}
-            onClick={() => document.getElementById("file-input")?.click()}
-          >
-            {previewUrl ? (
-              <div className="relative">
+    <div className="max-w-4xl mx-auto space-y-8">
+      {/* Upload Section */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
+              <input type="file" accept="image/*" onChange={handleFileSelect} className="hidden" id="file-upload" />
+              <label htmlFor="file-upload" className="cursor-pointer">
+                <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                <p className="text-lg font-medium text-gray-900 mb-2">Загрузите фото одежды</p>
+                <p className="text-sm text-gray-500">PNG, JPG до 10MB</p>
+              </label>
+            </div>
+
+            {preview && (
+              <div className="flex justify-center">
                 <img
-                  src={previewUrl || "/placeholder.svg"}
+                  src={preview || "/placeholder.svg"}
                   alt="Preview"
-                  className="max-w-full max-h-48 mx-auto rounded-lg object-contain"
+                  className="max-w-xs max-h-64 object-contain rounded-lg border"
                 />
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    removeFile()
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <ImageIcon className="h-12 w-12 mx-auto text-indigo-400" />
-                <p className="text-indigo-700">Перетащите изображение сюда или нажмите для выбора</p>
-                <p className="text-sm text-indigo-500">Поддерживаются JPG, PNG, WebP до 10MB</p>
+            )}
+
+            {selectedFile && (
+              <div className="flex justify-center">
+                <Button onClick={handleUpload} disabled={loading} className="px-8">
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Обработка...
+                    </>
+                  ) : (
+                    "Найти похожие вещи"
+                  )}
+                </Button>
               </div>
             )}
           </div>
-
-          <input id="file-input" type="file" accept="image/*" onChange={handleFileInput} className="hidden" />
-
-          <Button
-            onClick={handleSubmit}
-            disabled={!selectedFile || isUploading}
-            className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700"
-          >
-            {isUploading ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                Анализируем...
-              </>
-            ) : (
-              <>
-                <Upload className="h-4 w-4 mr-2" />
-                Переложить вещи в гардероб
-              </>
-            )}
-          </Button>
         </CardContent>
       </Card>
 
-      {/* Отображение найденных вещей */}
-      {responseItems.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ImageIcon className="h-5 w-5" />
-              Найденные вещи ({responseItems.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {responseItems.map((item, index) => (
-                <div key={index} className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow">
-                  {/* Изображение - основной акцент */}
-                  <div className="mb-4">
-                    {item.imageUrl ? (
-                      <img
-                        src={item.imageUrl || "/placeholder.svg"}
-                        alt={item.item_name}
-                        className="w-full h-48 object-contain rounded-lg border bg-gray-50"
-                      />
-                    ) : (
-                      <div className="w-full h-48 bg-gray-200 rounded-lg border flex items-center justify-center">
-                        <ImageIcon className="h-12 w-12 text-gray-400" />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Основная информация */}
-                  <div className="space-y-2 mb-4">
-                    <h3 className="font-semibold text-lg text-center">{item.item_name}</h3>
-                    <p className="text-gray-600 text-center">
-                      <span className="font-medium">Материал:</span> {item.material}
-                    </p>
-                  </div>
-
-                  {/* Кнопка сохранения */}
-                  <div className="w-full">
-                    {savedItems.includes(index) ? (
-                      <Button disabled className="w-full bg-green-600">
-                        <Check className="h-4 w-4 mr-2" />
-                        Сохранено
-                      </Button>
-                    ) : (
-                      <Button
-                        onClick={() => handleSaveItem(item, index)}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700"
-                      >
-                        Добавить в гардероб
-                      </Button>
-                    )}
-                  </div>
+      {/* Results Section */}
+      {matchedItems.length > 0 && (
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Найденные вещи ({matchedItems.length})</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {matchedItems.map((item) => (
+              <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
+                <div className="aspect-square relative bg-gray-50">
+                  <CachedWardrobeImage
+                    src={item.imageUrl || item.image_url}
+                    alt={item.name}
+                    className="w-full h-full object-cover"
+                    basicItemId={item.basic_item_id}
+                  />
                 </div>
-              ))}
-            </div>
+                <CardContent className="p-4">
+                  <h3 className="font-semibold text-lg mb-2 line-clamp-2">{item.name}</h3>
+
+                  {item.material && (
+                    <Badge variant="secondary" className="mb-3">
+                      {item.material}
+                    </Badge>
+                  )}
+
+                  <Button
+                    onClick={() => handleAddToWardrobe(item)}
+                    disabled={addingItems.has(item.id) || addedItems.has(item.id)}
+                    className="w-full"
+                    variant={addedItems.has(item.id) ? "outline" : "default"}
+                  >
+                    {addingItems.has(item.id) ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Добавление...
+                      </>
+                    ) : addedItems.has(item.id) ? (
+                      <>
+                        <Check className="mr-2 h-4 w-4" />
+                        Добавлено
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Добавить в гардероб
+                      </>
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {matchedItems.length === 0 && selectedFile && !loading && (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <p className="text-gray-600">Похожие вещи не найдены. Попробуйте другое изображение.</p>
           </CardContent>
         </Card>
       )}
