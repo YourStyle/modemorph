@@ -1,100 +1,125 @@
-import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+import { type NextRequest, NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createClient()
 
+    // Check authentication
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log("Fetching wardrobe items for user:", user.id)
-
-    // Получаем все видимые вещи пользователя
-    const { data, error } = await supabase
+    const { data: userItems, error } = await supabase
       .from("wardrobe_user_items")
-      .select("*")
+      .select(`
+        id,
+        user_id,
+        item_name,
+        material,
+        shade,
+        style,
+        has_print,
+        has_details,
+        image_url,
+        basic_item_id,
+        is_visible,
+        created_at,
+        basic_items (
+          id,
+          item_name,
+          img_url,
+          clothing_types (
+            name,
+            category
+          )
+        )
+      `)
       .eq("user_id", user.id)
       .eq("is_visible", true)
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching wardrobe items:", error)
+      console.error("Error fetching user wardrobe items:", error)
       return NextResponse.json({ error: "Failed to fetch wardrobe items" }, { status: 500 })
     }
 
-    console.log("Found wardrobe items:", data?.length || 0)
-    return NextResponse.json(data || [])
+    return NextResponse.json(userItems || [])
   } catch (error) {
-    console.error("Error in wardrobe user items API:", error)
-    return NextResponse.json(
-      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
-      { status: 500 },
-    )
+    console.error("Unexpected error in wardrobe-user-items API:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createClient()
 
+    // Check authentication
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.json()
-    const { item_name, material, color, shade, style, has_print, has_details, image_url, basic_item_id } = body
+    const { item_name, material, shade, style, has_print, has_details, image_url, basic_item_id } = body
 
-    if (!item_name) {
-      return NextResponse.json({ error: "Item name is required" }, { status: 400 })
-    }
-
-    console.log("Creating wardrobe item:", { item_name, material, image_url })
-
-    const { data, error } = await supabase
+    const { data: newItem, error } = await supabase
       .from("wardrobe_user_items")
       .insert({
         user_id: user.id,
         item_name,
-        material: material || "",
-        color: color || "",
-        shade: shade || "",
-        style: style || "",
-        has_print: has_print || "no",
-        has_details: has_details || "no",
-        image_url: image_url || "",
-        basic_item_id: basic_item_id || null,
+        material,
+        shade,
+        style,
+        has_print: has_print || false,
+        has_details: has_details || false,
+        image_url,
+        basic_item_id,
         is_visible: true,
       })
-      .select()
+      .select(`
+        id,
+        user_id,
+        item_name,
+        material,
+        shade,
+        style,
+        has_print,
+        has_details,
+        image_url,
+        basic_item_id,
+        is_visible,
+        created_at,
+        basic_items (
+          id,
+          item_name,
+          img_url,
+          clothing_types (
+            name,
+            category
+          )
+        )
+      `)
       .single()
 
     if (error) {
-      console.error("Error creating wardrobe item:", error)
+      console.error("Error creating user wardrobe item:", error)
       return NextResponse.json({ error: "Failed to create wardrobe item" }, { status: 500 })
     }
 
-    console.log("Created wardrobe item:", data)
-    return NextResponse.json(data)
+    return NextResponse.json(newItem)
   } catch (error) {
-    console.error("Error in wardrobe user items API:", error)
-    return NextResponse.json(
-      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
-      { status: 500 },
-    )
+    console.error("Unexpected error in wardrobe-user-items POST:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

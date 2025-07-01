@@ -1,178 +1,95 @@
-import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+import { type NextRequest, NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
 
-// GET - получение списка базовых вещей
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const supabase = createClient()
 
-    // Получаем текущего пользователя
+    // Check authentication
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Проверяем, существует ли таблица basic_wardrobe_items
-    const { data: tableExists } = await supabase.rpc("exec_sql", {
-      sql_query: `
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' AND table_name = 'basic_wardrobe_items'
-        );
-      `,
-    })
-
-    if (!tableExists || !tableExists[0] || !tableExists[0].exists) {
-      return NextResponse.json({ error: "Basic wardrobe items table does not exist" }, { status: 404 })
-    }
-
-    // Получаем список базовых вещей
-    const { data, error } = await supabase.from("basic_wardrobe_items").select("*").order("name_ru")
+    const { data: basicItems, error } = await supabase
+      .from("basic_items")
+      .select(`
+        id,
+        item_name,
+        clothing_type_id,
+        material,
+        shade,
+        style,
+        has_print,
+        has_details,
+        img_url,
+        is_visible,
+        clothing_types (
+          id,
+          name,
+          category
+        )
+      `)
+      .eq("is_visible", true)
+      .order("item_name")
 
     if (error) {
       console.error("Error fetching basic items:", error)
       return NextResponse.json({ error: "Failed to fetch basic items" }, { status: 500 })
     }
 
-    return NextResponse.json(data || [])
+    return NextResponse.json(basicItems || [])
   } catch (error) {
-    console.error("Error in basic items API:", error)
-    return NextResponse.json(
-      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
-      { status: 500 },
-    )
+    console.error("Unexpected error in basic-items API:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-// POST - создание новой базовой вещи
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { name_ru, name_en, type_id, description, image_url } = body
+    const supabase = createClient()
 
-    // Проверяем обязательные поля
-    if (!name_ru || !name_en) {
-      return NextResponse.json({ error: "Name is required" }, { status: 400 })
-    }
-
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-    // Получаем текущего пользователя
+    // Check authentication
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Проверяем, существует ли таблица basic_wardrobe_items
-    const { data: tableExists } = await supabase.rpc("exec_sql", {
-      sql_query: `
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' AND table_name = 'basic_wardrobe_items'
-        );
-      `,
-    })
+    const body = await request.json()
+    const { item_name, clothing_type_id, material, shade, style, has_print, has_details, img_url } = body
 
-    if (!tableExists || !tableExists[0] || !tableExists[0].exists) {
-      return NextResponse.json({ error: "Basic wardrobe items table does not exist" }, { status: 404 })
-    }
-
-    // Создаем запись
-    const { data, error } = await supabase
-      .from("basic_wardrobe_items")
+    const { data: newItem, error } = await supabase
+      .from("basic_items")
       .insert({
-        name_ru,
-        name_en,
-        type_id: type_id ? Number.parseInt(type_id) : null,
-        description: description || null,
-        image_url: image_url || null,
+        item_name,
+        clothing_type_id,
+        material,
+        shade,
+        style,
+        has_print: has_print || false,
+        has_details: has_details || false,
+        img_url,
+        is_visible: true,
       })
       .select()
+      .single()
 
     if (error) {
       console.error("Error creating basic item:", error)
       return NextResponse.json({ error: "Failed to create basic item" }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, item: data[0] })
+    return NextResponse.json(newItem)
   } catch (error) {
-    console.error("Error in basic items API:", error)
-    return NextResponse.json(
-      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
-      { status: 500 },
-    )
-  }
-}
-
-// DELETE - удаление базовой вещи
-export async function DELETE(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get("id")
-
-    if (!id) {
-      return NextResponse.json({ error: "ID is required" }, { status: 400 })
-    }
-
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-    // Получаем текущего пользователя
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Проверяем, существует ли таблица basic_wardrobe_items
-    const { data: tableExists } = await supabase.rpc("exec_sql", {
-      sql_query: `
-        SELECT EXISTS (
-          SELECT FROM information_schema.tables 
-          WHERE table_schema = 'public' AND table_name = 'basic_wardrobe_items'
-        );
-      `,
-    })
-
-    if (!tableExists || !tableExists[0] || !tableExists[0].exists) {
-      return NextResponse.json({ error: "Basic wardrobe items table does not exist" }, { status: 404 })
-    }
-
-    // Проверяем, используется ли базовая вещь в wardrobe_items
-    const { data: usedItems } = await supabase.from("wardrobe_items").select("id").eq("basic_item_ref", id).limit(1)
-
-    if (usedItems && usedItems.length > 0) {
-      return NextResponse.json({ error: "Cannot delete basic item that is used by wardrobe items" }, { status: 400 })
-    }
-
-    // Удаляем запись
-    const { error } = await supabase.from("basic_wardrobe_items").delete().eq("id", id)
-
-    if (error) {
-      console.error("Error deleting basic item:", error)
-      return NextResponse.json({ error: "Failed to delete basic item" }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Error in basic items API:", error)
-    return NextResponse.json(
-      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
-      { status: 500 },
-    )
+    console.error("Unexpected error in basic-items POST:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

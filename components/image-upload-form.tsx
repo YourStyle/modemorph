@@ -2,51 +2,47 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Upload, Loader2, Check, X } from "lucide-react"
-import { CachedWardrobeImage } from "./cached-wardrobe-image"
+import { Upload, Loader2, Check, AlertCircle } from "lucide-react"
+import Image from "next/image"
 
-interface ResponseItem {
-  index: number
-  basic_item_id: number | null
-  need_gen: boolean
-  clothing_item: string
-  description: string
+interface ImageUploadFormProps {
+  onSuccess?: () => void
+}
+
+interface AnalysisResult {
   item_name: string
   material: string
-  style: string
-  has_print: string
-  color: string
   shade: string
-  has_details: string
-  img_url?: string
-  image_url?: string
+  style: string
+  has_print: boolean
+  has_details: boolean
+  basic_item_id?: number
 }
 
-interface ItemWithImage extends ResponseItem {
-  displayImageUrl: string
-}
-
-export function ImageUploadForm() {
+export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<ItemWithImage[]>([])
-  const [savingStates, setSavingStates] = useState<{ [key: number]: "saving" | "saved" | "error" }>({})
-
-  // Get AI API URL from environment variable with fallback
-  const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
+  const [uploading, setUploading] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       setSelectedFile(file)
-      const url = URL.createObjectURL(file)
-      setPreviewUrl(url)
-      setResults([])
+      setPreviewUrl(URL.createObjectURL(file))
+      setError(null)
+      setAnalysisResult(null)
+      setSuccess(false)
     }
   }
 
@@ -55,13 +51,13 @@ export function ImageUploadForm() {
       // Download the image
       const response = await fetch(imageUrl)
       if (!response.ok) {
-        throw new Error(`Failed to download image: ${response.statusText}`)
+        throw new Error("Failed to download image")
       }
 
       const blob = await response.blob()
-      const file = new File([blob], "image.webp", { type: blob.type })
+      const file = new File([blob], "analyzed-image.jpg", { type: blob.type })
 
-      // Upload to our blob storage
+      // Upload to blob storage
       const formData = new FormData()
       formData.append("file", file)
 
@@ -71,240 +67,227 @@ export function ImageUploadForm() {
       })
 
       if (!uploadResponse.ok) {
-        throw new Error(`Failed to upload image: ${uploadResponse.statusText}`)
+        throw new Error("Failed to upload image to storage")
       }
 
-      const { url } = await uploadResponse.json()
-      return url
+      const uploadResult = await uploadResponse.json()
+      return uploadResult.url
     } catch (error) {
       console.error("Error downloading and uploading image:", error)
       throw error
     }
   }
 
-  const loadBasicItemImages = async (basicItemIds: number[]): Promise<{ [key: number]: string }> => {
-    try {
-      const response = await fetch("/api/basic-items")
-      if (!response.ok) {
-        console.error("Failed to fetch basic items:", response.status)
-        return {}
-      }
-
-      const basicItems = await response.json()
-      const imageMap: { [key: number]: string } = {}
-
-      for (const id of basicItemIds) {
-        const item = basicItems.find((item: any) => item.id === id)
-        if (item?.image_url) {
-          imageMap[id] = item.image_url
-        }
-      }
-
-      return imageMap
-    } catch (error) {
-      console.error("Error loading basic item images:", error)
-      return {}
-    }
-  }
-
-  const handleAnalyze = async () => {
+  const handleUpload = async () => {
     if (!selectedFile) return
 
-    setLoading(true)
-    try {
-      const formData = new FormData()
-      formData.append("image", selectedFile)
+    setUploading(true)
+    setError(null)
 
-      const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+    try {
+      // Step 1: Upload image
+      const formData = new FormData()
+      formData.append("file", selectedFile)
+
+      const uploadResponse = await fetch("/api/upload-image", {
         method: "POST",
         body: formData,
       })
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to upload image")
       }
 
-      const data: ResponseItem[] = await response.json()
-      console.log("AI Analysis result:", data)
+      const uploadResult = await uploadResponse.json()
+      setUploading(false)
+      setAnalyzing(true)
 
-      // Load images for basic items
-      const basicItemIds = data.filter((item) => item.basic_item_id).map((item) => item.basic_item_id!)
-      const basicItemImages = await loadBasicItemImages(basicItemIds)
-
-      // Process items and prepare display images
-      const itemsWithImages: ItemWithImage[] = await Promise.all(
-        data.map(async (item) => {
-          let displayImageUrl = ""
-
-          if (item.basic_item_id && basicItemImages[item.basic_item_id]) {
-            displayImageUrl = basicItemImages[item.basic_item_id]
-          } else if (item.img_url) {
-            displayImageUrl = item.img_url
-          } else if (item.image_url) {
-            displayImageUrl = item.image_url
-          }
-
-          return {
-            ...item,
-            displayImageUrl,
-          }
-        }),
-      )
-
-      setResults(itemsWithImages)
-    } catch (error) {
-      console.error("Error analyzing image:", error)
-      alert("Ошибка при анализе изображения. Попробуйте еще раз.")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSaveItem = async (item: ItemWithImage) => {
-    setSavingStates((prev) => ({ ...prev, [item.index]: "saving" }))
-
-    try {
-      let finalImageUrl = item.displayImageUrl
-
-      // If we have img_url, download and upload to our blob storage
-      if (item.img_url) {
-        finalImageUrl = await downloadAndUploadImage(item.img_url)
+      // Step 2: Analyze image with AI
+      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL
+      if (!aiApiUrl) {
+        throw new Error("AI API URL not configured")
       }
 
-      const response = await fetch("/api/wardrobe-user-items", {
+      const analysisResponse = await fetch(`${aiApiUrl}/analyze-clothing`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          item_name: item.item_name,
-          material: item.material,
-          color: item.color,
-          shade: item.shade,
-          style: item.style,
-          has_print: item.has_print,
-          has_details: item.has_details,
-          image_url: finalImageUrl,
-          basic_item_id: item.basic_item_id,
+          image_url: uploadResult.url,
         }),
       })
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      if (!analysisResponse.ok) {
+        throw new Error("Failed to analyze image")
       }
 
-      setSavingStates((prev) => ({ ...prev, [item.index]: "saved" }))
+      const analysis = await analysisResponse.json()
+      setAnalyzing(false)
+      setSaving(true)
+
+      // Step 3: Process image URL if needed
+      let finalImageUrl = uploadResult.url
+
+      if (analysis.img_url && analysis.img_url !== uploadResult.url) {
+        try {
+          finalImageUrl = await downloadAndUploadImage(analysis.img_url)
+        } catch (error) {
+          console.error("Failed to process AI image, using original:", error)
+          // Continue with original image if processing fails
+        }
+      }
+
+      // Step 4: Save to wardrobe
+      const saveResponse = await fetch("/api/wardrobe-user-items", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          item_name: analysis.item_name,
+          material: analysis.material,
+          shade: analysis.shade,
+          style: analysis.style,
+          has_print: analysis.has_print || false,
+          has_details: analysis.has_details || false,
+          image_url: finalImageUrl,
+          basic_item_id: analysis.basic_item_id || null,
+        }),
+      })
+
+      if (!saveResponse.ok) {
+        throw new Error("Failed to save item to wardrobe")
+      }
+
+      setAnalysisResult(analysis)
+      setSuccess(true)
+      setSaving(false)
+
+      // Call success callback after a short delay
+      setTimeout(() => {
+        onSuccess?.()
+      }, 2000)
     } catch (error) {
-      console.error("Error saving item:", error)
-      setSavingStates((prev) => ({ ...prev, [item.index]: "error" }))
+      console.error("Upload error:", error)
+      setError(error instanceof Error ? error.message : "An error occurred")
+      setUploading(false)
+      setAnalyzing(false)
+      setSaving(false)
     }
   }
 
+  const resetForm = () => {
+    setSelectedFile(null)
+    setPreviewUrl(null)
+    setError(null)
+    setAnalysisResult(null)
+    setSuccess(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
+  const isProcessing = uploading || analyzing || saving
+
   return (
     <div className="space-y-6">
-      <Card>
-        <CardContent className="p-6">
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="image-upload" className="block text-sm font-medium text-gray-700 mb-2">
-                Загрузите фото вашего образа
-              </label>
-              <div className="flex items-center justify-center w-full">
-                <label
-                  htmlFor="image-upload"
-                  className="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100"
-                >
-                  {previewUrl ? (
-                    <img
-                      src={previewUrl || "/placeholder.svg"}
-                      alt="Preview"
-                      className="max-h-60 max-w-full object-contain rounded"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <Upload className="w-8 h-8 mb-4 text-gray-500" />
-                      <p className="mb-2 text-sm text-gray-500">
-                        <span className="font-semibold">Нажмите для загрузки</span> или перетащите файл
-                      </p>
-                      <p className="text-xs text-gray-500">PNG, JPG или WEBP (макс. 10MB)</p>
-                    </div>
-                  )}
-                  <input
-                    id="image-upload"
-                    type="file"
-                    className="hidden"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                  />
-                </label>
-              </div>
-            </div>
-
-            <Button onClick={handleAnalyze} disabled={!selectedFile || loading} className="w-full">
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Анализируем изображение...
-                </>
-              ) : (
-                "Найти вещи на фото"
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {results.length > 0 && (
+      {!success && (
         <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Найденные вещи</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {results.map((item) => (
-              <Card key={item.index} className="overflow-hidden">
-                <div className="aspect-square relative">
-                  <CachedWardrobeImage
-                    src={item.displayImageUrl}
-                    alt={item.item_name}
-                    className="w-full h-full object-cover"
+          <div>
+            <Label htmlFor="image-upload">Select Image</Label>
+            <Input
+              ref={fileInputRef}
+              id="image-upload"
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              disabled={isProcessing}
+              className="mt-1"
+            />
+          </div>
+
+          {previewUrl && (
+            <Card>
+              <CardContent className="p-4">
+                <div className="relative w-full h-64">
+                  <Image
+                    src={previewUrl || "/placeholder.svg"}
+                    alt="Preview"
+                    fill
+                    className="object-contain rounded-md"
                   />
                 </div>
-                <CardContent className="p-4">
-                  <h3 className="font-semibold text-lg mb-2 capitalize">{item.item_name}</h3>
+              </CardContent>
+            </Card>
+          )}
 
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <Badge variant="secondary">{item.material}</Badge>
-                    <Badge variant="outline">{item.shade}</Badge>
-                  </div>
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+              <AlertCircle className="h-4 w-4 text-destructive" />
+              <span className="text-sm text-destructive">{error}</span>
+            </div>
+          )}
 
-                  <Button
-                    onClick={() => handleSaveItem(item)}
-                    disabled={savingStates[item.index] === "saving" || savingStates[item.index] === "saved"}
-                    className="w-full"
-                    variant={savingStates[item.index] === "saved" ? "default" : "outline"}
-                  >
-                    {savingStates[item.index] === "saving" ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Добавление...
-                      </>
-                    ) : savingStates[item.index] === "saved" ? (
-                      <>
-                        <Check className="w-4 h-4 mr-2" />
-                        Добавлено
-                      </>
-                    ) : savingStates[item.index] === "error" ? (
-                      <>
-                        <X className="w-4 h-4 mr-2" />
-                        Ошибка
-                      </>
-                    ) : (
-                      "Добавить в гардероб"
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="flex gap-2">
+            <Button onClick={handleUpload} disabled={!selectedFile || isProcessing} className="flex-1">
+              {uploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {analyzing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {!isProcessing && <Upload className="mr-2 h-4 w-4" />}
+              {uploading && "Uploading..."}
+              {analyzing && "Analyzing..."}
+              {saving && "Saving..."}
+              {!isProcessing && "Upload & Analyze"}
+            </Button>
+
+            {selectedFile && !isProcessing && (
+              <Button variant="outline" onClick={resetForm}>
+                Clear
+              </Button>
+            )}
           </div>
         </div>
+      )}
+
+      {success && analysisResult && (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Check className="h-5 w-5 text-green-600" />
+              <h3 className="text-lg font-semibold text-green-600">Item Added Successfully!</h3>
+            </div>
+
+            <div className="space-y-2">
+              <p>
+                <strong>Item:</strong> {analysisResult.item_name}
+              </p>
+              <p>
+                <strong>Material:</strong> {analysisResult.material}
+              </p>
+              <p>
+                <strong>Color:</strong> {analysisResult.shade}
+              </p>
+              <p>
+                <strong>Style:</strong> {analysisResult.style}
+              </p>
+              {analysisResult.has_print && (
+                <p>
+                  <strong>Has Print:</strong> Yes
+                </p>
+              )}
+              {analysisResult.has_details && (
+                <p>
+                  <strong>Has Details:</strong> Yes
+                </p>
+              )}
+            </div>
+
+            <Button onClick={resetForm} className="mt-4 w-full">
+              Add Another Item
+            </Button>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
