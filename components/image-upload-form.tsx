@@ -24,6 +24,7 @@ interface DetectedItem {
   shade: string
   has_details: string
   img_url: string
+  image_url?: string
 }
 
 export function ImageUploadForm() {
@@ -107,7 +108,6 @@ export function ImageUploadForm() {
       // Загружаем в blob storage
       const formData = new FormData()
       formData.append("file", file)
-      formData.append("prefix", "wardrobe")
 
       const uploadResponse = await fetch("/api/upload-image", {
         method: "POST",
@@ -141,6 +141,7 @@ export function ImageUploadForm() {
   }
 
   const saveItem = async (item: DetectedItem) => {
+    setIsSaving(true)
     try {
       let finalImageUrl: string | null = null
 
@@ -193,6 +194,8 @@ export function ImageUploadForm() {
         description: "Не удалось сохранить вещь",
         variant: "destructive",
       })
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -285,52 +288,57 @@ export function ImageUploadForm() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {detectedItems.map((item) => (
-                <Card key={item.index} className="overflow-hidden">
-                  <div className="aspect-square relative bg-gray-100">
-                    <Image
-                      src={item.img_url || "/placeholder.svg"}
-                      alt={item.item_name}
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold mb-2">{item.item_name}</h3>
-                    <p className="text-sm text-gray-600 mb-3">{item.description}</p>
+              {detectedItems.map((item) => {
+                // Определяем какое изображение показывать
+                const displayImageUrl = item.basic_item_id ? item.image_url : item.img_url
 
-                    <div className="flex flex-wrap gap-1 mb-3">
-                      <Badge variant="secondary">{item.material}</Badge>
-                      <Badge variant="outline">{item.style}</Badge>
-                      <Badge variant="outline" style={{ backgroundColor: item.color, color: "#fff" }}>
-                        {item.shade}
-                      </Badge>
-                      {item.basic_item_id && <Badge variant="default">Базовая вещь</Badge>}
+                return (
+                  <Card key={item.index} className="overflow-hidden">
+                    <div className="aspect-square relative bg-gray-100">
+                      <Image
+                        src={displayImageUrl || "/placeholder.svg"}
+                        alt={item.item_name}
+                        fill
+                        className="object-cover"
+                      />
                     </div>
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold mb-2">{item.item_name}</h3>
+                      <p className="text-sm text-gray-600 mb-3">{item.description}</p>
 
-                    <Button
-                      onClick={() => saveItem(item)}
-                      disabled={isSaving || savedItems.has(item.index)}
-                      className="w-full"
-                      size="sm"
-                    >
-                      {savedItems.has(item.index) ? (
-                        <>
-                          <Check className="w-4 h-4 mr-2" />
-                          Сохранено
-                        </>
-                      ) : isSaving ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Сохраняем...
-                        </>
-                      ) : (
-                        "Добавить в гардероб"
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))}
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        <Badge variant="secondary">{item.material}</Badge>
+                        <Badge variant="outline">{item.style}</Badge>
+                        <Badge variant="outline" style={{ backgroundColor: item.color, color: "#fff" }}>
+                          {item.shade}
+                        </Badge>
+                        {item.basic_item_id && <Badge variant="default">Базовая вещь</Badge>}
+                      </div>
+
+                      <Button
+                        onClick={() => saveItem(item)}
+                        disabled={isSaving || savedItems.has(item.index)}
+                        className="w-full"
+                        size="sm"
+                      >
+                        {savedItems.has(item.index) ? (
+                          <>
+                            <Check className="w-4 h-4 mr-2" />
+                            Сохранено
+                          </>
+                        ) : isSaving ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Сохраняем...
+                          </>
+                        ) : (
+                          "Добавить в гардероб"
+                        )}
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )
+              })}
             </div>
           </CardContent>
         </Card>
