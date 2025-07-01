@@ -49,17 +49,22 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     console.log("Received item data:", body)
 
+    // Маппим данные на правильные колонки таблицы wardrobe_user_items
     const itemData = {
       user_id: user.id,
-      name: body.name || body.item_name,
-      clothing_type: body.clothing_type || body.clothing_item,
+      item_name: body.name || body.item_name || "Без названия",
       material: body.material || "",
       color: body.color || "",
       style: body.style || "",
-      print: body.print || "нет",
+      has_print: body.print || "нет",
       image_url: body.image_url || body.img_url,
-      basic_item_id: body.basic_item_id || null,
+      basic_item_id: body.basic_item_id ? Number.parseInt(body.basic_item_id) : null,
       is_hidden: false,
+      size_type: body.size_type || "",
+      shade: body.shade || "",
+      has_details: body.has_details || "нет",
+      url: body.url || "",
+      notes: body.notes || "",
     }
 
     console.log("Saving item data:", itemData)

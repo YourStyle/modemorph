@@ -155,11 +155,12 @@ export function ImageUploadForm() {
 
       const itemData = {
         name: item.item_name,
-        clothing_type: item.clothing_item,
         material: item.material,
         color: item.color,
         style: item.style,
         print: item.has_print === "yes" ? "есть" : "нет",
+        shade: item.shade,
+        has_details: item.has_details,
         image_url: finalImageUrl,
         basic_item_id: item.basic_item_id,
       }
