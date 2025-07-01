@@ -9,12 +9,10 @@ export default function AppLayout({
 }) {
   return (
     <>
-      <AuthRedirect adminRedirect="/admin" userRedirect="/app" />
+      <AuthRedirect adminRedirect="/admin" />
       <div className="min-h-screen bg-gray-50">
         <Navigation />
-        <main className="py-8">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">{children}</div>
-        </main>
+        <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">{children}</main>
       </div>
     </>
   )

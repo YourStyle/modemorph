@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { Loader2 } from "lucide-react"
 
 interface AuthRedirectProps {
   adminRedirect?: string
@@ -13,13 +12,11 @@ interface AuthRedirectProps {
 export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }: AuthRedirectProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const supabase = createClient()
 
   useEffect(() => {
-    async function checkUserRole() {
+    const checkUserRole = async () => {
       try {
-        const supabase = createClient()
-
         const {
           data: { user },
           error: userError,
@@ -55,6 +52,7 @@ export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }
           },
           body: JSON.stringify({
             full_name: user.user_metadata?.full_name || "",
+            avatar_url: user.user_metadata?.avatar_url || "",
           }),
         })
 
@@ -67,13 +65,13 @@ export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }
             router.push(userRedirect)
           }
         } else {
-          // Если не удалось создать профиль, перенаправляем как обычного пользователя
+          console.error("Failed to create profile")
+          // Fallback - перенаправляем в пользовательскую зону
           router.push(userRedirect)
         }
-      } catch (err) {
-        console.error("Error checking user role:", err)
-        setError("Ошибка проверки роли пользователя")
-        // В случае ошибки перенаправляем как обычного пользователя
+      } catch (error) {
+        console.error("Error checking user role:", error)
+        // Fallback - перенаправляем в пользовательскую зону
         router.push(userRedirect)
       } finally {
         setLoading(false)
@@ -81,31 +79,12 @@ export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }
     }
 
     checkUserRole()
-  }, [router, adminRedirect, userRedirect])
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Попробовать снова
-          </button>
-        </div>
-      </div>
-    )
-  }
+  }, [router, adminRedirect, userRedirect, supabase.auth])
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-600">Проверка роли пользователя...</p>
-        </div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
       </div>
     )
   }

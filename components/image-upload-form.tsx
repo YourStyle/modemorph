@@ -2,52 +2,41 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Upload, X, Loader2, Check } from "lucide-react"
+import { Upload, Loader2, Check, X } from "lucide-react"
 import { CachedWardrobeImage } from "@/components/cached-wardrobe-image"
 
 interface ResponseItem {
-  name: string
-  clothing_type: string
-  color: string
+  index: number
+  basic_item_id?: string | null
+  need_gen: boolean
+  clothing_item: string
+  description: string
+  item_name: string
   material: string
-  style?: string
-  print?: string
+  style: string
+  has_print: string
+  color: string
+  shade: string
+  has_details: string
   img_url?: string
   image_url?: string
-  basic_item_id?: string
 }
 
 interface ItemWithImage extends ResponseItem {
   finalImageUrl?: string
-  isAdding?: boolean
-  isAdded?: boolean
+  saving?: boolean
+  saved?: boolean
 }
 
 export function ImageUploadForm() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [results, setResults] = useState<ItemWithImage[]>([])
+  const [items, setItems] = useState<ItemWithImage[]>([])
   const [error, setError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setPreview(e.target?.result as string)
-      }
-      reader.readAsDataURL(file)
-      setResults([])
-      setError(null)
-    }
-  }
 
   const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
     try {
@@ -58,7 +47,7 @@ export function ImageUploadForm() {
       }
 
       const blob = await response.blob()
-      const file = new File([blob], "image.jpg", { type: blob.type })
+      const file = new File([blob], "image.webp", { type: blob.type })
 
       // Загружаем в blob storage
       const formData = new FormData()
@@ -85,23 +74,25 @@ export function ImageUploadForm() {
     const itemsWithImages: ItemWithImage[] = []
 
     for (const item of items) {
-      let finalImageUrl = item.image_url
+      let finalImageUrl = ""
 
       try {
-        // Если есть img_url, скачиваем и загружаем в blob
         if (item.img_url) {
+          // Новые изображения - скачиваем и загружаем в blob
           finalImageUrl = await downloadAndUploadImage(item.img_url)
-        }
-        // Если есть basic_item_id, получаем изображение базовой вещи
-        else if (item.basic_item_id) {
+        } else if (item.image_url) {
+          // Старые изображения - используем напрямую
+          finalImageUrl = item.image_url
+        } else if (item.basic_item_id) {
+          // Базовые вещи - получаем через API
           const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
           if (response.ok) {
             const basicItem = await response.json()
-            finalImageUrl = basicItem.image_url
+            finalImageUrl = basicItem.image_url || ""
           }
         }
       } catch (error) {
-        console.error("Error loading image for item:", item.name, error)
+        console.error("Error loading image for item:", item.item_name, error)
       }
 
       itemsWithImages.push({
@@ -111,6 +102,15 @@ export function ImageUploadForm() {
     }
 
     return itemsWithImages
+  }
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      setSelectedFile(file)
+      setItems([])
+      setError(null)
+    }
   }
 
   const handleAnalyze = async () => {
@@ -123,7 +123,6 @@ export function ImageUploadForm() {
       const formData = new FormData()
       formData.append("image", selectedFile)
 
-      // Используем переменную окружения для AI API
       const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
       const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
         method: "POST",
@@ -134,35 +133,32 @@ export function ImageUploadForm() {
         throw new Error("Ошибка анализа изображения")
       }
 
-      const data = await response.json()
-      console.log("AI Response:", data)
+      const data: ResponseItem[] = await response.json()
+      console.log("AI Analysis result:", data)
 
-      if (data.items && Array.isArray(data.items)) {
-        const itemsWithImages = await loadBasicItemImages(data.items)
-        setResults(itemsWithImages)
-      } else {
-        setError("Не удалось найти вещи на изображении")
-      }
+      // Загружаем изображения для всех найденных вещей
+      const itemsWithImages = await loadBasicItemImages(data)
+      setItems(itemsWithImages)
     } catch (err) {
       console.error("Error analyzing image:", err)
-      setError("Ошибка при анализе изображения")
+      setError("Не удалось проанализировать изображение")
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSaveItem = async (item: ItemWithImage, index: number) => {
-    try {
-      // Обновляем состояние - показываем что добавляем
-      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: true } : r)))
+  const handleSaveItem = async (item: ItemWithImage) => {
+    setItems((prev) => prev.map((i) => (i.index === item.index ? { ...i, saving: true } : i)))
 
+    try {
       const itemData = {
-        name: item.name,
-        clothing_type: item.clothing_type,
-        color: item.color,
+        item_name: item.item_name,
         material: item.material,
-        style: item.style || "",
-        print: item.print || "",
+        color: item.color,
+        shade: item.shade,
+        style: item.style,
+        has_print: item.has_print,
+        has_details: item.has_details,
         image_url: item.finalImageUrl,
         basic_item_id: item.basic_item_id,
       }
@@ -179,112 +175,85 @@ export function ImageUploadForm() {
         throw new Error("Ошибка сохранения вещи")
       }
 
-      // Обновляем состояние - показываем что добавлено
-      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false, isAdded: true } : r)))
+      setItems((prev) => prev.map((i) => (i.index === item.index ? { ...i, saving: false, saved: true } : i)))
     } catch (error) {
       console.error("Error saving item:", error)
-      // Сбрасываем состояние при ошибке
-      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false } : r)))
-    }
-  }
-
-  const clearAll = () => {
-    setSelectedFile(null)
-    setPreview(null)
-    setResults([])
-    setError(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
+      setItems((prev) => prev.map((i) => (i.index === item.index ? { ...i, saving: false } : i)))
     }
   }
 
   return (
     <div className="space-y-6">
-      {/* Upload Section */}
       <Card>
         <CardContent className="p-6">
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Загрузить фото одежды</h3>
-              {(selectedFile || results.length > 0) && (
-                <Button variant="outline" size="sm" onClick={clearAll}>
-                  <X className="h-4 w-4 mr-2" />
-                  Очистить
-                </Button>
-              )}
-            </div>
-
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="file-upload"
-              />
-              <label
-                htmlFor="file-upload"
-                className="cursor-pointer flex flex-col items-center justify-center space-y-2"
-              >
-                <Upload className="h-8 w-8 text-gray-400" />
-                <span className="text-sm text-gray-600">Нажмите для выбора фото или перетащите сюда</span>
+            <div>
+              <label htmlFor="file-upload" className="block text-sm font-medium text-gray-700 mb-2">
+                Загрузите фото одежды
               </label>
-            </div>
-
-            {preview && (
-              <div className="mt-4">
-                <img
-                  src={preview || "/placeholder.svg"}
-                  alt="Preview"
-                  className="max-w-full h-64 object-contain mx-auto rounded-lg"
+              <div className="flex items-center space-x-4">
+                <input
+                  id="file-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                 />
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={!selectedFile || loading}
+                  className="flex items-center space-x-2"
+                >
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  <span>{loading ? "Анализ..." : "Анализировать"}</span>
+                </Button>
               </div>
-            )}
+            </div>
 
             {selectedFile && (
-              <Button onClick={handleAnalyze} disabled={loading} className="w-full">
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Анализируем изображение...
-                  </>
-                ) : (
-                  "Найти вещи на фото"
-                )}
-              </Button>
+              <div className="mt-4">
+                <p className="text-sm text-gray-600">Выбран файл: {selectedFile.name}</p>
+              </div>
             )}
-
-            {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg">{error}</div>}
           </div>
         </CardContent>
       </Card>
 
-      {/* Results Section */}
-      {results.length > 0 && (
+      {error && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2 text-red-600">
+              <X className="h-4 w-4" />
+              <span>{error}</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {items.length > 0 && (
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Найденные вещи</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {results.map((item, index) => (
-              <Card key={index} className="overflow-hidden">
+          <h3 className="text-lg font-semibold">Найденные вещи:</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {items.map((item) => (
+              <Card key={item.index} className="overflow-hidden">
                 <div className="aspect-square relative bg-gray-50">
                   <CachedWardrobeImage
                     src={item.finalImageUrl}
-                    alt={item.name}
+                    alt={item.item_name}
                     className="w-full h-full object-cover"
                     basicItemId={item.basic_item_id}
                   />
                 </div>
                 <CardContent className="p-4">
-                  <h4 className="font-semibold text-lg mb-2">{item.name}</h4>
+                  <h4 className="font-semibold text-lg mb-2">{item.item_name}</h4>
 
                   <div className="space-y-2 mb-4">
                     <Badge variant="secondary" className="text-xs">
                       {item.material}
                     </Badge>
-                    {item.color && (
+                    {item.shade && (
                       <Badge variant="outline" className="text-xs ml-1">
-                        {item.color}
+                        {item.shade}
                       </Badge>
                     )}
                     {item.style && (
@@ -292,25 +261,20 @@ export function ImageUploadForm() {
                         {item.style}
                       </Badge>
                     )}
-                    {item.print && item.print !== "нет" && (
-                      <Badge variant="outline" className="text-xs ml-1">
-                        {item.print}
-                      </Badge>
-                    )}
                   </div>
 
                   <Button
-                    onClick={() => handleSaveItem(item, index)}
-                    disabled={item.isAdding || item.isAdded}
+                    onClick={() => handleSaveItem(item)}
+                    disabled={item.saving || item.saved}
                     className="w-full"
-                    variant={item.isAdded ? "secondary" : "default"}
+                    variant={item.saved ? "secondary" : "default"}
                   >
-                    {item.isAdding ? (
+                    {item.saving ? (
                       <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Добавляем...
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Добавление...
                       </>
-                    ) : item.isAdded ? (
+                    ) : item.saved ? (
                       <>
                         <Check className="h-4 w-4 mr-2" />
                         Добавлено

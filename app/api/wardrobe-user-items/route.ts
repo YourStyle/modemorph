@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 })
     }
 
-    // Возвращаем данные напрямую, без обертки в items
+    console.log("Fetched wardrobe items:", data)
     return NextResponse.json(data || [])
   } catch (error) {
     console.error("Error in GET /api/wardrobe-user-items:", error)

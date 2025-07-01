@@ -8,12 +8,13 @@ import { Shirt, Calendar, Loader2 } from "lucide-react"
 
 interface WardrobeItem {
   id: string
-  name: string
-  clothing_type?: string
+  item_name: string
   material?: string
   color?: string
+  shade?: string
   style?: string
-  print?: string
+  has_print?: string
+  has_details?: string
   image_url?: string
   basic_item_id?: string
   created_at: string
@@ -35,7 +36,7 @@ export function UserWardrobeGrid() {
         }
 
         const data = await response.json()
-        console.log("Received data:", data)
+        console.log("Received wardrobe data:", data)
 
         // Данные приходят напрямую как массив
         setItems(Array.isArray(data) ? data : [])
@@ -90,14 +91,14 @@ export function UserWardrobeGrid() {
           <div className="aspect-square relative bg-gray-50">
             <CachedWardrobeImage
               src={item.image_url}
-              alt={item.name}
+              alt={item.item_name}
               className="w-full h-full object-cover"
               basicItemId={item.basic_item_id}
             />
           </div>
 
           <CardContent className="p-4">
-            <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{item.name}</h3>
+            <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{item.item_name}</h3>
 
             <div className="flex flex-wrap gap-1 mb-3">
               {item.material && (
@@ -106,9 +107,9 @@ export function UserWardrobeGrid() {
                 </Badge>
               )}
 
-              {item.color && (
+              {item.shade && (
                 <Badge variant="outline" className="text-xs">
-                  {item.color}
+                  {item.shade}
                 </Badge>
               )}
 
@@ -118,15 +119,15 @@ export function UserWardrobeGrid() {
                 </Badge>
               )}
 
-              {item.print && item.print !== "нет" && (
+              {item.has_print && item.has_print !== "no" && (
                 <Badge variant="outline" className="text-xs">
-                  {item.print}
+                  {item.has_print}
                 </Badge>
               )}
 
-              {item.clothing_type && (
+              {item.has_details && item.has_details !== "no" && (
                 <Badge variant="outline" className="text-xs">
-                  {item.clothing_type}
+                  {item.has_details}
                 </Badge>
               )}
             </div>
