@@ -14,6 +14,7 @@ interface WardrobeItem {
   style?: string
   has_print?: string
   image_url?: string
+  basic_item_id?: string
   created_at: string
 }
 
@@ -51,8 +52,10 @@ export function UserWardrobeGrid() {
           <Card key={i} className="overflow-hidden">
             <div className="aspect-square bg-gray-200 animate-pulse" />
             <CardContent className="p-4">
-              <div className="h-4 bg-gray-200 animate-pulse rounded mb-2" />
-              <div className="h-3 bg-gray-200 animate-pulse rounded w-2/3" />
+              <div className="space-y-2">
+                <div className="h-4 bg-gray-200 rounded animate-pulse" />
+                <div className="h-3 bg-gray-200 rounded animate-pulse w-2/3" />
+              </div>
             </CardContent>
           </Card>
         ))}
@@ -62,21 +65,24 @@ export function UserWardrobeGrid() {
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <Shirt className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Ошибка загрузки</h3>
-        <p className="text-gray-600">{error}</p>
-      </div>
+      <Card>
+        <CardContent className="p-6 text-center">
+          <Shirt className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600">{error}</p>
+        </CardContent>
+      </Card>
     )
   }
 
   if (items.length === 0) {
     return (
-      <div className="text-center py-12">
-        <Shirt className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Ваш гардероб пуст</h3>
-        <p className="text-gray-600 mb-4">Загрузите фото ваших вещей, чтобы начать создавать цифровой гардероб</p>
-      </div>
+      <Card>
+        <CardContent className="p-6 text-center">
+          <Shirt className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Ваш гардероб пуст</h3>
+          <p className="text-gray-600">Загрузите фото ваших вещей, чтобы начать создавать свой цифровой гардероб</p>
+        </CardContent>
+      </Card>
     )
   }
 
@@ -85,7 +91,12 @@ export function UserWardrobeGrid() {
       {items.map((item) => (
         <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
           <div className="aspect-square relative bg-gray-50">
-            <CachedWardrobeImage itemName={item.item_name} className="w-full h-full" alt={item.item_name} />
+            <CachedWardrobeImage
+              src={item.image_url}
+              alt={item.item_name}
+              className="w-full h-full object-cover"
+              basicItemId={item.basic_item_id}
+            />
           </div>
 
           <CardContent className="p-4">

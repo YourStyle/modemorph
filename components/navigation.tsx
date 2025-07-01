@@ -5,66 +5,60 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Menu, Home, Shirt, Package, Palette, Settings, LogOut, UserIcon } from "lucide-react"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Menu, Home, Shirt, Package, Users, Settings, LogOut } from "lucide-react"
+import type { User } from "@supabase/supabase-js"
 
 interface UserProfile {
   id: string
-  email?: string
-  isAdmin: boolean
+  user_id: string
+  email: string
+  is_admin: boolean
+  created_at: string
+  updated_at: string
 }
 
 export function Navigation() {
-  const [user, setUser] = useState<UserProfile | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [mobileOpen, setMobileOpen] = useState(false)
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
     const getUser = async () => {
-      try {
-        const {
-          data: { user: authUser },
-        } = await supabase.auth.getUser()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      setUser(user)
 
-        if (authUser) {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("is_admin")
-            .eq("user_id", authUser.id)
-            .single()
-
-          setUser({
-            id: authUser.id,
-            email: authUser.email,
-            isAdmin: profile?.is_admin || false,
-          })
+      if (user) {
+        const response = await fetch("/api/user-profile")
+        if (response.ok) {
+          const { profile } = await response.json()
+          setProfile(profile)
         }
-      } catch (error) {
-        console.error("Error getting user:", error)
-      } finally {
-        setLoading(false)
       }
+      setLoading(false)
     }
 
     getUser()
-  }, [supabase])
+  }, [])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
-    router.push("/")
+    router.push("/auth/login")
   }
 
   if (loading) {
     return (
-      <nav className="border-b bg-white">
+      <nav className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <div className="h-8 w-32 bg-gray-200 animate-pulse rounded"></div>
+              <div className="animate-pulse bg-gray-200 h-8 w-32 rounded"></div>
             </div>
           </div>
         </div>
@@ -72,35 +66,15 @@ export function Navigation() {
     )
   }
 
-  if (!user) {
-    return (
-      <nav className="border-b bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <Link href="/" className="text-xl font-bold text-gray-900">
-                Wardrobe AI
-              </Link>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link href="/auth/login">
-                <Button variant="ghost">Войти</Button>
-              </Link>
-              <Link href="/auth/sign-up">
-                <Button>Регистрация</Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
-    )
+  if (!user || !profile) {
+    return null
   }
 
   const adminNavItems = [
     { href: "/admin", label: "Главная", icon: Home },
     { href: "/admin/wardrobe", label: "Гардероб", icon: Shirt },
     { href: "/admin/wardrobe/basics", label: "Базовые вещи", icon: Package },
-    { href: "/admin/outfits", label: "Образы", icon: Palette },
+    { href: "/admin/outfits", label: "Образы", icon: Users },
     { href: "/admin/settings", label: "Настройки", icon: Settings },
   ]
 
@@ -109,9 +83,9 @@ export function Navigation() {
     { href: "/app/wardrobe", label: "Мой гардероб", icon: Shirt },
   ]
 
-  const navItems = user.isAdmin ? adminNavItems : userNavItems
+  const navItems = profile.is_admin ? adminNavItems : userNavItems
 
-  const NavItems = ({ mobile = false }: { mobile?: boolean }) => (
+  const NavLinks = ({ mobile = false }: { mobile?: boolean }) => (
     <>
       {navItems.map((item) => {
         const Icon = item.icon
@@ -121,12 +95,21 @@ export function Navigation() {
           <Link
             key={item.href}
             href={item.href}
-            className={`flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-              isActive ? "bg-gray-100 text-gray-900" : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-            } ${mobile ? "w-full" : ""}`}
-            onClick={() => mobile && setMobileOpen(false)}
+            className={`${
+              mobile
+                ? "flex items-center px-4 py-2 text-base font-medium rounded-md"
+                : "inline-flex items-center px-1 pt-1 text-sm font-medium"
+            } ${
+              isActive
+                ? mobile
+                  ? "bg-indigo-100 text-indigo-900"
+                  : "border-b-2 border-indigo-500 text-gray-900"
+                : mobile
+                  ? "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                  : "text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
           >
-            <Icon className="h-4 w-4 mr-2" />
+            <Icon className={`${mobile ? "mr-3" : "mr-1"} h-4 w-4`} />
             {item.label}
           </Link>
         )
@@ -135,59 +118,67 @@ export function Navigation() {
   )
 
   return (
-    <nav className="border-b bg-white sticky top-0 z-50">
+    <nav className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           {/* Logo */}
           <div className="flex items-center">
-            <Link href={user.isAdmin ? "/admin" : "/app"} className="text-xl font-bold text-gray-900">
-              Wardrobe AI
+            <Link href={profile.is_admin ? "/admin" : "/app"} className="flex-shrink-0">
+              <h1 className="text-xl font-bold text-gray-900">{profile.is_admin ? "Wardrobe Admin" : "My Wardrobe"}</h1>
             </Link>
           </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-1">
-            <NavItems />
+          <div className="hidden md:flex md:items-center md:space-x-8">
+            <NavLinks />
           </div>
 
           {/* User Menu */}
           <div className="flex items-center space-x-4">
-            <div className="hidden md:flex items-center space-x-2">
+            <div className="flex items-center space-x-2">
               <Avatar className="h-8 w-8">
-                <AvatarFallback>
-                  <UserIcon className="h-4 w-4" />
-                </AvatarFallback>
+                <AvatarFallback>{user.email?.charAt(0).toUpperCase()}</AvatarFallback>
               </Avatar>
-              <span className="text-sm text-gray-700">{user.email}</span>
-              {user.isAdmin && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">Admin</span>}
+              <div className="hidden md:block">
+                <p className="text-sm font-medium text-gray-900">{user.email}</p>
+                <p className="text-xs text-gray-500">{profile.is_admin ? "Администратор" : "Пользователь"}</p>
+              </div>
             </div>
 
-            <Button variant="ghost" size="sm" onClick={handleSignOut}>
+            <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex">
               <LogOut className="h-4 w-4 mr-2" />
               Выйти
             </Button>
 
-            {/* Mobile menu button */}
-            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+            {/* Mobile menu */}
+            <Sheet>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="sm" className="md:hidden">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
               <SheetContent side="right" className="w-64">
-                <div className="flex flex-col space-y-4 mt-8">
-                  <div className="flex items-center space-x-2 pb-4 border-b">
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>
-                        <UserIcon className="h-4 w-4" />
-                      </AvatarFallback>
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center space-x-2 mb-6">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>{user.email?.charAt(0).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <div className="text-sm font-medium">{user.email}</div>
-                      {user.isAdmin && <div className="text-xs text-blue-600">Администратор</div>}
+                      <p className="text-sm font-medium text-gray-900">{user.email}</p>
+                      <p className="text-xs text-gray-500">{profile.is_admin ? "Администратор" : "Пользователь"}</p>
                     </div>
                   </div>
-                  <NavItems mobile />
+
+                  <div className="flex-1 space-y-1">
+                    <NavLinks mobile />
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <Button variant="ghost" size="sm" onClick={handleSignOut} className="w-full justify-start">
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Выйти
+                    </Button>
+                  </div>
                 </div>
               </SheetContent>
             </Sheet>

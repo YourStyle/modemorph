@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
 
     const {
       data: { user },
@@ -11,7 +11,7 @@ export async function GET() {
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { data: profile, error: profileError } = await supabase
@@ -33,7 +33,7 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
 
     const {
       data: { user },
@@ -41,25 +41,26 @@ export async function POST() {
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Используем service role для создания профиля
-    const serviceSupabase = createClient(true) // true для service role
+    // Use service role to bypass RLS
+    const serviceSupabase = createClient()
 
-    const { data: profile, error: createError } = await serviceSupabase
+    const { data: profile, error: profileError } = await serviceSupabase
       .from("user_profiles")
       .insert({
         user_id: user.id,
         email: user.email,
         is_admin: false,
         created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       .select()
       .single()
 
-    if (createError) {
-      return NextResponse.json({ error: createError.message }, { status: 500 })
+    if (profileError) {
+      return NextResponse.json({ error: profileError.message }, { status: 500 })
     }
 
     return NextResponse.json({ profile })

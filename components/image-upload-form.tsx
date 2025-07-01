@@ -261,8 +261,9 @@ export function ImageUploadForm() {
       const formData = new FormData()
       formData.append("image", selectedFile)
 
-      // Используем оригинальный AI API для анализа изображения
-      const response = await fetch("https://primary-production-84ad.up.railway.app/webhook/ai-photo-parse", {
+      // Используем переменную окружения для AI API
+      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
+      const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
         method: "POST",
         body: formData,
       })
