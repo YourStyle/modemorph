@@ -1,5 +1,5 @@
+import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
 
 export async function GET() {
   try {
@@ -21,17 +21,18 @@ export async function GET() {
       .single()
 
     if (profileError && profileError.code !== "PGRST116") {
-      return NextResponse.json({ error: profileError.message }, { status: 500 })
+      console.error("Error fetching profile:", profileError)
+      return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 })
     }
 
     return NextResponse.json({ profile })
   } catch (error) {
-    console.error("Error getting profile:", error)
+    console.error("Error in GET /api/user-profile:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
 
@@ -44,28 +45,29 @@ export async function POST() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Use service role to bypass RLS
-    const serviceSupabase = createClient()
+    const body = await request.json()
 
-    const { data: profile, error: profileError } = await serviceSupabase
+    const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
-      .insert({
-        user_id: user.id,
-        email: user.email,
-        is_admin: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
+      .insert([
+        {
+          user_id: user.id,
+          email: user.email,
+          is_admin: false,
+          ...body,
+        },
+      ])
       .select()
       .single()
 
     if (profileError) {
-      return NextResponse.json({ error: profileError.message }, { status: 500 })
+      console.error("Error creating profile:", profileError)
+      return NextResponse.json({ error: "Failed to create profile" }, { status: 500 })
     }
 
     return NextResponse.json({ profile })
   } catch (error) {
-    console.error("Error creating profile:", error)
+    console.error("Error in POST /api/user-profile:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

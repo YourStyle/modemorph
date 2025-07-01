@@ -1,106 +1,114 @@
 "use client"
 
-import type React from "react"
-
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
-
-interface UserProfile {
-  id: string
-  user_id: string
-  email: string
-  is_admin: boolean
-  created_at: string
-  updated_at: string
-}
+import { Loader2 } from "lucide-react"
 
 interface AuthRedirectProps {
-  children: React.ReactNode
   adminRedirect?: string
   userRedirect?: string
 }
 
-export function AuthRedirect({ children, adminRedirect = "/admin", userRedirect }: AuthRedirectProps) {
-  const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
+export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }: AuthRedirectProps) {
   const router = useRouter()
-  const supabase = createClient()
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const checkUser = async () => {
+    async function checkUserRole() {
       try {
+        const supabase = createClient()
+
         const {
           data: { user },
-          error,
+          error: userError,
         } = await supabase.auth.getUser()
 
-        if (error || !user) {
+        if (userError || !user) {
           router.push("/auth/login")
           return
         }
 
-        setUser(user)
-
-        // Get or create user profile
+        // Сначала пытаемся получить существующий профиль
         const profileResponse = await fetch("/api/user-profile")
 
         if (profileResponse.ok) {
           const { profile } = await profileResponse.json()
 
           if (profile) {
-            setProfile(profile)
-
-            // Redirect based on role
-            if (profile.is_admin && adminRedirect) {
+            // Профиль существует, перенаправляем по роли
+            if (profile.is_admin) {
               router.push(adminRedirect)
-              return
-            } else if (!profile.is_admin && userRedirect) {
+            } else {
               router.push(userRedirect)
-              return
             }
-          } else {
-            // Create profile if it doesn't exist
-            const createResponse = await fetch("/api/user-profile", {
-              method: "POST",
-            })
-
-            if (createResponse.ok) {
-              const { profile: newProfile } = await createResponse.json()
-              setProfile(newProfile)
-
-              // Redirect new user (default to user area)
-              if (userRedirect) {
-                router.push(userRedirect)
-                return
-              }
-            }
+            return
           }
         }
-      } catch (error) {
-        console.error("Error checking user:", error)
-        router.push("/auth/login")
+
+        // Профиля нет, создаем новый
+        const createResponse = await fetch("/api/user-profile", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            full_name: user.user_metadata?.full_name || "",
+          }),
+        })
+
+        if (createResponse.ok) {
+          const { profile } = await createResponse.json()
+
+          if (profile.is_admin) {
+            router.push(adminRedirect)
+          } else {
+            router.push(userRedirect)
+          }
+        } else {
+          // Если не удалось создать профиль, перенаправляем как обычного пользователя
+          router.push(userRedirect)
+        }
+      } catch (err) {
+        console.error("Error checking user role:", err)
+        setError("Ошибка проверки роли пользователя")
+        // В случае ошибки перенаправляем как обычного пользователя
+        router.push(userRedirect)
       } finally {
         setLoading(false)
       }
     }
 
-    checkUser()
+    checkUserRole()
   }, [router, adminRedirect, userRedirect])
 
-  if (loading) {
+  if (error) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+        <div className="text-center">
+          <p className="text-red-600 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          >
+            Попробовать снова
+          </button>
+        </div>
       </div>
     )
   }
 
-  if (!user || !profile) {
-    return null
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-600">Проверка роли пользователя...</p>
+        </div>
+      </div>
+    )
   }
 
-  return <>{children}</>
+  return null
 }
