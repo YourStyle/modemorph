@@ -5,46 +5,25 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
 
-    // Check authentication
     const {
       data: { user },
-      error: authError,
+      error: userError,
     } = await supabase.auth.getUser()
 
-    if (authError || !user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { data: basicItems, error } = await supabase
-      .from("basic_items")
-      .select(`
-        id,
-        item_name,
-        clothing_type_id,
-        material,
-        shade,
-        style,
-        has_print,
-        has_details,
-        img_url,
-        is_visible,
-        clothing_types (
-          id,
-          name,
-          category
-        )
-      `)
-      .eq("is_visible", true)
-      .order("item_name")
+    const { data, error } = await supabase.from("basic_items").select("*").order("id", { ascending: true })
 
     if (error) {
       console.error("Error fetching basic items:", error)
       return NextResponse.json({ error: "Failed to fetch basic items" }, { status: 500 })
     }
 
-    return NextResponse.json(basicItems || [])
+    return NextResponse.json(data)
   } catch (error) {
-    console.error("Unexpected error in basic-items API:", error)
+    console.error("Error in GET /api/basic-items:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
