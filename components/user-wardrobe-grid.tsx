@@ -18,6 +18,7 @@ interface WardrobeItem {
   has_print: string
   has_details: string
   image_url: string
+  basic_item_id: string | null
   created_at: string
   updated_at: string
   is_visible: boolean
@@ -33,10 +34,13 @@ export function UserWardrobeGrid() {
       setLoading(true)
       setError(null)
 
+      console.log("Fetching wardrobe items...")
       const response = await fetch("/api/wardrobe-user-items")
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorText = await response.text()
+        console.error("API Error:", response.status, errorText)
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
 
       const contentType = response.headers.get("content-type")
@@ -121,7 +125,7 @@ export function UserWardrobeGrid() {
               src={item.image_url}
               alt={item.item_name}
               className="w-full h-full object-cover"
-              fallbackSrc="/placeholder.svg?height=300&width=300"
+              basicItemId={item.basic_item_id}
             />
           </div>
           <CardContent className="p-4">

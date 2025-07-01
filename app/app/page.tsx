@@ -9,12 +9,14 @@ export default async function AppPage() {
   } = await supabase.auth.getUser()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 space-y-8">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Добро пожаловать, {user?.email?.split("@")[0]}!</h1>
-          <p className="text-xl text-gray-600">Создавайте стильные образы с помощью ИИ</p>
+        <div className="text-center">
+          <h1 className="text-3xl font-bold text-gray-900 mb-4">Добро пожаловать в ваш цифровой гардероб!</h1>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            Загрузите фотографию вашего образа, и наш ИИ автоматически определит все вещи и добавит их в ваш гардероб.
+          </p>
         </div>
 
         {/* Image Upload Form */}

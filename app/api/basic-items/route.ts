@@ -40,7 +40,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Failed to fetch basic items" }, { status: 500 })
     }
 
-    return NextResponse.json({ items: data })
+    return NextResponse.json(data || [])
   } catch (error) {
     console.error("Error in basic items API:", error)
     return NextResponse.json(

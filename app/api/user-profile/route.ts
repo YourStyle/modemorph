@@ -1,9 +1,11 @@
-import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
+import { cookies } from "next/headers"
+import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const supabase = createClient()
+    const cookieStore = cookies()
+    const supabase = createServerActionClient({ cookies: () => cookieStore })
 
     const {
       data: { user },
@@ -21,16 +23,24 @@ export async function GET() {
       return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 })
     }
 
-    return NextResponse.json({ profile })
+    if (!profile) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+    }
+
+    return NextResponse.json(profile)
   } catch (error) {
-    console.error("Error in GET /api/user-profile:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error in user profile API:", error)
+    return NextResponse.json(
+      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
+      { status: 500 },
+    )
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient()
+    const cookieStore = cookies()
+    const supabase = createServerActionClient({ cookies: () => cookieStore })
 
     const {
       data: { user },
@@ -41,27 +51,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { full_name, avatar_url } = body
-
-    // Check if profile already exists
+    // Проверяем, существует ли уже профиль
     const { data: existingProfile } = await supabase.from("user_profiles").select("*").eq("user_id", user.id).single()
 
     if (existingProfile) {
-      return NextResponse.json({ profile: existingProfile })
+      return NextResponse.json(existingProfile)
     }
 
-    // Create new profile
+    // Создаем новый профиль
     const { data: profile, error } = await supabase
       .from("user_profiles")
       .insert({
         user_id: user.id,
-        email: user.email || "",
-        full_name: full_name || "",
-        avatar_url: avatar_url || "",
-        is_admin: false, // Default to regular user
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        email: user.email,
+        is_admin: false,
       })
       .select()
       .single()
@@ -71,9 +74,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Failed to create profile" }, { status: 500 })
     }
 
-    return NextResponse.json({ profile })
+    return NextResponse.json(profile)
   } catch (error) {
-    console.error("Error in POST /api/user-profile:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error in user profile API:", error)
+    return NextResponse.json(
+      { error: `Internal server error: ${error instanceof Error ? error.message : String(error)}` },
+      { status: 500 },
+    )
   }
 }

@@ -1,110 +1,107 @@
 "use client"
 
+import type React from "react"
+
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
 interface AuthRedirectProps {
+  children: React.ReactNode
   adminRedirect?: string
   userRedirect?: string
 }
 
-export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }: AuthRedirectProps) {
-  const router = useRouter()
+export function AuthRedirect({ children, adminRedirect, userRedirect }: AuthRedirectProps) {
   const [loading, setLoading] = useState(true)
-
-  // Use singleton Supabase client
+  const [user, setUser] = useState<any>(null)
+  const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    const checkUserRole = async () => {
+    const checkAuth = async () => {
       try {
         const {
-          data: { user },
-          error: userError,
+          data: { user: authUser },
+          error,
         } = await supabase.auth.getUser()
 
-        if (userError || !user) {
+        if (error || !authUser) {
           router.push("/auth/login")
           return
         }
 
-        // Сначала пытаемся получить существующий профиль
+        setUser(authUser)
+
+        // Получаем профиль пользователя
         try {
-          const profileResponse = await fetch("/api/user-profile")
+          const response = await fetch("/api/user-profile")
 
-          if (profileResponse.ok) {
-            const contentType = profileResponse.headers.get("content-type")
+          if (response.ok) {
+            const contentType = response.headers.get("content-type")
             if (contentType && contentType.includes("application/json")) {
-              const { profile } = await profileResponse.json()
+              const profile = await response.json()
 
-              if (profile) {
-                // Профиль существует, перенаправляем по роли
-                if (profile.is_admin) {
-                  router.push(adminRedirect)
-                } else {
-                  router.push(userRedirect)
-                }
+              // Перенаправляем админов
+              if (profile.is_admin && adminRedirect) {
+                router.push(adminRedirect)
+                return
+              }
+
+              // Перенаправляем пользователей
+              if (!profile.is_admin && userRedirect) {
+                router.push(userRedirect)
+                return
+              }
+            }
+          } else if (response.status === 404) {
+            // Профиль не найден, создаем его
+            const createResponse = await fetch("/api/user-profile", {
+              method: "POST",
+            })
+
+            if (createResponse.ok) {
+              const newProfile = await createResponse.json()
+
+              // Перенаправляем админов
+              if (newProfile.is_admin && adminRedirect) {
+                router.push(adminRedirect)
+                return
+              }
+
+              // Перенаправляем пользователей
+              if (!newProfile.is_admin && userRedirect) {
+                router.push(userRedirect)
                 return
               }
             }
           }
-
-          // Профиля нет, создаем новый
-          const createResponse = await fetch("/api/user-profile", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              full_name: user.user_metadata?.full_name || "",
-              avatar_url: user.user_metadata?.avatar_url || "",
-            }),
-          })
-
-          if (createResponse.ok) {
-            const contentType = createResponse.headers.get("content-type")
-            if (contentType && contentType.includes("application/json")) {
-              const { profile } = await createResponse.json()
-
-              if (profile.is_admin) {
-                router.push(adminRedirect)
-              } else {
-                router.push(userRedirect)
-              }
-            } else {
-              // Fallback - перенаправляем в пользовательскую зону
-              router.push(userRedirect)
-            }
-          } else {
-            console.error("Failed to create profile")
-            // Fallback - перенаправляем в пользовательскую зону
-            router.push(userRedirect)
-          }
-        } catch (fetchError) {
-          console.error("Error with profile API:", fetchError)
-          // Fallback - перенаправляем в пользовательскую зону
-          router.push(userRedirect)
+        } catch (profileError) {
+          console.error("Error handling profile:", profileError)
+          // Продолжаем без перенаправления при ошибке профиля
         }
-      } catch (error) {
-        console.error("Error checking user role:", error)
-        // Fallback - перенаправляем в пользовательскую зону
-        router.push(userRedirect)
+      } catch (authError) {
+        console.error("Auth error:", authError)
+        router.push("/auth/login")
       } finally {
         setLoading(false)
       }
     }
 
-    checkUserRole()
-  }, [router, adminRedirect, userRedirect, supabase.auth])
+    checkAuth()
+  }, [router, adminRedirect, userRedirect, supabase])
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-gray-900"></div>
       </div>
     )
   }
 
-  return null
+  if (!user) {
+    return null
+  }
+
+  return <>{children}</>
 }

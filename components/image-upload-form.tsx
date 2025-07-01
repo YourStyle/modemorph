@@ -86,7 +86,8 @@ export function ImageUploadForm() {
     try {
       const response = await fetch("/api/basic-items")
       if (!response.ok) {
-        throw new Error("Failed to fetch basic items")
+        console.error("Failed to fetch basic items:", response.status)
+        return {}
       }
 
       const basicItems = await response.json()
@@ -264,7 +265,6 @@ export function ImageUploadForm() {
                     src={item.displayImageUrl}
                     alt={item.item_name}
                     className="w-full h-full object-cover"
-                    fallbackSrc="/placeholder.svg?height=300&width=300"
                   />
                 </div>
                 <CardContent className="p-4">
