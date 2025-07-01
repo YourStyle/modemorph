@@ -54,7 +54,9 @@ export function ImageUploadForm() {
       const formData = new FormData()
       formData.append("image", selectedFile)
 
-      const response = await fetch("/api/upload-image", {
+      // Отправляем на AI API для анализа
+      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
+      const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
         method: "POST",
         body: formData,
       })
@@ -91,9 +93,66 @@ export function ImageUploadForm() {
     }
   }
 
-  const saveItem = async (item: DetectedItem) => {
-    setIsSaving(true)
+  const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
     try {
+      // Скачиваем изображение
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        throw new Error("Failed to download image")
+      }
+
+      const blob = await response.blob()
+      const file = new File([blob], "wardrobe-item.jpg", { type: blob.type })
+
+      // Загружаем в blob storage
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("prefix", "wardrobe")
+
+      const uploadResponse = await fetch("/api/upload-image", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to upload image")
+      }
+
+      const { url } = await uploadResponse.json()
+      return url
+    } catch (error) {
+      console.error("Error downloading and uploading image:", error)
+      throw error
+    }
+  }
+
+  const getBasicItemImage = async (basicItemId: string): Promise<string | null> => {
+    try {
+      const response = await fetch(`/api/basic-items/${basicItemId}`)
+      if (response.ok) {
+        const basicItem = await response.json()
+        return basicItem.image_url || null
+      }
+      return null
+    } catch (error) {
+      console.error("Error getting basic item image:", error)
+      return null
+    }
+  }
+
+  const saveItem = async (item: DetectedItem) => {
+    try {
+      let finalImageUrl: string | null = null
+
+      // Если есть basic_item_id, используем изображение базовой вещи
+      if (item.basic_item_id) {
+        finalImageUrl = await getBasicItemImage(item.basic_item_id)
+      }
+      // Если нет basic_item_id, но есть img_url, скачиваем и загружаем
+      else if (item.img_url) {
+        finalImageUrl = await downloadAndUploadImage(item.img_url)
+      }
+
       const itemData = {
         name: item.item_name,
         clothing_type: item.clothing_item,
@@ -101,9 +160,11 @@ export function ImageUploadForm() {
         color: item.color,
         style: item.style,
         print: item.has_print === "yes" ? "есть" : "нет",
-        image_url: item.img_url,
+        image_url: finalImageUrl,
         basic_item_id: item.basic_item_id,
       }
+
+      console.log("Saving item:", itemData)
 
       const response = await fetch("/api/wardrobe-user-items", {
         method: "POST",
@@ -114,6 +175,8 @@ export function ImageUploadForm() {
       })
 
       if (!response.ok) {
+        const errorData = await response.json()
+        console.error("Save error:", errorData)
         throw new Error("Ошибка сохранения вещи")
       }
 
@@ -129,8 +192,6 @@ export function ImageUploadForm() {
         description: "Не удалось сохранить вещь",
         variant: "destructive",
       })
-    } finally {
-      setIsSaving(false)
     }
   }
 
@@ -243,6 +304,7 @@ export function ImageUploadForm() {
                       <Badge variant="outline" style={{ backgroundColor: item.color, color: "#fff" }}>
                         {item.shade}
                       </Badge>
+                      {item.basic_item_id && <Badge variant="default">Базовая вещь</Badge>}
                     </div>
 
                     <Button

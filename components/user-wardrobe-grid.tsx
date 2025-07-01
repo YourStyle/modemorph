@@ -118,7 +118,7 @@ export function UserWardrobeGrid() {
               )}
 
               {item.color && (
-                <Badge variant="outline" className="text-xs" style={{ backgroundColor: item.color, color: "#fff" }}>
+                <Badge variant="outline" className="text-xs">
                   {item.color}
                 </Badge>
               )}

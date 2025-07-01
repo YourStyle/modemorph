@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("Error creating wardrobe item:", error)
-      return NextResponse.json({ error: "Failed to create item" }, { status: 500 })
+      return NextResponse.json({ error: "Failed to create item", details: error.message }, { status: 500 })
     }
 
     return NextResponse.json(data)
