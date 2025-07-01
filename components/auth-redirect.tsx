@@ -2,7 +2,6 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 
 interface AuthRedirectProps {
   userId: string
@@ -13,38 +12,33 @@ export function AuthRedirect({ userId }: AuthRedirectProps) {
 
   useEffect(() => {
     async function checkUserRole() {
-      const supabase = createClient()
-
       try {
-        // Проверяем профиль пользователя
-        const { data: profile, error } = await supabase
-          .from("user_profiles")
-          .select("is_admin")
-          .eq("user_id", userId)
-          .single()
+        // Сначала пытаемся получить профиль
+        let response = await fetch("/api/user-profile")
 
-        if (error || !profile) {
-          // Если профиля нет, создаем его как обычного пользователя
-          const { error: insertError } = await supabase.from("user_profiles").insert({
-            user_id: userId,
-            is_admin: false, // По умолчанию обычный пользователь
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+        if (response.status === 404) {
+          // Если профиля нет, создаем его
+          response = await fetch("/api/user-profile", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
           })
+        }
 
-          if (!insertError) {
-            router.push("/app") // Перенаправляем в пользовательскую зону
-          } else {
-            console.error("Error creating profile:", insertError)
-            router.push("/app")
-          }
+        if (!response.ok) {
+          console.error("Error with user profile:", await response.text())
+          router.push("/app") // По умолчанию в пользовательскую зону
+          return
+        }
+
+        const profile = await response.json()
+
+        // Перенаправляем в зависимости от роли
+        if (profile.is_admin) {
+          router.push("/admin")
         } else {
-          // Перенаправляем в зависимости от роли
-          if (profile.is_admin) {
-            router.push("/admin")
-          } else {
-            router.push("/app")
-          }
+          router.push("/app")
         }
       } catch (error) {
         console.error("Error checking user role:", error)

@@ -2,6 +2,7 @@ import type React from "react"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Navigation } from "@/components/navigation"
+import { getUserProfile } from "@/lib/admin"
 
 export default async function AppLayout({
   children,
@@ -9,6 +10,7 @@ export default async function AppLayout({
   children: React.ReactNode
 }) {
   const supabase = createClient()
+
   const {
     data: { user },
   } = await supabase.auth.getUser()
@@ -17,18 +19,24 @@ export default async function AppLayout({
     redirect("/auth/login")
   }
 
-  // Проверяем роль пользователя
-  const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
+  // Получаем профиль пользователя
+  const profile = await getUserProfile(user.id)
 
-  // Если это админ, перенаправляем в админку
+  // Если пользователь админ, перенаправляем в админку
   if (profile?.is_admin) {
     redirect("/admin")
   }
 
+  const userWithRole = {
+    id: user.id,
+    email: user.email,
+    isAdmin: false,
+  }
+
   return (
-    <div className="min-h-screen">
-      <Navigation user={{ email: user.email, isAdmin: false }} />
-      <main>{children}</main>
+    <div className="min-h-screen bg-gray-50">
+      <Navigation user={userWithRole} />
+      <main className="py-8">{children}</main>
     </div>
   )
 }
