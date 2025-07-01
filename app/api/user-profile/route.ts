@@ -1,76 +1,70 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
-export async function POST(request: NextRequest) {
+export async function GET() {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
-    // Получаем текущего пользователя
     const {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Проверяем, есть ли уже профиль
-    const { data: existingProfile } = await supabase.from("user_profiles").select("*").eq("user_id", user.id).single()
-
-    if (existingProfile) {
-      return NextResponse.json(existingProfile)
-    }
-
-    // Создаем новый профиль
-    const { data: newProfile, error: insertError } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
-      .insert({
-        user_id: user.id,
-        is_admin: false, // По умолчанию обычный пользователь
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
+      .select("*")
+      .eq("user_id", user.id)
       .single()
 
-    if (insertError) {
-      console.error("Error creating profile:", insertError)
-      return NextResponse.json({ error: "Failed to create profile" }, { status: 500 })
+    if (profileError && profileError.code !== "PGRST116") {
+      return NextResponse.json({ error: profileError.message }, { status: 500 })
     }
 
-    return NextResponse.json(newProfile)
+    return NextResponse.json({ profile })
   } catch (error) {
-    console.error("Error in POST /api/user-profile:", error)
+    console.error("Error getting profile:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function POST() {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
-    // Получаем текущего пользователя
     const {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    // Получаем профиль пользователя
-    const { data: profile, error } = await supabase.from("user_profiles").select("*").eq("user_id", user.id).single()
+    // Используем service role для создания профиля
+    const serviceSupabase = createClient(true) // true для service role
 
-    if (error) {
-      console.error("Error fetching profile:", error)
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+    const { data: profile, error: createError } = await serviceSupabase
+      .from("user_profiles")
+      .insert({
+        user_id: user.id,
+        email: user.email,
+        is_admin: false,
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+
+    if (createError) {
+      return NextResponse.json({ error: createError.message }, { status: 500 })
     }
 
-    return NextResponse.json(profile)
+    return NextResponse.json({ profile })
   } catch (error) {
-    console.error("Error in GET /api/user-profile:", error)
+    console.error("Error creating profile:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

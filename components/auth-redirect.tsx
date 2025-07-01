@@ -1,60 +1,77 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 
 interface AuthRedirectProps {
-  userId: string
+  adminRedirect?: string
+  userRedirect?: string
 }
 
-export function AuthRedirect({ userId }: AuthRedirectProps) {
+export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }: AuthRedirectProps) {
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const supabase = createClient()
 
   useEffect(() => {
-    async function checkUserRole() {
+    const checkUserAndRedirect = async () => {
       try {
-        // Сначала пытаемся получить профиль
-        let response = await fetch("/api/user-profile")
+        const {
+          data: { user },
+          error: userError,
+        } = await supabase.auth.getUser()
 
-        if (response.status === 404) {
-          // Если профиля нет, создаем его
-          response = await fetch("/api/user-profile", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          })
-        }
-
-        if (!response.ok) {
-          console.error("Error with user profile:", await response.text())
-          router.push("/app") // По умолчанию в пользовательскую зону
+        if (userError || !user) {
+          router.push("/auth/login")
           return
         }
 
-        const profile = await response.json()
+        // Сначала пытаемся получить существующий профиль
+        const profileResponse = await fetch("/api/user-profile")
+        let profile = null
+
+        if (profileResponse.ok) {
+          const data = await profileResponse.json()
+          profile = data.profile
+        }
+
+        // Если профиля нет, создаем его
+        if (!profile) {
+          const createResponse = await fetch("/api/user-profile", {
+            method: "POST",
+          })
+
+          if (createResponse.ok) {
+            const data = await createResponse.json()
+            profile = data.profile
+          }
+        }
 
         // Перенаправляем в зависимости от роли
-        if (profile.is_admin) {
-          router.push("/admin")
+        if (profile?.is_admin) {
+          router.push(adminRedirect)
         } else {
-          router.push("/app")
+          router.push(userRedirect)
         }
       } catch (error) {
-        console.error("Error checking user role:", error)
-        router.push("/app") // По умолчанию в пользовательскую зону
+        console.error("Error in auth redirect:", error)
+        router.push("/auth/login")
+      } finally {
+        setLoading(false)
       }
     }
 
-    checkUserRole()
-  }, [userId, router])
+    checkUserAndRedirect()
+  }, [router, adminRedirect, userRedirect, supabase.auth])
 
-  return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-        <p className="text-gray-600">Перенаправление...</p>
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
       </div>
-    </div>
-  )
+    )
+  }
+
+  return null
 }
