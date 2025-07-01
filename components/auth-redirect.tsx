@@ -12,6 +12,8 @@ interface AuthRedirectProps {
 export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }: AuthRedirectProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+
+  // Use singleton Supabase client
   const supabase = createClient()
 
   useEffect(() => {
@@ -28,44 +30,59 @@ export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }
         }
 
         // Сначала пытаемся получить существующий профиль
-        const profileResponse = await fetch("/api/user-profile")
+        try {
+          const profileResponse = await fetch("/api/user-profile")
 
-        if (profileResponse.ok) {
-          const { profile } = await profileResponse.json()
+          if (profileResponse.ok) {
+            const contentType = profileResponse.headers.get("content-type")
+            if (contentType && contentType.includes("application/json")) {
+              const { profile } = await profileResponse.json()
 
-          if (profile) {
-            // Профиль существует, перенаправляем по роли
-            if (profile.is_admin) {
-              router.push(adminRedirect)
+              if (profile) {
+                // Профиль существует, перенаправляем по роли
+                if (profile.is_admin) {
+                  router.push(adminRedirect)
+                } else {
+                  router.push(userRedirect)
+                }
+                return
+              }
+            }
+          }
+
+          // Профиля нет, создаем новый
+          const createResponse = await fetch("/api/user-profile", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              full_name: user.user_metadata?.full_name || "",
+              avatar_url: user.user_metadata?.avatar_url || "",
+            }),
+          })
+
+          if (createResponse.ok) {
+            const contentType = createResponse.headers.get("content-type")
+            if (contentType && contentType.includes("application/json")) {
+              const { profile } = await createResponse.json()
+
+              if (profile.is_admin) {
+                router.push(adminRedirect)
+              } else {
+                router.push(userRedirect)
+              }
             } else {
+              // Fallback - перенаправляем в пользовательскую зону
               router.push(userRedirect)
             }
-            return
-          }
-        }
-
-        // Профиля нет, создаем новый
-        const createResponse = await fetch("/api/user-profile", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            full_name: user.user_metadata?.full_name || "",
-            avatar_url: user.user_metadata?.avatar_url || "",
-          }),
-        })
-
-        if (createResponse.ok) {
-          const { profile } = await createResponse.json()
-
-          if (profile.is_admin) {
-            router.push(adminRedirect)
           } else {
+            console.error("Failed to create profile")
+            // Fallback - перенаправляем в пользовательскую зону
             router.push(userRedirect)
           }
-        } else {
-          console.error("Failed to create profile")
+        } catch (fetchError) {
+          console.error("Error with profile API:", fetchError)
           // Fallback - перенаправляем в пользовательскую зону
           router.push(userRedirect)
         }

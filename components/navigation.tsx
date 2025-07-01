@@ -30,30 +30,44 @@ export function Navigation() {
   const [loading, setLoading] = useState(true)
   const pathname = usePathname()
   const router = useRouter()
+
+  // Use singleton Supabase client
   const supabase = createClient()
 
   useEffect(() => {
     const getUser = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
 
-      if (user) {
-        setUser(user)
+        if (user) {
+          setUser(user)
 
-        // Получаем профиль пользователя
-        try {
-          const response = await fetch("/api/user-profile")
-          if (response.ok) {
-            const { profile } = await response.json()
-            setProfile(profile)
+          // Получаем профиль пользователя с обработкой ошибок
+          try {
+            const response = await fetch("/api/user-profile")
+
+            if (response.ok) {
+              const contentType = response.headers.get("content-type")
+              if (contentType && contentType.includes("application/json")) {
+                const { profile } = await response.json()
+                setProfile(profile)
+              } else {
+                console.error("Response is not JSON:", await response.text())
+              }
+            } else {
+              console.error("Profile fetch failed:", response.status, response.statusText)
+            }
+          } catch (error) {
+            console.error("Error fetching profile:", error)
           }
-        } catch (error) {
-          console.error("Error fetching profile:", error)
         }
+      } catch (error) {
+        console.error("Error getting user:", error)
+      } finally {
+        setLoading(false)
       }
-
-      setLoading(false)
     }
 
     getUser()
@@ -71,12 +85,16 @@ export function Navigation() {
         // Получаем профиль при изменении аутентификации
         try {
           const response = await fetch("/api/user-profile")
+
           if (response.ok) {
-            const { profile } = await response.json()
-            setProfile(profile)
+            const contentType = response.headers.get("content-type")
+            if (contentType && contentType.includes("application/json")) {
+              const { profile } = await response.json()
+              setProfile(profile)
+            }
           }
         } catch (error) {
-          console.error("Error fetching profile:", error)
+          console.error("Error fetching profile on auth change:", error)
         }
       }
     })
@@ -102,7 +120,7 @@ export function Navigation() {
     )
   }
 
-  if (!user || !profile) {
+  if (!user) {
     return null
   }
 
@@ -119,7 +137,7 @@ export function Navigation() {
     { href: "/app/wardrobe", label: "Мой гардероб", icon: Shirt },
   ]
 
-  const navItems = profile.is_admin ? adminNavItems : userNavItems
+  const navItems = profile?.is_admin ? adminNavItems : userNavItems
 
   const NavLinks = ({ mobile = false }: { mobile?: boolean }) => (
     <>
@@ -158,8 +176,10 @@ export function Navigation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex items-center">
-            <Link href={profile.is_admin ? "/admin" : "/app"} className="flex-shrink-0">
-              <h1 className="text-xl font-bold text-gray-900">{profile.is_admin ? "Wardrobe Admin" : "My Wardrobe"}</h1>
+            <Link href={profile?.is_admin ? "/admin" : "/app"} className="flex-shrink-0">
+              <h1 className="text-xl font-bold text-gray-900">
+                {profile?.is_admin ? "Wardrobe Admin" : "My Wardrobe"}
+              </h1>
             </Link>
 
             {/* Desktop Navigation */}
@@ -172,17 +192,17 @@ export function Navigation() {
             {/* User Menu */}
             <div className="flex items-center space-x-3">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={profile.avatar_url || user.user_metadata?.avatar_url} />
+                <AvatarImage src={profile?.avatar_url || user.user_metadata?.avatar_url} />
                 <AvatarFallback>
-                  {profile.full_name?.[0] || user.user_metadata?.full_name?.[0] || user.email?.[0]?.toUpperCase()}
+                  {profile?.full_name?.[0] || user.user_metadata?.full_name?.[0] || user.email?.[0]?.toUpperCase()}
                 </AvatarFallback>
               </Avatar>
 
               <div className="hidden md:block">
                 <div className="text-sm font-medium text-gray-900">
-                  {profile.full_name || user.user_metadata?.full_name || "Пользователь"}
+                  {profile?.full_name || user.user_metadata?.full_name || "Пользователь"}
                 </div>
-                <div className="text-xs text-gray-500">{profile.is_admin ? "Администратор" : "Пользователь"}</div>
+                <div className="text-xs text-gray-500">{profile?.is_admin ? "Администратор" : "Пользователь"}</div>
               </div>
 
               <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:inline-flex">
@@ -202,16 +222,20 @@ export function Navigation() {
                 <div className="flex flex-col h-full">
                   <div className="flex items-center space-x-3 pb-4 border-b">
                     <Avatar className="h-10 w-10">
-                      <AvatarImage src={profile.avatar_url || user.user_metadata?.avatar_url} />
+                      <AvatarImage src={profile?.avatar_url || user.user_metadata?.avatar_url} />
                       <AvatarFallback>
-                        {profile.full_name?.[0] || user.user_metadata?.full_name?.[0] || user.email?.[0]?.toUpperCase()}
+                        {profile?.full_name?.[0] ||
+                          user.user_metadata?.full_name?.[0] ||
+                          user.email?.[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div>
                       <div className="text-sm font-medium text-gray-900">
-                        {profile.full_name || user.user_metadata?.full_name || "Пользователь"}
+                        {profile?.full_name || user.user_metadata?.full_name || "Пользователь"}
                       </div>
-                      <div className="text-xs text-gray-500">{profile.is_admin ? "Администратор" : "Пользователь"}</div>
+                      <div className="text-xs text-gray-500">
+                        {profile?.is_admin ? "Администратор" : "Пользователь"}
+                      </div>
                     </div>
                   </div>
 

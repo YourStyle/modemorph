@@ -8,18 +8,29 @@ export const isSupabaseConfigured =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0
 
 // Create a singleton instance of the Supabase client for Client Components
-export const supabase = isSupabaseConfigured
-  ? createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
-  : null
+let supabaseInstance: ReturnType<typeof createBrowserClient> | null = null
 
-// Export createClient function for compatibility
 export const createClient = () => {
   if (!isSupabaseConfigured) {
     throw new Error("Supabase не настроен. Проверьте переменные окружения.")
   }
 
-  return createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+  // Return existing instance if it exists
+  if (supabaseInstance) {
+    return supabaseInstance
+  }
+
+  // Create new instance only if it doesn't exist
+  supabaseInstance = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  )
+
+  return supabaseInstance
 }
+
+// Export the singleton instance
+export const supabase = isSupabaseConfigured ? createClient() : null
 
 // Helper function to check if Supabase is available
 export const checkSupabaseConnection = async () => {
