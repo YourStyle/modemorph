@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 import type { WardrobeItem } from "@/lib/wardrobe"
 import { Button } from "@/components/ui/button"
-import { Plus, RefreshCw } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 
 export default function UserWardrobePage() {
   const [items, setItems] = useState<WardrobeItem[]>([])
@@ -65,22 +65,10 @@ export default function UserWardrobePage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Мой гардероб</h1>
-          <p className="text-gray-600 mt-2">Все ваши вещи в одном месте</p>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={handleRefresh} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Обновить
-          </Button>
-          <Button size="sm">
-            <Plus className="h-4 w-4 mr-2" />
-            Добавить вещь
-          </Button>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Мой гардероб</h1>
+        <p className="mt-2 text-gray-600">Все ваши вещи в одном месте</p>
       </div>
 
       <UserWardrobeGrid items={items} />
