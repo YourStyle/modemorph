@@ -1,10 +1,47 @@
+import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
 
-export async function GET() {
+export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
 
+    // Получаем текущего пользователя
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const body = await request.json()
+
+    // Добавляем user_id к данным
+    const itemData = {
+      ...body,
+      user_id: user.id,
+    }
+
+    const { data, error } = await supabase.from("wardrobe_user_items").insert([itemData]).select().single()
+
+    if (error) {
+      console.error("Error creating wardrobe item:", error)
+      return NextResponse.json({ error: "Failed to create item" }, { status: 500 })
+    }
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error("Error in POST /api/wardrobe-user-items:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = createClient()
+
+    // Получаем текущего пользователя
     const {
       data: { user },
       error: userError,
@@ -18,65 +55,18 @@ export async function GET() {
       .from("wardrobe_user_items")
       .select("*")
       .eq("user_id", user.id)
-      .eq("is_visible", true)
+      .eq("is_hidden", false)
       .order("created_at", { ascending: false })
 
     if (error) {
       console.error("Error fetching wardrobe items:", error)
-      return NextResponse.json({ error: "Failed to fetch wardrobe items" }, { status: 500 })
+      return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 })
     }
 
-    return NextResponse.json(data)
+    // Возвращаем данные напрямую, без обертки в items
+    return NextResponse.json(data || [])
   } catch (error) {
     console.error("Error in GET /api/wardrobe-user-items:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const supabase = createClient()
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const { item_name, material, color, shade, style, has_print, has_details, image_url, basic_item_id } = body
-
-    const { data, error } = await supabase
-      .from("wardrobe_user_items")
-      .insert({
-        user_id: user.id,
-        item_name,
-        material,
-        color,
-        shade,
-        style,
-        has_print,
-        has_details,
-        image_url,
-        basic_item_id,
-        is_visible: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Error creating wardrobe item:", error)
-      return NextResponse.json({ error: "Failed to create wardrobe item" }, { status: 500 })
-    }
-
-    return NextResponse.json(data)
-  } catch (error) {
-    console.error("Error in POST /api/wardrobe-user-items:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

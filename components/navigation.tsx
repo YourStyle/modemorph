@@ -5,105 +5,57 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Menu, Home, Shirt, Package, Users, Settings, LogOut } from "lucide-react"
-
-interface User {
-  id: string
-  email?: string
-  user_metadata?: {
-    full_name?: string
-    avatar_url?: string
-  }
-}
+import { Menu, Home, Shirt, Package, Palette, Settings, LogOut, User } from "lucide-react"
 
 interface UserProfile {
-  is_admin: boolean
+  id: string
+  email: string
   full_name?: string
-  avatar_url?: string
+  is_admin: boolean
 }
 
 export function Navigation() {
-  const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
   const pathname = usePathname()
   const router = useRouter()
+  const [user, setUser] = useState<any>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const supabase = createClient()
+    async function getUser() {
+      const supabase = createClient()
 
-    const getUser = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
 
-        if (user) {
-          setUser(user)
+      if (user) {
+        setUser(user)
 
-          // Получаем профиль пользователя с обработкой ошибок
-          try {
-            const response = await fetch("/api/user-profile")
-
-            if (response.ok) {
-              const contentType = response.headers.get("content-type")
-              if (contentType && contentType.includes("application/json")) {
-                const { profile } = await response.json()
-                setProfile(profile)
-              } else {
-                console.error("Response is not JSON:", await response.text())
-              }
-            } else {
-              console.error("Profile fetch failed:", response.status, response.statusText)
-            }
-          } catch (error) {
-            console.error("Error fetching profile:", error)
+        // Получаем профиль пользователя
+        try {
+          const response = await fetch("/api/user-profile")
+          if (response.ok) {
+            const { profile } = await response.json()
+            setProfile(profile)
           }
+        } catch (error) {
+          console.error("Error fetching profile:", error)
         }
-      } catch (error) {
-        console.error("Error getting user:", error)
-      } finally {
-        setLoading(false)
       }
+
+      setLoading(false)
     }
 
     getUser()
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_OUT" || !session) {
-        setUser(null)
-        setProfile(null)
-        router.push("/auth/login")
-      } else if (session?.user) {
-        setUser(session.user)
-
-        // Получаем профиль при изменении аутентификации
-        try {
-          const response = await fetch("/api/user-profile")
-
-          if (response.ok) {
-            const contentType = response.headers.get("content-type")
-            if (contentType && contentType.includes("application/json")) {
-              const { profile } = await response.json()
-              setProfile(profile)
-            }
-          }
-        } catch (error) {
-          console.error("Error fetching profile on auth change:", error)
-        }
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [router])
+  }, [])
 
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
+    router.push("/auth/login")
   }
 
   if (loading) {
@@ -112,7 +64,7 @@ export function Navigation() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
-              <div className="h-8 w-32 bg-gray-200 animate-pulse rounded"></div>
+              <div className="h-8 w-32 bg-gray-200 animate-pulse rounded" />
             </div>
           </div>
         </div>
@@ -124,11 +76,12 @@ export function Navigation() {
     return null
   }
 
+  // Определяем навигационные элементы в зависимости от роли
   const adminNavItems = [
     { href: "/admin", label: "Главная", icon: Home },
     { href: "/admin/wardrobe", label: "Гардероб", icon: Shirt },
     { href: "/admin/wardrobe/basics", label: "Базовые вещи", icon: Package },
-    { href: "/admin/outfits", label: "Образы", icon: Users },
+    { href: "/admin/outfits", label: "Образы", icon: Palette },
     { href: "/admin/settings", label: "Настройки", icon: Settings },
   ]
 
@@ -139,7 +92,7 @@ export function Navigation() {
 
   const navItems = profile?.is_admin ? adminNavItems : userNavItems
 
-  const NavLinks = ({ mobile = false }: { mobile?: boolean }) => (
+  const NavItems = ({ mobile = false }: { mobile?: boolean }) => (
     <>
       {navItems.map((item) => {
         const Icon = item.icon
@@ -175,41 +128,36 @@ export function Navigation() {
     <nav className="border-b bg-white sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
-          <div className="flex items-center">
+          {/* Desktop Navigation */}
+          <div className="hidden md:flex md:items-center md:space-x-8">
             <Link href={profile?.is_admin ? "/admin" : "/app"} className="flex-shrink-0">
-              <h1 className="text-xl font-bold text-gray-900">
-                {profile?.is_admin ? "Wardrobe Admin" : "Мой Гардероб"}
-              </h1>
+              <span className="text-xl font-bold text-gray-900">
+                {profile?.is_admin ? "Wardrobe Admin" : "My Wardrobe"}
+              </span>
             </Link>
-
-            {/* Desktop Navigation */}
-            <div className="hidden md:ml-6 md:flex md:space-x-8">
-              <NavLinks />
+            <div className="flex space-x-8">
+              <NavItems />
             </div>
           </div>
 
+          {/* User Menu */}
           <div className="flex items-center space-x-4">
-            {/* User Menu */}
-            <div className="flex items-center space-x-3">
+            <div className="hidden md:flex md:items-center md:space-x-2">
               <Avatar className="h-8 w-8">
-                <AvatarImage src={profile?.avatar_url || user.user_metadata?.avatar_url} />
                 <AvatarFallback>
-                  {profile?.full_name?.[0] || user.user_metadata?.full_name?.[0] || user.email?.[0]?.toUpperCase()}
+                  <User className="h-4 w-4" />
                 </AvatarFallback>
               </Avatar>
-
-              <div className="hidden md:block">
-                <div className="text-sm font-medium text-gray-900">
-                  {profile?.full_name || user.user_metadata?.full_name || "Пользователь"}
-                </div>
-                <div className="text-xs text-gray-500">{profile?.is_admin ? "Администратор" : "Пользователь"}</div>
+              <div className="text-sm">
+                <p className="font-medium text-gray-900">{profile?.full_name || user.email}</p>
+                <p className="text-gray-500">{profile?.is_admin ? "Администратор" : "Пользователь"}</p>
               </div>
-
-              <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:inline-flex">
-                <LogOut className="h-4 w-4 mr-1" />
-                Выйти
-              </Button>
             </div>
+
+            <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex items-center">
+              <LogOut className="h-4 w-4 mr-2" />
+              Выйти
+            </Button>
 
             {/* Mobile menu */}
             <Sheet>
@@ -220,31 +168,24 @@ export function Navigation() {
               </SheetTrigger>
               <SheetContent side="right" className="w-64">
                 <div className="flex flex-col h-full">
-                  <div className="flex items-center space-x-3 pb-4 border-b">
+                  <div className="flex items-center space-x-2 mb-6">
                     <Avatar className="h-10 w-10">
-                      <AvatarImage src={profile?.avatar_url || user.user_metadata?.avatar_url} />
                       <AvatarFallback>
-                        {profile?.full_name?.[0] ||
-                          user.user_metadata?.full_name?.[0] ||
-                          user.email?.[0]?.toUpperCase()}
+                        <User className="h-5 w-5" />
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <div className="text-sm font-medium text-gray-900">
-                        {profile?.full_name || user.user_metadata?.full_name || "Пользователь"}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {profile?.is_admin ? "Администратор" : "Пользователь"}
-                      </div>
+                      <p className="font-medium text-gray-900">{profile?.full_name || user.email}</p>
+                      <p className="text-sm text-gray-500">{profile?.is_admin ? "Администратор" : "Пользователь"}</p>
                     </div>
                   </div>
 
-                  <div className="flex-1 py-4 space-y-1">
-                    <NavLinks mobile />
+                  <div className="flex-1 space-y-1">
+                    <NavItems mobile />
                   </div>
 
-                  <div className="border-t pt-4">
-                    <Button variant="ghost" size="sm" onClick={handleSignOut} className="w-full justify-start">
+                  <div className="pt-4 border-t">
+                    <Button variant="ghost" onClick={handleSignOut} className="w-full justify-start">
                       <LogOut className="h-4 w-4 mr-2" />
                       Выйти
                     </Button>

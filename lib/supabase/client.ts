@@ -7,6 +7,12 @@ export const isSupabaseConfigured =
   typeof process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY === "string" &&
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY.length > 0
 
+// Create a singleton instance of the Supabase client for Client Components
+export const supabase = isSupabaseConfigured
+  ? createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+  : null
+
+// Export createClient function for compatibility
 export const createClient = () => {
   if (!isSupabaseConfigured) {
     throw new Error("Supabase не настроен. Проверьте переменные окружения.")
@@ -15,15 +21,14 @@ export const createClient = () => {
   return createBrowserClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
 }
 
-// Export a default instance for components that expect it
-export const supabase = isSupabaseConfigured ? createClient() : null
-
 // Helper function to check if Supabase is available
 export const checkSupabaseConnection = async () => {
-  const client = createClient()
+  if (!supabase) {
+    throw new Error("Supabase не настроен. Проверьте переменные окружения.")
+  }
 
   try {
-    const { error } = await client.from("wardrobe_items").select("count", { count: "exact", head: true })
+    const { error } = await supabase.from("wardrobe_items").select("count", { count: "exact", head: true })
     if (error) {
       throw new Error(`Ошибка подключения к Supabase: ${error.message}`)
     }

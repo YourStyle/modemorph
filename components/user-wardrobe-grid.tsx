@@ -2,26 +2,21 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, RefreshCw } from "lucide-react"
-import { CachedWardrobeImage } from "./cached-wardrobe-image"
+import { CachedWardrobeImage } from "@/components/cached-wardrobe-image"
+import { Shirt, Calendar, Loader2 } from "lucide-react"
 
 interface WardrobeItem {
-  id: number
-  user_id: string
-  item_name: string
-  material: string
-  color: string
-  shade: string
-  style: string
-  has_print: boolean
-  has_details: boolean
-  image_url: string
-  basic_item_id: number | null
+  id: string
+  name: string
+  clothing_type?: string
+  material?: string
+  color?: string
+  style?: string
+  print?: string
+  image_url?: string
+  basic_item_id?: string
   created_at: string
-  updated_at: string
-  is_visible: boolean
 }
 
 export function UserWardrobeGrid() {
@@ -29,88 +24,117 @@ export function UserWardrobeGrid() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchItems = async () => {
-    setLoading(true)
-    setError(null)
-
-    try {
-      const response = await fetch("/api/wardrobe-user-items")
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${await response.text()}`)
-      }
-
-      const contentType = response.headers.get("content-type")
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error(`Expected JSON response but got ${contentType}`)
-      }
-
-      const data = await response.json()
-      console.log("Wardrobe items:", data)
-      setItems(data)
-    } catch (err) {
-      console.error("Error fetching wardrobe items:", err)
-      setError(err instanceof Error ? err.message : "Произошла ошибка при загрузке гардероба")
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
+    const fetchItems = async () => {
+      try {
+        console.log("Fetching wardrobe items...")
+        const response = await fetch("/api/wardrobe-user-items")
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const data = await response.json()
+        console.log("Received data:", data)
+
+        // Данные приходят напрямую как массив
+        setItems(Array.isArray(data) ? data : [])
+      } catch (err) {
+        console.error("Error fetching wardrobe items:", err)
+        setError("Не удалось загрузить вещи")
+      } finally {
+        setLoading(false)
+      }
+    }
+
     fetchItems()
   }, [])
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <Loader2 className="h-12 w-12 animate-spin text-gray-400 mb-4" />
-        <p className="text-gray-500">Загружаем ваш гардероб...</p>
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+        <span className="ml-2 text-gray-600">Загрузка гардероба...</span>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12">
-        <div className="text-red-500 mb-4">{error}</div>
-        <Button onClick={fetchItems} variant="outline">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Попробовать снова
-        </Button>
-      </div>
+      <Card>
+        <CardContent className="p-6 text-center">
+          <Shirt className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Ошибка загрузки</h3>
+          <p className="text-gray-600">{error}</p>
+        </CardContent>
+      </Card>
     )
   }
 
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <div className="text-gray-500 mb-4">В вашем гардеробе пока нет вещей</div>
-        <p className="text-gray-400 mb-6 max-w-md">
-          Загрузите фотографии ваших вещей, чтобы начать создавать стильные образы
-        </p>
-      </div>
+      <Card>
+        <CardContent className="p-6 text-center">
+          <Shirt className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Ваш гардероб пуст</h3>
+          <p className="text-gray-600">Загрузите фото ваших вещей, чтобы начать создавать свой цифровой гардероб</p>
+        </CardContent>
+      </Card>
     )
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {items.map((item) => (
         <Card key={item.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-          <div className="aspect-square relative">
+          <div className="aspect-square relative bg-gray-50">
             <CachedWardrobeImage
               src={item.image_url}
-              alt={item.item_name}
+              alt={item.name}
               className="w-full h-full object-cover"
-              fallbackSrc="/placeholder.svg?height=300&width=300"
+              basicItemId={item.basic_item_id}
             />
           </div>
+
           <CardContent className="p-4">
-            <h3 className="font-medium text-lg mb-2 capitalize">{item.item_name}</h3>
-            <div className="flex flex-wrap gap-2 mb-2">
-              <Badge variant="secondary">{item.material}</Badge>
-              <Badge variant="outline">{item.shade}</Badge>
+            <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">{item.name}</h3>
+
+            <div className="flex flex-wrap gap-1 mb-3">
+              {item.material && (
+                <Badge variant="secondary" className="text-xs">
+                  {item.material}
+                </Badge>
+              )}
+
+              {item.color && (
+                <Badge variant="outline" className="text-xs">
+                  {item.color}
+                </Badge>
+              )}
+
+              {item.style && (
+                <Badge variant="outline" className="text-xs">
+                  {item.style}
+                </Badge>
+              )}
+
+              {item.print && item.print !== "нет" && (
+                <Badge variant="outline" className="text-xs">
+                  {item.print}
+                </Badge>
+              )}
+
+              {item.clothing_type && (
+                <Badge variant="outline" className="text-xs">
+                  {item.clothing_type}
+                </Badge>
+              )}
             </div>
-            <p className="text-sm text-gray-500 capitalize">{item.style}</p>
+
+            <div className="flex items-center text-xs text-gray-500">
+              <Calendar className="h-3 w-3 mr-1" />
+              {new Date(item.created_at).toLocaleDateString("ru-RU")}
+            </div>
           </CardContent>
         </Card>
       ))}

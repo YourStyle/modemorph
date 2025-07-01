@@ -1,17 +1,11 @@
-import { createClient } from "@/lib/supabase/server"
 import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 
-export default async function WardrobePage() {
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
+export default function UserWardrobePage() {
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Мой гардероб</h1>
-        <p className="text-gray-600">Здесь собраны все ваши вещи</p>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Мой гардероб</h1>
+        <p className="mt-2 text-gray-600">Все ваши вещи в одном месте</p>
       </div>
 
       <UserWardrobeGrid />

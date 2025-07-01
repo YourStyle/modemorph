@@ -4,99 +4,22 @@ import { createClient } from "@/lib/supabase/server"
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createClient()
+    const id = Number.parseInt(params.id)
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (isNaN(id)) {
+      return NextResponse.json({ error: "Invalid ID" }, { status: 400 })
     }
 
-    const { data, error } = await supabase.from("basic_items").select("*").eq("id", params.id).single()
+    const { data, error } = await supabase.from("basic_wardrobe_items").select("*").eq("id", id).single()
 
     if (error) {
       console.error("Error fetching basic item:", error)
-      return NextResponse.json({ error: "Failed to fetch basic item" }, { status: 500 })
+      return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
 
     return NextResponse.json(data)
   } catch (error) {
     console.error("Error in GET /api/basic-items/[id]:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const supabase = createClient()
-
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const body = await request.json()
-    const { item_name, clothing_type_id, material, shade, style, has_print, has_details, img_url } = body
-
-    const { data: updatedItem, error } = await supabase
-      .from("basic_items")
-      .update({
-        item_name,
-        clothing_type_id,
-        material,
-        shade,
-        style,
-        has_print,
-        has_details,
-        img_url,
-      })
-      .eq("id", params.id)
-      .select()
-      .single()
-
-    if (error) {
-      console.error("Error updating basic item:", error)
-      return NextResponse.json({ error: "Failed to update basic item" }, { status: 500 })
-    }
-
-    return NextResponse.json(updatedItem)
-  } catch (error) {
-    console.error("Unexpected error in basic-items/[id] PUT:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
-}
-
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
-  try {
-    const supabase = createClient()
-
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const { error } = await supabase.from("basic_items").update({ is_visible: false }).eq("id", params.id)
-
-    if (error) {
-      console.error("Error deleting basic item:", error)
-      return NextResponse.json({ error: "Failed to delete basic item" }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Unexpected error in basic-items/[id] DELETE:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
