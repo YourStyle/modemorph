@@ -55,12 +55,6 @@ export default function HomePage() {
         {/* Секция добавления */}
         <Card className="border-0 shadow-xl rounded-3xl overflow-hidden bg-gradient-to-br from-gray-800 to-gray-900">
           <CardContent className="p-8 text-center">
-            <div className="mb-6">
-              <div className="inline-flex items-center gap-2 text-white/80 text-sm mb-2">
-                <span>Гардероб</span>
-                <span className="bg-white/20 px-2 py-1 rounded-full text-xs">2/5</span>
-              </div>
-            </div>
 
             <Card>
               <Button onClick={() => setIsAddSheetOpen(true)} className="w-full max-w-md bg-white text-gray-900 hover:bg-gray-100 rounded-full py-4 text-lg font-semibold shadow-lg transition-all duration-200 hover:shadow-xl">
