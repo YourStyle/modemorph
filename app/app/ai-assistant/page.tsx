@@ -34,9 +34,9 @@ export default function AIAssistantPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col pb-32">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-white px-6 py-4 border-b border-gray-100">
+      <div className="px-6 py-4">
         <div className="text-center">
           <h1 className="text-xl font-serif font-bold text-gray-900">ИИ-Ассистент</h1>
           <p className="text-sm text-gray-600">Ваш персональный стилист</p>
@@ -97,7 +97,7 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Input */}
-      <div className="bg-white border-t border-gray-100 p-4">
+      <div className="pb-10">
         <div className="max-w-2xl mx-auto flex gap-2">
           <Input
             value={message}

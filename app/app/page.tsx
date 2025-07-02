@@ -53,18 +53,15 @@ export default function HomePage() {
         </div>
 
         {/* Секция добавления */}
-        <Card className="border-0 shadow-xl rounded-3xl overflow-hidden bg-gradient-to-br from-gray-800 to-gray-900">
+        <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
           <CardContent className="p-8 text-center">
 
-            <Card>
-              <Button onClick={() => setIsAddSheetOpen(true)} className="w-full max-w-md bg-white text-gray-900 hover:bg-gray-100 rounded-full py-4 text-lg font-semibold shadow-lg transition-all duration-200 hover:shadow-xl">
-              <Plus className="h-5 w-5 mr-2" />
-              Добавить в гардероб
+              <Button onClick={() => setIsAddSheetOpen(true)} className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium">
+              + Добавить в гардероб
             </Button>
-            </Card>
 
             <div className="mt-6 text-center">
-              <p className="text-white/60 text-sm mb-2">Не знаете, с чего начать?</p>
+              <p className="text-gray/60 text-sm mb-2">Не знаете, с чего начать?</p>
               <Button variant="link" className="text-blue-400 hover:text-blue-300 p-0 h-auto font-medium">
                 <Sparkles className="h-4 w-4 mr-1" />
                 Получить стиль от ИИ

@@ -125,7 +125,7 @@ export default function WardrobePage() {
               <PastelLoader size={40} />
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {basicItems.slice(0, 6).map((item) => (
                 <Card key={item.id} className="bg-white border-0 shadow-sm overflow-hidden">
                   <div className="aspect-square bg-gray-100 flex items-center justify-center">

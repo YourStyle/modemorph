@@ -65,7 +65,7 @@ export default function InspirationPage() {
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
       {/* Header */}
-      <div className="bg-white px-6 py-6 border-b border-gray-100">
+      <div className="px-6 py-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-serif font-bold text-gray-900">Идеи</h1>
@@ -105,7 +105,7 @@ export default function InspirationPage() {
         )}
 
         {/* Inspiration Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           {posts.map((post) => (
             <Card key={post.id} className="border-0 shadow-sm overflow-hidden">
               <div className="aspect-[3/4] bg-gray-100 relative">
