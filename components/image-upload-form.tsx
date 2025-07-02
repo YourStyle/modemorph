@@ -4,15 +4,16 @@ import type React from "react"
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Upload, Loader2, Check } from "lucide-react"
+import { Upload, X, Plus } from "lucide-react"
 import Image from "next/image"
 import { useToast } from "@/hooks/use-toast"
+import { PastelLoader } from "./pastel-loader"
 
-interface DetectedItem {
+interface ClothingItem {
   index: number
-  basic_item_id: string | null
+  basic_item_id: number | null
   need_gen: boolean
   clothing_item: string
   description: string
@@ -23,7 +24,7 @@ interface DetectedItem {
   color: string
   shade: string
   has_details: string
-  img_url: string
+  img_url?: string
   image_url?: string
 }
 
@@ -31,9 +32,8 @@ export function ImageUploadForm() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([])
+  const [analyzedItems, setAnalyzedItems] = useState<ClothingItem[]>([])
   const [isSaving, setIsSaving] = useState(false)
-  const [savedItems, setSavedItems] = useState<Set<number>>(new Set())
   const { toast } = useToast()
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -42,12 +42,11 @@ export function ImageUploadForm() {
       setSelectedFile(file)
       const url = URL.createObjectURL(file)
       setPreviewUrl(url)
-      setDetectedItems([])
-      setSavedItems(new Set())
+      setAnalyzedItems([])
     }
   }
 
-  const analyzeImage = async () => {
+  const handleAnalyze = async () => {
     if (!selectedFile) return
 
     setIsAnalyzing(true)
@@ -55,9 +54,7 @@ export function ImageUploadForm() {
       const formData = new FormData()
       formData.append("image", selectedFile)
 
-      // Отправляем на AI API для анализа
-      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
-      const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+      const response = await fetch(process.env.NEXT_PUBLIC_AI_API_URL!, {
         method: "POST",
         body: formData,
       })
@@ -67,13 +64,13 @@ export function ImageUploadForm() {
       }
 
       const data = await response.json()
-      console.log("Received analysis data:", data)
+      console.log("AI Analysis result:", data)
 
       if (Array.isArray(data) && data.length > 0) {
-        setDetectedItems(data)
+        setAnalyzedItems(data)
         toast({
           title: "Анализ завершен",
-          description: `Найдено ${data.length} вещей на изображении`,
+          description: `Найдено ${data.length} ${data.length === 1 ? "вещь" : data.length < 5 ? "вещи" : "вещей"}`,
         })
       } else {
         toast({
@@ -94,104 +91,38 @@ export function ImageUploadForm() {
     }
   }
 
-  const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
-    try {
-      // Скачиваем изображение
-      const response = await fetch(imageUrl)
-      if (!response.ok) {
-        throw new Error("Failed to download image")
-      }
+  const handleSaveItems = async () => {
+    if (analyzedItems.length === 0) return
 
-      const blob = await response.blob()
-      const file = new File([blob], "wardrobe-item.jpg", { type: blob.type })
-
-      // Загружаем в blob storage
-      const formData = new FormData()
-      formData.append("file", file)
-
-      const uploadResponse = await fetch("/api/upload-image", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload image")
-      }
-
-      const { url } = await uploadResponse.json()
-      return url
-    } catch (error) {
-      console.error("Error downloading and uploading image:", error)
-      throw error
-    }
-  }
-
-  const getBasicItemImage = async (basicItemId: string): Promise<string | null> => {
-    try {
-      const response = await fetch(`/api/basic-items/${basicItemId}`)
-      if (response.ok) {
-        const basicItem = await response.json()
-        return basicItem.image_url || null
-      }
-      return null
-    } catch (error) {
-      console.error("Error getting basic item image:", error)
-      return null
-    }
-  }
-
-  const saveItem = async (item: DetectedItem) => {
     setIsSaving(true)
     try {
-      let finalImageUrl: string | null = null
-
-      // Если есть basic_item_id, используем изображение базовой вещи
-      if (item.basic_item_id) {
-        finalImageUrl = await getBasicItemImage(item.basic_item_id)
-      }
-      // Если нет basic_item_id, но есть img_url, скачиваем и загружаем
-      else if (item.img_url) {
-        finalImageUrl = await downloadAndUploadImage(item.img_url)
-      }
-
-      const itemData = {
-        name: item.item_name,
-        material: item.material,
-        color: item.color,
-        style: item.style,
-        print: item.has_print === "yes" ? "есть" : "нет",
-        shade: item.shade,
-        has_details: item.has_details,
-        image_url: finalImageUrl,
-        basic_item_id: item.basic_item_id,
-      }
-
-      console.log("Saving item:", itemData)
-
       const response = await fetch("/api/wardrobe-user-items", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(itemData),
+        body: JSON.stringify({ items: analyzedItems }),
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.error("Save error:", errorData)
-        throw new Error("Ошибка сохранения вещи")
+        throw new Error(errorData.error || "Ошибка сохранения")
       }
 
-      setSavedItems((prev) => new Set([...prev, item.index]))
       toast({
-        title: "Вещь сохранена",
-        description: `${item.item_name} добавлена в ваш гардероб`,
+        title: "Успешно сохранено",
+        description: `${analyzedItems.length} ${analyzedItems.length === 1 ? "вещь добавлена" : analyzedItems.length < 5 ? "вещи добавлены" : "вещей добавлено"} в гардероб`,
       })
+
+      // Сброс формы
+      setSelectedFile(null)
+      setPreviewUrl(null)
+      setAnalyzedItems([])
     } catch (error) {
-      console.error("Error saving item:", error)
+      console.error("Error saving items:", error)
       toast({
         title: "Ошибка",
-        description: "Не удалось сохранить вещь",
+        description: "Не удалось сохранить вещи в гардероб",
         variant: "destructive",
       })
     } finally {
@@ -199,146 +130,162 @@ export function ImageUploadForm() {
     }
   }
 
-  const saveAllItems = async () => {
-    setIsSaving(true)
-    try {
-      for (const item of detectedItems) {
-        if (!savedItems.has(item.index)) {
-          await saveItem(item)
-          // Небольшая задержка между запросами
-          await new Promise((resolve) => setTimeout(resolve, 500))
-        }
-      }
-      toast({
-        title: "Все вещи сохранены",
-        description: "Все найденные вещи добавлены в ваш гардероб",
-      })
-    } catch (error) {
-      console.error("Error saving all items:", error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось сохранить все вещи",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSaving(false)
+  const clearSelection = () => {
+    setSelectedFile(null)
+    setPreviewUrl(null)
+    setAnalyzedItems([])
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl)
     }
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Загрузить фото одежды</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-center w-full">
-            <label className="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
-              <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                <Upload className="w-8 h-8 mb-4 text-gray-500" />
-                <p className="mb-2 text-sm text-gray-500">
-                  <span className="font-semibold">Нажмите для загрузки</span> или перетащите файл
-                </p>
-                <p className="text-xs text-gray-500">PNG, JPG или WEBP (макс. 10MB)</p>
-              </div>
-              <input type="file" className="hidden" accept="image/*" onChange={handleFileSelect} />
-            </label>
-          </div>
-
-          {previewUrl && (
-            <div className="mt-4">
-              <div className="relative w-full h-64 bg-gray-100 rounded-lg overflow-hidden">
-                <Image src={previewUrl || "/placeholder.svg"} alt="Preview" fill className="object-contain" />
-              </div>
-              <div className="mt-4 flex gap-2">
-                <Button onClick={analyzeImage} disabled={isAnalyzing} className="flex-1">
-                  {isAnalyzing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Анализируем...
-                    </>
-                  ) : (
-                    "Найти одежду"
-                  )}
-                </Button>
-              </div>
+    <div className="max-w-4xl mx-auto space-y-8">
+      {/* Загрузка изображения */}
+      <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+        <CardContent className="p-8">
+          <div className="text-center space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Добавить вещи в гардероб</h2>
+              <p className="text-gray-600">Загрузите фото одежды, и мы автоматически определим все вещи</p>
             </div>
-          )}
+
+            {!previewUrl ? (
+              <div className="border-2 border-dashed border-gray-300 rounded-2xl p-12 hover:border-gray-400 transition-colors">
+                <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <div className="space-y-2">
+                  <p className="text-lg font-medium text-gray-700">Выберите изображение</p>
+                  <p className="text-sm text-gray-500">PNG, JPG до 10MB</p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="relative inline-block">
+                  <Image
+                    src={previewUrl || "/placeholder.svg"}
+                    alt="Preview"
+                    width={400}
+                    height={400}
+                    className="rounded-2xl object-cover shadow-lg"
+                  />
+                  <Button
+                    onClick={clearSelection}
+                    variant="destructive"
+                    size="sm"
+                    className="absolute -top-2 -right-2 rounded-full h-8 w-8 p-0"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="flex gap-4 justify-center">
+                  <Button
+                    onClick={handleAnalyze}
+                    disabled={isAnalyzing}
+                    className="rounded-full px-8 py-3 bg-gray-800 hover:bg-gray-700"
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <PastelLoader size={20} />
+                        <span className="ml-3">Анализируем...</span>
+                      </>
+                    ) : (
+                      "Найти вещи"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
-      {detectedItems.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Найденные вещи ({detectedItems.length})</CardTitle>
-            <Button
-              onClick={saveAllItems}
-              disabled={isSaving || detectedItems.every((item) => savedItems.has(item.index))}
-              size="sm"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Сохраняем...
-                </>
-              ) : (
-                "Сохранить все"
-              )}
-            </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {detectedItems.map((item) => {
-                // Определяем какое изображение показывать
-                const displayImageUrl = item.basic_item_id ? item.image_url : item.img_url
+      {/* Результаты анализа */}
+      {analyzedItems.length > 0 && (
+        <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+          <CardContent className="p-8">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Найденные вещи</h3>
+                <p className="text-gray-600">Проверьте и сохраните в свой гардероб</p>
+              </div>
+              <Button
+                onClick={handleSaveItems}
+                disabled={isSaving}
+                className="rounded-full px-6 py-2 bg-gray-800 hover:bg-gray-700"
+              >
+                {isSaving ? (
+                  <>
+                    <PastelLoader size={16} />
+                    <span className="ml-2">Сохраняем...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Добавить в гардероб
+                  </>
+                )}
+              </Button>
+            </div>
 
-                return (
-                  <Card key={item.index} className="overflow-hidden">
-                    <div className="aspect-square relative bg-gray-100">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {analyzedItems.map((item) => (
+                <Card
+                  key={item.index}
+                  className="border border-gray-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow"
+                >
+                  <div className="aspect-square relative bg-gray-50">
+                    {item.img_url || item.image_url ? (
                       <Image
-                        src={displayImageUrl || "/placeholder.svg"}
+                        src={item.img_url || item.image_url || "/placeholder.svg"}
                         alt={item.item_name}
                         fill
                         className="object-cover"
+                        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                       />
-                    </div>
-                    <CardContent className="p-4">
-                      <h3 className="font-semibold mb-2">{item.item_name}</h3>
-                      <p className="text-sm text-gray-600 mb-3">{item.description}</p>
-
-                      <div className="flex flex-wrap gap-1 mb-3">
-                        <Badge variant="secondary">{item.material}</Badge>
-                        <Badge variant="outline">{item.style}</Badge>
-                        <Badge variant="outline" style={{ backgroundColor: item.color, color: "#fff" }}>
-                          {item.shade}
-                        </Badge>
-                        {item.basic_item_id && <Badge variant="default">Базовая вещь</Badge>}
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="text-gray-400 text-center">
+                          <div className="w-12 h-12 mx-auto mb-2 bg-gray-200 rounded-lg flex items-center justify-center">
+                            <span className="text-xl">👕</span>
+                          </div>
+                          <p className="text-sm">Нет изображения</p>
+                        </div>
                       </div>
+                    )}
+                  </div>
 
-                      <Button
-                        onClick={() => saveItem(item)}
-                        disabled={isSaving || savedItems.has(item.index)}
-                        className="w-full"
-                        size="sm"
-                      >
-                        {savedItems.has(item.index) ? (
-                          <>
-                            <Check className="w-4 h-4 mr-2" />
-                            Сохранено
-                          </>
-                        ) : isSaving ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Сохраняем...
-                          </>
-                        ) : (
-                          "Добавить в гардероб"
-                        )}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )
-              })}
+                  <CardContent className="p-4">
+                    <h4 className="font-semibold text-gray-900 mb-2">{item.item_name}</h4>
+                    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{item.description}</p>
+
+                    <div className="flex flex-wrap gap-1 mb-3">
+                      {item.basic_item_id && (
+                        <Badge variant="default" className="text-xs px-2 py-1 rounded-full bg-gray-800 text-white">
+                          Базовая вещь
+                        </Badge>
+                      )}
+                      <Badge variant="secondary" className="text-xs px-2 py-1 rounded-full">
+                        {item.material}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs px-2 py-1 rounded-full">
+                        {item.shade}
+                      </Badge>
+                      {item.style && (
+                        <Badge variant="outline" className="text-xs px-2 py-1 rounded-full">
+                          {item.style}
+                        </Badge>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           </CardContent>
         </Card>
