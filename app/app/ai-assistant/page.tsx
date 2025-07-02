@@ -1,39 +1,114 @@
 "use client"
 
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Send, Mic, Camera, Sparkles } from "lucide-react"
 import { AIAssistantLoader } from "@/components/ai-assistant-loader"
-import { Card } from "@/components/ui/card"
 
 export default function AIAssistantPage() {
+  const [message, setMessage] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [messages, setMessages] = useState<Array<{ role: "user" | "assistant"; content: string }>>([])
+
+  const handleSend = async () => {
+    if (!message.trim()) return
+
+    const userMessage = message
+    setMessage("")
+    setMessages((prev) => [...prev, { role: "user", content: userMessage }])
+    setIsLoading(true)
+
+    // Simulate AI response
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Привет! Я ваш стилист-ассистент. Расскажите, какой образ вы хотите создать?",
+        },
+      ])
+      setIsLoading(false)
+    }, 2000)
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-8">
-      <div className="max-w-md mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">ИИ-Ассистент</h1>
-          <p className="text-gray-600 text-sm">Ваш персональный стилист готов помочь</p>
+    <div className="min-h-screen bg-gray-50 flex flex-col pb-32">
+      {/* Header */}
+      <div className="bg-white px-6 py-4 border-b border-gray-100">
+        <div className="text-center">
+          <h1 className="text-xl font-serif font-bold text-gray-900">ИИ-Ассистент</h1>
+          <p className="text-sm text-gray-600">Ваш персональный стилист</p>
         </div>
+      </div>
 
-        <div className="flex justify-center mb-8">
-          <Card className="p-8 bg-gradient-to-br from-gray-100 to-gray-200 border-0 shadow-2xl">
-            <div className="flex flex-col items-center gap-4">
-              <AIAssistantLoader size={120} />
-              <div className="text-center">
-                <h3 className="text-lg font-semibold text-gray-800 mb-1">ИИ</h3>
-                <p className="text-sm text-gray-600">Анализирую ваш стиль...</p>
-              </div>
+      {/* Messages */}
+      <div className="flex-1 px-4 py-6 overflow-y-auto">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <div className="mb-8">
+              <AIAssistantLoader size={80} />
             </div>
-          </Card>
-        </div>
+            <h2 className="text-xl font-serif font-semibold text-gray-900 mb-4">Привет! Я ваш стилист-ассистент</h2>
+            <p className="text-gray-600 mb-8 max-w-sm">
+              Задайте вопрос о стиле, попросите подобрать образ или получите советы по гардеробу
+            </p>
 
-        <div className="space-y-4">
-          <Card className="p-4 bg-white border border-gray-200">
-            <h4 className="font-medium text-gray-900 mb-2">Рекомендации дня</h4>
-            <p className="text-sm text-gray-600">Сегодня отличная погода для легкого пальто и удобной обуви</p>
-          </Card>
+            {/* Quick Actions */}
+            <div className="grid grid-cols-1 gap-3 w-full max-w-sm">
+              <Button variant="outline" className="justify-start bg-transparent">
+                <Sparkles className="w-4 h-4 mr-2" />
+                Подобрать образ на сегодня
+              </Button>
+              <Button variant="outline" className="justify-start bg-transparent">
+                <Camera className="w-4 h-4 mr-2" />
+                Проанализировать фото
+              </Button>
+              <Button variant="outline" className="justify-start bg-transparent">
+                <Mic className="w-4 h-4 mr-2" />
+                Дать совет по стилю
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="max-w-2xl mx-auto space-y-4">
+            {messages.map((msg, index) => (
+              <div key={index} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                <Card className={`max-w-xs ${msg.role === "user" ? "bg-gray-900 text-white" : "bg-white"}`}>
+                  <CardContent className="p-3">
+                    <p className="text-sm">{msg.content}</p>
+                  </CardContent>
+                </Card>
+              </div>
+            ))}
 
-          <Card className="p-4 bg-white border border-gray-200">
-            <h4 className="font-medium text-gray-900 mb-2">Анализ гардероба</h4>
-            <p className="text-sm text-gray-600">В вашем гардеробе не хватает базовых вещей нейтральных тонов</p>
-          </Card>
+            {isLoading && (
+              <div className="flex justify-start">
+                <Card className="bg-white">
+                  <CardContent className="p-3">
+                    <AIAssistantLoader size={24} />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="bg-white border-t border-gray-100 p-4">
+        <div className="max-w-2xl mx-auto flex gap-2">
+          <Input
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="Спросите что-нибудь о стиле..."
+            onKeyPress={(e) => e.key === "Enter" && handleSend()}
+            className="flex-1"
+          />
+          <Button onClick={handleSend} disabled={!message.trim() || isLoading}>
+            <Send className="w-4 h-4" />
+          </Button>
         </div>
       </div>
     </div>

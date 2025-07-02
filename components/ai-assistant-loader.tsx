@@ -1,57 +1,43 @@
 "use client"
 
+import { cn } from "@/lib/utils"
+
 interface AIAssistantLoaderProps {
   size?: number
+  className?: string
 }
 
-export function AIAssistantLoader({ size = 40 }: AIAssistantLoaderProps) {
+export function AIAssistantLoader({ size = 32, className }: AIAssistantLoaderProps) {
   return (
-    <div className="flex flex-col items-center gap-2">
+    <div className={cn("relative", className)} style={{ width: size, height: size }}>
       <div
-        className="ai-loader-container"
+        className="absolute inset-0 rounded-full"
         style={{
-          width: `${size}px`,
-          height: `${size}px`,
+          background:
+            "linear-gradient(165deg, rgba(255,255,255,1) 0%, rgb(220, 220, 220) 40%, rgb(170, 170, 170) 98%, rgb(10, 10, 10) 100%)",
         }}
       >
-        <div className="ai-loader"></div>
+        <div
+          className="absolute inset-0 rounded-full animate-spin"
+          style={{
+            boxShadow: `
+              0 -${size * 0.067}px ${size * 0.133}px ${size * 0.133}px #ffffff40 inset,
+              0 -${size * 0.033}px ${size * 0.1}px ${size * 0.067}px #ffffff50 inset,
+              0 -${size * 0.013}px ${size * 0.033}px #ffffff80 inset,
+              0 -${size * 0.02}px ${size * 0.013}px #ffffffBB inset,
+              0 ${size * 0.013}px 0px #ffffff,
+              0 ${size * 0.013}px ${size * 0.02}px #ffffff,
+              0 ${size * 0.033}px ${size * 0.033}px #ffffff90,
+              0 ${size * 0.067}px ${size * 0.1}px #ffffff60,
+              0 ${size * 0.067}px ${size * 0.133}px ${size * 0.133}px #ffffff40
+            `,
+            filter: "blur(2px)",
+            animationDuration: "2s",
+            animationTimingFunction: "linear",
+            animationIterationCount: "infinite",
+          }}
+        />
       </div>
-      <style jsx>{`
-        .ai-loader-container {
-          border-radius: 50%;
-          background: linear-gradient(165deg, rgba(255,255,255,1) 0%, rgb(220, 220, 220) 40%, rgb(170, 170, 170) 98%, rgb(10, 10, 10) 100%);
-          position: relative;
-        }
-
-        .ai-loader:before {
-          position: absolute;
-          content: '';
-          width: 100%;
-          height: 100%;
-          border-radius: 50%;
-          border-bottom: 0 solid #ffffff05;
-          top: 0;
-          left: 0;
-          box-shadow: 
-            0 -10px 20px 20px #ffffff40 inset,
-            0 -5px 15px 10px #ffffff50 inset,
-            0 -2px 5px #ffffff80 inset,
-            0 -3px 2px #ffffffBB inset,
-            0 2px 0px #ffffff,
-            0 2px 3px #ffffff,
-            0 5px 5px #ffffff90,
-            0 10px 15px #ffffff60,
-            0 10px 20px 20px #ffffff40;
-          filter: blur(2px);
-          animation: 2s rotate linear infinite;
-        }
-
-        @keyframes rotate {
-          100% {
-            transform: rotate(360deg);
-          }
-        }
-      `}</style>
     </div>
   )
 }

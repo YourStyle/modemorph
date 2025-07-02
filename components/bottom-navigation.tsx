@@ -1,61 +1,67 @@
 "use client"
 
-import { Home, Lightbulb, Shirt, BookOpen } from "lucide-react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import { Home, Shirt, Sparkles, BookOpen, Bot } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { AIAssistantLoader } from "./ai-assistant-loader"
-import { usePathname, useRouter } from "next/navigation"
-import { Button } from "@/components/ui/button"
+
+const navItems = [
+  { href: "/app", icon: Home, label: "Главная" },
+  { href: "/app/wardrobe", icon: Shirt, label: "Гардероб" },
+  { href: "/app/ai-assistant", icon: Bot, label: "ИИ", isAI: true },
+  { href: "/app/inspiration", icon: Sparkles, label: "Идеи" },
+  { href: "/app/lookbook", icon: BookOpen, label: "Образы" }
+]
 
 export function BottomNavigation() {
   const pathname = usePathname()
-  const router = useRouter()
-
-  const navItems = [
-    { icon: Home, label: "Главная", path: "/app", key: "home" },
-    { icon: Lightbulb, label: "Вдохновение", path: "/app/inspiration", key: "inspiration" },
-    { icon: null, label: "ИИ", path: "/app/ai-assistant", key: "ai" },
-    { icon: Shirt, label: "Гардероб", path: "/app/wardrobe", key: "wardrobe" },
-    { icon: BookOpen, label: "Lookbook", path: "/app/lookbook", key: "lookbook" },
-  ]
 
   return (
-    <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50">
-      <div className="bg-gray-800/95 backdrop-blur-lg rounded-full px-4 py-2 shadow-2xl border border-gray-700/30">
-        <div className="flex items-center justify-center gap-6">
-          {navItems.map((item) => {
-            const isActive = pathname === item.path
+    <div className="fixed bottom-0 left-0 right-0 z-5">
+      <div className="max-w-md mx-auto">
+        <nav className="flex items-center justify-center px-4 py-2">
+          <div className="bg-gray-900 rounded-full px-6 py-3 md:px-8 md:py-4 flex items-center gap-6 md:gap-8 shadow-lg">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href
+              const Icon = item.icon
 
-            if (item.key === "ai") {
               return (
-                <Button
-                  key={item.key}
-                  variant="ghost"
-                  className="flex flex-col items-center gap-1 p-2 h-auto text-gray-300 hover:text-white hover:bg-gray-700/50 rounded-full transition-all duration-200"
-                  onClick={() => router.push(item.path)}
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex flex-col items-center gap-1 transition-colors relative group",
+                    isActive ? "text-white" : "text-gray-400 hover:text-gray-300",
+                  )}
                 >
-                  <div className="relative">
-                    <AIAssistantLoader size={36} />
-                  </div>
-                  <span className="text-xs font-medium mt-1">{item.label}</span>
-                </Button>
+                  {item.isAI ? (
+                    <AIAssistantLoader
+                      size={isActive ? 36 : 32}
+                      className={cn("transition-all duration-200", isActive && "scale-110")}
+                    />
+                  ) : (
+                    <Icon
+                      className={cn(
+                        "transition-all duration-200",
+                        isActive ? "w-7 h-7 md:w-8 md:h-8" : "w-6 h-6 md:w-7 md:h-7",
+                        isActive && "scale-110",
+                      )}
+                    />
+                  )}
+                  <span
+                    className={cn("text-xs font-medium transition-all duration-200 md:hidden", isActive && "scale-105")}
+                  >
+                    {item.label}
+                  </span>
+                  {(isActive && !item.isAI) &&  (
+                    <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-white rounded-full" />
+                  )}
+                </Link>
               )
-            }
-
-            const Icon = item.icon!
-            return (
-              <Button
-                key={item.key}
-                variant="ghost"
-                className={`flex flex-col items-center gap-1 p-2 h-auto rounded-full transition-all duration-200 ${
-                  isActive ? "text-white bg-gray-700/50" : "text-gray-400 hover:text-gray-200 hover:bg-gray-700/30"
-                }`}
-                onClick={() => router.push(item.path)}
-              >
-                <Icon className="h-5 w-5" />
-                <span className="text-xs font-medium">{item.label}</span>
-              </Button>
-            )
-          })}
-        </div>
+            })}
+          </div>
+        </nav>
       </div>
     </div>
   )
