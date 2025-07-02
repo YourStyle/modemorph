@@ -5,238 +5,337 @@ import type React from "react"
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, X, Camera, ImageIcon } from "lucide-react"
-import { PastelLoader } from "./pastel-loader"
+import { Badge } from "@/components/ui/badge"
+import { Upload, X, Loader2, Check } from "lucide-react"
+import { CachedWardrobeImage } from "@/components/cached-wardrobe-image"
 
-interface ImageUploadFormProps {
-  onSuccess?: () => void
+interface ResponseItem {
+  index: number
+  basic_item_id: number | null
+  need_gen: boolean
+  clothing_item: string
+  description: string
+  item_name: string
+  material: string
+  style: string
+  has_print: string
+  color: string
+  shade: string
+  has_details: string
+  img_url?: string
+  image_url?: string
 }
 
-export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
-  const [previews, setPreviews] = useState<string[]>([])
-  const [isUploading, setIsUploading] = useState(false)
-  const [itemName, setItemName] = useState("")
-  const [category, setCategory] = useState("")
-  const [material, setMaterial] = useState("")
-  const [color, setColor] = useState("")
-  const [notes, setNotes] = useState("")
+interface ItemWithImage extends ResponseItem {
+  finalImageUrl?: string
+  isAdding?: boolean
+  isAdded?: boolean
+}
+
+export function ImageUploadForm() {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [preview, setPreview] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [results, setResults] = useState<ItemWithImage[]>([])
+  const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileSelect = (files: FileList | null) => {
-    if (!files) return
-
-    const newFiles = Array.from(files).slice(0, 5 - selectedFiles.length)
-    const newPreviews: string[] = []
-
-    newFiles.forEach((file) => {
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      setSelectedFile(file)
       const reader = new FileReader()
       reader.onload = (e) => {
-        if (e.target?.result) {
-          newPreviews.push(e.target.result as string)
-          if (newPreviews.length === newFiles.length) {
-            setPreviews((prev) => [...prev, ...newPreviews])
-          }
-        }
+        setPreview(e.target?.result as string)
       }
       reader.readAsDataURL(file)
-    })
-
-    setSelectedFiles((prev) => [...prev, ...newFiles])
+      setResults([])
+      setError(null)
+    }
   }
 
-  const removeFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
-    setPreviews((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (selectedFiles.length === 0) return
-
-    setIsUploading(true)
-
+  const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
     try {
-      const formData = new FormData()
-      selectedFiles.forEach((file) => {
-        formData.append("files", file)
-      })
-      formData.append("itemName", itemName)
-      formData.append("category", category)
-      formData.append("material", material)
-      formData.append("color", color)
-      formData.append("notes", notes)
+      // Скачиваем изображение
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        throw new Error("Failed to download image")
+      }
 
-      const response = await fetch("/api/wardrobe/add", {
+      const blob = await response.blob()
+      const file = new File([blob], "image.jpg", { type: blob.type })
+
+      // Загружаем в blob storage
+      const formData = new FormData()
+      formData.append("file", file)
+
+      const uploadResponse = await fetch("/api/upload-image", {
         method: "POST",
         body: formData,
       })
 
-      if (response.ok) {
-        // Reset form
-        setSelectedFiles([])
-        setPreviews([])
-        setItemName("")
-        setCategory("")
-        setMaterial("")
-        setColor("")
-        setNotes("")
-        onSuccess?.()
-      } else {
-        console.error("Upload failed")
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to upload image")
       }
+
+      const { url } = await uploadResponse.json()
+      return url
     } catch (error) {
-      console.error("Error uploading:", error)
+      console.error("Error downloading and uploading image:", error)
+      throw error
+    }
+  }
+
+  const loadBasicItemImages = async (items: ResponseItem[]): Promise<ItemWithImage[]> => {
+    const itemsWithImages: ItemWithImage[] = []
+
+    for (const item of items) {
+      let finalImageUrl = item.image_url
+
+      try {
+        // Если есть img_url, скачиваем и загружаем в blob
+        if (item.img_url) {
+          finalImageUrl = await downloadAndUploadImage(item.img_url)
+        }
+        // Если есть basic_item_id, получаем изображение базовой вещи
+        else if (item.basic_item_id) {
+          const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
+          if (response.ok) {
+            const basicItem = await response.json()
+            finalImageUrl = basicItem.image_url
+          }
+        }
+      } catch (error) {
+        console.error("Error loading image for item:", item.item_name, error)
+      }
+
+      itemsWithImages.push({
+        ...item,
+        finalImageUrl,
+      })
+    }
+
+    return itemsWithImages
+  }
+
+  const handleAnalyze = async () => {
+    if (!selectedFile) return
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("image", selectedFile)
+
+      // Используем переменную окружения для AI API
+      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
+      const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error("Ошибка анализа изображения")
+      }
+
+      const data = await response.json()
+      console.log("AI Response:", data)
+
+      if (Array.isArray(data) && data.length > 0) {
+        const itemsWithImages = await loadBasicItemImages(data)
+        setResults(itemsWithImages)
+      } else {
+        setError("Не удалось найти вещи на изображении")
+      }
+    } catch (err) {
+      console.error("Error analyzing image:", err)
+      setError("Ошибка при анализе изображения")
     } finally {
-      setIsUploading(false)
+      setLoading(false)
+    }
+  }
+
+  const handleSaveItem = async (item: ItemWithImage, index: number) => {
+    try {
+      // Обновляем состояние - показываем что добавляем
+      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: true } : r)))
+
+      const itemData = {
+        item_name: item.item_name,
+        material: item.material,
+        color: item.color,
+        style: item.style,
+        has_print: item.has_print === "yes" ? "есть" : "нет",
+        shade: item.shade,
+        has_details: item.has_details,
+        image_url: item.finalImageUrl,
+        basic_item_id: item.basic_item_id,
+      }
+
+      const response = await fetch("/api/wardrobe-user-items", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(itemData),
+      })
+
+      if (!response.ok) {
+        throw new Error("Ошибка сохранения вещи")
+      }
+
+      // Обновляем состояние - показываем что добавлено
+      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false, isAdded: true } : r)))
+    } catch (error) {
+      console.error("Error saving item:", error)
+      // Сбрасываем состояние при ошибке
+      setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false } : r)))
+    }
+  }
+
+  const clearAll = () => {
+    setSelectedFile(null)
+    setPreview(null)
+    setResults([])
+    setError(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
     }
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* File Upload Area */}
-        <Card className="border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors">
-          <CardContent className="p-8">
-            <div className="text-center">
-              <div className="flex justify-center mb-4">
-                <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                  <Camera className="w-8 h-8 text-gray-600" />
-                </div>
-              </div>
-              <h3 className="text-lg font-serif font-semibold text-gray-900 mb-2">Добавьте фотографии вещей</h3>
-              <p className="text-gray-600 mb-6">Загрузите до 5 фотографий. ИИ автоматически определит детали.</p>
-
-              <div className="flex gap-4 justify-center">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2"
-                >
-                  <ImageIcon className="w-4 h-4" />
-                  Выбрать файлы
+    <div className="space-y-6">
+      {/* Upload Section */}
+      <Card>
+        <CardContent className="p-6">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Загрузить фото одежды</h3>
+              {(selectedFile || results.length > 0) && (
+                <Button variant="outline" size="sm" onClick={clearAll}>
+                  <X className="h-4 w-4 mr-2" />
+                  Очистить
                 </Button>
-              </div>
+              )}
+            </div>
 
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
               <input
                 ref={fileInputRef}
                 type="file"
-                multiple
                 accept="image/*"
-                onChange={(e) => handleFileSelect(e.target.files)}
+                onChange={handleFileSelect}
                 className="hidden"
+                id="file-upload"
               />
+              <label
+                htmlFor="file-upload"
+                className="cursor-pointer flex flex-col items-center justify-center space-y-2"
+              >
+                <Upload className="h-8 w-8 text-gray-400" />
+                <span className="text-sm text-gray-600">Нажмите для выбора фото или перетащите сюда</span>
+              </label>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Preview Images */}
-        {previews.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {previews.map((preview, index) => (
-              <div key={index} className="relative group">
+            {preview && (
+              <div className="mt-4">
                 <img
                   src={preview || "/placeholder.svg"}
-                  alt={`Preview ${index + 1}`}
-                  className="w-full aspect-square object-cover rounded-lg"
+                  alt="Preview"
+                  className="max-w-full h-64 object-contain mx-auto rounded-lg"
                 />
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2 w-6 h-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => removeFile(index)}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
               </div>
+            )}
+
+            {selectedFile && (
+              <Button onClick={handleAnalyze} disabled={loading} className="w-full">
+                {loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Анализируем изображение...
+                  </>
+                ) : (
+                  "Найти вещи на фото"
+                )}
+              </Button>
+            )}
+
+            {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg">{error}</div>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Results Section */}
+      {results.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Найденные вещи</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {results.map((item, index) => (
+              <Card key={index} className="overflow-hidden">
+                <div className="aspect-square relative bg-gray-50">
+                  <CachedWardrobeImage
+                    src={item.finalImageUrl}
+                    alt={item.item_name}
+                    className="w-full h-full object-cover"
+                    basicItemId={item.basic_item_id?.toString()}
+                  />
+                </div>
+                <CardContent className="p-4">
+                  <h4 className="font-semibold text-lg mb-2">{item.item_name}</h4>
+
+                  <div className="space-y-2 mb-4">
+                    {item.basic_item_id && (
+                      <Badge variant="default" className="text-xs">
+                        Базовая вещь
+                      </Badge>
+                    )}
+                    <Badge variant="secondary" className="text-xs">
+                      {item.material}
+                    </Badge>
+                    {item.color && (
+                      <Badge variant="outline" className="text-xs ml-1">
+                        {item.shade}
+                      </Badge>
+                    )}
+                    {item.style && (
+                      <Badge variant="outline" className="text-xs ml-1">
+                        {item.style}
+                      </Badge>
+                    )}
+                    {item.has_print && item.has_print !== "no" && (
+                      <Badge variant="outline" className="text-xs ml-1">
+                        {item.has_print}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <Button
+                    onClick={() => handleSaveItem(item, index)}
+                    disabled={item.isAdding || item.isAdded}
+                    className="w-full"
+                    variant={item.isAdded ? "secondary" : "default"}
+                  >
+                    {item.isAdding ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Добавляем...
+                      </>
+                    ) : item.isAdded ? (
+                      <>
+                        <Check className="h-4 w-4 mr-2" />
+                        Добавлено
+                      </>
+                    ) : (
+                      "Добавить в гардероб"
+                    )}
+                  </Button>
+                </CardContent>
+              </Card>
             ))}
           </div>
-        )}
-
-        {/* Form Fields */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="itemName">Название вещи</Label>
-            <Input
-              id="itemName"
-              value={itemName}
-              onChange={(e) => setItemName(e.target.value)}
-              placeholder="Например: Синяя рубашка"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="category">Категория</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите категорию" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="outerwear">Верхняя одежда</SelectItem>
-                <SelectItem value="pants">Брюки</SelectItem>
-                <SelectItem value="shoes">Обувь</SelectItem>
-                <SelectItem value="dresses">Платья</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <Label htmlFor="material">Материал</Label>
-            <Input
-              id="material"
-              value={material}
-              onChange={(e) => setMaterial(e.target.value)}
-              placeholder="Например: Хлопок, Шерсть"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="color">Цвет</Label>
-            <Input
-              id="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              placeholder="Например: Синий, Красный"
-            />
-          </div>
         </div>
-
-        <div>
-          <Label htmlFor="notes">Заметки</Label>
-          <Textarea
-            id="notes"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Дополнительные детали о вещи..."
-            rows={3}
-          />
-        </div>
-
-        {/* Submit Button */}
-        <Button
-          type="submit"
-          disabled={selectedFiles.length === 0 || isUploading}
-          className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3"
-        >
-          {isUploading ? (
-            <div className="flex items-center gap-2">
-              <PastelLoader size={20} />
-              Обработка...
-            </div>
-          ) : (
-            <>
-              <Upload className="w-4 h-4 mr-2" />
-              Добавить в гардероб ({selectedFiles.length})
-            </>
-          )}
-        </Button>
-      </form>
+      )}
     </div>
   )
 }

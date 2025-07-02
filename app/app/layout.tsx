@@ -10,7 +10,7 @@ export default function AppLayout({
   return (
     <div className="min-h-screen bg-gray-50">
       <TopNavigation />
-      <main className="pb-24 pt-0">{children}</main>
+      <main className="pb-10 pt-0 max-w-7xl  m-auto">{children}</main>
       <BottomNavigation />
     </div>
   )
