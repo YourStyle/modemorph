@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Upload, X, Loader2, Check } from "lucide-react"
-import { CachedWardrobeImage } from "@/components/cached-wardrobe-image"
+import Image from "next/image"
 
 interface ResponseItem {
   index: number
@@ -32,7 +32,11 @@ interface ItemWithImage extends ResponseItem {
   isAdded?: boolean
 }
 
-export function ImageUploadForm() {
+interface ImageUploadFormProps {
+  onSuccess?: () => void
+}
+
+export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -90,15 +94,15 @@ export function ImageUploadForm() {
     const itemsWithImages: ItemWithImage[] = []
 
     for (const item of items) {
-      let finalImageUrl = item.image_url
+      let finalImageUrl = item.image_url || item.img_url
 
       try {
         // Если есть img_url, скачиваем и загружаем в blob
-        if (item.img_url) {
+        if (item.img_url && !item.image_url) {
           finalImageUrl = await downloadAndUploadImage(item.img_url)
         }
         // Если есть basic_item_id, получаем изображение базовой вещи
-        else if (item.basic_item_id) {
+        else if (item.basic_item_id && !finalImageUrl) {
           const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
           if (response.ok) {
             const basicItem = await response.json()
@@ -205,137 +209,142 @@ export function ImageUploadForm() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Upload Section */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold">Загрузить фото одежды</h3>
-              {(selectedFile || results.length > 0) && (
-                <Button variant="outline" size="sm" onClick={clearAll}>
-                  <X className="h-4 w-4 mr-2" />
-                  Очистить
-                </Button>
-              )}
-            </div>
-
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="file-upload"
-              />
-              <label
-                htmlFor="file-upload"
-                className="cursor-pointer flex flex-col items-center justify-center space-y-2"
-              >
-                <Upload className="h-8 w-8 text-gray-400" />
-                <span className="text-sm text-gray-600">Нажмите для выбора фото или перетащите сюда</span>
-              </label>
-            </div>
-
-            {preview && (
-              <div className="mt-4">
-                <img
-                  src={preview || "/placeholder.svg"}
-                  alt="Preview"
-                  className="max-w-full h-64 object-contain mx-auto rounded-lg"
-                />
-              </div>
-            )}
-
-            {selectedFile && (
-              <Button onClick={handleAnalyze} disabled={loading} className="w-full">
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Анализируем изображение...
-                  </>
-                ) : (
-                  "Найти вещи на фото"
+    <div className="h-full overflow-y-auto">
+      <div className="space-y-4 p-4">
+        {/* Upload Section */}
+        <Card>
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold">Загрузить фото одежды</h3>
+                {(selectedFile || results.length > 0) && (
+                  <Button variant="outline" size="sm" onClick={clearAll}>
+                    <X className="h-3 w-3 mr-1" />
+                    Очистить
+                  </Button>
                 )}
-              </Button>
-            )}
+              </div>
 
-            {error && <div className="text-red-600 text-sm bg-red-50 p-3 rounded-lg">{error}</div>}
-          </div>
-        </CardContent>
-      </Card>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  id="file-upload"
+                />
+                <label
+                  htmlFor="file-upload"
+                  className="cursor-pointer flex flex-col items-center justify-center space-y-2"
+                >
+                  <Upload className="h-6 w-6 text-gray-400" />
+                  <span className="text-xs text-gray-600 text-center">Нажмите для выбора фото</span>
+                </label>
+              </div>
 
-      {/* Results Section */}
-      {results.length > 0 && (
-        <div className="space-y-4">
-          <h3 className="text-lg font-semibold">Найденные вещи</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {results.map((item, index) => (
-              <Card key={index} className="overflow-hidden">
-                <div className="aspect-square relative bg-gray-50">
-                  <CachedWardrobeImage
-                    src={item.finalImageUrl}
-                    alt={item.item_name}
-                    className="w-full h-full object-cover"
-                    basicItemId={item.basic_item_id?.toString()}
+              {preview && (
+                <div className="mt-3">
+                  <img
+                    src={preview || "/placeholder.svg"}
+                    alt="Preview"
+                    className="max-w-full h-32 object-contain mx-auto rounded-lg"
                   />
                 </div>
-                <CardContent className="p-4">
-                  <h4 className="font-semibold text-lg mb-2">{item.item_name}</h4>
+              )}
 
-                  <div className="space-y-2 mb-4">
-                    {item.basic_item_id && (
-                      <Badge variant="default" className="text-xs">
-                        Базовая вещь
-                      </Badge>
-                    )}
-                    <Badge variant="secondary" className="text-xs">
-                      {item.material}
-                    </Badge>
-                    {item.color && (
-                      <Badge variant="outline" className="text-xs ml-1">
-                        {item.shade}
-                      </Badge>
-                    )}
-                    {item.style && (
-                      <Badge variant="outline" className="text-xs ml-1">
-                        {item.style}
-                      </Badge>
-                    )}
-                    {item.has_print && item.has_print !== "no" && (
-                      <Badge variant="outline" className="text-xs ml-1">
-                        {item.has_print}
-                      </Badge>
-                    )}
-                  </div>
+              {selectedFile && (
+                <Button onClick={handleAnalyze} disabled={loading} className="w-full" size="sm">
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                      Анализируем...
+                    </>
+                  ) : (
+                    "Найти вещи на фото"
+                  )}
+                </Button>
+              )}
 
-                  <Button
-                    onClick={() => handleSaveItem(item, index)}
-                    disabled={item.isAdding || item.isAdded}
-                    className="w-full"
-                    variant={item.isAdded ? "secondary" : "default"}
-                  >
-                    {item.isAdding ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Добавляем...
-                      </>
-                    ) : item.isAdded ? (
-                      <>
-                        <Check className="h-4 w-4 mr-2" />
-                        Добавлено
-                      </>
-                    ) : (
-                      "Добавить в гардероб"
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+              {error && <div className="text-red-600 text-xs bg-red-50 p-2 rounded-lg">{error}</div>}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Results Section */}
+        {results.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="text-base font-semibold">Найденные вещи ({results.length})</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {results.map((item, index) => (
+                <Card key={index} className="overflow-hidden">
+                  <CardContent className="p-3">
+                    {/* Изображение */}
+                    <div className="aspect-square mb-3 bg-gray-50 rounded-lg overflow-hidden relative">
+                      {item.finalImageUrl ? (
+                        <Image
+                          src={item.finalImageUrl || "/placeholder.svg"}
+                          alt={item.item_name}
+                          fill
+                          className="object-cover"
+                          sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <span className="text-3xl">👕</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Информация */}
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm line-clamp-2 min-h-[2.5rem]">{item.item_name}</h4>
+
+                      <div className="flex flex-wrap gap-1">
+                        {item.basic_item_id && (
+                          <Badge variant="default" className="text-xs px-1 py-0">
+                            Базовая
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" className="text-xs px-1 py-0">
+                          {item.material}
+                        </Badge>
+                        {item.shade && (
+                          <Badge variant="outline" className="text-xs px-1 py-0">
+                            {item.shade}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <Button
+                        onClick={() => handleSaveItem(item, index)}
+                        disabled={item.isAdding || item.isAdded}
+                        className="w-full h-8 text-xs"
+                        variant={item.isAdded ? "secondary" : "default"}
+                        size="sm"
+                      >
+                        {item.isAdding ? (
+                          <>
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            Добавляем...
+                          </>
+                        ) : item.isAdded ? (
+                          <>
+                            <Check className="h-3 w-3 mr-1" />
+                            Добавлено
+                          </>
+                        ) : (
+                          "Добавить"
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

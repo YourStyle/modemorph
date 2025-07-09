@@ -18,14 +18,21 @@ export function AddToClosetSheet({ isOpen, onClose }: AddToClosetSheetProps) {
     setShowUploadForm(true)
   }
 
+  const handleSuccess = () => {
+    setShowUploadForm(false)
+    onClose()
+  }
+
   if (showUploadForm) {
     return (
       <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent side="bottom" className="h-[90vh] rounded-t-3xl">
-          <SheetHeader className="pb-4">
+        <SheetContent side="bottom" className="h-[90vh] rounded-t-3xl p-0">
+          <SheetHeader className="p-4 pb-2 border-b">
             <SheetTitle className="text-center text-xl font-serif">Добавить в гардероб</SheetTitle>
           </SheetHeader>
-          <ImageUploadForm onSuccess={onClose} />
+          <div className="h-[calc(90vh-80px)] overflow-hidden">
+            <ImageUploadForm onSuccess={handleSuccess} />
+          </div>
         </SheetContent>
       </Sheet>
     )

@@ -1,10 +1,7 @@
 "use client"
 
-import { HelpCircle, Bell, User, Cloud, Sun, CloudRain, LogOut, Settings } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
+import { Sun, Cloud, CloudRain, CloudSnowIcon as Snow } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,137 +9,157 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
+
+interface WeatherData {
+  temperature: number
+  condition: string
+  icon: string
+}
+
+interface UserProfile {
+  email: string
+  full_name?: string
+  is_admin?: boolean
+}
 
 export function TopNavigation() {
-  const [weather, setWeather] = useState({ temp: 22, condition: "sunny" })
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
+  const [currentTime, setCurrentTime] = useState(new Date())
+  const [weather, setWeather] = useState<WeatherData | null>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
   const router = useRouter()
+  const supabase = createClient()
 
   useEffect(() => {
-    async function getUser() {
-      const supabase = createClient()
+    const timer = setInterval(() => {
+      setCurrentTime(new Date())
+    }, 1000)
+
+    // Загружаем данные пользователя
+    const loadUser = async () => {
       const {
-        data: { user },
+        data: { user: authUser },
       } = await supabase.auth.getUser()
+      if (authUser) {
+        const { data: profile } = await supabase.from("user_profiles").select("*").eq("id", authUser.id).single()
 
-      if (user) {
-        setUser(user)
-
-        // Получаем профиль пользователя
-        try {
-          const response = await fetch("/api/user-profile")
-          if (response.ok) {
-            const { profile } = await response.json()
-            setProfile(profile)
-          }
-        } catch (error) {
-          console.error("Error fetching profile:", error)
-        }
+        setUser({
+          email: authUser.email || "",
+          full_name: profile?.full_name,
+          is_admin: profile?.is_admin,
+        })
       }
     }
 
-    getUser()
-  }, [])
+    loadUser()
 
-  const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push("/auth/login")
-  }
+    // Симуляция погоды
+    setWeather({
+      temperature: 22,
+      condition: "Солнечно",
+      icon: "sun",
+    })
 
-  const today = new Date()
-  const dayNames = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"]
-  const monthNames = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
-
-  const dayName = dayNames[today.getDay()]
-  const day = today.getDate().toString().padStart(2, "0")
-  const month = monthNames[today.getMonth()]
+    return () => clearInterval(timer)
+  }, [supabase])
 
   const getWeatherIcon = (condition: string) => {
-    switch (condition) {
-      case "sunny":
+    switch (condition.toLowerCase()) {
+      case "солнечно":
+      case "ясно":
         return <Sun className="h-4 w-4 text-yellow-500" />
-      case "cloudy":
+      case "облачно":
         return <Cloud className="h-4 w-4 text-gray-500" />
-      case "rainy":
+      case "дождь":
         return <CloudRain className="h-4 w-4 text-blue-500" />
+      case "снег":
+        return <Snow className="h-4 w-4 text-blue-300" />
       default:
         return <Sun className="h-4 w-4 text-yellow-500" />
     }
   }
 
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("ru-RU", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    })
+  }
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString("ru-RU", {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push("/auth/login")
+  }
+
+  const getUserInitials = () => {
+    if (user?.full_name) {
+      return user.full_name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+    }
+    return user?.email?.[0]?.toUpperCase() || "U"
+  }
+
   return (
-    <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-gray-100">
-      {/* Левая часть - дата и погода */}
-      <div className="flex items-center gap-6">
-        {/* Дата */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center">
-              <span className="text-lg font-bold text-gray-800">{day}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-xs text-gray-500 uppercase tracking-wide">{month}</span>
-              <span className="text-sm font-medium text-gray-700 capitalize">{dayName}</span>
-            </div>
-          </div>
+    <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="flex items-center justify-between">
+        {/* Левая часть - Дата и время */}
+        <div className="flex flex-col">
+          <h1 className="text-2xl font-serif font-semibold text-gray-900 capitalize">{formatDate(currentTime)}</h1>
+          <p className="text-lg text-gray-600 font-mono">{formatTime(currentTime)}</p>
         </div>
 
-        {/* Погода */}
-        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-xl">
-          {getWeatherIcon(weather.condition)}
-          <span className="text-sm font-medium text-gray-700">{weather.temp}°</span>
-        </div>
-      </div>
-
-      {/* Правая часть - иконки */}
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="p-2.5 h-auto text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
-        >
-          <HelpCircle className="h-5 w-5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="p-2.5 h-auto text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
-        >
-          <Bell className="h-5 w-5" />
-        </Button>
-        <Button variant="ghost" onClick={handleSignOut} size="sm" className="p-2.5 h-auto text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors">
-                      <LogOut className="h-5 w-5" />
-        </Button>
-        {/* Выпадающее меню профиля */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="p-2.5 h-auto text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors"
-            >
-              <User className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <div className="px-2 py-1.5">
-              <p className="text-sm font-medium text-gray-900">{profile?.full_name || user?.email || "Пользователь"}</p>
-              <p className="text-xs text-gray-500">{user?.email}</p>
+        {/* Правая часть - Погода и профиль */}
+        <div className="flex items-center space-x-6">
+          {/* Погода */}
+          {weather && (
+            <div className="flex items-center space-x-2 bg-gray-50 px-4 py-2 rounded-full">
+              {getWeatherIcon(weather.condition)}
+              <span className="text-sm font-medium text-gray-700">{weather.temperature}°C</span>
+              <span className="text-sm text-gray-600">{weather.condition}</span>
             </div>
-            <DropdownMenuSeparator />
-            {profile?.is_admin && (
-              <>
-                <DropdownMenuItem onClick={() => router.push("/admin")}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Панель администратора
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+
+          {/* Профиль с выпадающим меню */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback className="bg-gray-200 text-gray-700">{getUserInitials()}</AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end" forceMount>
+              <div className="flex flex-col space-y-1 p-2">
+                <p className="text-sm font-medium leading-none">{user?.full_name || "Пользователь"}</p>
+                <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+              </div>
+              <DropdownMenuSeparator />
+              {user?.is_admin && (
+                <>
+                  <DropdownMenuItem onClick={() => router.push("/admin")}>Панель администратора</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem onClick={handleSignOut} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                Выйти
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
   )
