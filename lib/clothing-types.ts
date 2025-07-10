@@ -73,7 +73,7 @@ export function getClothingTypeName(type: string): string {
   return clothingTypes[type as keyof typeof clothingTypes] || type
 }
 
-// Функция для получения всех типов одежды
+// Функция для получения ��сех типов одежды
 export function getAllClothingTypes(): Array<{ value: string; label: string }> {
   return Object.entries(clothingTypes).map(([value, label]) => ({
     value,

@@ -1,158 +1,259 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
-import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
-import { CategoryProgressSheet } from "@/components/category-progress-sheet"
-import { PastelLoader } from "@/components/pastel-loader"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { Plus, BarChart3 } from "lucide-react"
+import Image from "next/image"
+import { PastelLoader } from "@/components/pastel-loader"
+import { CategoryProgressSheet } from "@/components/category-progress-sheet"
+import { AddBaseItemSheet } from "@/components/add-base-item-sheet"
 
-const clothingCategories = [
-  { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
-  { id: "pants", name: "Брюки", icon: "👖", emoji: "👖" },
-  { id: "shoes", name: "Обувь", icon: "👠", emoji: "👠" },
-  { id: "dresses", name: "Платья", icon: "👗", emoji: "👗" },
-]
-
-interface BasicWardrobeItem {
+interface WardrobeItem {
   id: number
   item_name: string
-  clothing_type: string
-  image_url?: string
-  colors?: string[]
+  image_url: string
+  material: string
+  color: string
+  style: string
+  has_print: string
+  shade: string
+  has_details: string
+  size?: string
+  notes?: string
+  basic_item_id?: number
+}
+
+interface BasicItem {
+  id: number
+  item_name: string
+  image_url: string
+  material: string
+  style: string
+  color: string
+  shade: string
+  has_print: string
+  has_details: string
+}
+
+interface CategoryProgress {
+  category: string
+  current: number
+  total: number
+  percentage: number
 }
 
 export default function WardrobePage() {
+  const [userItems, setUserItems] = useState<WardrobeItem[]>([])
+  const [basicItems, setBasicItems] = useState<BasicItem[]>([])
+  const [categoryProgress, setCategoryProgress] = useState<CategoryProgress[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedBasicItem, setSelectedBasicItem] = useState<BasicItem | null>(null)
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
-  const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false)
-  const [basicItems, setBasicItems] = useState<BasicWardrobeItem[]>([])
-  const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(true)
 
   useEffect(() => {
-    fetchBasicItems()
+    loadData()
   }, [])
 
-  const fetchBasicItems = async () => {
+  const loadData = async () => {
     try {
-      const response = await fetch("/api/basic-wardrobe-items")
-      if (response.ok) {
-        const data = await response.json()
-        setBasicItems(data.items || [])
+      setLoading(true)
+
+      // Загружаем пользовательские вещи
+      const userItemsResponse = await fetch("/api/wardrobe-user-items")
+      if (userItemsResponse.ok) {
+        const userData = await userItemsResponse.json()
+        setUserItems(userData)
+      }
+
+      // Загружаем базовые вещи
+      const basicItemsResponse = await fetch("/api/basic-wardrobe-items")
+      if (basicItemsResponse.ok) {
+        const basicData = await basicItemsResponse.json()
+        setBasicItems(basicData)
+      }
+
+      // Загружаем прогресс по категориям
+      const progressResponse = await fetch("/api/wardrobe/progress")
+      if (progressResponse.ok) {
+        const progressData = await progressResponse.json()
+        setCategoryProgress(progressData)
       }
     } catch (error) {
-      console.error("Error fetching basic items:", error)
+      console.error("Error loading wardrobe data:", error)
     } finally {
-      setIsLoadingBasicItems(false)
+      setLoading(false)
     }
   }
 
-  const handleCategoryClick = () => {
-    setIsCategorySheetOpen(true)
+  const handleAddBasicItem = (item: BasicItem) => {
+    setSelectedBasicItem(item)
+    setIsAddSheetOpen(true)
+  }
+
+  const handleAddSuccess = () => {
+    loadData() // Перезагружаем данные после успешного добавления
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <PastelLoader />
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
-      <div className="px-4 py-6">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-serif font-bold text-gray-900 mb-2">Гардероб</h1>
-          <p className="text-gray-600 text-sm">Управляйте своими вещами</p>
-        </div>
-
-        {/* Progress Section */}
-        <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-serif font-semibold text-gray-900">Цель гардероба</h3>
-              <span className="text-sm text-gray-500">2/30 вещей</span>
-            </div>
-            <Progress value={6.67} className="h-2 mb-3" />
-            <p className="text-sm text-gray-600">Добавьте еще 28 вещей для достижения первой цели</p>
+    <div className="h-full overflow-y-auto">
+      <div className="space-y-6 p-4">
+        {/* Заголовок */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Мой гардероб</h1>
+            <p className="text-gray-600 text-sm">
+              {userItems.length} {userItems.length === 1 ? "вещь" : userItems.length < 5 ? "вещи" : "вещей"} в коллекции
+            </p>
           </div>
-
-          {/* Category Icons */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
-            {clothingCategories.map((category) => (
-              <button
-                key={category.id}
-                onClick={handleCategoryClick}
-                className="flex flex-col items-center p-4 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-2 shadow-sm">
-                  <span className="text-2xl">{category.emoji}</span>
-                </div>
-                <span className="text-xs text-gray-700 text-center font-medium">{category.name}</span>
-              </button>
-            ))}
-          </div>
-
-          <Button
-            onClick={() => setIsAddSheetOpen(true)}
-            className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
-          >
-            + Добавить в гардероб
-          </Button>
-        </Card>
-
-        {/* Sorting */}
-        <div className="flex items-center justify-between mb-6">
-          <Select defaultValue="newest">
-            <SelectTrigger className="w-48 bg-white border-gray-200">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="newest">Сначала новые</SelectItem>
-              <SelectItem value="oldest">Сначала старые</SelectItem>
-              <SelectItem value="name">По названию</SelectItem>
-            </SelectContent>
-          </Select>
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="sm">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Прогресс
+              </Button>
+            </SheetTrigger>
+            <SheetContent>
+              <CategoryProgressSheet categories={categoryProgress} />
+            </SheetContent>
+          </Sheet>
         </div>
 
-        {/* User's Wardrobe */}
-        <div className="mb-8">
-          <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Ваши вещи</h2>
-          <UserWardrobeGrid />
-        </div>
+        {/* Прогресс базового гардероба */}
+        {categoryProgress.length > 0 && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-sm">Прогресс базового гардероба</h3>
+                <span className="text-xs text-gray-500">
+                  {Math.round(categoryProgress.reduce((acc, cat) => acc + cat.percentage, 0) / categoryProgress.length)}
+                  %
+                </span>
+              </div>
+              <Progress
+                value={categoryProgress.reduce((acc, cat) => acc + cat.percentage, 0) / categoryProgress.length}
+                className="h-2"
+              />
+              <div className="flex flex-wrap gap-2 mt-3">
+                {categoryProgress.slice(0, 3).map((category) => (
+                  <div key={category.category} className="flex items-center gap-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                    <span className="text-xs text-gray-600">
+                      {category.category}: {category.current}/{category.total}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-        {/* Basic Items */}
-        <div>
-          <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Рекомендуемые базовые вещи</h2>
-          {isLoadingBasicItems ? (
-            <div className="flex justify-center py-8">
-              <PastelLoader size={40} />
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-              {basicItems.slice(0, 6).map((item) => (
-                <Card key={item.id} className="bg-white border-0 shadow-sm overflow-hidden">
-                  <div className="aspect-square bg-gray-100 flex items-center justify-center">
-                    {item.image_url ? (
-                      <img
+        {/* Мои вещи */}
+        {userItems.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-gray-900">Мои вещи</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {userItems.map((item) => (
+                <Card key={item.id} className="overflow-hidden">
+                  <CardContent className="p-3">
+                    <div className="aspect-square mb-3 bg-gray-50 rounded-lg overflow-hidden relative">
+                      <Image
                         src={item.image_url || "/placeholder.svg"}
                         alt={item.item_name}
-                        className="w-full h-full object-cover"
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
                       />
-                    ) : (
-                      <span className="text-4xl">👕</span>
-                    )}
-                  </div>
-                  <div className="p-3">
-                    <h3 className="font-medium text-gray-900 text-sm mb-1 line-clamp-2">{item.item_name}</h3>
-                    <p className="text-xs text-gray-500">{item.clothing_type}</p>
-                  </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm line-clamp-2 min-h-[2.5rem]">{item.item_name}</h4>
+                      <div className="flex flex-wrap gap-1">
+                        {item.size && (
+                          <Badge variant="default" className="text-xs px-1 py-0">
+                            {item.size}
+                          </Badge>
+                        )}
+                        <Badge variant="secondary" className="text-xs px-1 py-0">
+                          {item.material}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs px-1 py-0">
+                          {item.color}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
                 </Card>
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Базовые вещи для добавления */}
+        {basicItems.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold text-gray-900">Рекомендуемые базовые вещи</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {basicItems.map((item) => (
+                <Card
+                  key={item.id}
+                  className="overflow-hidden relative group cursor-pointer transition-all duration-200 hover:shadow-md"
+                >
+                  <CardContent className="p-3">
+                    <div className="aspect-square mb-3 bg-gray-50 rounded-lg overflow-hidden relative">
+                      <Image
+                        src={item.image_url || "/placeholder.svg"}
+                        alt={item.item_name}
+                        fill
+                        className="object-cover transition-all duration-200 group-hover:opacity-60"
+                        sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                      />
+                      {/* Кнопка добавления при наведении */}
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <Button onClick={() => handleAddBasicItem(item)} size="sm" className="shadow-lg">
+                          <Plus className="h-4 w-4 mr-1" />
+                          Добавить
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h4 className="font-medium text-sm line-clamp-2 min-h-[2.5rem] group-hover:text-gray-600 transition-colors">
+                        {item.item_name}
+                      </h4>
+                      <div className="flex flex-wrap gap-1">
+                        <Badge variant="secondary" className="text-xs px-1 py-0">
+                          {item.material}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs px-1 py-0">
+                          {item.color}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      <AddToClosetSheet isOpen={isAddSheetOpen} onClose={() => setIsAddSheetOpen(false)} />
-
-      <CategoryProgressSheet isOpen={isCategorySheetOpen} onClose={() => setIsCategorySheetOpen(false)} />
+      {/* Sheet для добавления базовой вещи */}
+      <AddBaseItemSheet
+        isOpen={isAddSheetOpen}
+        onClose={() => setIsAddSheetOpen(false)}
+        item={selectedBasicItem}
+        onSuccess={handleAddSuccess}
+      />
     </div>
   )
 }

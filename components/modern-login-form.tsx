@@ -92,7 +92,7 @@ export default function ModernLoginForm() {
           </Link>{" "}
           и{" "}
           <Link href="/privacy" className="text-gray-700 hover:underline font-medium">
-            Политикой конфиденциальности
+            Политикой конфиденци��льности
           </Link>
           .
         </div>

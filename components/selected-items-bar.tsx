@@ -51,7 +51,7 @@ export function SelectedItemsBar() {
               </Button>
               <Button size="sm" onClick={() => setIsOpen(true)} className="text-xs flex items-center gap-1">
                 <Save className="h-3 w-3" />
-                {editingOutfitId ? "Сохранить изменения" : "Сохранить образ"}
+                {editingOutfitId ? "��охранить изменения" : "Сохранить образ"}
               </Button>
             </div>
           </div>
