@@ -2,193 +2,200 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, Shirt, Calendar } from "lucide-react"
-import Image from "next/image"
+import { Badge } from "@/components/ui/badge"
+import { Trash2, MoreVertical } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { PastelLoader } from "@/components/pastel-loader"
 import { useToast } from "@/hooks/use-toast"
-import { PastelLoader } from "./pastel-loader"
 
-interface UserWardrobeItem {
+interface WardrobeItem {
   id: number
-  user_id: string
   item_name: string
-  size_type: string
+  image_url?: string
   material: string
+  color: string
   style: string
   has_print: string
-  color: string
   shade: string
   has_details: string
-  url: string
-  created_at: string
-  updated_at: string
-  is_basic: boolean
-  basic_item_id: number | null
-  notes: string
-  basic_material_id: number | null
-  is_hidden: boolean
-  image_url: string | null
+  size_type?: string
+  notes?: string
 }
 
 export function UserWardrobeGrid() {
-  const [items, setItems] = useState<UserWardrobeItem[]>([])
+  const [items, setItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [deleteItemId, setDeleteItemId] = useState<number | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
-
-  const fetchItems = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const response = await fetch("/api/wardrobe-user-items")
-      if (!response.ok) {
-        throw new Error("Не удалось загрузить вещи")
-      }
-
-      const data = await response.json()
-      console.log("Fetched wardrobe items:", data)
-      setItems(data)
-    } catch (err) {
-      console.error("Error fetching wardrobe items:", err)
-      setError("Ошибка загрузки гардероба")
-      toast({
-        title: "Ошибка",
-        description: "Не удалось загрузить ваш гардероб",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
 
   useEffect(() => {
     fetchItems()
   }, [])
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <PastelLoader size={60} />
-        <p className="text-gray-600 mt-6 text-lg">Загружаем ваш гардероб...</p>
-      </div>
-    )
+  const fetchItems = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch("/api/wardrobe-user-items")
+      if (response.ok) {
+        const data = await response.json()
+        setItems(Array.isArray(data) ? data : [])
+      } else {
+        console.error("Failed to fetch wardrobe items")
+        setItems([])
+      }
+    } catch (error) {
+      console.error("Error fetching wardrobe items:", error)
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
   }
 
-  if (error) {
+  const handleDeleteItem = async (itemId: number) => {
+    try {
+      setIsDeleting(true)
+      const response = await fetch(`/api/wardrobe/${itemId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setItems(items.filter((item) => item.id !== itemId))
+        toast({
+          title: "Вещь удалена",
+          description: "Вещь успешно удалена из вашего гардероба",
+        })
+      } else {
+        throw new Error("Failed to delete item")
+      }
+    } catch (error) {
+      console.error("Error deleting item:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось удалить вещь. Попробуйте еще раз.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(false)
+      setDeleteItemId(null)
+    }
+  }
+
+  if (loading) {
     return (
-      <div className="text-center py-20">
-        <div className="max-w-md mx-auto">
-          <Shirt className="h-16 w-16 text-gray-300 mx-auto mb-6" />
-          <h3 className="text-xl font-semibold text-gray-800 mb-4">Ошибка загрузки</h3>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <Button onClick={fetchItems} variant="outline" className="rounded-full bg-transparent">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Попробовать снова
-          </Button>
-        </div>
+      <div className="flex justify-center py-8">
+        <PastelLoader size={40} />
       </div>
     )
   }
 
   if (items.length === 0) {
     return (
-      <div className="text-center py-20">
-        <div className="max-w-md mx-auto">
-          <Shirt className="h-16 w-16 text-gray-300 mx-auto mb-6" />
-          <h3 className="text-xl font-semibold text-gray-800 mb-4">Ваш гардероб пуст</h3>
-          <p className="text-gray-600">Добавьте первую вещь, загрузив фото одежды</p>
-        </div>
+      <div className="text-center py-8">
+        <p className="text-gray-500 mb-4">У вас пока нет вещей в гардеробе</p>
+        <p className="text-sm text-gray-400">Добавьте первую вещь, чтобы начать создавать свой стиль</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <h2 className="text-2xl font-bold text-gray-800">Мои вещи</h2>
-          <Badge variant="secondary" className="text-sm px-3 py-1 rounded-full">
-            {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
-          </Badge>
-        </div>
-        <Button onClick={fetchItems} variant="outline" size="sm" className="rounded-full bg-transparent">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {items.map((item) => (
-          <Card
-            key={item.id}
-            className="overflow-hidden hover:shadow-xl transition-all duration-300 border-0 shadow-md bg-white rounded-2xl"
-          >
-            <div className="aspect-square relative bg-gray-50 rounded-t-2xl overflow-hidden">
-              {item.image_url ? (
-                <Image
-                  src={item.image_url || "/placeholder.svg"}
-                  alt={item.item_name || "Вещь"}
-                  fill
-                  className="object-cover hover:scale-105 transition-transform duration-300"
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  onError={(e) => {
-                    console.log("Image failed to load:", item.image_url)
-                    const target = e.target as HTMLImageElement
-                    target.src = "/placeholder.svg?height=300&width=300"
-                  }}
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
-                  <div className="text-gray-400 text-center">
-                    <Shirt className="h-12 w-12 mx-auto mb-3" />
-                    <p className="text-sm font-medium">Нет изображения</p>
-                  </div>
+          <Card key={item.id} className="bg-white border-0 shadow-sm overflow-hidden">
+            <CardContent className="p-0">
+              <div className="relative">
+                <div className="aspect-square bg-gray-100 flex items-center justify-center">
+                  {item.image_url ? (
+                    <img
+                      src={item.image_url || "/placeholder.svg"}
+                      alt={item.item_name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-4xl">👕</span>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <CardContent className="p-6">
-              <h3 className="font-semibold text-lg mb-3 text-gray-900 line-clamp-2">
-                {item.item_name || "Без названия"}
-              </h3>
-
-              <div className="flex flex-wrap gap-2 mb-4">
-                {item.basic_item_id && (
-                  <Badge variant="default" className="text-xs px-2 py-1 rounded-full bg-gray-800 text-white">
-                    Базовая вещь
-                  </Badge>
-                )}
-                {item.material && (
-                  <Badge variant="secondary" className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">
-                    {item.material}
-                  </Badge>
-                )}
-                {item.shade && (
-                  <Badge variant="outline" className="text-xs px-2 py-1 rounded-full border-gray-300 text-gray-600">
-                    {item.shade}
-                  </Badge>
-                )}
-                {item.style && (
-                  <Badge variant="outline" className="text-xs px-2 py-1 rounded-full border-gray-300 text-gray-600">
-                    {item.style}
-                  </Badge>
-                )}
-                {item.has_print && item.has_print !== "нет" && (
-                  <Badge variant="outline" className="text-xs px-2 py-1 rounded-full border-gray-300 text-gray-600">
-                    {item.has_print}
-                  </Badge>
-                )}
+                {/* Dropdown menu всегда видно в правом верхнем углу */}
+                <div className="absolute top-2 right-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="h-8 w-8 p-0 bg-white/90 hover:bg-white shadow-sm"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => setDeleteItemId(item.id)}
+                        className="text-red-600 focus:text-red-600"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Удалить
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
 
-              <div className="flex items-center text-xs text-gray-500">
-                <Calendar className="h-3 w-3 mr-2" />
-                Добавлено: {new Date(item.created_at).toLocaleDateString("ru-RU")}
+              <div className="p-4">
+                <h3 className="font-medium text-gray-900 text-sm mb-2 line-clamp-2">{item.item_name}</h3>
+                <div className="flex flex-wrap gap-1">
+                  {item.size_type && (
+                    <Badge variant="default" className="text-xs px-2 py-0">
+                      {item.size_type}
+                    </Badge>
+                  )}
+                  <Badge variant="secondary" className="text-xs px-2 py-0">
+                    {item.material}
+                  </Badge>
+                  <Badge variant="outline" className="text-xs px-2 py-0">
+                    {item.color}
+                  </Badge>
+                </div>
+                {item.notes && <p className="text-xs text-gray-500 mt-2 line-clamp-2">{item.notes}</p>}
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
-    </div>
+
+      {/* Диалог подтверждения удаления */}
+      <AlertDialog open={deleteItemId !== null} onOpenChange={() => setDeleteItemId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить вещь?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя отменить. Вещь будет удалена из вашего гардероба навсегда.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteItemId && handleDeleteItem(deleteItemId)}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? "Удаление..." : "Удалить"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

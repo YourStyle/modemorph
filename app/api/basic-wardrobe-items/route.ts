@@ -28,8 +28,12 @@ export async function GET() {
 
     const existingBasicItemIds = userItems?.map((item) => item.basic_item_id) || []
 
-    // Get basic items excluding those already in user's wardrobe
-    let query = supabase.from("basic_wardrobe_items").select("*")
+    // Get all basic items excluding those already in user's wardrobe
+    let query = supabase
+      .from("basic_wardrobe_items")
+      .select(
+        "id, name_ru, description, image_url, name_en",
+      )
 
     if (existingBasicItemIds.length > 0) {
       query = query.not("id", "in", `(${existingBasicItemIds.join(",")})`)
@@ -42,7 +46,17 @@ export async function GET() {
       return NextResponse.json({ error: "Failed to fetch basic items" }, { status: 500 })
     }
 
-    return NextResponse.json({ items: basicItems || [] })
+    // Transform the data to match expected format
+    const transformedItems =
+      basicItems?.map((item) => ({
+        id: item.id,
+        item_name: item.name_ru,
+        description: item.description,
+        image_url: item.image_url,
+        name_en: item.name_en
+      })) || []
+
+    return NextResponse.json({ items: transformedItems })
   } catch (error) {
     console.error("Error in basic-wardrobe-items API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

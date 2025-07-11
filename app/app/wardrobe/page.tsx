@@ -1,258 +1,245 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Plus, BarChart3 } from "lucide-react"
-import Image from "next/image"
-import { PastelLoader } from "@/components/pastel-loader"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
+import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { AddBaseItemSheet } from "@/components/add-base-item-sheet"
+import { PastelLoader } from "@/components/pastel-loader"
+import { Progress } from "@/components/ui/progress"
+import { Plus, ChevronDown, ChevronUp } from "lucide-react"
 
-interface WardrobeItem {
+const clothingCategories = [
+  { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
+  { id: "pants", name: "Брюки", icon: "👖", emoji: "👖" },
+  { id: "shoes", name: "Обувь", icon: "👠", emoji: "👠" },
+  { id: "dresses", name: "Платья", icon: "👗", emoji: "👗" },
+]
+
+interface BasicWardrobeItem {
   id: number
   item_name: string
-  image_url: string
-  material: string
-  color: string
-  style: string
-  has_print: string
-  shade: string
-  has_details: string
-  size?: string
-  notes?: string
-  basic_item_id?: number
-}
-
-interface BasicItem {
-  id: number
-  item_name: string
-  image_url: string
-  material: string
-  style: string
-  color: string
-  shade: string
-  has_print: string
-  has_details: string
-}
-
-interface CategoryProgress {
-  category: string
-  current: number
-  total: number
-  percentage: number
+  description?: string
+  clothing_type: string
+  image_url?: string
+  colors?: string[]
+  material?: string
+  style?: string
+  color?: string
+  shade?: string
+  has_print?: string
+  has_details?: string
 }
 
 export default function WardrobePage() {
-  const [userItems, setUserItems] = useState<WardrobeItem[]>([])
-  const [basicItems, setBasicItems] = useState<BasicItem[]>([])
-  const [categoryProgress, setCategoryProgress] = useState<CategoryProgress[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedBasicItem, setSelectedBasicItem] = useState<BasicItem | null>(null)
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
+  const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false)
+  const [isAddBaseItemSheetOpen, setIsAddBaseItemSheetOpen] = useState(false)
+  const [selectedBaseItem, setSelectedBaseItem] = useState<BasicWardrobeItem | null>(null)
+  const [basicItems, setBasicItems] = useState<BasicWardrobeItem[]>([])
+  const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(true)
+  const [showAllBasicItems, setShowAllBasicItems] = useState(false)
 
   useEffect(() => {
-    loadData()
+    fetchBasicItems()
   }, [])
 
-  const loadData = async () => {
+  const fetchBasicItems = async () => {
     try {
-      setLoading(true)
-
-      // Загружаем пользовательские вещи
-      const userItemsResponse = await fetch("/api/wardrobe-user-items")
-      if (userItemsResponse.ok) {
-        const userData = await userItemsResponse.json()
-        setUserItems(userData)
-      }
-
-      // Загружаем базовые вещи
-      const basicItemsResponse = await fetch("/api/basic-wardrobe-items")
-      if (basicItemsResponse.ok) {
-        const basicData = await basicItemsResponse.json()
-        setBasicItems(basicData)
-      }
-
-      // Загружаем прогресс по категориям
-      const progressResponse = await fetch("/api/wardrobe/progress")
-      if (progressResponse.ok) {
-        const progressData = await progressResponse.json()
-        setCategoryProgress(progressData)
+      setIsLoadingBasicItems(true)
+      const response = await fetch("/api/basic-wardrobe-items")
+      if (response.ok) {
+        const data = await response.json()
+        setBasicItems(data.items || [])
+      } else {
+        console.error("Failed to fetch basic items:", response.statusText)
       }
     } catch (error) {
-      console.error("Error loading wardrobe data:", error)
+      console.error("Error fetching basic items:", error)
     } finally {
-      setLoading(false)
+      setIsLoadingBasicItems(false)
     }
   }
 
-  const handleAddBasicItem = (item: BasicItem) => {
-    setSelectedBasicItem(item)
-    setIsAddSheetOpen(true)
+  const handleCategoryClick = () => {
+    setIsCategorySheetOpen(true)
   }
 
-  const handleAddSuccess = () => {
-    loadData() // Перезагружаем данные после успешного добавления
+  const handleAddBaseItem = (item: BasicWardrobeItem) => {
+    setSelectedBaseItem(item)
+    setIsAddBaseItemSheetOpen(true)
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <PastelLoader />
-      </div>
-    )
+  const handleBaseItemAdded = () => {
+    // Обновляем список базовых вещей после добавления
+    fetchBasicItems()
+    setIsAddBaseItemSheetOpen(false)
+    setSelectedBaseItem(null)
   }
+
+  const displayedBasicItems = showAllBasicItems ? basicItems : basicItems.slice(0, 8)
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="space-y-6 p-4">
-        {/* Заголовок */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Мой гардероб</h1>
-            <p className="text-gray-600 text-sm">
-              {userItems.length} {userItems.length === 1 ? "вещь" : userItems.length < 5 ? "вещи" : "вещей"} в коллекции
-            </p>
-          </div>
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="outline" size="sm">
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Прогресс
-              </Button>
-            </SheetTrigger>
-            <SheetContent>
-              <CategoryProgressSheet categories={categoryProgress} />
-            </SheetContent>
-          </Sheet>
+    <div className="min-h-screen bg-gray-50 pb-32">
+      <div className="px-4 py-6">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-serif font-bold text-gray-900 mb-2">Гардероб</h1>
+          <p className="text-gray-600 text-sm">Управляйте своими вещами</p>
         </div>
 
-        {/* Прогресс базового гардероба */}
-        {categoryProgress.length > 0 && (
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-sm">Прогресс базового гардероба</h3>
-                <span className="text-xs text-gray-500">
-                  {Math.round(categoryProgress.reduce((acc, cat) => acc + cat.percentage, 0) / categoryProgress.length)}
-                  %
-                </span>
-              </div>
-              <Progress
-                value={categoryProgress.reduce((acc, cat) => acc + cat.percentage, 0) / categoryProgress.length}
-                className="h-2"
-              />
-              <div className="flex flex-wrap gap-2 mt-3">
-                {categoryProgress.slice(0, 3).map((category) => (
-                  <div key={category.category} className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                    <span className="text-xs text-gray-600">
-                      {category.category}: {category.current}/{category.total}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Мои вещи */}
-        {userItems.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900">Мои вещи</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {userItems.map((item) => (
-                <Card key={item.id} className="overflow-hidden">
-                  <CardContent className="p-3">
-                    <div className="aspect-square mb-3 bg-gray-50 rounded-lg overflow-hidden relative">
-                      <Image
-                        src={item.image_url || "/placeholder.svg"}
-                        alt={item.item_name}
-                        fill
-                        className="object-cover"
-                        sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <h4 className="font-medium text-sm line-clamp-2 min-h-[2.5rem]">{item.item_name}</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {item.size && (
-                          <Badge variant="default" className="text-xs px-1 py-0">
-                            {item.size}
-                          </Badge>
-                        )}
-                        <Badge variant="secondary" className="text-xs px-1 py-0">
-                          {item.material}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs px-1 py-0">
-                          {item.color}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+        {/* Progress Section */}
+        <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-lg font-serif font-semibold text-gray-900">Цель гардероба</h3>
+              <span className="text-sm text-gray-500">2/30 вещей</span>
             </div>
+            <Progress value={6.67} className="h-2 mb-3" />
+            <p className="text-sm text-gray-600">Добавьте еще 28 вещей для достижения первой цели</p>
           </div>
-        )}
 
-        {/* Базовые вещи для добавления */}
-        {basicItems.length > 0 && (
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900">Рекомендуемые базовые вещи</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {basicItems.map((item) => (
-                <Card
-                  key={item.id}
-                  className="overflow-hidden relative group cursor-pointer transition-all duration-200 hover:shadow-md"
-                >
-                  <CardContent className="p-3">
-                    <div className="aspect-square mb-3 bg-gray-50 rounded-lg overflow-hidden relative">
-                      <Image
-                        src={item.image_url || "/placeholder.svg"}
-                        alt={item.item_name}
-                        fill
-                        className="object-cover transition-all duration-200 group-hover:opacity-60"
-                        sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                      />
-                      {/* Кнопка добавления при наведении */}
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                        <Button onClick={() => handleAddBasicItem(item)} size="sm" className="shadow-lg">
+          {/* Category Icons */}
+          <div className="grid grid-cols-4 gap-4 mb-6">
+            {clothingCategories.map((category) => (
+              <button
+                key={category.id}
+                onClick={handleCategoryClick}
+                className="flex flex-col items-center p-4 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-colors"
+              >
+                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-2 shadow-sm">
+                  <span className="text-2xl">{category.emoji}</span>
+                </div>
+                <span className="text-xs text-gray-700 text-center font-medium">{category.name}</span>
+              </button>
+            ))}
+          </div>
+
+          <Button
+            onClick={() => setIsAddSheetOpen(true)}
+            className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
+          >
+            + Добавить в гардероб
+          </Button>
+        </Card>
+
+        {/* Sorting */}
+        <div className="flex items-center justify-between mb-6">
+          <Select defaultValue="newest">
+            <SelectTrigger className="w-48 bg-white border-gray-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Сначала новые</SelectItem>
+              <SelectItem value="oldest">Сначала старые</SelectItem>
+              <SelectItem value="name">По названию</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* User's Wardrobe */}
+        <div className="mb-8">
+          <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Ваши вещи</h2>
+          <UserWardrobeGrid />
+        </div>
+
+        {/* Basic Items */}
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-serif font-semibold text-gray-900">Рекомендуемые базовые вещи</h2>
+            {basicItems.length > 8 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowAllBasicItems(!showAllBasicItems)}
+                className="bg-transparent"
+              >
+                {showAllBasicItems ? (
+                  <>
+                    Скрыть <ChevronUp className="h-4 w-4 ml-1" />
+                  </>
+                ) : (
+                  <>
+                    Показать все ({basicItems.length}) <ChevronDown className="h-4 w-4 ml-1" />
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+
+          {isLoadingBasicItems ? (
+            <div className="flex justify-center py-8">
+              <PastelLoader size={40} />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {displayedBasicItems.map((item) => (
+                  <Card key={item.id} className="bg-white border-0 shadow-sm overflow-hidden relative group">
+                    <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
+                      {item.image_url ? (
+                        <img
+                          src={item.image_url || "/placeholder.svg"}
+                          alt={item.item_name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-4xl">👕</span>
+                      )}
+
+                      {/* Кнопка добавления всегда видна */}
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          onClick={() => handleAddBaseItem(item)}
+                          size="sm"
+                          className="bg-white text-gray-900 hover:bg-gray-100 shadow-lg"
+                        >
                           <Plus className="h-4 w-4 mr-1" />
                           Добавить
                         </Button>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <h4 className="font-medium text-sm line-clamp-2 min-h-[2.5rem] group-hover:text-gray-600 transition-colors">
-                        {item.item_name}
-                      </h4>
+                    <div className="p-4">
+                      <h3 className="font-medium text-gray-900 text-sm mb-1 line-clamp-2">{item.item_name}</h3>
+                      {item.description && (
+                        <p className="text-xs text-gray-500 mb-2 line-clamp-2">{item.description}</p>
+                      )}
                       <div className="flex flex-wrap gap-1">
-                        <Badge variant="secondary" className="text-xs px-1 py-0">
-                          {item.material}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs px-1 py-0">
-                          {item.color}
-                        </Badge>
+                        <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">{item.clothing_type}</span>
+                        {item.material && (
+                          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">{item.material}</span>
+                        )}
+                        {item.color && (
+                          <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded">{item.color}</span>
+                        )}
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
+                  </Card>
+                ))}
+              </div>
+
+              {basicItems.length === 0 && (
+                <div className="text-center py-8">
+                  <p className="text-gray-500">Все базовые вещи уже добавлены в ваш гардероб!</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Sheet для добавления базовой вещи */}
+      <AddToClosetSheet isOpen={isAddSheetOpen} onClose={() => setIsAddSheetOpen(false)} />
+
+      <CategoryProgressSheet isOpen={isCategorySheetOpen} onClose={() => setIsCategorySheetOpen(false)} />
+
       <AddBaseItemSheet
-        isOpen={isAddSheetOpen}
-        onClose={() => setIsAddSheetOpen(false)}
-        item={selectedBasicItem}
-        onSuccess={handleAddSuccess}
+        isOpen={isAddBaseItemSheetOpen}
+        onClose={() => setIsAddBaseItemSheetOpen(false)}
+        item={selectedBaseItem}
+        onSuccess={handleBaseItemAdded}
       />
     </div>
   )
