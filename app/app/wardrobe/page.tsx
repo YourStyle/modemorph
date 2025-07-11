@@ -193,8 +193,8 @@ export default function WardrobePage() {
                         <span className="text-2xl">👕</span>
                       )}
 
-                      {/* Кнопка добавления при наведении */}
-                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* Кнопка добавления - всегда видна на мобильных и планшетах, при наведении на десктопе */}
+                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <Button
                           onClick={() => handleAddBaseItem(item)}
                           size="sm"

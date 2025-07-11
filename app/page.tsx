@@ -8,7 +8,7 @@ export default async function HomePage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="w-full max-w-md p-8 text-center">
-          <h1 className="text-2xl font-bold mb-4">Подключите Supabase</h1>
+          <h1 className="text-2xl font-bold mb-4">Подкл����чите Supabase</h1>
           <p className="text-gray-600">Для начала работы необходимо настроить подключение к Supabase</p>
         </div>
       </div>

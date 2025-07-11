@@ -157,6 +157,28 @@ export default function HomePage() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
   const [outfitSections, setOutfitSections] = useState<LookSection[]>([])
   const [loading, setLoading] = useState(true)
+  const [userItemsCount, setUserItemsCount] = useState(0)
+  const [itemsLoading, setItemsLoading] = useState(true)
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false)
+
+  // Load user items count
+  useEffect(() => {
+    const loadUserItemsCount = async () => {
+      try {
+        const response = await fetch("/api/wardrobe-user-items")
+        if (response.ok) {
+          const data = await response.json()
+          setUserItemsCount(data.length)
+        }
+      } catch (error) {
+        console.error("Error loading user items count:", error)
+      } finally {
+        setItemsLoading(false)
+      }
+    }
+
+    loadUserItemsCount()
+  }, [])
 
   // Load outfit suggestions
   useEffect(() => {
@@ -170,6 +192,43 @@ export default function HomePage() {
     loadOutfitSuggestions()
   }, [])
 
+  const handleGetRecommendations = async () => {
+    setRecommendationsLoading(true)
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_items_count: userItemsCount,
+          preferences: "casual", // можно добавить больше параметров
+        }),
+      })
+
+      if (response.ok) {
+        const recommendations = await response.json()
+        console.log("Recommendations:", recommendations)
+        // Здесь можно обработать полученные рекомендации
+      }
+    } catch (error) {
+      console.error("Error getting recommendations:", error)
+    } finally {
+      setRecommendationsLoading(false)
+    }
+  }
+
+  // Show wardrobe section only if user has less than 6 items
+  const showWardrobeSection = userItemsCount < 6
+
+  if (itemsLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 pb-32 flex items-center justify-center">
+        <PastelLoader />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
       <div className="px-4 py-6">
@@ -179,60 +238,90 @@ export default function HomePage() {
           <p className="text-gray-600 text-sm">Создавайте стильные образы с помощью ИИ</p>
         </div>
 
-        {/* 3D Wardrobe Visualization */}
-        <div className="flex justify-center mb-12">
-          <div className="relative">
-            <div className="w-80 h-80 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl shadow-2xl flex items-center justify-center overflow-hidden">
-              <div className="relative w-64 h-64">
-                {/* Имитация 3D гардероба */}
-                <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl shadow-inner">
-                  <div className="absolute top-4 left-4 right-4 h-2 bg-gray-300 rounded-full"></div>
+        {/* Show wardrobe section only if user has less than 6 items */}
+        {showWardrobeSection && (
+          <>
+            {/* 3D Wardrobe Visualization */}
+            <div className="flex justify-center mb-12">
+              <div className="relative">
+                <div className="w-80 h-80 bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl shadow-2xl flex items-center justify-center overflow-hidden">
+                  <div className="relative w-64 h-64">
+                    {/* Имитация 3D гардероба */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl shadow-inner">
+                      <div className="absolute top-4 left-4 right-4 h-2 bg-gray-300 rounded-full"></div>
 
-                  {/* Вешалки с одеждой */}
-                  <div className="absolute top-8 left-6 right-6 flex justify-between">
-                    <div className="w-8 h-24 bg-gradient-to-b from-green-200 to-green-300 rounded-lg shadow-sm"></div>
-                    <div className="w-8 h-20 bg-gradient-to-b from-blue-200 to-blue-300 rounded-lg shadow-sm"></div>
-                    <div className="w-8 h-28 bg-gradient-to-b from-yellow-200 to-yellow-300 rounded-lg shadow-sm"></div>
-                    <div className="w-8 h-22 bg-gradient-to-b from-pink-200 to-pink-300 rounded-lg shadow-sm"></div>
-                    <div className="w-8 h-26 bg-gradient-to-b from-purple-200 to-purple-300 rounded-lg shadow-sm"></div>
-                  </div>
-
-                  {/* Полки снизу */}
-                  <div className="absolute bottom-8 left-6 right-6">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
-                        <div className="w-4 h-4 bg-blue-400 rounded"></div>
+                      {/* Вешалки с одеждой */}
+                      <div className="absolute top-8 left-6 right-6 flex justify-between">
+                        <div className="w-8 h-24 bg-gradient-to-b from-green-200 to-green-300 rounded-lg shadow-sm"></div>
+                        <div className="w-8 h-20 bg-gradient-to-b from-blue-200 to-blue-300 rounded-lg shadow-sm"></div>
+                        <div className="w-8 h-28 bg-gradient-to-b from-yellow-200 to-yellow-300 rounded-lg shadow-sm"></div>
+                        <div className="w-8 h-22 bg-gradient-to-b from-pink-200 to-pink-300 rounded-lg shadow-sm"></div>
+                        <div className="w-8 h-26 bg-gradient-to-b from-purple-200 to-purple-300 rounded-lg shadow-sm"></div>
                       </div>
-                      <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
-                        <div className="w-6 h-3 bg-white rounded"></div>
+
+                      {/* Полки снизу */}
+                      <div className="absolute bottom-8 left-6 right-6">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
+                            <div className="w-4 h-4 bg-blue-400 rounded"></div>
+                          </div>
+                          <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
+                            <div className="w-6 h-3 bg-white rounded"></div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
 
-        {/* Секция добавления */}
-        <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
-          <CardContent className="p-8 text-center">
-            <Button
-              onClick={() => setIsAddSheetOpen(true)}
-              className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
-            >
-              + Добавить в гардероб
-            </Button>
+            {/* Секция добавления */}
+            <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
+              <CardContent className="p-8 text-center">
+                <Button
+                  onClick={() => setIsAddSheetOpen(true)}
+                  className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
+                >
+                  + Добавить в гардероб
+                </Button>
 
-            <div className="mt-6 text-center">
-              <p className="text-gray-600 text-sm mb-2">Не знаете, с чего начать?</p>
-              <Button variant="link" className="text-blue-400 hover:text-blue-300 p-0 h-auto font-medium">
-                <Sparkles className="h-4 w-4 mr-1" />
-                Получить стиль от ИИ
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                <div className="mt-6 text-center">
+                  <p className="text-gray-600 text-sm mb-2">Не знаете, с чего начать?</p>
+                  <Button
+                    onClick={handleGetRecommendations}
+                    disabled={recommendationsLoading}
+                    variant="link"
+                    className="text-blue-400 hover:text-blue-300 p-0 h-auto font-medium"
+                  >
+                    <Sparkles className="h-4 w-4 mr-1" />
+                    {recommendationsLoading ? "Подбираем..." : "Подобрать рекомендации"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {/* Show recommendations button when wardrobe section is hidden */}
+        {!showWardrobeSection && (
+          <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
+            <CardContent className="p-6 text-center">
+              <div className="text-center">
+                <p className="text-gray-600 text-sm mb-4">Хотите новые идеи для образов?</p>
+                <Button
+                  onClick={handleGetRecommendations}
+                  disabled={recommendationsLoading}
+                  variant="outline"
+                  className="text-blue-400 hover:text-blue-300 border-blue-200 hover:border-blue-300 h-10 px-6 font-medium bg-transparent"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {recommendationsLoading ? "Подбираем..." : "Подобрать рекомендации"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Outfit Suggestions */}
         {loading ? (
