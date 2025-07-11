@@ -46,7 +46,7 @@ export default function SettingsPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="p-4 bg-gray-50 rounded-lg">
-                  <h4 className="font-medium mb-2">Email уведомления</h4>
+                  <h4 className="font-medium mb-2">Email уведо��ления</h4>
                   <p className="text-sm text-gray-600 mb-3">Получайте уведомления на почту</p>
                   <div className="text-sm text-blue-600">Скоро будет доступно</div>
                 </div>

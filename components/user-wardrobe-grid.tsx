@@ -33,7 +33,11 @@ interface WardrobeItem {
   notes?: string
 }
 
-export function UserWardrobeGrid() {
+interface UserWardrobeGridProps {
+  onItemsChange?: (count: number) => void
+}
+
+export function UserWardrobeGrid({ onItemsChange }: UserWardrobeGridProps) {
   const [items, setItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteItemId, setDeleteItemId] = useState<number | null>(null)
@@ -44,13 +48,18 @@ export function UserWardrobeGrid() {
     fetchItems()
   }, [])
 
+  useEffect(() => {
+    onItemsChange?.(items.length)
+  }, [items.length, onItemsChange])
+
   const fetchItems = async () => {
     try {
       setLoading(true)
       const response = await fetch("/api/wardrobe-user-items")
       if (response.ok) {
         const data = await response.json()
-        setItems(Array.isArray(data) ? data : [])
+        const itemsArray = Array.isArray(data) ? data : []
+        setItems(itemsArray)
       } else {
         console.error("Failed to fetch wardrobe items")
         setItems([])
@@ -71,7 +80,8 @@ export function UserWardrobeGrid() {
       })
 
       if (response.ok) {
-        setItems(items.filter((item) => item.id !== itemId))
+        const updatedItems = items.filter((item) => item.id !== itemId)
+        setItems(updatedItems)
         toast({
           title: "Вещь удалена",
           description: "Вещь успешно удалена из вашего гардероба",
