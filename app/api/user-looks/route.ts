@@ -1,19 +1,87 @@
-import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { type NextRequest, NextResponse } from "next/server"
 
-export async function GET(request: NextRequest) {
+interface LookItem {
+  type: "user" | "basic"
+  id: number
+}
+
+interface CreateLookRequest {
+  name: string
+  description?: string
+  items: LookItem[]
+}
+
+async function expandLookItems(supabase: any, items: LookItem[]) {
+  console.log("Expanding look items:", items)
+  const expandedItems = []
+
+  for (const item of items) {
+    try {
+      if (item.type === "user") {
+        console.log(`Fetching user item ${item.id}`)
+        const { data: userItem, error } = await supabase
+          .from("wardrobe_user_items")
+          .select("id, item_name, image_url, color, material")
+          .eq("id", item.id)
+          .single()
+
+        if (error) {
+          console.error(`Failed to get user item ${item.id}:`, error)
+          continue
+        }
+
+        if (userItem) {
+          console.log(`Found user item:`, userItem)
+          expandedItems.push({
+            ...userItem,
+            source: "user",
+          })
+        }
+      } else if (item.type === "basic") {
+        console.log(`Fetching basic item ${item.id}`)
+        const { data: basicItem, error } = await supabase
+          .from("wardrobe_items")
+          .select("id, item_name, image_url, color, material")
+          .eq("id", item.id)
+          .single()
+
+        if (error) {
+          console.error(`Failed to get basic item ${item.id}:`, error)
+          continue
+        }
+
+        if (basicItem) {
+          console.log(`Found basic item:`, basicItem)
+          expandedItems.push({
+            ...basicItem,
+            source: "basic",
+          })
+        }
+      }
+    } catch (error) {
+      console.error(`Error processing item ${item.type}:${item.id}:`, error)
+    }
+  }
+
+  console.log("Final expanded items:", expandedItems)
+  return expandedItems
+}
+
+export async function GET() {
   try {
     const supabase = createClient()
+
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
-
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user looks with expanded item details
+    console.log("Fetching user looks for user:", user.id)
+
     const { data: looks, error } = await supabase
       .from("user_looks")
       .select("*")
@@ -25,16 +93,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Failed to fetch looks" }, { status: 500 })
     }
 
+    console.log("Raw looks from database:", looks)
+
     // Expand items for each look
     const expandedLooks = await Promise.all(
-      (looks || []).map(async (look) => {
-        const expandedItems = await expandLookItems(look.items, supabase)
+      looks.map(async (look) => {
+        const expandedItems = await expandLookItems(supabase, look.items || [])
         return {
           ...look,
           expandedItems,
         }
       }),
     )
+
+    console.log("Expanded looks:", expandedLooks)
 
     return NextResponse.json(expandedLooks)
   } catch (error) {
@@ -46,100 +118,52 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
+
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
-
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { name, description, items, image_url } = body
+    const body: CreateLookRequest = await request.json()
+    const { name, description, items } = body
 
-    if (!name || !items || !Array.isArray(items)) {
+    if (!name || !items || items.length === 0) {
       return NextResponse.json({ error: "Name and items are required" }, { status: 400 })
     }
 
-    // Validate items format: [{"type": "user", "id": 1}, {"type": "basic", "id": 10}]
-    const validItems = items.every(
-      (item) =>
-        typeof item === "object" && item.type && ["user", "basic"].includes(item.type) && typeof item.id === "number",
-    )
+    console.log("Creating look:", { name, description, items })
 
-    if (!validItems) {
-      return NextResponse.json({ error: "Invalid items format" }, { status: 400 })
-    }
-
-    const { data: look, error } = await supabase
+    const { data: newLook, error } = await supabase
       .from("user_looks")
       .insert({
         user_id: user.id,
         name,
-        description: description || null,
+        description,
         items,
-        image_url: image_url || null,
       })
       .select()
       .single()
 
     if (error) {
-      console.error("Error creating user look:", error)
+      console.error("Error creating look:", error)
       return NextResponse.json({ error: "Failed to create look" }, { status: 500 })
     }
 
-    // Expand items for response
-    const expandedItems = await expandLookItems(look.items, supabase)
-
-    return NextResponse.json({
-      ...look,
+    // Expand items for the new look
+    const expandedItems = await expandLookItems(supabase, newLook.items || [])
+    const lookWithExpandedItems = {
+      ...newLook,
       expandedItems,
-    })
+    }
+
+    console.log("Created look with expanded items:", lookWithExpandedItems)
+
+    return NextResponse.json(lookWithExpandedItems)
   } catch (error) {
     console.error("Error in POST /api/user-looks:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-}
-
-// Helper function to expand item IDs to full item data
-async function expandLookItems(items: any[], supabase: any) {
-  const expandedItems = []
-
-  for (const item of items) {
-    if (item.type === "user") {
-      // Get from wardrobe_user_items
-      const { data: userItem } = await supabase
-        .from("wardrobe_user_items")
-        .select(`
-          *,
-          basic_wardrobe_items (
-            name_ru,
-            description,
-            clothing_type_id
-          )
-        `)
-        .eq("id", item.id)
-        .single()
-
-      if (userItem) {
-        expandedItems.push({
-          ...userItem,
-          source: "user",
-        })
-      }
-    } else if (item.type === "basic") {
-      // Get from basic_wardrobe_items
-      const { data: basicItem } = await supabase.from("basic_wardrobe_items").select("*").eq("id", item.id).single()
-
-      if (basicItem) {
-        expandedItems.push({
-          ...basicItem,
-          source: "basic",
-        })
-      }
-    }
-  }
-
-  return expandedItems
 }

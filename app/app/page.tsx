@@ -372,7 +372,7 @@ export default function HomePage() {
                 <div className="relative">
                   <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 snap-x snap-mandatory">
                     {section.suggestions.map((suggestion) => (
-                      <div key={suggestion.id} className="flex-shrink-0 w-80 snap-start">
+                      <div key={suggestion.id} className="flex-shrink-0 snap-start">
                         <OutfitCard suggestion={suggestion} />
                       </div>
                     ))}

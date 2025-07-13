@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Plus, ExternalLink, Trash2 } from "lucide-react"
 import { PastelLoader } from "@/components/pastel-loader"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
-import { CreateLookDialog } from "@/components/create-look-dialog"
+import { CreateLookSheet } from "@/components/create-look-sheet"
 import { toast } from "sonner"
 
 interface ExpandedItem {
@@ -68,6 +68,7 @@ export default function LooksPage() {
       const response = await fetch("/api/user-looks")
       if (response.ok) {
         const looks = await response.json()
+        console.log("Loaded looks:", looks)
         setSavedLooks(looks)
       } else {
         throw new Error("Failed to load looks")
@@ -118,14 +119,14 @@ export default function LooksPage() {
     }
   }
 
-  const handleAddCollection = async (name: string) => {
+  const handleAddCollection = async (name: string, description?: string) => {
     try {
       const response = await fetch("/api/looks-sections", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, description }),
       })
 
       if (response.ok) {
@@ -161,39 +162,64 @@ export default function LooksPage() {
 
   const LookCard = ({ look, showDelete = false }: { look: SavedLook; showDelete?: boolean }) => {
     const items = look.expandedItems || []
+    console.log(`Rendering look ${look.id} with ${items.length} items:`, items)
 
     return (
-      <Card className="p-4 bg-gray-100 border-0 relative group hover:shadow-md transition-shadow flex-shrink-0 w-64">
-        <div className="grid grid-cols-3 gap-2 min-h-[200px]">
-          {items.slice(0, 6).map((item, index) => (
-            <div
-              key={`${item.source}-${item.id}-${index}`}
-              className={`flex items-center justify-center ${
-                items.length === 1
-                  ? "col-span-3"
-                  : items.length === 2 && index === 0
-                    ? "col-span-2"
-                    : items.length === 3 && index === 0
-                      ? "col-span-3"
-                      : items.length === 4 && index < 2
-                        ? "col-span-3"
-                        : items.length === 5 && index === 0
-                          ? "col-span-3"
-                          : ""
-              }`}
-            >
-              <img
-                src={item.image_url || "/placeholder.svg"}
-                alt={item.item_name || item.name_ru || "Item"}
-                className="max-w-full max-h-[80px] object-contain"
-              />
+      <Card className="p-4 bg-gray-100 border-0 relative group hover:shadow-md transition-shadow flex-shrink-0 w-80">
+        <div className="grid grid-cols-3 gap-3 min-h-[240px]">
+          {items.length === 0 ? (
+            <div className="col-span-3 flex items-center justify-center text-gray-500">
+              <p>Нет вещей для отображения</p>
             </div>
-          ))}
+          ) : (
+            items.slice(0, 6).map((item, index) => {
+              const itemName = item.source === "user" ? item.item_name : item.name_ru
+              const imageUrl = item.image_url || "/placeholder.svg"
+
+              console.log(`Rendering item ${index}:`, { itemName, imageUrl, source: item.source })
+
+              return (
+                <div
+                  key={`${item.source}-${item.id}-${index}`}
+                  className={`flex items-center justify-center bg-white rounded-lg p-2 ${
+                    items.length === 1
+                      ? "col-span-3"
+                      : items.length === 2 && index === 0
+                        ? "col-span-2"
+                        : items.length === 3 && index === 0
+                          ? "col-span-3"
+                          : items.length === 4 && index < 2
+                            ? "col-span-3"
+                            : items.length === 5 && index === 0
+                              ? "col-span-3"
+                              : ""
+                  }`}
+                >
+                  <img
+                    src={imageUrl || "/placeholder.svg"}
+                    alt={itemName || "Item"}
+                    className="max-w-full max-h-[100px] object-contain"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement
+                      console.log(`Image failed to load: ${target.src}`)
+                      target.src = "/placeholder.svg"
+                    }}
+                    onLoad={() => {
+                      console.log(`Image loaded successfully: ${imageUrl}`)
+                    }}
+                  />
+                </div>
+              )
+            })
+          )}
         </div>
 
-        <div className="mt-3">
-          <h4 className="font-medium text-sm truncate">{look.name}</h4>
-          {look.description && <p className="text-xs text-gray-500 truncate mt-1">{look.description}</p>}
+        <div className="mt-4">
+          <h4 className="font-medium text-base truncate">{look.name}</h4>
+          {look.description && <p className="text-sm text-gray-500 truncate mt-1">{look.description}</p>}
+          <p className="text-xs text-gray-400 mt-1">
+            {items.length} вещей ({look.items?.length || 0} в данных)
+          </p>
         </div>
 
         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
@@ -235,7 +261,6 @@ export default function LooksPage() {
           </Button>
         </div>
 
-        {/* Horizontal scrolling for collection looks */}
         <div className="relative">
           {sectionLooks.length > 0 ? (
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
@@ -303,7 +328,6 @@ export default function LooksPage() {
           </div>
         </div>
 
-        {/* Horizontal scrolling for all looks */}
         <div className="relative">
           {savedLooks.length > 0 ? (
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
@@ -344,12 +368,8 @@ export default function LooksPage() {
         </div>
       )}
 
-      {/* Dialogs */}
-      <CreateLookDialog
-        isOpen={isCreateLookOpen}
-        onClose={() => setIsCreateLookOpen(false)}
-        onSave={handleCreateLook}
-      />
+      {/* Sheets */}
+      <CreateLookSheet isOpen={isCreateLookOpen} onClose={() => setIsCreateLookOpen(false)} onSave={handleCreateLook} />
 
       <AddCollectionSheet
         isOpen={isAddCollectionOpen}

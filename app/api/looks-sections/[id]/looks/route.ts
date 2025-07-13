@@ -1,16 +1,21 @@
-import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
+import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createClient()
+
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
-
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const sectionId = Number.parseInt(params.id)
+    if (isNaN(sectionId)) {
+      return NextResponse.json({ error: "Invalid section ID" }, { status: 400 })
     }
 
     const body = await request.json()
@@ -20,11 +25,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "Look ID is required" }, { status: 400 })
     }
 
-    // Verify that the section belongs to the user
+    // Verify the section belongs to the user
     const { data: section, error: sectionError } = await supabase
       .from("looks_sections")
       .select("id")
-      .eq("id", params.id)
+      .eq("id", sectionId)
       .eq("user_id", user.id)
       .single()
 
@@ -32,7 +37,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "Section not found" }, { status: 404 })
     }
 
-    // Verify that the look belongs to the user
+    // Verify the look belongs to the user
     const { data: look, error: lookError } = await supabase
       .from("user_looks")
       .select("id")
@@ -48,7 +53,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     const { data: sectionLook, error } = await supabase
       .from("section_looks")
       .insert({
-        section_id: Number.parseInt(params.id),
+        section_id: sectionId,
         look_id: look_id,
       })
       .select()
@@ -63,7 +68,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       return NextResponse.json({ error: "Failed to add look to section" }, { status: 500 })
     }
 
-    return NextResponse.json(sectionLook)
+    return NextResponse.json(sectionLook, { status: 201 })
   } catch (error) {
     console.error("Error in POST /api/looks-sections/[id]/looks:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -73,27 +78,32 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createClient()
+
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
-
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { searchParams } = new URL(request.url)
-    const lookId = searchParams.get("look_id")
+    const sectionId = Number.parseInt(params.id)
+    if (isNaN(sectionId)) {
+      return NextResponse.json({ error: "Invalid section ID" }, { status: 400 })
+    }
+
+    const url = new URL(request.url)
+    const lookId = url.searchParams.get("look_id")
 
     if (!lookId) {
       return NextResponse.json({ error: "Look ID is required" }, { status: 400 })
     }
 
-    // Verify that the section belongs to the user
+    // Verify the section belongs to the user
     const { data: section, error: sectionError } = await supabase
       .from("looks_sections")
       .select("id")
-      .eq("id", params.id)
+      .eq("id", sectionId)
       .eq("user_id", user.id)
       .single()
 
@@ -101,11 +111,10 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Section not found" }, { status: 404 })
     }
 
-    // Remove look from section
     const { error } = await supabase
       .from("section_looks")
       .delete()
-      .eq("section_id", Number.parseInt(params.id))
+      .eq("section_id", sectionId)
       .eq("look_id", Number.parseInt(lookId))
 
     if (error) {

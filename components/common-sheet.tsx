@@ -9,10 +9,11 @@ interface CommonSheetProps {
   isOpen: boolean
   onClose: () => void
   title: string
+  subtitle?: string
   children: React.ReactNode
 }
 
-export function CommonSheet({ isOpen, onClose, title, children }: CommonSheetProps) {
+export function CommonSheet({ isOpen, onClose, title, subtitle, children }: CommonSheetProps) {
   const [startY, setStartY] = useState(0)
   const [currentY, setCurrentY] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -130,7 +131,7 @@ export function CommonSheet({ isOpen, onClose, title, children }: CommonSheetPro
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent
         side="bottom"
-        className="h-auto max-h-[90vh] bg-slate-800 border-0 text-white rounded-t-3xl p-0 transition-transform duration-200"
+        className="h-auto max-h-[90vh] bg-white border-0 text-gray-900 rounded-t-3xl p-0 transition-transform duration-200"
         ref={sheetRef}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
@@ -143,12 +144,13 @@ export function CommonSheet({ isOpen, onClose, title, children }: CommonSheetPro
         </div>
 
         {/* Header */}
-        <div className="px-6 pb-6">
-          <h3 className="text-sm font-medium text-gray-300">{title}</h3>
+        <div className="px-6 pb-4">
+          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          {subtitle && <p className="text-sm text-gray-600 mt-1">{subtitle}</p>}
         </div>
 
         {/* Content */}
-        <div className="px-6 pb-8">{children}</div>
+        <div className="px-6 pb-8 max-h-[calc(90vh-120px)] overflow-y-auto">{children}</div>
       </SheetContent>
     </Sheet>
   )
