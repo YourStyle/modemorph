@@ -33,6 +33,66 @@ interface LookSection {
   suggestions: OutfitSuggestion[]
 }
 
+// Fallback mock data in case API fails
+const fallbackOutfitSuggestions: LookSection[] = [
+  {
+    title: "Рекомендации для вас",
+    looks_count: 2,
+    suggestions: [
+      {
+        id: "fallback1",
+        title: "Классический образ",
+        items: [
+          {
+            id: "item1",
+            name: "Базовая рубашка",
+            image_url: "/placeholder.svg?height=200&width=150&text=Рубашка",
+            color: "white",
+            shade: "light",
+            has_print: "no",
+            notes: "Белая базовая рубашка",
+          },
+          {
+            id: "item2",
+            name: "Классические брюки",
+            image_url: "/placeholder.svg?height=200&width=150&text=Брюки",
+            color: "black",
+            shade: "dark",
+            has_print: "no",
+            notes: "Черные классические брюки",
+          },
+        ],
+        suggested_items_count: 2,
+      },
+      {
+        id: "fallback2",
+        title: "Повседневный стиль",
+        items: [
+          {
+            id: "item3",
+            name: "Футболка",
+            image_url: "/placeholder.svg?height=200&width=150&text=Футболка",
+            color: "gray",
+            shade: "medium",
+            has_print: "no",
+            notes: "Серая футболка",
+          },
+          {
+            id: "item4",
+            name: "Джинсы",
+            image_url: "/placeholder.svg?height=200&width=150&text=Джинсы",
+            color: "blue",
+            shade: "medium",
+            has_print: "no",
+            notes: "Синие джинсы",
+          },
+        ],
+        suggested_items_count: 2,
+      },
+    ],
+  },
+]
+
 export default function HomePage() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
   const [outfitSections, setOutfitSections] = useState<LookSection[]>([])
@@ -40,6 +100,7 @@ export default function HomePage() {
   const [userItemsCount, setUserItemsCount] = useState(0)
   const [itemsLoading, setItemsLoading] = useState(true)
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
 
   // Load user items count
   useEffect(() => {
@@ -60,20 +121,32 @@ export default function HomePage() {
     loadUserItemsCount()
   }, [])
 
-  // Load outfit suggestions from API
+  // Load outfit suggestions from API with fallback
   useEffect(() => {
     const loadOutfitSuggestions = async () => {
       try {
+        // Check if API URL is configured
+        if (!process.env.NEXT_PUBLIC_AI_API_URL) {
+          console.warn("NEXT_PUBLIC_AI_API_URL not configured, using fallback data")
+          setOutfitSections(fallbackOutfitSuggestions)
+          setLoading(false)
+          return
+        }
+
         const supabase = createClient()
         const {
           data: { user },
         } = await supabase.auth.getUser()
 
         if (!user) {
-          console.error("User not authenticated")
+          console.warn("User not authenticated, using fallback data")
+          setOutfitSections(fallbackOutfitSuggestions)
           setLoading(false)
           return
         }
+
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
 
         const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
           method: "POST",
@@ -85,16 +158,27 @@ export default function HomePage() {
             user_items_count: userItemsCount,
             preferences: "casual",
           }),
+          signal: controller.signal,
         })
+
+        clearTimeout(timeoutId)
 
         if (response.ok) {
           const recommendations = await response.json()
-          setOutfitSections(recommendations)
+          if (Array.isArray(recommendations) && recommendations.length > 0) {
+            setOutfitSections(recommendations)
+            setApiError(null)
+          } else {
+            console.warn("Empty recommendations received, using fallback data")
+            setOutfitSections(fallbackOutfitSuggestions)
+          }
         } else {
-          console.error("Failed to load recommendations")
+          throw new Error(`API responded with status: ${response.status}`)
         }
       } catch (error) {
         console.error("Error loading outfit suggestions:", error)
+        setApiError(error instanceof Error ? error.message : "Unknown error")
+        setOutfitSections(fallbackOutfitSuggestions)
       } finally {
         setLoading(false)
       }
@@ -108,7 +192,16 @@ export default function HomePage() {
 
   const handleGetRecommendations = async () => {
     setRecommendationsLoading(true)
+    setApiError(null)
+
     try {
+      // Check if API URL is configured
+      if (!process.env.NEXT_PUBLIC_AI_API_URL) {
+        console.warn("NEXT_PUBLIC_AI_API_URL not configured")
+        setRecommendationsLoading(false)
+        return
+      }
+
       const supabase = createClient()
       const {
         data: { user },
@@ -116,8 +209,12 @@ export default function HomePage() {
 
       if (!user) {
         console.error("User not authenticated")
+        setRecommendationsLoading(false)
         return
       }
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
         method: "POST",
@@ -129,15 +226,26 @@ export default function HomePage() {
           user_items_count: userItemsCount,
           preferences: "casual",
         }),
+        signal: controller.signal,
       })
+
+      clearTimeout(timeoutId)
 
       if (response.ok) {
         const recommendations = await response.json()
-        setOutfitSections(recommendations)
-        console.log("New recommendations loaded:", recommendations)
+        if (Array.isArray(recommendations) && recommendations.length > 0) {
+          setOutfitSections(recommendations)
+          setApiError(null)
+          console.log("New recommendations loaded:", recommendations)
+        } else {
+          console.warn("Empty recommendations received")
+        }
+      } else {
+        throw new Error(`API responded with status: ${response.status}`)
       }
     } catch (error) {
       console.error("Error getting recommendations:", error)
+      setApiError(error instanceof Error ? error.message : "Unknown error")
     } finally {
       setRecommendationsLoading(false)
     }
@@ -161,6 +269,11 @@ export default function HomePage() {
         <div className="mb-8">
           <h1 className="text-2xl font-serif font-bold text-gray-900 mb-2">Добро пожаловать</h1>
           <p className="text-gray-600 text-sm">Создавайте стильные образы с помощью ИИ</p>
+          {apiError && (
+            <div className="mt-2 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
+              Используются демо-данные (API недоступен)
+            </div>
+          )}
         </div>
 
         {/* Show wardrobe section only if user has less than 6 items */}
