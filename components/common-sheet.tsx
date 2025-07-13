@@ -2,8 +2,6 @@
 
 import type { ReactNode } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { X } from "lucide-react"
-import { Button } from "@/components/ui/button"
 
 interface CommonSheetProps {
   isOpen: boolean
@@ -31,23 +29,20 @@ export function CommonSheet({
         className={`h-[90vh] ${isDark ? "bg-slate-800 text-white" : "bg-white text-gray-900"} rounded-t-3xl`}
       >
         <div className="flex flex-col h-full">
+          {/* Полосочка для свайпа */}
+          <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
+            <div className={`w-12 h-1 rounded-full ${isDark ? "bg-gray-600" : "bg-gray-300"}`} />
+          </div>
+
           {/* Header */}
           <SheetHeader className={`flex-shrink-0 pb-4 ${isDark ? "border-gray-700" : "border-gray-200"} border-b`}>
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-center justify-center">
+              <div className="text-center">
                 <SheetTitle className={`text-xl font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
                   {title}
                 </SheetTitle>
                 {subtitle && <p className={`text-sm mt-1 ${isDark ? "text-gray-300" : "text-gray-500"}`}>{subtitle}</p>}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onClose}
-                className={`p-2 ${isDark ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"}`}
-              >
-                <X className="w-5 h-5" />
-              </Button>
             </div>
           </SheetHeader>
 
