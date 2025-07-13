@@ -57,7 +57,7 @@ export function AddWardrobeItemForm() {
   const { toast } = useToast()
   const router = useRouter()
 
-  // Загружаем базовые вещи и материалы при монтировании компонента
+  // Заг��ужаем базовые вещи и материалы при монтировании компонента
   useEffect(() => {
     fetchBasicItems()
     fetchBasicMaterials()

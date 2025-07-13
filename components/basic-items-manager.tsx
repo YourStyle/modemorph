@@ -520,7 +520,7 @@ export function BasicItemsManager() {
                     name="description"
                     value={formData.description}
                     onChange={handleInputChange}
-                    placeholder="Дополнительная информация о базовой вещи"
+                    placeholder="Дополнительная информация о базовой ве��и"
                     rows={3}
                   />
                 </div>

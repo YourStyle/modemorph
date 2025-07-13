@@ -129,8 +129,8 @@ export default function WardrobePage() {
         description: "Все элементы гардероба скрыты из публичного просмотра",
       })
 
-      // Обновляем список
-      fetchItems({ search: "", types: selectedTypes })
+      // Обновляем локальное состояние
+      setItems((prevItems) => prevItems.map((item) => ({ ...item, is_hidden: true })))
     } catch (error) {
       console.error("Error hiding all items:", error)
       toast({
@@ -164,8 +164,8 @@ export default function WardrobePage() {
         description: "Все элементы гардероба теперь видны",
       })
 
-      // Обновляем список
-      fetchItems({ search: "", types: selectedTypes })
+      // Обновляем локальное состояние
+      setItems((prevItems) => prevItems.map((item) => ({ ...item, is_hidden: false })))
     } catch (error) {
       console.error("Error showing all items:", error)
       toast({
@@ -178,8 +178,9 @@ export default function WardrobePage() {
     }
   }
 
-  const handleVisibilityChange = () => {
-    fetchItems({ search: "", types: selectedTypes })
+  const handleVisibilityChange = (itemId: number, isHidden: boolean) => {
+    // Обновляем локальное состояние для конкретной вещи
+    setItems((prevItems) => prevItems.map((item) => (item.id === itemId ? { ...item, is_hidden: isHidden } : item)))
   }
 
   if (error) {
@@ -203,51 +204,62 @@ export default function WardrobePage() {
         <div className="max-w-6xl mx-auto">
           {/* Заголовок */}
           <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
               <div className="flex items-center gap-3">
                 <Shirt className="h-8 w-8 text-gray-700" />
                 <h1 className="text-3xl font-bold text-gray-900">Мой гардероб</h1>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  onClick={handleShowAll}
-                  disabled={isUpdatingAll || hiddenCount === 0}
-                  className="flex items-center gap-2"
-                >
-                  <Eye className="h-4 w-4" />
-                  Показать все
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={handleHideAll}
-                  disabled={isUpdatingAll || visibleCount === 0}
-                  className="flex items-center gap-2"
-                >
-                  <EyeOff className="h-4 w-4" />
-                  Скрыть все
-                </Button>
-                <Link href="/admin/wardrobe/basics">
-                  <Button variant="outline" className="flex items-center gap-2">
-                    <Settings className="h-4 w-4" />
-                    Базовые элементы
+
+              {/* Адаптивные кнопки */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleShowAll}
+                    disabled={isUpdatingAll || hiddenCount === 0}
+                    className="flex items-center justify-center gap-2 bg-transparent min-w-0"
+                  >
+                    {isUpdatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    <span className="whitespace-nowrap">Показать все</span>
                   </Button>
-                </Link>
-                <Link href="/admin/wardrobe/add">
-                  <Button className="flex items-center gap-2">
-                    <Plus className="h-4 w-4" />
-                    Добавить вещь
+                  <Button
+                    variant="outline"
+                    onClick={handleHideAll}
+                    disabled={isUpdatingAll || visibleCount === 0}
+                    className="flex items-center justify-center gap-2 bg-transparent min-w-0"
+                  >
+                    {isUpdatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <EyeOff className="h-4 w-4" />}
+                    <span className="whitespace-nowrap">Скрыть все</span>
                   </Button>
-                </Link>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Link href="/admin/wardrobe/basics" className="flex-1">
+                    <Button
+                      variant="outline"
+                      className="flex items-center justify-center gap-2 bg-transparent w-full min-w-0"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span className="whitespace-nowrap">Базовые элементы</span>
+                    </Button>
+                  </Link>
+                  <Link href="/admin/wardrobe/add" className="flex-1">
+                    <Button className="flex items-center justify-center gap-2 w-full min-w-0">
+                      <Plus className="h-4 w-4" />
+                      <span className="whitespace-nowrap">Добавить вещь</span>
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-sm text-gray-600">
-              <p>
+
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm text-gray-600">
+              <p className="flex-1">
                 Коллекция одежды с фотографиями и подробной информацией.
                 <span className="font-medium ml-1">Нажмите на карточку, чтобы выбрать вещь для образа.</span>
               </p>
               {hiddenCount > 0 && (
-                <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-xs font-medium">
+                <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap">
                   {hiddenCount} скрыто
                 </div>
               )}

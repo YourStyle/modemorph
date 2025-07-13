@@ -7,6 +7,7 @@ import { OutfitCard } from "@/components/outfit-card"
 import { PastelLoader } from "@/components/pastel-loader"
 import { Sparkles } from "lucide-react"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
+import { createClient } from "@/lib/supabase/client"
 
 interface OutfitItem {
   id: string
@@ -195,12 +196,23 @@ export default function HomePage() {
   const handleGetRecommendations = async () => {
     setRecommendationsLoading(true)
     try {
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        console.error("User not authenticated")
+        return
+      }
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          user_id: user.id,
           user_items_count: userItemsCount,
           preferences: "casual", // можно добавить больше параметров
         }),
