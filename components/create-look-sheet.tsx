@@ -4,53 +4,42 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { Card } from "@/components/ui/card"
-import { X, Plus } from "lucide-react"
-import { CommonSheet } from "@/components/common-sheet"
+import { CommonSheet } from "./common-sheet"
+import { toast } from "sonner"
 
 interface WardrobeItem {
   id: number
   item_name: string
   image_url?: string
-  color: string
-  material: string
-  basic_wardrobe_items?: {
-    name_ru: string
-  }
-}
-
-interface SelectedItem {
-  id: number
-  name: string
-  image_url?: string
-  type: "user"
   color?: string
   material?: string
+  clothing_type?: string
 }
 
 interface CreateLookSheetProps {
   isOpen: boolean
   onClose: () => void
-  onSave: (look: { name: string; description: string; items: Array<{ type: string; id: number }> }) => void
+  onSave: (data: { name: string; description: string; items: Array<{ type: string; id: number }> }) => void
 }
 
 export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([])
   const [wardrobeItems, setWardrobeItems] = useState<WardrobeItem[]>([])
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(false)
-  const [loadingItems, setLoadingItems] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
       loadWardrobeItems()
+      setName("")
+      setDescription("")
+      setSelectedItems(new Set())
     }
   }, [isOpen])
 
   const loadWardrobeItems = async () => {
-    setLoadingItems(true)
+    setLoading(true)
     try {
       const response = await fetch("/api/wardrobe-user-items")
       if (response.ok) {
@@ -59,210 +48,156 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
       }
     } catch (error) {
       console.error("Error loading wardrobe items:", error)
-    } finally {
-      setLoadingItems(false)
-    }
-  }
-
-  const handleUserItemToggle = (item: WardrobeItem) => {
-    const selectedItem: SelectedItem = {
-      id: item.id,
-      name: item.item_name,
-      image_url: item.image_url,
-      type: "user",
-      color: item.color,
-      material: item.material,
-    }
-
-    setSelectedItems((prev) => {
-      const isSelected = prev.some((selected) => selected.id === item.id && selected.type === "user")
-      if (isSelected) {
-        return prev.filter((selected) => !(selected.id === item.id && selected.type === "user"))
-      } else {
-        return [...prev, selectedItem]
-      }
-    })
-  }
-
-  const removeSelectedItem = (item: SelectedItem) => {
-    setSelectedItems((prev) => prev.filter((selected) => !(selected.id === item.id && selected.type === item.type)))
-  }
-
-  const handleSave = async () => {
-    if (!name.trim() || selectedItems.length === 0) {
-      return
-    }
-
-    setLoading(true)
-    try {
-      // Transform items to the format expected by the API
-      const items = selectedItems.map((item) => ({
-        type: item.type,
-        id: item.id,
-      }))
-
-      await onSave({
-        name: name.trim(),
-        description: description.trim(),
-        items,
-      })
-
-      // Reset form
-      setName("")
-      setDescription("")
-      setSelectedItems([])
-      onClose()
-    } catch (error) {
-      console.error("Error saving look:", error)
+      toast.error("Ошибка загрузки вещей")
     } finally {
       setLoading(false)
     }
   }
 
-  const handleClose = () => {
+  const handleItemToggle = (itemId: number) => {
+    const newSelected = new Set(selectedItems)
+    if (newSelected.has(itemId)) {
+      newSelected.delete(itemId)
+    } else {
+      newSelected.add(itemId)
+    }
+    setSelectedItems(newSelected)
+  }
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      toast.error("Введите название образа")
+      return
+    }
+
+    if (selectedItems.size === 0) {
+      toast.error("Выберите хотя бы одну вещь")
+      return
+    }
+
+    const items = Array.from(selectedItems).map((id) => ({
+      type: "user",
+      id,
+    }))
+
+    await onSave({
+      name: name.trim(),
+      description: description.trim(),
+      items,
+    })
+
+    // Reset form
     setName("")
     setDescription("")
-    setSelectedItems([])
+    setSelectedItems(new Set())
     onClose()
   }
 
-  const isUserItemSelected = (item: WardrobeItem) =>
-    selectedItems.some((selected) => selected.id === item.id && selected.type === "user")
+  const handleClose = () => {
+    setName("")
+    setDescription("")
+    setSelectedItems(new Set())
+    onClose()
+  }
 
   return (
-    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Создать образ" subtitle="Выберите вещи для нового образа">
-      <div className="space-y-6">
-        {/* Form fields */}
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="look-name" className="text-gray-900 font-medium text-sm mb-2 block">
-              Название образа
-            </Label>
-            <Input
-              id="look-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Введите название образа"
-              className="mt-1"
-            />
-          </div>
+    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Название образа" backgroundColor="dark">
+      <div className="space-y-6 pb-24">
+        {/* Name Input */}
+        <div>
+          <label className="block text-white font-medium text-sm mb-2">Название образа</label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Введите название образа"
+            className="bg-white text-gray-900 border-gray-300"
+          />
+        </div>
 
-          <div>
-            <Label htmlFor="look-description" className="text-gray-900 font-medium text-sm mb-2 block">
-              Описание (необязательно)
-            </Label>
-            <Textarea
-              id="look-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Добавьте описание образа"
-              rows={3}
-              className="mt-1"
-            />
+        {/* Description Input */}
+        <div>
+          <label className="block text-white font-medium text-sm mb-2">Описание (необязательно)</label>
+          <Textarea
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Добавьте описание образа"
+            className="bg-white text-gray-900 border-gray-300 min-h-[80px]"
+          />
+        </div>
+
+        {/* Items Selection */}
+        <div>
+          <label className="block text-white font-medium text-sm mb-4">Выберите вещи</label>
+
+          <div className="bg-white rounded-lg p-4">
+            <div className="flex items-center justify-center mb-4 border-b border-gray-200 pb-2">
+              <span className="text-gray-900 font-medium">Мой гардероб ({wardrobeItems.length})</span>
+            </div>
+
+            {loading ? (
+              <div className="text-center py-8 text-gray-500">Загрузка...</div>
+            ) : wardrobeItems.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">Нет вещей в гардеробе</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2">
+                {wardrobeItems.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => handleItemToggle(item.id)}
+                    className={`p-2 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${
+                      selectedItems.has(item.id)
+                        ? "border-blue-500 bg-blue-50"
+                        : "border-gray-200 bg-white hover:bg-gray-50"
+                    }`}
+                  >
+                    <div className="aspect-square bg-gray-100 rounded mb-2 flex items-center justify-center p-1">
+                      <img
+                        src={item.image_url || "/placeholder.svg"}
+                        alt={item.item_name}
+                        className="max-w-full max-h-full object-contain"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = "/placeholder.svg"
+                        }}
+                      />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs font-medium text-gray-900 truncate">{item.item_name}</p>
+                      <p className="text-xs text-gray-500 truncate">{item.color}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Selected items */}
-        {selectedItems.length > 0 && (
-          <div>
-            <Label className="text-gray-900 font-medium text-sm mb-2 block">
-              Выбранные вещи ({selectedItems.length})
-            </Label>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {selectedItems.map((item, index) => (
-                <div
-                  key={`${item.type}-${item.id}-${index}`}
-                  className="relative bg-gray-100 rounded-lg p-2 flex items-center gap-2"
-                >
-                  {item.image_url && (
-                    <img
-                      src={item.image_url || "/placeholder.svg"}
-                      alt={item.name}
-                      className="w-8 h-8 object-cover rounded"
-                    />
-                  )}
-                  <span className="text-sm text-gray-900">{item.name}</span>
-                  <span className="text-xs text-gray-500">({item.type === "user" ? "Мои" : "Базовые"})</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-                    onClick={() => removeSelectedItem(item)}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-            </div>
+        {selectedItems.size > 0 && (
+          <div className="bg-blue-900 border border-blue-700 rounded-lg p-3">
+            <p className="text-sm text-blue-100">
+              Выбрано {selectedItems.size} вещ
+              {selectedItems.size === 1 ? "ь" : selectedItems.size < 5 ? "и" : "ей"}
+            </p>
           </div>
         )}
+      </div>
 
-        {/* Items selection */}
-        <div>
-          <Label className="text-gray-900 font-medium text-sm mb-3 block">Мой гардероб ({wardrobeItems.length})</Label>
-
-          {loadingItems ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-            </div>
-          ) : wardrobeItems.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-96 overflow-y-auto">
-              {wardrobeItems.map((item) => {
-                const isSelected = isUserItemSelected(item)
-                return (
-                  <Card
-                    key={`user-${item.id}`}
-                    className={`cursor-pointer transition-all hover:shadow-md relative ${
-                      isSelected ? "ring-2 ring-blue-500 bg-blue-50" : "hover:bg-gray-50"
-                    }`}
-                    onClick={() => handleUserItemToggle(item)}
-                  >
-                    <div className="p-3">
-                      {item.image_url ? (
-                        <img
-                          src={item.image_url || "/placeholder.svg"}
-                          alt={item.item_name}
-                          className="w-full h-20 object-cover rounded mb-2"
-                        />
-                      ) : (
-                        <div className="w-full h-20 bg-gray-100 rounded mb-2 flex items-center justify-center">
-                          <span className="text-gray-400 text-xs">Нет фото</span>
-                        </div>
-                      )}
-                      <h4 className="text-xs font-medium truncate text-gray-900">{item.item_name}</h4>
-                      <p className="text-xs text-gray-500 truncate">{item.color}</p>
-                      {isSelected && (
-                        <div className="absolute top-1 right-1 bg-blue-500 text-white rounded-full w-5 h-5 flex items-center justify-center">
-                          <Plus className="h-3 w-3" />
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                )
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <p>В вашем гардеробе пока нет вещей</p>
-            </div>
-          )}
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex gap-3 pt-6 border-t border-gray-200 bg-white sticky bottom-0">
+      {/* Fixed Buttons */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-gray-700 p-4">
+        <div className="flex gap-3 max-w-md mx-auto">
           <Button
             variant="outline"
             onClick={handleClose}
-            className="flex-1 border-gray-300 text-gray-700 bg-transparent"
+            className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700 bg-transparent"
           >
             Отмена
           </Button>
           <Button
-            onClick={handleSave}
-            disabled={!name.trim() || selectedItems.length === 0 || loading}
-            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+            onClick={handleSubmit}
+            disabled={!name.trim() || selectedItems.size === 0}
+            className="flex-1 bg-white hover:bg-gray-100 text-gray-900"
           >
-            {loading ? "Сохранение..." : "Сохранить образ"}
+            Сохранить образ
           </Button>
         </div>
       </div>

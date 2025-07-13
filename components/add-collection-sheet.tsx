@@ -1,13 +1,10 @@
 "use client"
 
-import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Label } from "@/components/ui/label"
-import { CommonSheet } from "@/components/common-sheet"
+import { CommonSheet } from "./common-sheet"
+import { toast } from "sonner"
 
 interface AddCollectionSheetProps {
   isOpen: boolean
@@ -17,26 +14,22 @@ interface AddCollectionSheetProps {
 
 export function AddCollectionSheet({ isOpen, onClose, onAdd }: AddCollectionSheetProps) {
   const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
+  const handleSubmit = async () => {
     if (!name.trim()) {
+      toast.error("Введите название подборки")
       return
     }
 
     setLoading(true)
     try {
-      await onAdd(name.trim(), description.trim() || undefined)
-
-      // Reset form
-      setName("")
-      setDescription("")
-      onClose()
+      await onAdd(name.trim())
+      toast.success("Подборка создана!")
+      handleClose()
     } catch (error) {
-      console.error("Error adding collection:", error)
+      console.error("Error creating section:", error)
+      toast.error("Ошибка создания подборки")
     } finally {
       setLoading(false)
     }
@@ -44,66 +37,48 @@ export function AddCollectionSheet({ isOpen, onClose, onAdd }: AddCollectionShee
 
   const handleClose = () => {
     setName("")
-    setDescription("")
     onClose()
   }
 
   return (
-    <CommonSheet
-      isOpen={isOpen}
-      onClose={handleClose}
-      title="Создать подборку"
-      subtitle="Добавьте новую подборку образов"
-    >
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="collection-name" className="text-gray-900 font-medium text-sm mb-2 block">
-              Название подборки
-            </Label>
-            <Input
-              id="collection-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Например: Офисные образы"
-              required
-              className="mt-1"
-            />
-          </div>
-
-          <div>
-            <Label htmlFor="collection-description" className="text-gray-900 font-medium text-sm mb-2 block">
-              Описание (необязательно)
-            </Label>
-            <Textarea
-              id="collection-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Добавьте описание подборки"
-              rows={3}
-              className="mt-1"
-            />
-          </div>
+    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Новая подборка" backgroundColor="dark">
+      <div className="space-y-6 pb-24">
+        <div>
+          <label className="block text-white font-medium text-sm mb-2">Название подборки</label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Введите название подборки"
+            className="bg-white text-gray-900 border-gray-300"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !loading) {
+                handleSubmit()
+              }
+            }}
+          />
         </div>
+      </div>
 
-        <div className="flex gap-3 pt-6 border-t border-gray-200 bg-white sticky bottom-0">
+      {/* Fixed Buttons */}
+      <div className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-gray-700 p-4">
+        <div className="flex gap-3 max-w-md mx-auto">
           <Button
-            type="button"
             variant="outline"
             onClick={handleClose}
-            className="flex-1 border-gray-300 text-gray-700 bg-transparent"
+            className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700 bg-transparent"
+            disabled={loading}
           >
             Отмена
           </Button>
           <Button
-            type="submit"
+            onClick={handleSubmit}
             disabled={!name.trim() || loading}
-            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+            className="flex-1 bg-white hover:bg-gray-100 text-gray-900"
           >
-            {loading ? "Создание..." : "Создать подборку"}
+            {loading ? "Создание..." : "Создать"}
           </Button>
         </div>
-      </form>
+      </div>
     </CommonSheet>
   )
 }

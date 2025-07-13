@@ -1,75 +1,86 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
-import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
+import { type NextRequest, NextResponse } from "next/server"
 
-import type { Database } from "@/lib/database.types"
+export async function GET() {
+  try {
+    const supabase = createClient()
 
-export const dynamic = "force-dynamic"
+    // Get the current user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
 
-export async function GET(): Promise<NextResponse> {
-  const supabase = createRouteHandlerClient<Database>({ cookies })
+    if (authError || !user) {
+      console.error("Auth error:", authError)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
-  const { data: sections, error } = await supabase
-    .from("looks_sections")
-    .select(`
-      id,
-      name,
-      section_looks (
-        id,
-        user_looks (
-          id,
-          name,
-          items
+    console.log("Fetching sections for user:", user.id)
+
+    // Get sections with their looks
+    const { data: sections, error: sectionsError } = await supabase
+      .from("looks_sections")
+      .select(
+        `
+        *,
+        section_looks (
+          look_id,
+          user_looks (
+            *
+          )
         )
+      `,
       )
-    `)
-    .order("id")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
 
-  if (error) {
-    console.error(error)
-    return new NextResponse(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    })
-  }
+    if (sectionsError) {
+      console.error("Error fetching sections:", sectionsError)
+      return NextResponse.json({ error: "Failed to fetch sections" }, { status: 500 })
+    }
 
-  // Expand items for each look in sections
-  const expandedSections = await Promise.all(
-    sections.map(async (section) => {
-      if (section.section_looks) {
+    console.log("Fetched sections:", sections)
+
+    // For each look in each section, expand the items
+    const sectionsWithExpandedLooks = await Promise.all(
+      sections.map(async (section) => {
+        if (!section.section_looks) return section
+
         const expandedSectionLooks = await Promise.all(
           section.section_looks.map(async (sectionLook: any) => {
             const look = sectionLook.user_looks
+            if (!look || !look.items) return sectionLook
 
+            // Expand items for this look
             const expandedItems = await Promise.all(
               look.items.map(async (item: any) => {
                 if (item.type === "user") {
-                  // Get user wardrobe item
                   const { data: userItem } = await supabase
-                    .from("wardrobe_items")
-                    .select(`
-                      id,
-                      item_name,
-                      image_url,
-                      color,
-                      material,
-                      basic_wardrobe_items (
-                        name_ru
-                      )
-                    `)
+                    .from("wardrobe_user_items")
+                    .select("id, item_name, image_url, color, material")
                     .eq("id", item.id)
                     .single()
 
-                  return userItem ? { ...userItem, source: "user" } : null
+                  return userItem
+                    ? {
+                        ...userItem,
+                        source: "user",
+                      }
+                    : null
                 } else if (item.type === "basic") {
-                  // Get basic wardrobe item
                   const { data: basicItem } = await supabase
                     .from("basic_wardrobe_items")
-                    .select("id, name_ru, description, image_url")
+                    .select("id, name_ru, image_url")
                     .eq("id", item.id)
                     .single()
 
-                  return basicItem ? { ...basicItem, source: "basic" } : null
+                  return basicItem
+                    ? {
+                        ...basicItem,
+                        source: "basic",
+                      }
+                    : null
                 }
                 return null
               }),
@@ -89,10 +100,61 @@ export async function GET(): Promise<NextResponse> {
           ...section,
           section_looks: expandedSectionLooks,
         }
-      }
-      return section
-    }),
-  )
+      }),
+    )
 
-  return NextResponse.json(expandedSections)
+    return NextResponse.json(sectionsWithExpandedLooks)
+  } catch (error) {
+    console.error("Unexpected error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = createClient()
+
+    // Get the current user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      console.error("Auth error:", authError)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { name, description } = body
+
+    if (!name) {
+      return NextResponse.json({ error: "Name is required" }, { status: 400 })
+    }
+
+    console.log("Creating section for user:", user.id, { name, description })
+
+    // Create the section
+    const { data: section, error: sectionError } = await supabase
+      .from("looks_sections")
+      .insert({
+        user_id: user.id,
+        name,
+        description,
+      })
+      .select()
+      .single()
+
+    if (sectionError) {
+      console.error("Error creating section:", sectionError)
+      return NextResponse.json({ error: "Failed to create section" }, { status: 500 })
+    }
+
+    console.log("Created section:", section)
+
+    return NextResponse.json(section)
+  } catch (error) {
+    console.error("Unexpected error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
 }

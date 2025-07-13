@@ -7,6 +7,7 @@ import { Plus, ExternalLink, Trash2 } from "lucide-react"
 import { PastelLoader } from "@/components/pastel-loader"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
 import { CreateLookSheet } from "@/components/create-look-sheet"
+import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collection-sheet"
 import { toast } from "sonner"
 
 interface ExpandedItem {
@@ -46,6 +47,17 @@ export default function LooksPage() {
   const [loading, setLoading] = useState(true)
   const [isAddCollectionOpen, setIsAddCollectionOpen] = useState(false)
   const [isCreateLookOpen, setIsCreateLookOpen] = useState(false)
+  const [addOutfitsSheet, setAddOutfitsSheet] = useState<{
+    isOpen: boolean
+    sectionId: number
+    sectionName: string
+    existingLookIds: number[]
+  }>({
+    isOpen: false,
+    sectionId: 0,
+    sectionName: "",
+    existingLookIds: [],
+  })
 
   useEffect(() => {
     loadData()
@@ -133,6 +145,7 @@ export default function LooksPage() {
         const newSection = await response.json()
         setSections((prev) => [{ ...newSection, section_looks: [] }, ...prev])
         toast.success("Подборка создана успешно!")
+        setIsAddCollectionOpen(false)
       } else {
         throw new Error("Failed to create section")
       }
@@ -157,6 +170,43 @@ export default function LooksPage() {
     } catch (error) {
       console.error("Error deleting look:", error)
       toast.error("Ошибка удаления образа")
+    }
+  }
+
+  const handleOpenAddOutfits = (section: LooksSection) => {
+    const existingLookIds = section.section_looks?.map((sl) => sl.look_id) || []
+    setAddOutfitsSheet({
+      isOpen: true,
+      sectionId: section.id,
+      sectionName: section.name,
+      existingLookIds,
+    })
+  }
+
+  const handleAddOutfitsToCollection = async (sectionId: number, lookIds: number[]) => {
+    try {
+      const promises = lookIds.map((lookId) =>
+        fetch(`/api/looks-sections/${sectionId}/looks`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ look_id: lookId }),
+        }),
+      )
+
+      const responses = await Promise.all(promises)
+      const failedCount = responses.filter((r) => !r.ok).length
+
+      if (failedCount === 0) {
+        toast.success(`Добавлено ${lookIds.length} образов в подборку`)
+        loadSections() // Reload sections to show new outfits
+      } else {
+        toast.error(`Ошибка добавления ${failedCount} образов`)
+      }
+    } catch (error) {
+      console.error("Error adding outfits to collection:", error)
+      toast.error("Ошибка добавления образов")
     }
   }
 
@@ -244,8 +294,26 @@ export default function LooksPage() {
     )
   }
 
+  const AddOutfitCard = ({ section }: { section: LooksSection }) => {
+    return (
+      <Card
+        onClick={() => handleOpenAddOutfits(section)}
+        className="p-4 bg-white border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer transition-colors flex-shrink-0 w-80 min-h-[320px] flex items-center justify-center group"
+      >
+        <div className="text-center">
+          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-gray-200 transition-colors">
+            <Plus className="w-6 h-6 text-gray-500" />
+          </div>
+          <p className="text-gray-600 font-medium">Добавить образы</p>
+          <p className="text-sm text-gray-400 mt-1">Выберите образы для подборки</p>
+        </div>
+      </Card>
+    )
+  }
+
   const CollectionSection = ({ section }: { section: LooksSection }) => {
     const sectionLooks = section.section_looks?.map((sl) => sl.user_looks) || []
+    const hasLooks = sectionLooks.length > 0
 
     return (
       <div className="space-y-4">
@@ -256,25 +324,33 @@ export default function LooksPage() {
               {sectionLooks.length} образ{sectionLooks.length !== 1 ? "ов" : ""}
             </p>
           </div>
-          <Button variant="ghost" size="sm" className="p-2">
-            <ExternalLink className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {hasLooks && (
+              <Button
+                onClick={() => handleOpenAddOutfits(section)}
+                variant="outline"
+                size="sm"
+                className="text-gray-700 border-gray-200 hover:bg-gray-50"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Добавить образы
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="p-2">
+              <ExternalLink className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
-        <div className="relative">
-          {sectionLooks.length > 0 ? (
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
-              {sectionLooks.map((look) => (
-                <LookCard key={look.id} look={look} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <p>В этой подборке пока нет образов</p>
-            </div>
-          )}
+        <div className="relative min-h-[200px]">
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+            {!hasLooks && <AddOutfitCard section={section} />}
+            {sectionLooks.map((look) => (
+              <LookCard key={look.id} look={look} />
+            ))}
+          </div>
 
-          {sectionLooks.length > 1 && (
+          {sectionLooks.length > 0 && (
             <>
               <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
               <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50" />
@@ -375,6 +451,15 @@ export default function LooksPage() {
         isOpen={isAddCollectionOpen}
         onClose={() => setIsAddCollectionOpen(false)}
         onAdd={handleAddCollection}
+      />
+
+      <AddOutfitsToCollectionSheet
+        isOpen={addOutfitsSheet.isOpen}
+        onClose={() => setAddOutfitsSheet((prev) => ({ ...prev, isOpen: false }))}
+        sectionId={addOutfitsSheet.sectionId}
+        sectionName={addOutfitsSheet.sectionName}
+        existingLookIds={addOutfitsSheet.existingLookIds}
+        onAdd={handleAddOutfitsToCollection}
       />
     </div>
   )

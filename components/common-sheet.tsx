@@ -1,156 +1,59 @@
 "use client"
 
-import type React from "react"
-
-import { useEffect, useRef, useState } from "react"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import type { ReactNode } from "react"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { X } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 interface CommonSheetProps {
   isOpen: boolean
   onClose: () => void
   title: string
   subtitle?: string
-  children: React.ReactNode
+  children: ReactNode
+  backgroundColor?: "white" | "dark"
 }
 
-export function CommonSheet({ isOpen, onClose, title, subtitle, children }: CommonSheetProps) {
-  const [startY, setStartY] = useState(0)
-  const [currentY, setCurrentY] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
-  const sheetRef = useRef<HTMLDivElement>(null)
-
-  // Handle ESC key
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && isOpen) {
-        onClose()
-      }
-    }
-
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown)
-    }
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown)
-    }
-  }, [isOpen, onClose])
-
-  // Touch handlers for swipe to close
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setStartY(e.touches[0].clientY)
-    setIsDragging(true)
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging) return
-
-    const currentTouchY = e.touches[0].clientY
-    const deltaY = currentTouchY - startY
-
-    if (deltaY > 0) {
-      // Only allow downward swipes
-      setCurrentY(deltaY)
-      if (sheetRef.current) {
-        sheetRef.current.style.transform = `translateY(${deltaY}px)`
-      }
-    }
-  }
-
-  const handleTouchEnd = () => {
-    if (!isDragging) return
-
-    const sheetHeight = sheetRef.current?.offsetHeight || 0
-    const threshold = sheetHeight * 0.5 // 50% of sheet height
-
-    if (currentY > threshold) {
-      onClose()
-    } else {
-      // Snap back to original position
-      if (sheetRef.current) {
-        sheetRef.current.style.transform = "translateY(0px)"
-      }
-    }
-
-    setIsDragging(false)
-    setCurrentY(0)
-    setStartY(0)
-  }
-
-  // Mouse handlers for desktop drag
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setStartY(e.clientY)
-    setIsDragging(true)
-  }
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging) return
-
-    const deltaY = e.clientY - startY
-
-    if (deltaY > 0) {
-      setCurrentY(deltaY)
-      if (sheetRef.current) {
-        sheetRef.current.style.transform = `translateY(${deltaY}px)`
-      }
-    }
-  }
-
-  const handleMouseUp = () => {
-    if (!isDragging) return
-
-    const sheetHeight = sheetRef.current?.offsetHeight || 0
-    const threshold = sheetHeight * 0.5
-
-    if (currentY > threshold) {
-      onClose()
-    } else {
-      if (sheetRef.current) {
-        sheetRef.current.style.transform = "translateY(0px)"
-      }
-    }
-
-    setIsDragging(false)
-    setCurrentY(0)
-    setStartY(0)
-  }
-
-  useEffect(() => {
-    if (isDragging) {
-      document.addEventListener("mousemove", handleMouseMove)
-      document.addEventListener("mouseup", handleMouseUp)
-    }
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove)
-      document.removeEventListener("mouseup", handleMouseUp)
-    }
-  }, [isDragging, startY, currentY])
+export function CommonSheet({
+  isOpen,
+  onClose,
+  title,
+  subtitle,
+  children,
+  backgroundColor = "white",
+}: CommonSheetProps) {
+  const isDark = backgroundColor === "dark"
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent
         side="bottom"
-        className="h-auto max-h-[90vh] bg-white border-0 text-gray-900 rounded-t-3xl p-0 transition-transform duration-200"
-        ref={sheetRef}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onMouseDown={handleMouseDown}
+        className={`h-[90vh] ${isDark ? "bg-slate-800 text-white" : "bg-white text-gray-900"} rounded-t-3xl`}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-4 cursor-grab active:cursor-grabbing">
-          <div className="w-12 h-1 bg-gray-400 rounded-full" />
-        </div>
+        <div className="flex flex-col h-full">
+          {/* Header */}
+          <SheetHeader className={`flex-shrink-0 pb-4 ${isDark ? "border-gray-700" : "border-gray-200"} border-b`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <SheetTitle className={`text-xl font-semibold ${isDark ? "text-white" : "text-gray-900"}`}>
+                  {title}
+                </SheetTitle>
+                {subtitle && <p className={`text-sm mt-1 ${isDark ? "text-gray-300" : "text-gray-500"}`}>{subtitle}</p>}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClose}
+                className={`p-2 ${isDark ? "text-gray-400 hover:text-gray-200" : "text-gray-400 hover:text-gray-600"}`}
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+          </SheetHeader>
 
-        {/* Header */}
-        <div className="px-6 pb-4">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-          {subtitle && <p className="text-sm text-gray-600 mt-1">{subtitle}</p>}
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto py-4">{children}</div>
         </div>
-
-        {/* Content */}
-        <div className="px-6 pb-8 max-h-[calc(90vh-120px)] overflow-y-auto">{children}</div>
       </SheetContent>
     </Sheet>
   )
