@@ -33,65 +33,14 @@ interface LookSection {
   suggestions: OutfitSuggestion[]
 }
 
-// Fallback mock data in case API fails
-const fallbackOutfitSuggestions: LookSection[] = [
-  {
-    title: "Рекомендации для вас",
-    looks_count: 2,
-    suggestions: [
-      {
-        id: "fallback1",
-        title: "Классический образ",
-        items: [
-          {
-            id: "item1",
-            name: "Базовая рубашка",
-            image_url: "/placeholder.svg?height=200&width=150&text=Рубашка",
-            color: "white",
-            shade: "light",
-            has_print: "no",
-            notes: "Белая базовая рубашка",
-          },
-          {
-            id: "item2",
-            name: "Классические брюки",
-            image_url: "/placeholder.svg?height=200&width=150&text=Брюки",
-            color: "black",
-            shade: "dark",
-            has_print: "no",
-            notes: "Черные классические брюки",
-          },
-        ],
-        suggested_items_count: 2,
-      },
-      {
-        id: "fallback2",
-        title: "Повседневный стиль",
-        items: [
-          {
-            id: "item3",
-            name: "Футболка",
-            image_url: "/placeholder.svg?height=200&width=150&text=Футболка",
-            color: "gray",
-            shade: "medium",
-            has_print: "no",
-            notes: "Серая футболка",
-          },
-          {
-            id: "item4",
-            name: "Джинсы",
-            image_url: "/placeholder.svg?height=200&width=150&text=Джинсы",
-            color: "blue",
-            shade: "medium",
-            has_print: "no",
-            notes: "Синие джинсы",
-          },
-        ],
-        suggested_items_count: 2,
-      },
-    ],
-  },
-]
+interface CachedRecommendations {
+  data: LookSection[]
+  timestamp: number
+  userItemsCount: number
+}
+
+const CACHE_KEY = "outfit_recommendations_cache"
+const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
 
 export default function HomePage() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
@@ -100,7 +49,48 @@ export default function HomePage() {
   const [userItemsCount, setUserItemsCount] = useState(0)
   const [itemsLoading, setItemsLoading] = useState(true)
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
-  const [apiError, setApiError] = useState<string | null>(null)
+
+  // Cache management functions
+  const getCachedRecommendations = (): CachedRecommendations | null => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY)
+      if (!cached) return null
+
+      const parsedCache: CachedRecommendations = JSON.parse(cached)
+      const now = Date.now()
+
+      // Check if cache is still valid (within 24 hours)
+      if (now - parsedCache.timestamp > CACHE_DURATION) {
+        localStorage.removeItem(CACHE_KEY)
+        return null
+      }
+
+      return parsedCache
+    } catch (error) {
+      console.error("Error reading cache:", error)
+      localStorage.removeItem(CACHE_KEY)
+      return null
+    }
+  }
+
+  const setCachedRecommendations = (data: LookSection[], userItemsCount: number) => {
+    try {
+      const cacheData: CachedRecommendations = {
+        data,
+        timestamp: Date.now(),
+        userItemsCount,
+      }
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
+    } catch (error) {
+      console.error("Error saving to cache:", error)
+    }
+  }
+
+  const isCacheValidForUser = (cachedData: CachedRecommendations, currentUserItemsCount: number): boolean => {
+    // Cache is valid if user items count hasn't changed significantly
+    // Allow small variations (±1) but invalidate for larger changes
+    return Math.abs(cachedData.userItemsCount - currentUserItemsCount) <= 1
+  }
 
   // Load user items count
   useEffect(() => {
@@ -121,17 +111,21 @@ export default function HomePage() {
     loadUserItemsCount()
   }, [])
 
-  // Load outfit suggestions from API with fallback
+  // Load outfit suggestions from cache or API
   useEffect(() => {
     const loadOutfitSuggestions = async () => {
       try {
-        // Check if API URL is configured
-        if (!process.env.NEXT_PUBLIC_AI_API_URL) {
-          console.warn("NEXT_PUBLIC_AI_API_URL not configured, using fallback data")
-          setOutfitSections(fallbackOutfitSuggestions)
+        // First, check cache
+        const cachedRecommendations = getCachedRecommendations()
+
+        if (cachedRecommendations && isCacheValidForUser(cachedRecommendations, userItemsCount)) {
+          console.log("Loading recommendations from cache")
+          setOutfitSections(cachedRecommendations.data)
           setLoading(false)
           return
         }
+
+        console.log("Cache miss or invalid, fetching from API")
 
         const supabase = createClient()
         const {
@@ -139,14 +133,17 @@ export default function HomePage() {
         } = await supabase.auth.getUser()
 
         if (!user) {
-          console.warn("User not authenticated, using fallback data")
-          setOutfitSections(fallbackOutfitSuggestions)
+          console.error("User not authenticated")
           setLoading(false)
           return
         }
 
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+        console.log("Making API request to:", `${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`)
+        console.log("Request payload:", {
+          user_id: user.id,
+          user_items_count: userItemsCount,
+          preferences: "casual",
+        })
 
         const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
           method: "POST",
@@ -158,27 +155,23 @@ export default function HomePage() {
             user_items_count: userItemsCount,
             preferences: "casual",
           }),
-          signal: controller.signal,
         })
 
-        clearTimeout(timeoutId)
+        console.log("Response status:", response.status)
 
         if (response.ok) {
           const recommendations = await response.json()
-          if (Array.isArray(recommendations) && recommendations.length > 0) {
-            setOutfitSections(recommendations)
-            setApiError(null)
-          } else {
-            console.warn("Empty recommendations received, using fallback data")
-            setOutfitSections(fallbackOutfitSuggestions)
-          }
+          console.log("Recommendations received:", recommendations)
+          setOutfitSections(recommendations)
+
+          // Cache the new recommendations
+          setCachedRecommendations(recommendations, userItemsCount)
         } else {
-          throw new Error(`API responded with status: ${response.status}`)
+          const errorText = await response.text()
+          console.error("API error:", response.status, errorText)
         }
       } catch (error) {
         console.error("Error loading outfit suggestions:", error)
-        setApiError(error instanceof Error ? error.message : "Unknown error")
-        setOutfitSections(fallbackOutfitSuggestions)
       } finally {
         setLoading(false)
       }
@@ -192,16 +185,7 @@ export default function HomePage() {
 
   const handleGetRecommendations = async () => {
     setRecommendationsLoading(true)
-    setApiError(null)
-
     try {
-      // Check if API URL is configured
-      if (!process.env.NEXT_PUBLIC_AI_API_URL) {
-        console.warn("NEXT_PUBLIC_AI_API_URL not configured")
-        setRecommendationsLoading(false)
-        return
-      }
-
       const supabase = createClient()
       const {
         data: { user },
@@ -209,12 +193,15 @@ export default function HomePage() {
 
       if (!user) {
         console.error("User not authenticated")
-        setRecommendationsLoading(false)
         return
       }
 
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      console.log("Manual recommendation request to:", `${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`)
+      console.log("Request payload:", {
+        user_id: user.id,
+        user_items_count: userItemsCount,
+        preferences: "casual",
+      })
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
         method: "POST",
@@ -226,26 +213,23 @@ export default function HomePage() {
           user_items_count: userItemsCount,
           preferences: "casual",
         }),
-        signal: controller.signal,
       })
 
-      clearTimeout(timeoutId)
+      console.log("Manual response status:", response.status)
 
       if (response.ok) {
         const recommendations = await response.json()
-        if (Array.isArray(recommendations) && recommendations.length > 0) {
-          setOutfitSections(recommendations)
-          setApiError(null)
-          console.log("New recommendations loaded:", recommendations)
-        } else {
-          console.warn("Empty recommendations received")
-        }
+        console.log("Manual recommendations received:", recommendations)
+        setOutfitSections(recommendations)
+
+        // Update cache with new recommendations
+        setCachedRecommendations(recommendations, userItemsCount)
       } else {
-        throw new Error(`API responded with status: ${response.status}`)
+        const errorText = await response.text()
+        console.error("Manual API error:", response.status, errorText)
       }
     } catch (error) {
       console.error("Error getting recommendations:", error)
-      setApiError(error instanceof Error ? error.message : "Unknown error")
     } finally {
       setRecommendationsLoading(false)
     }
@@ -269,11 +253,6 @@ export default function HomePage() {
         <div className="mb-8">
           <h1 className="text-2xl font-serif font-bold text-gray-900 mb-2">Добро пожаловать</h1>
           <p className="text-gray-600 text-sm">Создавайте стильные образы с помощью ИИ</p>
-          {apiError && (
-            <div className="mt-2 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded">
-              Используются демо-данные (API недоступен)
-            </div>
-          )}
         </div>
 
         {/* Show wardrobe section only if user has less than 6 items */}
