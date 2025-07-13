@@ -3,215 +3,262 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Plus, ExternalLink } from "lucide-react"
+import { Plus, ExternalLink, Trash2 } from "lucide-react"
 import { PastelLoader } from "@/components/pastel-loader"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
+import { CreateLookDialog } from "@/components/create-look-dialog"
+import { toast } from "sonner"
 
-interface LookItem {
-  id: string
-  name: string
-  image_url: string
-  category: string
+interface ExpandedItem {
+  id: number
+  item_name?: string
+  name_ru?: string
+  image_url?: string
+  color?: string
+  material?: string
+  source: "user" | "basic"
 }
 
 interface SavedLook {
-  id: string
+  id: number
   name: string
-  items: LookItem[]
+  description?: string
+  items: Array<{ type: string; id: number }>
+  expandedItems?: ExpandedItem[]
+  image_url?: string
   created_at: string
 }
 
-interface Collection {
-  id: string
+interface LooksSection {
+  id: number
   name: string
-  looks_count: number
-  looks: SavedLook[]
+  description?: string
+  section_looks?: Array<{
+    look_id: number
+    user_looks: SavedLook
+  }>
+  created_at: string
 }
-
-// Mock data for saved looks
-const mockSavedLooks: SavedLook[] = [
-  {
-    id: "look1",
-    name: "Офисный стиль",
-    items: [
-      {
-        id: "item1",
-        name: "Черный топ с бантом",
-        image_url: "/placeholder.svg?height=200&width=150",
-        category: "tops",
-      },
-      {
-        id: "item2",
-        name: "Коричневая сумка",
-        image_url: "/placeholder.svg?height=180&width=160",
-        category: "accessories",
-      },
-      {
-        id: "item3",
-        name: "Коричневая юбка",
-        image_url: "/placeholder.svg?height=150&width=140",
-        category: "bottoms",
-      },
-      {
-        id: "item4",
-        name: "Черные сапоги",
-        image_url: "/placeholder.svg?height=200&width=120",
-        category: "shoes",
-      },
-      {
-        id: "item5",
-        name: "Черные лоферы",
-        image_url: "/placeholder.svg?height=120&width=160",
-        category: "shoes",
-      },
-    ],
-    created_at: "2024-01-15",
-  },
-  {
-    id: "look2",
-    name: "Повседневный образ",
-    items: [
-      {
-        id: "item6",
-        name: "Черная водолазка",
-        image_url: "/placeholder.svg?height=200&width=150",
-        category: "tops",
-      },
-      {
-        id: "item7",
-        name: "Бежевая юбка",
-        image_url: "/placeholder.svg?height=180&width=140",
-        category: "bottoms",
-      },
-      {
-        id: "item8",
-        name: "Черная сумка",
-        image_url: "/placeholder.svg?height=160&width=140",
-        category: "accessories",
-      },
-      {
-        id: "item9",
-        name: "Черные лоферы",
-        image_url: "/placeholder.svg?height=120&width=160",
-        category: "shoes",
-      },
-    ],
-    created_at: "2024-01-10",
-  },
-]
-
-// Mock data for collections
-const mockCollections: Collection[] = [
-  {
-    id: "collection1",
-    name: "Все",
-    looks_count: 2,
-    looks: mockSavedLooks,
-  },
-  {
-    id: "collection2",
-    name: "Тест",
-    looks_count: 1,
-    looks: [mockSavedLooks[1]],
-  },
-]
 
 export default function LooksPage() {
   const [savedLooks, setSavedLooks] = useState<SavedLook[]>([])
-  const [collections, setCollections] = useState<Collection[]>([])
+  const [sections, setSections] = useState<LooksSection[]>([])
   const [loading, setLoading] = useState(true)
   const [isAddCollectionOpen, setIsAddCollectionOpen] = useState(false)
+  const [isCreateLookOpen, setIsCreateLookOpen] = useState(false)
 
   useEffect(() => {
-    const loadData = async () => {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      setSavedLooks(mockSavedLooks)
-      setCollections(mockCollections)
-      setLoading(false)
-    }
-
     loadData()
   }, [])
 
-  const handleAddCollection = (name: string) => {
-    const newCollection: Collection = {
-      id: `collection_${Date.now()}`,
-      name,
-      looks_count: 0,
-      looks: [],
+  const loadData = async () => {
+    setLoading(true)
+    try {
+      await Promise.all([loadSavedLooks(), loadSections()])
+    } catch (error) {
+      console.error("Error loading data:", error)
+      toast.error("Ошибка загрузки данных")
+    } finally {
+      setLoading(false)
     }
-    setCollections((prev) => [...prev, newCollection])
   }
 
-  const LookCard = ({ look }: { look: SavedLook }) => (
-    <Card className="p-4 bg-gray-100 border-0 relative group hover:shadow-md transition-shadow flex-shrink-0 w-64">
-      <div className="grid grid-cols-3 gap-2 min-h-[200px]">
-        {look.items.slice(0, 6).map((item, index) => (
-          <div
-            key={item.id}
-            className={`flex items-center justify-center ${
-              look.items.length === 1
-                ? "col-span-3"
-                : look.items.length === 2 && index === 0
-                  ? "col-span-2"
-                  : look.items.length === 3 && index === 0
-                    ? "col-span-3"
-                    : look.items.length === 4 && index < 2
+  const loadSavedLooks = async () => {
+    try {
+      const response = await fetch("/api/user-looks")
+      if (response.ok) {
+        const looks = await response.json()
+        setSavedLooks(looks)
+      } else {
+        throw new Error("Failed to load looks")
+      }
+    } catch (error) {
+      console.error("Error loading saved looks:", error)
+    }
+  }
+
+  const loadSections = async () => {
+    try {
+      const response = await fetch("/api/looks-sections")
+      if (response.ok) {
+        const sectionsData = await response.json()
+        setSections(sectionsData)
+      } else {
+        throw new Error("Failed to load sections")
+      }
+    } catch (error) {
+      console.error("Error loading sections:", error)
+    }
+  }
+
+  const handleCreateLook = async (lookData: {
+    name: string
+    description: string
+    items: Array<{ type: string; id: number }>
+  }) => {
+    try {
+      const response = await fetch("/api/user-looks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(lookData),
+      })
+
+      if (response.ok) {
+        const newLook = await response.json()
+        setSavedLooks((prev) => [newLook, ...prev])
+        toast.success("Образ создан успешно!")
+      } else {
+        throw new Error("Failed to create look")
+      }
+    } catch (error) {
+      console.error("Error creating look:", error)
+      toast.error("Ошибка создания образа")
+    }
+  }
+
+  const handleAddCollection = async (name: string) => {
+    try {
+      const response = await fetch("/api/looks-sections", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name }),
+      })
+
+      if (response.ok) {
+        const newSection = await response.json()
+        setSections((prev) => [{ ...newSection, section_looks: [] }, ...prev])
+        toast.success("Подборка создана успешно!")
+      } else {
+        throw new Error("Failed to create section")
+      }
+    } catch (error) {
+      console.error("Error creating section:", error)
+      toast.error("Ошибка создания подборки")
+    }
+  }
+
+  const handleDeleteLook = async (lookId: number) => {
+    try {
+      const response = await fetch(`/api/user-looks/${lookId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setSavedLooks((prev) => prev.filter((look) => look.id !== lookId))
+        toast.success("Образ удален")
+      } else {
+        throw new Error("Failed to delete look")
+      }
+    } catch (error) {
+      console.error("Error deleting look:", error)
+      toast.error("Ошибка удаления образа")
+    }
+  }
+
+  const LookCard = ({ look, showDelete = false }: { look: SavedLook; showDelete?: boolean }) => {
+    const items = look.expandedItems || []
+
+    return (
+      <Card className="p-4 bg-gray-100 border-0 relative group hover:shadow-md transition-shadow flex-shrink-0 w-64">
+        <div className="grid grid-cols-3 gap-2 min-h-[200px]">
+          {items.slice(0, 6).map((item, index) => (
+            <div
+              key={`${item.source}-${item.id}-${index}`}
+              className={`flex items-center justify-center ${
+                items.length === 1
+                  ? "col-span-3"
+                  : items.length === 2 && index === 0
+                    ? "col-span-2"
+                    : items.length === 3 && index === 0
                       ? "col-span-3"
-                      : look.items.length === 5 && index === 0
+                      : items.length === 4 && index < 2
                         ? "col-span-3"
-                        : ""
-            }`}
-          >
-            <img
-              src={item.image_url || "/placeholder.svg"}
-              alt={item.name}
-              className="max-w-full max-h-[80px] object-contain"
-            />
-          </div>
-        ))}
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 h-auto"
-      >
-        <ExternalLink className="w-4 h-4" />
-      </Button>
-    </Card>
-  )
-
-  const CollectionSection = ({ collection }: { collection: Collection }) => (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-xl font-semibold text-gray-900">{collection.name}</h3>
-          <p className="text-sm text-gray-500">
-            {collection.looks_count} look{collection.looks_count !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" className="p-2">
-          <ExternalLink className="w-4 h-4" />
-        </Button>
-      </div>
-
-      {/* Horizontal scrolling for collection looks */}
-      <div className="relative">
-        <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
-          {collection.looks.map((look) => (
-            <LookCard key={look.id} look={look} />
+                        : items.length === 5 && index === 0
+                          ? "col-span-3"
+                          : ""
+              }`}
+            >
+              <img
+                src={item.image_url || "/placeholder.svg"}
+                alt={item.item_name || item.name_ru || "Item"}
+                className="max-w-full max-h-[80px] object-contain"
+              />
+            </div>
           ))}
         </div>
-        {collection.looks.length > 1 && (
-          <>
-            <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
-            <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50" />
-          </>
-        )}
+
+        <div className="mt-3">
+          <h4 className="font-medium text-sm truncate">{look.name}</h4>
+          {look.description && <p className="text-xs text-gray-500 truncate mt-1">{look.description}</p>}
+        </div>
+
+        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+          <Button variant="ghost" size="sm" className="p-1 h-auto">
+            <ExternalLink className="w-4 h-4" />
+          </Button>
+          {showDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="p-1 h-auto text-red-500 hover:text-red-700"
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDeleteLook(look.id)
+              }}
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          )}
+        </div>
+      </Card>
+    )
+  }
+
+  const CollectionSection = ({ section }: { section: LooksSection }) => {
+    const sectionLooks = section.section_looks?.map((sl) => sl.user_looks) || []
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-semibold text-gray-900">{section.name}</h3>
+            <p className="text-sm text-gray-500">
+              {sectionLooks.length} образ{sectionLooks.length !== 1 ? "ов" : ""}
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" className="p-2">
+            <ExternalLink className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Horizontal scrolling for collection looks */}
+        <div className="relative">
+          {sectionLooks.length > 0 ? (
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+              {sectionLooks.map((look) => (
+                <LookCard key={look.id} look={look} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>В этой подборке пока нет образов</p>
+            </div>
+          )}
+
+          {sectionLooks.length > 1 && (
+            <>
+              <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
+              <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50" />
+            </>
+          )}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   if (loading) {
     return (
@@ -227,13 +274,24 @@ export default function LooksPage() {
       <div className="space-y-4">
         <h1 className="text-3xl font-bold text-gray-900">Образы</h1>
 
-        <Button
-          onClick={() => setIsAddCollectionOpen(true)}
-          className="w-full bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 h-12 rounded-xl font-medium"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Добавить подборку
-        </Button>
+        <div className="flex gap-3">
+          <Button
+            onClick={() => setIsCreateLookOpen(true)}
+            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-xl font-medium"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Создать образ
+          </Button>
+
+          <Button
+            onClick={() => setIsAddCollectionOpen(true)}
+            variant="outline"
+            className="flex-1 border-gray-200 text-gray-700 hover:bg-gray-50 h-12 rounded-xl font-medium"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Добавить подборку
+          </Button>
+        </div>
       </div>
 
       {/* All Looks Section */}
@@ -243,18 +301,30 @@ export default function LooksPage() {
             <h2 className="text-xl font-semibold text-gray-900">Все образы</h2>
             <p className="text-sm text-gray-500">{savedLooks.length} образов</p>
           </div>
-          <Button variant="ghost" size="sm" className="p-2">
-            <ExternalLink className="w-4 h-4" />
-          </Button>
         </div>
 
         {/* Horizontal scrolling for all looks */}
         <div className="relative">
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
-            {savedLooks.map((look) => (
-              <LookCard key={look.id} look={look} />
-            ))}
-          </div>
+          {savedLooks.length > 0 ? (
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+              {savedLooks.map((look) => (
+                <LookCard key={look.id} look={look} showDelete={true} />
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <p className="text-gray-500 mb-4">У вас пока нет сохраненных образов</p>
+              <Button
+                onClick={() => setIsCreateLookOpen(true)}
+                variant="outline"
+                className="text-gray-700 border-gray-200"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Создать первый образ
+              </Button>
+            </div>
+          )}
+
           {savedLooks.length > 1 && (
             <>
               <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
@@ -265,13 +335,22 @@ export default function LooksPage() {
       </div>
 
       {/* Collections */}
-      <div className="space-y-8">
-        {collections.map((collection) => (
-          <CollectionSection key={collection.id} collection={collection} />
-        ))}
-      </div>
+      {sections.length > 0 && (
+        <div className="space-y-8">
+          <h2 className="text-xl font-semibold text-gray-900">Подборки</h2>
+          {sections.map((section) => (
+            <CollectionSection key={section.id} section={section} />
+          ))}
+        </div>
+      )}
 
-      {/* Add Collection Sheet */}
+      {/* Dialogs */}
+      <CreateLookDialog
+        isOpen={isCreateLookOpen}
+        onClose={() => setIsCreateLookOpen(false)}
+        onSave={handleCreateLook}
+      />
+
       <AddCollectionSheet
         isOpen={isAddCollectionOpen}
         onClose={() => setIsAddCollectionOpen(false)}

@@ -3,88 +3,93 @@
 import type React from "react"
 
 import { useState } from "react"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
-import { CommonSheet } from "@/components/common-sheet"
 
 interface AddCollectionSheetProps {
   isOpen: boolean
   onClose: () => void
-  onAdd: (name: string) => void
+  onAdd: (name: string, description?: string) => void
 }
 
 export function AddCollectionSheet({ isOpen, onClose, onAdd }: AddCollectionSheetProps) {
-  const [collectionName, setCollectionName] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [name, setName] = useState("")
+  const [description, setDescription] = useState("")
+  const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!collectionName.trim()) return
+    if (!name.trim()) {
+      return
+    }
 
-    setIsSubmitting(true)
-
+    setLoading(true)
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 500))
+      await onAdd(name.trim(), description.trim() || undefined)
 
-      onAdd(collectionName.trim())
-      setCollectionName("")
+      // Reset form
+      setName("")
+      setDescription("")
       onClose()
     } catch (error) {
-      console.error("Ошибка создания подборки:", error)
+      console.error("Error adding collection:", error)
     } finally {
-      setIsSubmitting(false)
+      setLoading(false)
     }
   }
 
   const handleClose = () => {
-    setCollectionName("")
+    setName("")
+    setDescription("")
     onClose()
   }
 
   return (
-    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Новая подборка">
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="text-center">
-          <h2 className="text-2xl font-semibold text-white mb-8">{collectionName || "Название подборки"}</h2>
-        </div>
+    <Sheet open={isOpen} onOpenChange={handleClose}>
+      <SheetContent side="bottom" className="h-[400px]">
+        <SheetHeader>
+          <SheetTitle>Создать подборку</SheetTitle>
+        </SheetHeader>
 
-        <div className="space-y-3">
-          <Label htmlFor="collection-name" className="text-sm font-medium text-gray-300">
-            Название подборки
-          </Label>
-          <Input
-            id="collection-name"
-            type="text"
-            placeholder="Введите название подборки"
-            value={collectionName}
-            onChange={(e) => setCollectionName(e.target.value)}
-            className="h-14 text-base bg-white text-gray-900 border-2 border-gray-900 rounded-2xl placeholder:text-gray-500 focus:border-gray-900 focus:ring-0"
-            autoFocus
-          />
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-6 mt-6">
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="collection-name">Название подборки</Label>
+              <Input
+                id="collection-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Например: Офисные образы"
+                required
+              />
+            </div>
 
-        <div className="flex gap-3 pt-6">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleClose}
-            className="flex-1 h-14 bg-transparent border-2 border-gray-600 text-gray-300 hover:bg-slate-700 hover:text-white rounded-2xl"
-            disabled={isSubmitting}
-          >
-            Отмена
-          </Button>
-          <Button
-            type="submit"
-            className="flex-1 h-14 bg-gray-600 hover:bg-gray-700 text-white rounded-2xl font-medium"
-            disabled={!collectionName.trim() || isSubmitting}
-          >
-            {isSubmitting ? "Создание..." : "Создать подборку"}
-          </Button>
-        </div>
-      </form>
-    </CommonSheet>
+            <div>
+              <Label htmlFor="collection-description">Описание (необязательно)</Label>
+              <Textarea
+                id="collection-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Добавьте описание подборки"
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" onClick={handleClose} className="flex-1 bg-transparent">
+              Отмена
+            </Button>
+            <Button type="submit" disabled={!name.trim() || loading} className="flex-1">
+              {loading ? "Создание..." : "Создать подборку"}
+            </Button>
+          </div>
+        </form>
+      </SheetContent>
+    </Sheet>
   )
 }
