@@ -13,7 +13,11 @@ interface OutfitItem {
   id: string
   name: string
   image_url: string
-  category: string
+  color: string
+  shade: string
+  has_print: string
+  notes?: string
+  user_id?: string
 }
 
 interface OutfitSuggestion {
@@ -21,7 +25,6 @@ interface OutfitSuggestion {
   title: string
   items: OutfitItem[]
   suggested_items_count: number
-  source?: string
 }
 
 interface LookSection {
@@ -29,130 +32,6 @@ interface LookSection {
   looks_count: number
   suggestions: OutfitSuggestion[]
 }
-
-// Mock data for outfit suggestions
-const mockOutfitSuggestions: LookSection[] = [
-  {
-    title: "Галерея Гала",
-    looks_count: 3,
-    suggestions: [
-      {
-        id: "1",
-        title: "Элегантный вечер",
-        items: [
-          {
-            id: "item1",
-            name: "Черный топ на бретелях",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "tops",
-          },
-          {
-            id: "item2",
-            name: "Черная плиссированная юбка",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "bottoms",
-          },
-          {
-            id: "item3",
-            name: "Черные кожаные лоферы",
-            image_url: "/placeholder.svg?height=150&width=200",
-            category: "shoes",
-          },
-        ],
-        suggested_items_count: 1,
-      },
-      {
-        id: "2",
-        title: "Изысканный шик",
-        items: [
-          {
-            id: "item4",
-            name: "Черная сумка через плечо",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "accessories",
-          },
-          {
-            id: "item5",
-            name: "Черные лоферы на платформе",
-            image_url: "/placeholder.svg?height=150&width=200",
-            category: "shoes",
-          },
-        ],
-        suggested_items_count: 6,
-        source: "Istrommedia.com",
-      },
-      {
-        id: "3",
-        title: "Классический стиль",
-        items: [
-          {
-            id: "item15",
-            name: "Белая блузка",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "tops",
-          },
-          {
-            id: "item16",
-            name: "Черные брюки",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "bottoms",
-          },
-        ],
-        suggested_items_count: 2,
-      },
-    ],
-  },
-  {
-    title: "Повседневные выходные",
-    looks_count: 5,
-    suggestions: [
-      {
-        id: "4",
-        title: "Расслабленный комфорт",
-        items: [
-          {
-            id: "item6",
-            name: "Белая хлопковая футболка",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "tops",
-          },
-          {
-            id: "item7",
-            name: "Синие джинсы",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "bottoms",
-          },
-          {
-            id: "item8",
-            name: "Белые кроссовки",
-            image_url: "/placeholder.svg?height=150&width=200",
-            category: "shoes",
-          },
-        ],
-        suggested_items_count: 2,
-      },
-      {
-        id: "5",
-        title: "Спортивный стиль",
-        items: [
-          {
-            id: "item17",
-            name: "Серая толстовка",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "tops",
-          },
-          {
-            id: "item18",
-            name: "Черные леггинсы",
-            image_url: "/placeholder.svg?height=200&width=150",
-            category: "bottoms",
-          },
-        ],
-        suggested_items_count: 3,
-      },
-    ],
-  },
-]
 
 export default function HomePage() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
@@ -181,17 +60,51 @@ export default function HomePage() {
     loadUserItemsCount()
   }, [])
 
-  // Load outfit suggestions
+  // Load outfit suggestions from API
   useEffect(() => {
     const loadOutfitSuggestions = async () => {
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      setOutfitSections(mockOutfitSuggestions)
-      setLoading(false)
+      try {
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!user) {
+          console.error("User not authenticated")
+          setLoading(false)
+          return
+        }
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_id: user.id,
+            user_items_count: userItemsCount,
+            preferences: "casual",
+          }),
+        })
+
+        if (response.ok) {
+          const recommendations = await response.json()
+          setOutfitSections(recommendations)
+        } else {
+          console.error("Failed to load recommendations")
+        }
+      } catch (error) {
+        console.error("Error loading outfit suggestions:", error)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    loadOutfitSuggestions()
-  }, [])
+    // Only load suggestions if user items count is loaded
+    if (!itemsLoading) {
+      loadOutfitSuggestions()
+    }
+  }, [itemsLoading, userItemsCount])
 
   const handleGetRecommendations = async () => {
     setRecommendationsLoading(true)
@@ -214,14 +127,14 @@ export default function HomePage() {
         body: JSON.stringify({
           user_id: user.id,
           user_items_count: userItemsCount,
-          preferences: "casual", // можно добавить больше параметров
+          preferences: "casual",
         }),
       })
 
       if (response.ok) {
         const recommendations = await response.json()
-        console.log("Recommendations:", recommendations)
-        // Здесь можно обработать полученные рекомендации
+        setOutfitSections(recommendations)
+        console.log("New recommendations loaded:", recommendations)
       }
     } catch (error) {
       console.error("Error getting recommendations:", error)
@@ -339,6 +252,19 @@ export default function HomePage() {
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <PastelLoader />
+          </div>
+        ) : outfitSections.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-500 mb-4">Пока нет рекомендаций</p>
+            <Button
+              onClick={handleGetRecommendations}
+              disabled={recommendationsLoading}
+              variant="outline"
+              className="text-blue-400 hover:text-blue-300 border-blue-200 hover:border-blue-300 bg-transparent"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              {recommendationsLoading ? "Подбираем..." : "Получить рекомендации"}
+            </Button>
           </div>
         ) : (
           <div className="space-y-8">
