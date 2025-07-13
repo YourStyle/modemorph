@@ -1,25 +1,16 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
-interface LookItem {
-  type: "user" | "basic"
-  id: number
-}
-
-interface CreateLookRequest {
-  name: string
-  description?: string
-  items: LookItem[]
-}
-
-async function expandLookItems(supabase: any, items: LookItem[]) {
-  console.log("Expanding look items:", items)
+async function expandLookItems(items: Array<{ type: string; id: number }>) {
+  const supabase = createClient()
   const expandedItems = []
+
+  console.log("Expanding items:", items)
 
   for (const item of items) {
     try {
       if (item.type === "user") {
-        console.log(`Fetching user item ${item.id}`)
+        console.log(`Getting user item ${item.id}`)
         const { data: userItem, error } = await supabase
           .from("wardrobe_user_items")
           .select("id, item_name, image_url, color, material")
@@ -39,7 +30,7 @@ async function expandLookItems(supabase: any, items: LookItem[]) {
           })
         }
       } else if (item.type === "basic") {
-        console.log(`Fetching basic item ${item.id}`)
+        console.log(`Getting basic item ${item.id}`)
         const { data: basicItem, error } = await supabase
           .from("wardrobe_items")
           .select("id, item_name, image_url, color, material")
@@ -60,7 +51,7 @@ async function expandLookItems(supabase: any, items: LookItem[]) {
         }
       }
     } catch (error) {
-      console.error(`Error processing item ${item.type}:${item.id}:`, error)
+      console.error(`Error processing item ${item.id}:`, error)
     }
   }
 
@@ -80,7 +71,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    console.log("Fetching user looks for user:", user.id)
+    console.log("Getting looks for user:", user.id)
 
     const { data: looks, error } = await supabase
       .from("user_looks")
@@ -89,7 +80,7 @@ export async function GET() {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching user looks:", error)
+      console.error("Error fetching looks:", error)
       return NextResponse.json({ error: "Failed to fetch looks" }, { status: 500 })
     }
 
@@ -98,7 +89,8 @@ export async function GET() {
     // Expand items for each look
     const expandedLooks = await Promise.all(
       looks.map(async (look) => {
-        const expandedItems = await expandLookItems(supabase, look.items || [])
+        const items = look.items || []
+        const expandedItems = await expandLookItems(items)
         return {
           ...look,
           expandedItems,
@@ -127,14 +119,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body: CreateLookRequest = await request.json()
+    const body = await request.json()
     const { name, description, items } = body
 
-    if (!name || !items || items.length === 0) {
-      return NextResponse.json({ error: "Name and items are required" }, { status: 400 })
+    if (!name || !items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: "Invalid data" }, { status: 400 })
     }
 
-    console.log("Creating look:", { name, description, items })
+    console.log("Creating look with data:", { name, description, items })
 
     const { data: newLook, error } = await supabase
       .from("user_looks")
@@ -153,13 +145,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Expand items for the new look
-    const expandedItems = await expandLookItems(supabase, newLook.items || [])
+    const expandedItems = await expandLookItems(items)
     const lookWithExpandedItems = {
       ...newLook,
       expandedItems,
     }
 
-    console.log("Created look with expanded items:", lookWithExpandedItems)
+    console.log("Created look:", lookWithExpandedItems)
 
     return NextResponse.json(lookWithExpandedItems)
   } catch (error) {

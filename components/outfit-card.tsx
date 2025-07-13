@@ -189,9 +189,7 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
             >
               Примерить
             </Button>
-            <Button size="sm" className="flex-1 bg-gray-900 hover:bg-gray-800 text-white">
-              Подробнее
-            </Button>
+ 
           </div>
         </CardContent>
       </Card>

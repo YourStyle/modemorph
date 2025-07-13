@@ -143,7 +143,7 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Введите название образа"
-              className="w-full"
+              className="mt-1"
             />
           </div>
 
@@ -157,7 +157,7 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Добавьте описание образа"
               rows={3}
-              className="w-full"
+              className="mt-1"
             />
           </div>
         </div>
@@ -165,10 +165,10 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
         {/* Selected items */}
         {selectedItems.length > 0 && (
           <div>
-            <Label className="text-gray-900 font-medium text-sm mb-3 block">
+            <Label className="text-gray-900 font-medium text-sm mb-2 block">
               Выбранные вещи ({selectedItems.length})
             </Label>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 mt-2">
               {selectedItems.map((item, index) => (
                 <div
                   key={`${item.type}-${item.id}-${index}`}
@@ -182,6 +182,7 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
                     />
                   )}
                   <span className="text-sm text-gray-900">{item.name}</span>
+                  <span className="text-xs text-gray-500">({item.type === "user" ? "Мои" : "Базовые"})</span>
                   <Button
                     variant="ghost"
                     size="sm"

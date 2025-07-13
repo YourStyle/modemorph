@@ -67,7 +67,7 @@ export function AddCollectionSheet({ isOpen, onClose, onAdd }: AddCollectionShee
               onChange={(e) => setName(e.target.value)}
               placeholder="Например: Офисные образы"
               required
-              className="w-full"
+              className="mt-1"
             />
           </div>
 
@@ -81,7 +81,7 @@ export function AddCollectionSheet({ isOpen, onClose, onAdd }: AddCollectionShee
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Добавьте описание подборки"
               rows={3}
-              className="w-full"
+              className="mt-1"
             />
           </div>
         </div>
