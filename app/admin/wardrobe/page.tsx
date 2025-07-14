@@ -183,6 +183,17 @@ export default function WardrobePage() {
     setItems((prevItems) => prevItems.map((item) => (item.id === itemId ? { ...item, is_hidden: isHidden } : item)))
   }
 
+  const handleDelete = (itemId: number) => {
+    console.log("handleDelete called with itemId:", itemId)
+    // Удаляем элемент из локального состояния
+    setItems((prevItems) => {
+      const newItems = prevItems.filter((item) => item.id !== itemId)
+      console.log("Items before filter:", prevItems.length)
+      console.log("Items after filter:", newItems.length)
+      return newItems
+    })
+  }
+
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -311,6 +322,7 @@ export default function WardrobePage() {
                       item={item}
                       isAdmin={true}
                       onVisibilityChange={handleVisibilityChange}
+                      onDelete={handleDelete}
                     />
                   ))}
                 </div>

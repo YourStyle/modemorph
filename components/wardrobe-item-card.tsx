@@ -172,15 +172,12 @@ export function WardrobeItemCard({
         description: "Элемент гардероба успешно удален",
       })
 
-      // Используем callback если он предоставлен, иначе перезагружаем страницу
+      // Используем только callback, убираем перезагрузку страницы
       if (onDelete) {
         console.log("Calling onDelete callback with item ID:", item.id)
         onDelete(item.id)
       } else {
-        console.log("No onDelete callback provided, reloading page in 1 second")
-        setTimeout(() => {
-          window.location.reload()
-        }, 1000)
+        console.log("No onDelete callback provided - item will remain visible until page refresh")
       }
     } catch (error) {
       console.error("=== DELETE ERROR ===")
