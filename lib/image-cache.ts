@@ -10,7 +10,7 @@ class ImageCache {
       return this.cache.get(itemName) || null
     }
 
-    // Проверяем, не загружается ли уже
+    // Провер��ем, не загружается ли уже
     if (this.loadingPromises.has(itemName)) {
       return this.loadingPromises.get(itemName) || null
     }

@@ -98,7 +98,7 @@ export function WardrobeFilters({ onFilterChange, selectedTypes }: WardrobeFilte
           </div>
         </div>
 
-        {/* Быстрый выбор всех */}
+        {/* Быстрый вы��ор всех */}
         <div className="flex gap-2">
           <Button
             variant={selectedTypes.length === 0 ? "default" : "outline"}

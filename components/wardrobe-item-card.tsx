@@ -30,6 +30,7 @@ interface WardrobeItemCardProps {
   isSelected?: boolean
   isAdmin?: boolean
   onVisibilityChange?: (itemId: number, isHidden: boolean) => void
+  onDelete?: (itemId: number) => void
 }
 
 export function WardrobeItemCard({
@@ -39,6 +40,7 @@ export function WardrobeItemCard({
   isSelected = false,
   isAdmin = false,
   onVisibilityChange,
+  onDelete,
 }: WardrobeItemCardProps) {
   const [imageError, setImageError] = useState(false)
   const [imageLoading, setImageLoading] = useState(true)
@@ -80,6 +82,8 @@ export function WardrobeItemCard({
     setIsUpdatingVisibility(true)
 
     try {
+      console.log("Toggling visibility for item:", item.id, "current state:", item.is_hidden)
+
       const response = await fetch(`/api/wardrobe/${item.id}`, {
         method: "PATCH",
         headers: {
@@ -90,8 +94,19 @@ export function WardrobeItemCard({
         }),
       })
 
+      console.log("PATCH response status:", response.status)
+
+      let responseData
+      try {
+        responseData = await response.json()
+        console.log("PATCH response data:", responseData)
+      } catch (jsonError) {
+        console.error("Failed to parse JSON response:", jsonError)
+        throw new Error("Invalid response from server")
+      }
+
       if (!response.ok) {
-        throw new Error("Failed to update visibility")
+        throw new Error(responseData.error || `HTTP ${response.status}: Failed to update visibility`)
       }
 
       // Обновляем локальное состояние через callback
@@ -107,7 +122,7 @@ export function WardrobeItemCard({
       console.error("Error updating visibility:", error)
       toast({
         title: "Ошибка",
-        description: "Не удалось изменить видимость вещи",
+        description: error instanceof Error ? error.message : "Не удалось изменить видимость вещи",
         variant: "destructive",
       })
     } finally {
@@ -119,12 +134,29 @@ export function WardrobeItemCard({
     setIsDeleting(true)
 
     try {
+      console.log("Attempting to delete item with ID:", item.id, "Type:", typeof item.id)
+
       const response = await fetch(`/api/wardrobe/${item.id}`, {
         method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
       })
 
+      console.log("DELETE response status:", response.status)
+      console.log("DELETE response headers:", Object.fromEntries(response.headers.entries()))
+
+      let responseData
+      try {
+        responseData = await response.json()
+        console.log("DELETE response data:", responseData)
+      } catch (jsonError) {
+        console.error("Failed to parse JSON response:", jsonError)
+        throw new Error("Invalid response from server")
+      }
+
       if (!response.ok) {
-        throw new Error("Failed to delete item")
+        throw new Error(responseData.error || `HTTP ${response.status}: Failed to delete item`)
       }
 
       toast({
@@ -132,13 +164,21 @@ export function WardrobeItemCard({
         description: "Элемент гардероба успешно удален",
       })
 
-      // Перезагружаем страницу или обновляем список
-      window.location.reload()
+      // Используем callback если он предоставлен, иначе перезагружаем страницу
+      if (onDelete) {
+        console.log("Calling onDelete callback with item ID:", item.id)
+        onDelete(item.id)
+      } else {
+        console.log("No onDelete callback provided, reloading page in 1 second")
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000)
+      }
     } catch (error) {
       console.error("Error deleting item:", error)
       toast({
-        title: "Ошибка",
-        description: "Не удалось удалить вещь",
+        title: "Ошибка удаления",
+        description: error instanceof Error ? error.message : "Не удалось удалить вещь",
         variant: "destructive",
       })
     } finally {

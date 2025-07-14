@@ -337,7 +337,7 @@ export function BasicMaterialsManager() {
                   name="properties"
                   value={formData.properties}
                   onChange={handleInputChange}
-                  placeholder="Свойства материала (например: мягкий, д��шащ��й, прочный)"
+                  placeholder="Свойства материала (например: ��ягкий, д��шащ��й, прочный)"
                   rows={3}
                 />
               </div>
