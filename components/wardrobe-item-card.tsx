@@ -134,7 +134,10 @@ export function WardrobeItemCard({
     setIsDeleting(true)
 
     try {
-      console.log("Attempting to delete item with ID:", item.id, "Type:", typeof item.id)
+      console.log("=== DELETE OPERATION START ===")
+      console.log("Item object:", item)
+      console.log("Item ID:", item.id, "Type:", typeof item.id)
+      console.log("Request URL will be:", `/api/wardrobe/${item.id}`)
 
       const response = await fetch(`/api/wardrobe/${item.id}`, {
         method: "DELETE",
@@ -144,21 +147,26 @@ export function WardrobeItemCard({
       })
 
       console.log("DELETE response status:", response.status)
+      console.log("DELETE response ok:", response.ok)
       console.log("DELETE response headers:", Object.fromEntries(response.headers.entries()))
 
       let responseData
       try {
-        responseData = await response.json()
-        console.log("DELETE response data:", responseData)
+        const responseText = await response.text()
+        console.log("Raw response text:", responseText)
+        responseData = JSON.parse(responseText)
+        console.log("Parsed response data:", responseData)
       } catch (jsonError) {
         console.error("Failed to parse JSON response:", jsonError)
         throw new Error("Invalid response from server")
       }
 
       if (!response.ok) {
+        console.log("Response not ok, throwing error")
         throw new Error(responseData.error || `HTTP ${response.status}: Failed to delete item`)
       }
 
+      console.log("Delete successful!")
       toast({
         title: "Вещь удалена",
         description: "Элемент гардероба успешно удален",
@@ -175,6 +183,7 @@ export function WardrobeItemCard({
         }, 1000)
       }
     } catch (error) {
+      console.error("=== DELETE ERROR ===")
       console.error("Error deleting item:", error)
       toast({
         title: "Ошибка удаления",
@@ -183,6 +192,7 @@ export function WardrobeItemCard({
       })
     } finally {
       setIsDeleting(false)
+      console.log("=== DELETE OPERATION END ===")
     }
   }
 

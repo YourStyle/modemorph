@@ -21,9 +21,29 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
     console.log("Attempting to delete item with ID:", itemId)
 
-    // Удаляем вещь напрямую без предварительной проверки
+    // Сначала проверим, что запись существует
+    const { data: checkData, error: checkError } = await supabase
+      .from("wardrobe_items")
+      .select("*")
+      .eq("id", itemId)
+
+    console.log("Check query result:", { checkData, checkError })
+
+    if (checkError) {
+      console.error("Error checking item existence:", checkError)
+      return NextResponse.json({ error: `Database check error: ${checkError.message}` }, { status: 500 })
+    }
+
+    if (!checkData || checkData.length === 0) {
+      console.log("Item not found in database")
+      return NextResponse.json({ error: "Item not found in database" }, { status: 404 })
+    }
+
+    console.log("Found item to delete:", checkData[0])
+
+    // Теперь удаляем
     const { data: deleteData, error: deleteError } = await supabase
-      .from("wardrobe_user_items")
+      .from("wardrobe_items")
       .delete()
       .eq("id", itemId)
       .select()
@@ -32,13 +52,12 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
     if (deleteError) {
       console.error("Error deleting wardrobe item:", deleteError)
-      return NextResponse.json({ error: `Database error: ${deleteError.message}` }, { status: 500 })
+      return NextResponse.json({ error: `Database delete error: ${deleteError.message}` }, { status: 500 })
     }
 
-    // Проверяем, была ли удалена хотя бы одна запись
     if (!deleteData || deleteData.length === 0) {
-      console.log("No rows were deleted - item not found")
-      return NextResponse.json({ error: "Item not found or already deleted" }, { status: 404 })
+      console.log("No rows were deleted")
+      return NextResponse.json({ error: "Failed to delete - no rows affected" }, { status: 500 })
     }
 
     console.log("Successfully deleted item:", deleteData)
@@ -75,6 +94,24 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 
     console.log("Attempting to update visibility for item:", itemId, "to:", is_hidden)
+
+    // Сначала проверим, что запись существует
+    const { data: checkData, error: checkError } = await supabase
+      .from("wardrobe_user_items")
+      .select("*")
+      .eq("id", itemId)
+
+    console.log("Check query result for PATCH:", { checkData, checkError })
+
+    if (checkError) {
+      console.error("Error checking item existence:", checkError)
+      return NextResponse.json({ error: `Database check error: ${checkError.message}` }, { status: 500 })
+    }
+
+    if (!checkData || checkData.length === 0) {
+      console.log("Item not found in database for PATCH")
+      return NextResponse.json({ error: "Item not found in database" }, { status: 404 })
+    }
 
     // Обновляем видимость вещи
     const { data: updateData, error: updateError } = await supabase
