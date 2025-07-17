@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { OutfitCard } from "@/components/outfit-card"
-import { PastelLoader } from "@/components/pastel-loader"
 import { Sparkles } from "lucide-react"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { createClient } from "@/lib/supabase/client"
@@ -42,6 +41,76 @@ interface CachedRecommendations {
 
 const CACHE_KEY = "outfit_recommendations_cache"
 const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+
+// Skeleton component for recommendations
+const RecommendationsSkeleton = () => {
+  return (
+    <div className="space-y-8">
+      {/* Section 1 */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="h-6 bg-gray-200 rounded w-48 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 rounded w-20 animate-pulse"></div>
+        </div>
+        <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex-shrink-0 w-64">
+              <Card className="bg-white border-0 shadow-sm overflow-hidden">
+                <div className="aspect-[4/5] bg-gray-200 animate-pulse"></div>
+                <div className="p-4 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-3/4 animate-pulse"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+                </div>
+              </Card>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Section 2 */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="h-6 bg-gray-200 rounded w-56 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 rounded w-24 animate-pulse"></div>
+        </div>
+        <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex-shrink-0 w-64">
+              <Card className="bg-white border-0 shadow-sm overflow-hidden">
+                <div className="aspect-[4/5] bg-gray-200 animate-pulse"></div>
+                <div className="p-4 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-2/3 animate-pulse"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+                </div>
+              </Card>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Section 3 */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="h-6 bg-gray-200 rounded w-40 animate-pulse"></div>
+          <div className="h-4 bg-gray-200 rounded w-16 animate-pulse"></div>
+        </div>
+        <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="flex-shrink-0 w-64">
+              <Card className="bg-white border-0 shadow-sm overflow-hidden">
+                <div className="aspect-[4/5] bg-gray-200 animate-pulse"></div>
+                <div className="p-4 space-y-2">
+                  <div className="h-4 bg-gray-200 rounded w-5/6 animate-pulse"></div>
+                  <div className="h-3 bg-gray-200 rounded w-2/5 animate-pulse"></div>
+                </div>
+              </Card>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function HomePage() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
@@ -279,14 +348,6 @@ export default function HomePage() {
   // Show wardrobe section only if user has less than 6 items
   const showWardrobeSection = userItemsCount < 6
 
-  if (itemsLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 pb-32 flex items-center justify-center">
-        <PastelLoader />
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
       <div className="px-4 py-6">
@@ -297,7 +358,7 @@ export default function HomePage() {
         </div>
 
         {/* Show wardrobe section only if user has less than 6 items */}
-        {showWardrobeSection && (
+        {showWardrobeSection && !itemsLoading && (
           <>
             {/* 3D Wardrobe Visualization */}
             <div className="flex justify-center mb-12">
@@ -361,31 +422,9 @@ export default function HomePage() {
           </>
         )}
 
-        {/* Show recommendations button when wardrobe section is hidden */}
-        {!showWardrobeSection && (
-          <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
-            <CardContent className="p-6 text-center">
-              <div className="text-center">
-                <p className="text-gray-600 text-sm mb-4">Хотите новые идеи для образов?</p>
-                <Button
-                  onClick={handleGetRecommendations}
-                  disabled={recommendationsLoading}
-                  variant="outline"
-                  className="text-blue-400 hover:text-blue-300 border-blue-200 hover:border-blue-300 h-10 px-6 font-medium bg-transparent"
-                >
-                  <Sparkles className="h-4 w-4 mr-2" />
-                  {recommendationsLoading ? "Подбираем..." : "Подобрать рекомендации"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Outfit Suggestions */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <PastelLoader />
-          </div>
+        {loading || itemsLoading ? (
+          <RecommendationsSkeleton />
         ) : outfitSections.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500 mb-4">Пока нет рекомендаций</p>

@@ -2,11 +2,13 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Upload, X, Loader2, Check, Plus } from "lucide-react"
+import { AIAssistantLoader } from "@/components/ai-assistant-loader"
 import Image from "next/image"
 
 interface ResponseItem {
@@ -32,22 +34,34 @@ interface ItemWithImage extends ResponseItem {
   isAdded?: boolean
 }
 
-interface ImageUploadFormProps {
-  onSuccess?: () => void
-}
-
 interface UploadedPhoto {
   file: File
   preview: string
   id: string
 }
 
-export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
-  const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
+interface PhotoAnalysisFormProps {
+  initialPhotos?: UploadedPhoto[]
+  onSuccess?: () => void
+  onReset?: () => void
+}
+
+export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: PhotoAnalysisFormProps) {
+  const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>(initialPhotos)
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<ItemWithImage[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [hasAnalyzed, setHasAnalyzed] = useState(false)
+  const [needsReanalysis, setNeedsReanalysis] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Автоматически запускаем анализ если есть начальные фото
+  useEffect(() => {
+    if (initialPhotos && initialPhotos.length > 0 && !hasAnalyzed) {
+      setSelectedFiles(initialPhotos)
+      handleAnalyze()
+    }
+  }, [initialPhotos, hasAnalyzed])
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
@@ -60,7 +74,12 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
     }))
 
     setSelectedFiles((prev) => [...prev, ...newPhotos])
-    setResults([])
+
+    // Если уже были результаты, показываем что нужен повторный анализ
+    if (results.length > 0) {
+      setNeedsReanalysis(true)
+    }
+
     setError(null)
 
     // Очищаем input для возможности повторного выбора тех же файлов
@@ -75,7 +94,19 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
       if (photoToRemove) {
         URL.revokeObjectURL(photoToRemove.preview)
       }
-      return prev.filter((p) => p.id !== id)
+      const newFiles = prev.filter((p) => p.id !== id)
+
+      // Если удалили все фото, сбрасываем состояние
+      if (newFiles.length === 0) {
+        setResults([])
+        setHasAnalyzed(false)
+        setNeedsReanalysis(false)
+      } else if (results.length > 0) {
+        // Если есть результаты и остались фото, нужен повторный анализ
+        setNeedsReanalysis(true)
+      }
+
+      return newFiles
     })
   }
 
@@ -148,6 +179,9 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
 
     setLoading(true)
     setError(null)
+    setHasAnalyzed(true)
+    setNeedsReanalysis(false)
+    setResults([]) // Очищаем предыдущие результаты
 
     try {
       let allResults: ItemWithImage[] = []
@@ -228,7 +262,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
     }
   }
 
-  const clearAll = () => {
+  const handleClear = () => {
     // Освобождаем URL объекты
     selectedFiles.forEach((photo) => {
       URL.revokeObjectURL(photo.preview)
@@ -236,72 +270,136 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
     setSelectedFiles([])
     setResults([])
     setError(null)
+    setHasAnalyzed(false)
+    setLoading(false)
+    setNeedsReanalysis(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
+    onReset?.()
   }
+
+  const ResultsSkeleton = () => (
+    <div className="space-y-4">
+      <div className="text-center py-6">
+        <div className="flex justify-center mb-4">
+          <AIAssistantLoader size={48} />
+        </div>
+        <h3 className="text-lg font-semibold text-white mb-2">ИИ анализирует ваши фото</h3>
+        <p className="text-gray-400 text-sm">
+          Наш искусственный интеллект распознает одежду на изображениях
+          <br />и подберет подходящие вещи для вашего гардероба
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        {[...Array(6)].map((_, index) => (
+          <Card key={index} className="overflow-hidden">
+            <CardContent className="p-3">
+              <Skeleton className="aspect-square mb-3 rounded-lg" />
+              <Skeleton className="h-4 w-full mb-2" />
+              <Skeleton className="h-4 w-3/4 mb-2" />
+              <div className="flex gap-1 mb-2">
+                <Skeleton className="h-5 w-12" />
+                <Skeleton className="h-5 w-16" />
+              </div>
+              <Skeleton className="h-8 w-full" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <div className="h-full overflow-y-auto">
       <div className="space-y-4 p-4">
-        {/* Upload Section */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-base font-semibold">Загрузить фото одежды</h3>
-                {(selectedFiles.length > 0 || results.length > 0) && (
-                  <Button variant="outline" size="sm" onClick={clearAll}>
-                    <X className="h-3 w-3 mr-1" />
-                    Очистить
-                  </Button>
-                )}
-              </div>
+        {/* Header with Clear Button */}
+        {hasAnalyzed && !loading && (
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-semibold text-white">Анализ фото</h3>
+            <Button variant="outline" size="sm" onClick={handleClear}>
+              <X className="h-3 w-3 mr-1" />
+              Очистить
+            </Button>
+          </div>
+        )}
 
-              {/* Photo Grid */}
-              {selectedFiles.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {selectedFiles.map((photo) => (
-                      <div key={photo.id} className="relative group">
-                        <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                          <img
-                            src={photo.preview || "/placeholder.svg"}
-                            alt="Preview"
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <button
-                          onClick={() => removePhoto(photo.id)}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+        {/* Photos Section */}
+        {selectedFiles.length > 0 && !loading && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium">Загруженные фото ({selectedFiles.length})</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {selectedFiles.map((photo) => (
+                    <div key={photo.id} className="relative group">
+                      <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                        <img
+                          src={photo.preview || "/placeholder.svg"}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                        />
                       </div>
-                    ))}
-
-                    {/* Add More Button */}
-                    <div className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
-                        onChange={handleFileSelect}
-                        className="hidden"
-                        id="file-upload"
-                        multiple
-                      />
-                      <label
-                        htmlFor="file-upload"
-                        className="cursor-pointer flex flex-col items-center justify-center space-y-1 p-4 text-center"
+                      <button
+                        onClick={() => removePhoto(photo.id)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
                       >
-                        <Plus className="h-6 w-6 text-gray-400" />
-                        <span className="text-xs text-gray-600">Добавить еще</span>
-                      </label>
+                        <X className="h-3 w-3" />
+                      </button>
                     </div>
+                  ))}
+
+                  {/* Add More Button */}
+                  <div className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      multiple
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className="cursor-pointer flex flex-col items-center justify-center space-y-1 p-4 text-center"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <Plus className="h-6 w-6 text-gray-400" />
+                      <span className="text-xs text-gray-600">Добавить еще</span>
+                    </label>
                   </div>
                 </div>
-              ) : (
+
+                {/* Кнопка анализа - показываем если не анализировали или нужен повторный анализ */}
+                {(!hasAnalyzed || needsReanalysis) && selectedFiles.length > 0 && (
+                  <Button onClick={handleAnalyze} disabled={loading} className="w-full" size="sm">
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                        Анализируем...
+                      </>
+                    ) : (
+                      `Найти вещи на ${selectedFiles.length} ${
+                        selectedFiles.length === 1 ? "фото" : selectedFiles.length < 5 ? "фото" : "фото"
+                      }`
+                    )}
+                  </Button>
+                )}
+
+                {error && <div className="text-red-600 text-xs bg-red-50 p-2 rounded-lg">{error}</div>}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Upload Section - показываем только если нет фото */}
+        {selectedFiles.length === 0 && (
+          <Card>
+            <CardContent className="p-4">
+              <div className="space-y-3">
+                <h3 className="text-base font-semibold">Загрузить фото одежды</h3>
+
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
                   <input
                     ref={fileInputRef}
@@ -309,12 +407,12 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
                     accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
                     onChange={handleFileSelect}
                     className="hidden"
-                    id="file-upload"
                     multiple
                   />
                   <label
                     htmlFor="file-upload"
                     className="cursor-pointer flex flex-col items-center justify-center space-y-2"
+                    onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="h-6 w-6 text-gray-400" />
                     <span className="text-xs text-gray-600 text-center">
@@ -324,32 +422,17 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
                     </span>
                   </label>
                 </div>
-              )}
-
-              {selectedFiles.length > 0 && (
-                <Button onClick={handleAnalyze} disabled={loading} className="w-full" size="sm">
-                  {loading ? (
-                    <>
-                      <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                      Анализируем...
-                    </>
-                  ) : (
-                    `Найти вещи на ${selectedFiles.length} ${
-                      selectedFiles.length === 1 ? "фото" : selectedFiles.length < 5 ? "фото" : "фото"
-                    }`
-                  )}
-                </Button>
-              )}
-
-              {error && <div className="text-red-600 text-xs bg-red-50 p-2 rounded-lg">{error}</div>}
-            </div>
-          </CardContent>
-        </Card>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Results Section */}
-        {results.length > 0 && (
+        {loading && <ResultsSkeleton />}
+
+        {!loading && results.length > 0 && (
           <div className="space-y-3">
-            <h3 className="text-base font-semibold">Найденные вещи ({results.length})</h3>
+            <h3 className="text-base font-semibold text-white">Найденные вещи ({results.length})</h3>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
               {results.map((item, index) => (
                 <Card key={index} className="overflow-hidden">

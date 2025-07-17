@@ -3,20 +3,25 @@
 import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Trash2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Trash2, Edit } from "lucide-react"
 import { PastelLoader } from "@/components/pastel-loader"
 import { useToast } from "@/hooks/use-toast"
 
-interface UserWardrobeItem {
+interface WardrobeItem {
   id: number
   item_name: string
-  image_url?: string
-  color: string
-  shade: string
-  material: string
-  size_type: string
+  material?: string
+  style?: string
+  color?: string
+  shade?: string
+  has_print?: string
+  has_details?: string
+  size_type?: string
   notes?: string
-  created_at: string
+  image_url?: string
+  clothing_type?: string
+  created_at?: string
 }
 
 interface UserWardrobeGridProps {
@@ -25,22 +30,21 @@ interface UserWardrobeGridProps {
 }
 
 export function UserWardrobeGrid({ onItemsChange, refreshTrigger }: UserWardrobeGridProps) {
-  const [items, setItems] = useState<UserWardrobeItem[]>([])
+  const [items, setItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [deletingItemId, setDeletingItemId] = useState<number | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
   const { toast } = useToast()
 
-  const fetchUserItems = async () => {
+  const fetchItems = async () => {
     try {
       setLoading(true)
       const response = await fetch("/api/wardrobe-user-items")
       if (response.ok) {
         const data = await response.json()
-        const itemsArray = Array.isArray(data) ? data : []
-        setItems(itemsArray)
-        onItemsChange?.(itemsArray.length)
+        setItems(Array.isArray(data) ? data : [])
+        onItemsChange?.(Array.isArray(data) ? data.length : 0)
       } else {
-        console.error("Failed to fetch user items:", response.statusText)
+        console.error("Failed to fetch user items")
         setItems([])
         onItemsChange?.(0)
       }
@@ -54,40 +58,34 @@ export function UserWardrobeGrid({ onItemsChange, refreshTrigger }: UserWardrobe
   }
 
   useEffect(() => {
-    fetchUserItems()
+    fetchItems()
   }, [refreshTrigger])
 
-  const handleDelete = async (itemId: number) => {
+  const handleDelete = async (id: number) => {
     try {
-      setDeletingItemId(itemId)
-
-      const response = await fetch(`/api/wardrobe-user-items/${itemId}`, {
+      setDeletingId(id)
+      const response = await fetch(`/api/wardrobe-user-items/${id}`, {
         method: "DELETE",
       })
 
       if (response.ok) {
-        // Remove item from local state
-        const updatedItems = items.filter((item) => item.id !== itemId)
-        setItems(updatedItems)
-        onItemsChange?.(updatedItems.length)
-
         toast({
           title: "Вещь удалена",
-          description: "Вещь успешно удалена из вашего гардероба",
+          description: "Вещь успешно удалена из гардероба",
         })
+        fetchItems() // Refresh the list
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to delete item")
+        throw new Error("Failed to delete item")
       }
     } catch (error) {
       console.error("Error deleting item:", error)
       toast({
         title: "Ошибка",
-        description: error instanceof Error ? error.message : "Не удалось удалить вещь",
+        description: "Не удалось удалить вещь",
         variant: "destructive",
       })
     } finally {
-      setDeletingItemId(null)
+      setDeletingId(null)
     }
   }
 
@@ -117,21 +115,39 @@ export function UserWardrobeGrid({ onItemsChange, refreshTrigger }: UserWardrobe
                 src={item.image_url || "/placeholder.svg"}
                 alt={item.item_name}
                 className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement
+                  target.style.display = "none"
+                  target.nextElementSibling?.classList.remove("hidden")
+                }}
               />
-            ) : (
-              <span className="text-2xl">👕</span>
-            )}
+            ) : null}
+            <span className={`text-2xl ${item.image_url ? "hidden" : ""}`}>👕</span>
 
-            {/* Delete button - показывается при наведении */}
-            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            {/* Action buttons - показываются при наведении на десктопе, всегда видны на мобильных */}
+            <div className="absolute top-2 right-2 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
               <Button
-                onClick={() => handleDelete(item.id)}
+                size="sm"
+                variant="secondary"
+                className="h-7 w-7 p-0 bg-white/90 hover:bg-white shadow-sm"
+                onClick={() => {
+                  // TODO: Implement edit functionality
+                  toast({
+                    title: "Функция в разработке",
+                    description: "Редактирование вещей будет доступно в следующем обновлении",
+                  })
+                }}
+              >
+                <Edit className="h-3 w-3" />
+              </Button>
+              <Button
                 size="sm"
                 variant="destructive"
-                disabled={deletingItemId === item.id}
-                className="h-8 w-8 p-0"
+                className="h-7 w-7 p-0 bg-red-500/90 hover:bg-red-500 shadow-sm"
+                onClick={() => handleDelete(item.id)}
+                disabled={deletingId === item.id}
               >
-                {deletingItemId === item.id ? (
+                {deletingId === item.id ? (
                   <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <Trash2 className="h-3 w-3" />
@@ -142,11 +158,40 @@ export function UserWardrobeGrid({ onItemsChange, refreshTrigger }: UserWardrobe
 
           <div className="p-3">
             <h3 className="font-medium text-gray-900 text-xs mb-1 line-clamp-2 leading-tight">{item.item_name}</h3>
-            <div className="flex flex-wrap gap-1 mb-2">
-              <span className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">{item.color}</span>
-              <span className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded">{item.size_type}</span>
+
+            {/* Item details */}
+            <div className="space-y-1 mb-2">
+              {item.color && (
+                <p className="text-xs text-gray-600">
+                  <span className="font-medium">Цвет:</span> {item.color}
+                  {item.shade && ` (${item.shade})`}
+                </p>
+              )}
+              {item.material && (
+                <p className="text-xs text-gray-600">
+                  <span className="font-medium">Материал:</span> {item.material}
+                </p>
+              )}
             </div>
-            {item.notes && <p className="text-xs text-gray-500 line-clamp-2 leading-tight">{item.notes}</p>}
+
+            {/* Tags */}
+            <div className="flex flex-wrap gap-1">
+              {item.clothing_type && (
+                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600">
+                  {item.clothing_type}
+                </Badge>
+              )}
+              {item.has_print && item.has_print !== "нет" && (
+                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600">
+                  {item.has_print}
+                </Badge>
+              )}
+              {item.size_type && (
+                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-green-100 text-green-600">
+                  {item.size_type}
+                </Badge>
+              )}
+            </div>
           </div>
         </Card>
       ))}
