@@ -37,6 +37,7 @@ interface CachedRecommendations {
   data: LookSection[]
   timestamp: number
   userItemsCount: number
+  fromCache: boolean
 }
 
 const CACHE_KEY = "outfit_recommendations_cache"
@@ -49,6 +50,7 @@ export default function HomePage() {
   const [userItemsCount, setUserItemsCount] = useState(0)
   const [itemsLoading, setItemsLoading] = useState(true)
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
+  const [isFromCache, setIsFromCache] = useState(false)
 
   // Cache management functions
   const getCachedRecommendations = (): CachedRecommendations | null => {
@@ -65,7 +67,7 @@ export default function HomePage() {
         return null
       }
 
-      return parsedCache
+      return { ...parsedCache, fromCache: true }
     } catch (error) {
       console.error("Error reading cache:", error)
       localStorage.removeItem(CACHE_KEY)
@@ -79,6 +81,7 @@ export default function HomePage() {
         data,
         timestamp: Date.now(),
         userItemsCount,
+        fromCache: false,
       }
       localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
     } catch (error) {
@@ -90,6 +93,35 @@ export default function HomePage() {
     // Cache is valid if user items count hasn't changed significantly
     // Allow small variations (±1) but invalidate for larger changes
     return Math.abs(cachedData.userItemsCount - currentUserItemsCount) <= 1
+  }
+
+  // Save recommendations to database
+  const saveRecommendationsToDatabase = async (recommendations: LookSection[]) => {
+    try {
+      // Flatten all suggestions from all sections
+      const allSuggestions = recommendations.flatMap((section) => section.suggestions)
+
+      console.log("Saving recommendations to database:", allSuggestions.length)
+
+      const response = await fetch("/api/user-recommendations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recommendations: allSuggestions,
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log("Recommendations saved:", result)
+      } else {
+        console.error("Failed to save recommendations:", response.status)
+      }
+    } catch (error) {
+      console.error("Error saving recommendations to database:", error)
+    }
   }
 
   // Load user items count
@@ -121,11 +153,13 @@ export default function HomePage() {
         if (cachedRecommendations && isCacheValidForUser(cachedRecommendations, userItemsCount)) {
           console.log("Loading recommendations from cache")
           setOutfitSections(cachedRecommendations.data)
+          setIsFromCache(true)
           setLoading(false)
           return
         }
 
         console.log("Cache miss or invalid, fetching from API")
+        setIsFromCache(false)
 
         const supabase = createClient()
         const {
@@ -166,6 +200,9 @@ export default function HomePage() {
 
           // Cache the new recommendations
           setCachedRecommendations(recommendations, userItemsCount)
+
+          // Save recommendations to database (only those with user items only) - only if not from cache
+          await saveRecommendationsToDatabase(recommendations)
         } else {
           const errorText = await response.text()
           console.error("API error:", response.status, errorText)
@@ -185,6 +222,7 @@ export default function HomePage() {
 
   const handleGetRecommendations = async () => {
     setRecommendationsLoading(true)
+    setIsFromCache(false)
     try {
       const supabase = createClient()
       const {
@@ -224,6 +262,9 @@ export default function HomePage() {
 
         // Update cache with new recommendations
         setCachedRecommendations(recommendations, userItemsCount)
+
+        // Save recommendations to database (only those with user items only)
+        await saveRecommendationsToDatabase(recommendations)
       } else {
         const errorText = await response.text()
         console.error("Manual API error:", response.status, errorText)

@@ -7,10 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
-import { AddBaseItemSheet } from "@/components/add-base-item-sheet"
 import { PastelLoader } from "@/components/pastel-loader"
 import { Progress } from "@/components/ui/progress"
 import { Plus, ChevronDown, ChevronUp } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -37,12 +37,13 @@ interface BasicWardrobeItem {
 export default function WardrobePage() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false)
-  const [isAddBaseItemSheetOpen, setIsAddBaseItemSheetOpen] = useState(false)
-  const [selectedBaseItem, setSelectedBaseItem] = useState<BasicWardrobeItem | null>(null)
   const [basicItems, setBasicItems] = useState<BasicWardrobeItem[]>([])
   const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(true)
   const [showAllBasicItems, setShowAllBasicItems] = useState(false)
   const [userItemsCount, setUserItemsCount] = useState(0)
+  const [addingItemId, setAddingItemId] = useState<number | null>(null)
+  const [refreshUserItems, setRefreshUserItems] = useState(0)
+  const { toast } = useToast()
 
   useEffect(() => {
     fetchBasicItems()
@@ -55,12 +56,16 @@ export default function WardrobePage() {
       const response = await fetch("/api/basic-wardrobe-items")
       if (response.ok) {
         const data = await response.json()
-        setBasicItems(data.items || [])
+        // Ensure data is an array
+        const itemsArray = Array.isArray(data) ? data : data.items || []
+        setBasicItems(itemsArray)
       } else {
         console.error("Failed to fetch basic items:", response.statusText)
+        setBasicItems([])
       }
     } catch (error) {
       console.error("Error fetching basic items:", error)
+      setBasicItems([])
     } finally {
       setIsLoadingBasicItems(false)
     }
@@ -82,17 +87,58 @@ export default function WardrobePage() {
     setIsCategorySheetOpen(true)
   }
 
-  const handleAddBaseItem = (item: BasicWardrobeItem) => {
-    setSelectedBaseItem(item)
-    setIsAddBaseItemSheetOpen(true)
-  }
+  const handleAddBaseItem = async (item: BasicWardrobeItem) => {
+    try {
+      setAddingItemId(item.id)
 
-  const handleBaseItemAdded = () => {
-    // Обновляем список базовых вещей и количество пользовательских вещей после добавления
-    fetchBasicItems()
-    fetchUserItemsCount()
-    setIsAddBaseItemSheetOpen(false)
-    setSelectedBaseItem(null)
+      const payload = {
+        item_name: item.item_name,
+        basic_item_id: item.id,
+        material: item.material || "",
+        style: item.style || "",
+        color: item.color || "",
+        shade: item.shade || "",
+        has_print: item.has_print || "нет",
+        has_details: item.has_details || "нет",
+        size_type: "M", // Размер по умолчанию
+        notes: "",
+        image_url: item.image_url,
+      }
+
+      const response = await fetch("/api/wardrobe-user-items", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to add item")
+      }
+
+      toast({
+        title: "Вещь добавлена",
+        description: `${item.item_name} добавлена в ваш гардероб`,
+      })
+
+      // Обновляем список базовых вещей и количество пользовательских вещей
+      fetchBasicItems()
+      fetchUserItemsCount()
+
+      // Принудительно обновляем UserWardrobeGrid
+      setRefreshUserItems((prev) => prev + 1)
+    } catch (error) {
+      console.error("Error adding base item:", error)
+      toast({
+        title: "Ошибка",
+        description: error instanceof Error ? error.message : "Не удалось добавить вещь в гардероб",
+        variant: "destructive",
+      })
+    } finally {
+      setAddingItemId(null)
+    }
   }
 
   const displayedBasicItems = showAllBasicItems ? basicItems : basicItems.slice(0, 12)
@@ -166,7 +212,7 @@ export default function WardrobePage() {
         {/* User's Wardrobe */}
         <div className="mb-8">
           <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Ваши вещи</h2>
-          <UserWardrobeGrid onItemsChange={setUserItemsCount} />
+          <UserWardrobeGrid onItemsChange={setUserItemsCount} refreshTrigger={refreshUserItems} />
         </div>
 
         {/* Basic Items */}
@@ -198,10 +244,15 @@ export default function WardrobePage() {
                         <Button
                           onClick={() => handleAddBaseItem(item)}
                           size="sm"
+                          disabled={addingItemId === item.id}
                           className="bg-white text-gray-900 hover:bg-gray-100 shadow-lg text-xs px-2 py-1 h-7"
                         >
-                          <Plus className="h-3 w-3 mr-1" />
-                          Добавить
+                          {addingItemId === item.id ? (
+                            <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin mr-1" />
+                          ) : (
+                            <Plus className="h-3 w-3 mr-1" />
+                          )}
+                          {addingItemId === item.id ? "..." : "Добавить"}
                         </Button>
                       </div>
                     </div>
@@ -256,13 +307,6 @@ export default function WardrobePage() {
       <AddToClosetSheet isOpen={isAddSheetOpen} onClose={() => setIsAddSheetOpen(false)} />
 
       <CategoryProgressSheet isOpen={isCategorySheetOpen} onClose={() => setIsCategorySheetOpen(false)} />
-
-      <AddBaseItemSheet
-        isOpen={isAddBaseItemSheetOpen}
-        onClose={() => setIsAddBaseItemSheetOpen(false)}
-        item={selectedBaseItem}
-        onSuccess={handleBaseItemAdded}
-      />
     </div>
   )
 }

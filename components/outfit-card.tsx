@@ -205,7 +205,7 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
           </DialogHeader>
           <div className="py-6 text-center">
             <p className="text-gray-600 mb-4">
-              Совсем скоро вы сможете сразу на себе примерять образы, но нужно чуть-чуть подождать.
+              Совсем скор�� вы сможете сразу на себе примерять образы, но нужно чуть-чуть подождать.
             </p>
             <div className="flex justify-center">
               <div className="animate-pulse flex space-x-1">
