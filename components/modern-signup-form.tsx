@@ -92,7 +92,7 @@ export default function ModernSignupForm() {
         </div>
 
         <div className="text-center text-xs text-gray-500 leading-relaxed">
-          Регистрируясь, вы соглашаетесь с нашими{" "}
+          Регистрируяс��, вы соглашаетесь с нашими{" "}
           <Link href="/terms" className="text-gray-700 hover:underline font-medium">
             Условиями использования
           </Link>{" "}

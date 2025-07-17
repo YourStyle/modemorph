@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Camera } from "lucide-react"
 import { PhotoAnalysisForm } from "./photo-analysis-form"
@@ -23,7 +23,6 @@ interface AddToClosetSheetProps {
 export function AddToClosetSheet({ isOpen, onClose, initialPhotos = [] }: AddToClosetSheetProps) {
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
   const [showAnalysisForm, setShowAnalysisForm] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
@@ -37,15 +36,15 @@ export function AddToClosetSheet({ isOpen, onClose, initialPhotos = [] }: AddToC
 
     setSelectedFiles(newPhotos)
     setShowAnalysisForm(true)
-
-    // Очищаем input для возможности повторного выбора тех же файлов
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
   }
 
   const handlePhotoUpload = () => {
-    fileInputRef.current?.click()
+    const fileInput = document.createElement("input")
+    fileInput.type = "file"
+    fileInput.accept = "image/heic,image/jpeg,image/jpg,image/webp,image/png"
+    fileInput.multiple = true
+    fileInput.onchange = handleFileSelect
+    fileInput.click()
   }
 
   const handleSuccess = () => {
@@ -64,15 +63,12 @@ export function AddToClosetSheet({ isOpen, onClose, initialPhotos = [] }: AddToC
     })
     setSelectedFiles([])
     setShowAnalysisForm(false)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
   }
 
   // Если есть начальные фото или показываем форму анализа
   if (showAnalysisForm || (initialPhotos && initialPhotos.length > 0)) {
     return (
-      <CommonSheet isOpen={isOpen} onClose={handleClose}>
+      <CommonSheet isOpen={isOpen} onClose={handleClose} backgroundColor="dark">
         <div className="h-[calc(90vh-120px)] overflow-hidden">
           <PhotoAnalysisForm
             initialPhotos={selectedFiles.length > 0 ? selectedFiles : initialPhotos}
@@ -85,23 +81,11 @@ export function AddToClosetSheet({ isOpen, onClose, initialPhotos = [] }: AddToC
   }
 
   return (
-    <CommonSheet isOpen={isOpen} onClose={onClose}>
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-semibold mb-2 text-white">Добавить в гардероб</h2>
-        <p className="text-gray-400 text-sm">
-          Персонализируйте свои будущие образы и узнайте, как стилизовать вещи из гардероба
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
-          onChange={handleFileSelect}
-          className="hidden"
-          multiple
-        />
+    <CommonSheet isOpen={isOpen} onClose={onClose} title="Добавить в гардероб" backgroundColor="dark">
+      <div className="space-y-6">
+        <div className="text-center">
+          <p className="text-gray-300 text-sm">Сфотографируйте вещь или загрузите фото из галереи</p>
+        </div>
 
         <Button
           onClick={handlePhotoUpload}

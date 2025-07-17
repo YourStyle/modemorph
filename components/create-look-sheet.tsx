@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { CommonSheet } from "./common-sheet"
 import { toast } from "sonner"
 
@@ -24,7 +23,6 @@ interface CreateLookSheetProps {
 
 export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProps) {
   const [name, setName] = useState("")
-  const [description, setDescription] = useState("")
   const [wardrobeItems, setWardrobeItems] = useState<WardrobeItem[]>([])
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(false)
@@ -33,7 +31,6 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
     if (isOpen) {
       loadWardrobeItems()
       setName("")
-      setDescription("")
       setSelectedItems(new Set())
     }
   }, [isOpen])
@@ -65,11 +62,6 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
   }
 
   const handleSubmit = async () => {
-    if (!name.trim()) {
-      toast.error("Введите название образа")
-      return
-    }
-
     if (selectedItems.size === 0) {
       toast.error("Выберите хотя бы одну вещь")
       return
@@ -81,57 +73,34 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
     }))
 
     await onSave({
-      name: name.trim(),
-      description: description.trim(),
+      name: name.trim() || "Новый образ",
+      description: "",
       items,
     })
 
     // Reset form
     setName("")
-    setDescription("")
     setSelectedItems(new Set())
     onClose()
   }
 
   const handleClose = () => {
     setName("")
-    setDescription("")
     setSelectedItems(new Set())
     onClose()
   }
 
   return (
-    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Название образа" backgroundColor="dark">
+    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Создать образ" backgroundColor="dark">
       <div className="space-y-6 pb-24">
-        {/* Name Input */}
-        <div>
-          <label className="block text-white font-medium text-sm mb-2">Название образа</label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Введите название образа"
-            className="bg-white text-gray-900 border-gray-300"
-          />
-        </div>
-
-        {/* Description Input */}
-        <div>
-          <label className="block text-white font-medium text-sm mb-2">Описание (необязательно)</label>
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Добавьте описание образа"
-            className="bg-white text-gray-900 border-gray-300 min-h-[80px]"
-          />
-        </div>
-
         {/* Items Selection */}
         <div>
           <label className="block text-white font-medium text-sm mb-4">Выберите вещи</label>
 
-          <div className="bg-white rounded-lg p-4">
-            <div className="flex items-center justify-center mb-4 border-b border-gray-200 pb-2">
-              <span className="text-gray-900 font-medium">Мой гардероб ({wardrobeItems.length})</span>
+          <div className="bg-white rounded-lg p-4 relative">
+            {/* Badge in top left corner */}
+            <div className="absolute top-3 left-3 bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-xs font-medium z-10">
+              Мой гардероб ({wardrobeItems.length})
             </div>
 
             {loading ? (
@@ -139,7 +108,7 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
             ) : wardrobeItems.length === 0 ? (
               <div className="text-center py-8 text-gray-500">Нет вещей в гардеробе</div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 pt-8">
                 {wardrobeItems.map((item) => (
                   <div
                     key={item.id}
@@ -172,6 +141,17 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
           </div>
         </div>
 
+        {/* Name Input - moved below items selection */}
+        <div>
+          <label className="block text-white font-medium text-sm mb-2">Название образа (необязательно)</label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Введите название образа"
+            className="bg-white text-gray-900 border-gray-300"
+          />
+        </div>
+
         {selectedItems.size > 0 && (
           <div className="bg-blue-900 border border-blue-700 rounded-lg p-3">
             <p className="text-sm text-blue-100">
@@ -194,7 +174,7 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!name.trim() || selectedItems.size === 0}
+            disabled={selectedItems.size === 0}
             className="flex-1 bg-white hover:bg-gray-100 text-gray-900"
           >
             Сохранить образ
