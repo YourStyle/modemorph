@@ -1,35 +1,35 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
-import { Button } from "@/components/ui/button"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Star, Plus } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { OutfitCard } from "@/components/outfit-card"
+import { Sparkles, Star, Plus } from "lucide-react"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
-import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
+import { createClient } from "@/lib/supabase/client"
 
-interface UserItem {
+interface OutfitItem {
   id: string
   name: string
   image_url: string
-  clothing_type: string
   color: string
-  material: string
+  shade: string
+  has_print: string
+  notes?: string
+  user_id?: string
 }
 
-interface Recommendation {
+interface OutfitSuggestion {
   id: string
   title: string
-  description: string
-  items: UserItem[]
-  created_at: string
+  items: OutfitItem[]
+  suggested_items_count: number
 }
 
 interface LookSection {
   title: string
   looks_count: number
-  suggestions: Recommendation[]
+  suggestions: OutfitSuggestion[]
 }
 
 interface CachedRecommendations {
@@ -113,238 +113,416 @@ const RecommendationsSkeleton = () => {
 }
 
 export default function HomePage() {
-  const [user, setUser] = useState<User | null>(null)
-  const [userItems, setUserItems] = useState<UserItem[]>([])
-  const [userItemsCount, setUserItemsCount] = useState(0)
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadingRecommendations, setLoadingRecommendations] = useState(false)
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
-  const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [outfitSections, setOutfitSections] = useState<LookSection[]>([])
+  const [loading, setLoading] = useState(true)
+  const [userItemsCount, setUserItemsCount] = useState(0)
+  const [itemsLoading, setItemsLoading] = useState(true)
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false)
+  const [isFromCache, setIsFromCache] = useState(false)
 
-  const supabase = createClient()
+  // Cache management functions
+  const getCachedRecommendations = (): CachedRecommendations | null => {
+    try {
+      const cached = localStorage.getItem(CACHE_KEY)
+      if (!cached) return null
 
+      const parsedCache: CachedRecommendations = JSON.parse(cached)
+      const now = Date.now()
+
+      // Check if cache is still valid (within 24 hours)
+      if (now - parsedCache.timestamp > CACHE_DURATION) {
+        localStorage.removeItem(CACHE_KEY)
+        return null
+      }
+
+      return { ...parsedCache, fromCache: true }
+    } catch (error) {
+      console.error("Error reading cache:", error)
+      localStorage.removeItem(CACHE_KEY)
+      return null
+    }
+  }
+
+  const setCachedRecommendations = (data: LookSection[], userItemsCount: number) => {
+    try {
+      const cacheData: CachedRecommendations = {
+        data,
+        timestamp: Date.now(),
+        userItemsCount,
+        fromCache: false,
+      }
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
+    } catch (error) {
+      console.error("Error saving to cache:", error)
+    }
+  }
+
+  const isCacheValidForUser = (cachedData: CachedRecommendations, currentUserItemsCount: number): boolean => {
+    // Cache is valid if user items count hasn't changed significantly
+    // Allow small variations (±1) but invalidate for larger changes
+    return Math.abs(cachedData.userItemsCount - currentUserItemsCount) <= 1
+  }
+
+  // Save recommendations to database
+  const saveRecommendationsToDatabase = async (recommendations: LookSection[]) => {
+    try {
+      // Flatten all suggestions from all sections
+      const allSuggestions = recommendations.flatMap((section) => section.suggestions)
+
+      console.log("Saving recommendations to database:", allSuggestions.length)
+
+      const response = await fetch("/api/user-recommendations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          recommendations: allSuggestions,
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log("Recommendations saved:", result)
+      } else {
+        console.error("Failed to save recommendations:", response.status)
+      }
+    } catch (error) {
+      console.error("Error saving recommendations to database:", error)
+    }
+  }
+
+  // Load user items count
   useEffect(() => {
-    async function getUser() {
+    const loadUserItemsCount = async () => {
+      try {
+        const response = await fetch("/api/wardrobe-user-items")
+        if (response.ok) {
+          const data = await response.json()
+          setUserItemsCount(data.length)
+        }
+      } catch (error) {
+        console.error("Error loading user items count:", error)
+      } finally {
+        setItemsLoading(false)
+      }
+    }
+
+    loadUserItemsCount()
+  }, [])
+
+  // Load outfit suggestions from cache or API
+  useEffect(() => {
+    const loadOutfitSuggestions = async () => {
+      try {
+        // First, check cache
+        const cachedRecommendations = getCachedRecommendations()
+
+        if (cachedRecommendations && isCacheValidForUser(cachedRecommendations, userItemsCount)) {
+          console.log("Loading recommendations from cache")
+          setOutfitSections(cachedRecommendations.data)
+          setIsFromCache(true)
+          setLoading(false)
+          return
+        }
+
+        console.log("Cache miss or invalid, fetching from API")
+        setIsFromCache(false)
+
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+
+        if (!user) {
+          console.error("User not authenticated")
+          setLoading(false)
+          return
+        }
+
+        console.log("Making API request to:", `${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`)
+        console.log("Request payload:", {
+          user_id: user.id,
+          user_items_count: userItemsCount,
+          preferences: "casual",
+        })
+
+        const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            user_id: user.id,
+            user_items_count: userItemsCount,
+            preferences: "casual",
+          }),
+        })
+
+        console.log("Response status:", response.status)
+
+        if (response.ok) {
+          const recommendations = await response.json()
+          console.log("Recommendations received:", recommendations)
+          setOutfitSections(recommendations)
+
+          // Cache the new recommendations
+          setCachedRecommendations(recommendations, userItemsCount)
+
+          // Save recommendations to database (only those with user items only) - only if not from cache
+          await saveRecommendationsToDatabase(recommendations)
+        } else {
+          const errorText = await response.text()
+          console.error("API error:", response.status, errorText)
+        }
+      } catch (error) {
+        console.error("Error loading outfit suggestions:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // Only load suggestions if user items count is loaded and user has 6+ items
+    if (!itemsLoading && userItemsCount >= 6) {
+      loadOutfitSuggestions()
+    } else if (!itemsLoading && userItemsCount < 6) {
+      // For users with less than 6 items, don't load recommendations
+      setLoading(false)
+    }
+  }, [itemsLoading, userItemsCount])
+
+  const handleGetRecommendations = async () => {
+    setRecommendationsLoading(true)
+    setIsFromCache(false)
+    try {
+      const supabase = createClient()
       const {
         data: { user },
       } = await supabase.auth.getUser()
-      setUser(user)
-      if (user) {
-        await fetchUserItemsCount()
-        if (userItemsCount >= 6) {
-          await fetchRecommendations()
-        }
-      }
-      setLoading(false)
-    }
-    getUser()
-  }, [refreshTrigger])
 
-  const fetchUserItemsCount = async () => {
-    try {
-      const response = await fetch("/api/wardrobe-user-items")
+      if (!user) {
+        console.error("User not authenticated")
+        return
+      }
+
+      console.log("Manual recommendation request to:", `${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`)
+      console.log("Request payload:", {
+        user_id: user.id,
+        user_items_count: userItemsCount,
+        preferences: "casual",
+      })
+
+      const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: user.id,
+          user_items_count: userItemsCount,
+          preferences: "casual",
+        }),
+      })
+
+      console.log("Manual response status:", response.status)
+
       if (response.ok) {
-        const data = await response.json()
-        setUserItemsCount(data.length)
+        const recommendations = await response.json()
+        console.log("Manual recommendations received:", recommendations)
+        setOutfitSections(recommendations)
+
+        // Update cache with new recommendations
+        setCachedRecommendations(recommendations, userItemsCount)
+
+        // Save recommendations to database (only those with user items only)
+        await saveRecommendationsToDatabase(recommendations)
+      } else {
+        const errorText = await response.text()
+        console.error("Manual API error:", response.status, errorText)
       }
     } catch (error) {
-      console.error("Error fetching user items count:", error)
-    }
-  }
-
-  const fetchRecommendations = async () => {
-    if (userItemsCount < 6) return
-
-    setLoadingRecommendations(true)
-    try {
-      const response = await fetch("/api/user-recommendations")
-      if (response.ok) {
-        const data = await response.json()
-        setRecommendations(data)
-      }
-    } catch (error) {
-      console.error("Error fetching recommendations:", error)
+      console.error("Error getting recommendations:", error)
     } finally {
-      setLoadingRecommendations(false)
+      setRecommendationsLoading(false)
     }
   }
 
-  const handleSheetClose = async () => {
-    setIsAddSheetOpen(false)
-    await fetchUserItemsCount()
-    setRefreshTrigger((prev) => prev + 1)
-  }
+  // Show wardrobe section only if user has less than 6 items
+  const showWardrobeSection = userItemsCount < 6
 
+  // Calculate progress percentage
   const progressPercentage = Math.min((userItemsCount / 6) * 100, 100)
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-4">
-        <div className="max-w-md mx-auto space-y-6">
-          <div className="h-8 bg-gray-200 rounded animate-pulse" />
-          <div className="h-64 bg-gray-200 rounded-lg animate-pulse" />
-          <div className="h-32 bg-gray-200 rounded-lg animate-pulse" />
-        </div>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="max-w-md mx-auto p-4 space-y-6">
+    <div className="min-h-screen bg-gray-50 pb-32">
+      <div className="px-4 py-6">
         {/* Header */}
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold text-gray-900">Добро пожаловать!</h1>
-          <p className="text-gray-600">Создайте свой идеальный гардероб</p>
+        <div className="mb-8">
+          <h1 className="text-2xl font-serif font-bold text-gray-900 mb-2">Добро пожаловать</h1>
+          <p className="text-gray-600 text-sm">Создавайте стильные образы с помощью ИИ</p>
         </div>
 
-        {userItemsCount < 6 ? (
+        {/* Show wardrobe section only if user has less than 6 items */}
+        {showWardrobeSection && !itemsLoading && (
           <>
             {/* Wardrobe Video */}
-            <div className="flex justify-center">
-              <div className="w-80 h-[28rem] bg-white rounded-2xl shadow-lg overflow-hidden">
-                <video
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  controls={false}
-                  preload="auto"
-                  className="w-full h-full object-cover"
-                >
-                  <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/2025-07-14%204.03.22%E2%80%AFPM%20%281%29-5C9s38mSex1FKGeV9b9oiB6UjE3ENH.mp4" type="video/mp4" />
-                  {/* Fallback content */}
-                  <div className="w-full h-full bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center">
-                    <div className="text-center space-y-4">
-                      <div className="w-16 h-16 bg-blue-500 rounded-full mx-auto flex items-center justify-center">
-                        <Star className="w-8 h-8 text-white" />
+            <div className="flex justify-center mb-8">
+              <div className="relative">
+                <div className="w-80 h-[28rem] bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl shadow-2xl flex items-center justify-center overflow-hidden">
+                  <video
+                    className="w-full h-full object-cover rounded-3xl"
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    controls={false}
+                    preload="auto"
+                  >
+                    <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/2025-07-14%204.03.22%E2%80%AFPM%20%281%29-5C9s38mSex1FKGeV9b9oiB6UjE3ENH.mp4" type="video/mp4" />
+                    {/* Fallback для браузеров без поддержки видео */}
+                    <div className="relative w-64 h-64">
+                      <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl shadow-inner">
+                        <div className="absolute top-4 left-4 right-4 h-2 bg-gray-300 rounded-full"></div>
+                        <div className="absolute top-8 left-6 right-6 flex justify-between">
+                          <div className="w-8 h-24 bg-gradient-to-b from-green-200 to-green-300 rounded-lg shadow-sm"></div>
+                          <div className="w-8 h-20 bg-gradient-to-b from-blue-200 to-blue-300 rounded-lg shadow-sm"></div>
+                          <div className="w-8 h-28 bg-gradient-to-b from-yellow-200 to-yellow-300 rounded-lg shadow-sm"></div>
+                          <div className="w-8 h-22 bg-gradient-to-b from-pink-200 to-pink-300 rounded-lg shadow-sm"></div>
+                          <div className="w-8 h-26 bg-gradient-to-b from-purple-200 to-purple-300 rounded-lg shadow-sm"></div>
+                        </div>
+                        <div className="absolute bottom-8 left-6 right-6">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
+                              <div className="w-4 h-4 bg-blue-400 rounded"></div>
+                            </div>
+                            <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
+                              <div className="w-6 h-3 bg-white rounded"></div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-gray-600">Ваш гардероб</p>
                     </div>
-                  </div>
-                </video>
+                  </video>
+                </div>
               </div>
             </div>
 
-            {/* Progress Card */}
-            <Card className="bg-gradient-to-r from-gray-50 to-gray-100 border-0 shadow-sm">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
+            {/* Progress Section */}
+            <Card className="p-6 mb-6 bg-gradient-to-r from-gray-50 to-gray-100 border-0 shadow-sm">
+              <CardContent className="p-0">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Star className="w-5 h-5 text-yellow-500 fill-current" />
                     <h3 className="text-lg font-semibold text-gray-900">Разблокируйте весь потенциал</h3>
-                    <p className="text-gray-600 text-sm">
-                      {userItemsCount === 0
-                        ? "Добавьте первую вещь в гардероб"
-                        : userItemsCount < 3
-                          ? "Отличное начало! Продолжайте добавлять"
-                          : userItemsCount < 6
-                            ? "Почти готово! Осталось совсем немного"
-                            : "Поздравляем! Все функции разблокированы"}
-                    </p>
                   </div>
-                  <div className="text-right">
-                    <div className="text-2xl font-bold text-gray-900">{userItemsCount}/6</div>
-                    <Star className="w-6 h-6 mx-auto mt-1 text-yellow-500 fill-current" />
-                  </div>
+                  <span className="text-sm font-medium text-gray-600">{userItemsCount}/6</span>
                 </div>
 
-                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                {/* Progress Bar */}
+                <div className="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
                   <div
                     className="bg-gradient-to-r from-gray-400 to-gray-500 h-3 rounded-full transition-all duration-500 ease-out"
                     style={{ width: `${progressPercentage}%` }}
                   />
                 </div>
 
-                {/* Slots visualization */}
-                <div className="flex justify-center space-x-2 mt-4">
-                  {Array.from({ length: 6 }).map((_, index) => (
+                {/* Slots Visualization */}
+                <div className="flex justify-between mb-4">
+                  {[...Array(6)].map((_, index) => (
                     <button
                       key={index}
-                      onClick={index >= userItemsCount ? () => setIsAddSheetOpen(true) : undefined}
-                      className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all ${
+                      onClick={() => setIsAddSheetOpen(true)}
+                      className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center transition-all duration-300 ${
                         index < userItemsCount
                           ? "bg-gray-200 border-gray-300 text-gray-600 cursor-default"
-                          : "border-gray-300 border-dashed hover:border-gray-400 hover:bg-gray-50 cursor-pointer"
+                          : "bg-gray-100 border-gray-200 border-dashed hover:border-gray-400 hover:bg-gray-50 cursor-pointer"
                       }`}
                     >
                       {index < userItemsCount ? (
-                        <Star className="w-5 h-5 text-yellow-500 fill-current" />
+                        <Star className="w-6 h-6 text-yellow-500 fill-current" />
                       ) : (
                         <Plus className="w-5 h-5 text-gray-400 hover:text-gray-600 transition-colors" />
                       )}
                     </button>
                   ))}
                 </div>
+
+                <p className="text-sm text-gray-600 text-center">
+                  {userItemsCount === 0
+                    ? "Добавьте первую вещь, чтобы начать персонализацию!"
+                    : userItemsCount < 6
+                      ? `Ещё ${6 - userItemsCount} ${6 - userItemsCount === 1 ? "вещь" : "вещи"} до полной персонализации`
+                      : "🎉 Поздравляем! Теперь доступны все функции приложения"}
+                </p>
               </CardContent>
             </Card>
 
-            {/* Add to Wardrobe Button */}
-            <Button
-              onClick={() => setIsAddSheetOpen(true)}
-              className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 rounded-xl text-lg font-medium"
-            >
-              Добавить в гардероб
-            </Button>
+            {/* Секция добавления */}
+            <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
+              <CardContent className="p-8 text-center">
+                <Button
+                  onClick={() => setIsAddSheetOpen(true)}
+                  className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
+                >
+                  + Добавить в гардероб
+                </Button>
+              </CardContent>
+            </Card>
           </>
-        ) : (
+        )}
+
+        {/* Outfit Suggestions - only for users with 6+ items */}
+        {userItemsCount >= 6 && (
           <>
-            {/* User Wardrobe Grid */}
-            <UserWardrobeGrid key={refreshTrigger} />
-
-            {/* Outfit Suggestions */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-900">Рекомендации образов</h2>
+            {loading || itemsLoading ? (
+              <RecommendationsSkeleton />
+            ) : outfitSections.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500 mb-4">Пока нет рекомендаций</p>
+                <Button
+                  onClick={handleGetRecommendations}
+                  disabled={recommendationsLoading}
+                  variant="outline"
+                  className="text-blue-400 hover:text-blue-300 border-blue-200 hover:border-blue-300 bg-transparent"
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {recommendationsLoading ? "Подбираем..." : "Получить рекомендации"}
+                </Button>
               </div>
-
-              {loadingRecommendations ? (
-                <div className="space-y-4">
-                  {Array.from({ length: 2 }).map((_, index) => (
-                    <div key={index} className="h-32 bg-gray-200 rounded-lg animate-pulse" />
-                  ))}
-                </div>
-              ) : recommendations.length > 0 ? (
-                <div className="space-y-4">
-                  {recommendations.map((recommendation) => (
-                    <Card key={recommendation.id} className="bg-white">
-                      <CardContent className="p-4">
-                        <h3 className="font-medium text-gray-900 mb-2">{recommendation.title}</h3>
-                        <p className="text-sm text-gray-600 mb-3">{recommendation.description}</p>
-                        <div className="flex space-x-2 overflow-x-auto">
-                          {recommendation.items.map((item) => (
-                            <div key={item.id} className="flex-shrink-0">
-                              <img
-                                src={item.image_url || "/placeholder.svg"}
-                                alt={item.name}
-                                className="w-16 h-16 object-cover rounded-lg"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card className="bg-white">
-                  <CardContent className="p-6 text-center">
-                    <div className="w-16 h-16 bg-gray-100 rounded-full mx-auto mb-4 flex items-center justify-center">
-                      <Star className="w-8 h-8 text-gray-400" />
+            ) : (
+              <div className="space-y-8">
+                {outfitSections.map((section, sectionIndex) => (
+                  <div key={`${section.title}-${sectionIndex}`} className="space-y-4">
+                    {/* Section Header */}
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-xl font-semibold text-gray-900">{section.title}</h2>
+                      <span className="text-sm text-gray-500">{section.looks_count} образов</span>
                     </div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Пока нет рекомендаций</h3>
-                    <p className="text-gray-600 text-sm mb-4">
-                      Добавьте больше вещей в гардероб, чтобы получить персональные рекомендации
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+
+                    {/* Horizontal Scrolling Container */}
+                    <div className="relative">
+                      <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 snap-x snap-mandatory">
+                        {section.suggestions.map((suggestion) => (
+                          <div key={suggestion.id} className="flex-shrink-0 snap-start">
+                            <OutfitCard suggestion={suggestion} />
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Scroll indicators */}
+                      <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-gray-50 to-transparent pointer-events-none opacity-50" />
+                      <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-gray-50 to-transparent pointer-events-none opacity-50" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>
 
-      <AddToClosetSheet isOpen={isAddSheetOpen} onClose={handleSheetClose} />
+      <AddToClosetSheet isOpen={isAddSheetOpen} onClose={() => setIsAddSheetOpen(false)} />
     </div>
   )
 }
