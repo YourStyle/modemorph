@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -63,6 +63,15 @@ export default function AIAssistantPage() {
   const [isWaitingForPhoto, setIsWaitingForPhoto] = useState(false)
   const [isAnalyzingPhoto, setIsAnalyzingPhoto] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
 
   const fetchRandomRecommendation = async (): Promise<UserRecommendation | null> => {
     try {
@@ -371,13 +380,13 @@ export default function AIAssistantPage() {
     setMessages((prev) => [...prev, { role: "user", content: userMessage }])
     setIsLoading(true)
 
-    // Simulate AI response
+    // Simulate AI response with cute message
     setTimeout(() => {
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "Привет! Я ваш стилист-ассистент. Расскажите, какой образ вы хотите создать?",
+          content: "Ещё чуть-чуть и мы сможем поболтать! 💫 А пока попробуйте кнопки выше для быстрых действий.",
         },
       ])
       setIsLoading(false)
@@ -595,6 +604,9 @@ export default function AIAssistantPage() {
                 </Card>
               </div>
             )}
+
+            {/* Invisible div to scroll to */}
+            <div ref={messagesEndRef} />
           </div>
         )}
       </div>

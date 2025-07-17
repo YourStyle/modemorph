@@ -5,7 +5,6 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Trash2, Edit } from "lucide-react"
-import { PastelLoader } from "@/components/pastel-loader"
 import { useToast } from "@/hooks/use-toast"
 
 interface WardrobeItem {
@@ -27,6 +26,24 @@ interface WardrobeItem {
 interface UserWardrobeGridProps {
   onItemsChange?: (count: number) => void
   refreshTrigger?: number
+}
+
+// Skeleton component for loading state
+const UserWardrobeSkeleton = () => {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+        <Card key={i} className="bg-white border-0 shadow-sm overflow-hidden">
+          <div className="aspect-square bg-gray-200 animate-pulse"></div>
+          <div className="p-3 space-y-2">
+            <div className="h-3 bg-gray-200 rounded w-3/4 animate-pulse"></div>
+            <div className="h-2 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+            <div className="h-2 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+          </div>
+        </Card>
+      ))}
+    </div>
+  )
 }
 
 export function UserWardrobeGrid({ onItemsChange, refreshTrigger }: UserWardrobeGridProps) {
@@ -90,11 +107,7 @@ export function UserWardrobeGrid({ onItemsChange, refreshTrigger }: UserWardrobe
   }
 
   if (loading) {
-    return (
-      <div className="flex justify-center py-8">
-        <PastelLoader size={40} />
-      </div>
-    )
+    return <UserWardrobeSkeleton />
   }
 
   if (items.length === 0) {

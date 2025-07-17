@@ -167,6 +167,10 @@ export default function WardrobePage() {
     })
     setSelectedPhotos([])
     setIsAddSheetOpen(false)
+
+    // Обновляем данные пользователя после закрытия шторки
+    fetchUserItemsCount()
+    setRefreshUserItems((prev) => prev + 1)
   }
 
   const handleAddBaseItem = async (item: BasicWardrobeItem) => {
