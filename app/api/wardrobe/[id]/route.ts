@@ -97,7 +97,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
     // Сначала проверим, что запись существует
     const { data: checkData, error: checkError } = await supabase
-      .from("wardrobe_user_items")
+      .from("wardrobe_items")
       .select("*")
       .eq("id", itemId)
 
@@ -115,7 +115,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
     // Обновляем видимость вещи
     const { data: updateData, error: updateError } = await supabase
-      .from("wardrobe_user_items")
+      .from("wardrobe_items")
       .update({ is_hidden })
       .eq("id", itemId)
       .select()

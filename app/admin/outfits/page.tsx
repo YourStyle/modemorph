@@ -28,8 +28,16 @@ interface OutfitItem {
   wardrobe_items: {
     id: number
     item_name: string
-    item_type: string
+    size_type: string
     color: string
+    shade: string
+    material: string
+    style: string
+    image_url?: string
+    is_basic: boolean
+    has_print: string
+    has_details: string
+    notes?: string
   }
 }
 
@@ -44,7 +52,7 @@ interface Outfit {
   outfit_items: OutfitItem[]
 }
 
-export default function OutfitsPage() {
+export default function AdminOutfitsPage() {
   const [outfits, setOutfits] = useState<Outfit[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,15 +66,31 @@ export default function OutfitsPage() {
   const fetchOutfits = async () => {
     try {
       setLoading(true)
+      setError(null)
+
+      console.log("Fetching outfits from /api/outfits...")
+
       const response = await fetch("/api/outfits")
+
+      console.log("Response status:", response.status)
+      console.log("Response ok:", response.ok)
+
       if (!response.ok) {
-        throw new Error("Failed to fetch outfits")
+        const errorText = await response.text()
+        console.error("API error response:", errorText)
+        throw new Error(`HTTP ${response.status}: ${errorText}`)
       }
+
       const data = await response.json()
-      setOutfits(data.outfits || [])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred")
-      console.error("Error fetching outfits:", err)
+      console.log("Received data:", data)
+
+      // Ensure we get the outfits array from the response
+      const outfitsArray = data.outfits || []
+      console.log("Outfits array:", outfitsArray)
+      setOutfits(outfitsArray)
+    } catch (error) {
+      console.error("Error fetching outfits:", error)
+      setError(error instanceof Error ? error.message : "Failed to fetch outfits")
     } finally {
       setLoading(false)
     }
@@ -281,14 +305,14 @@ export default function OutfitsPage() {
                     {/* Действия */}
                     <div className="flex gap-2">
                       <Link href={`/admin/outfits/${outfit.id}`} className="flex-1">
-                        <Button variant="outline" size="sm" className="w-full">
+                        <Button variant="outline" size="sm" className="w-full bg-transparent">
                           <Eye className="h-4 w-4 mr-1" />
                           Просмотр
                         </Button>
                       </Link>
 
                       <Link href={`/admin/wardrobe?edit=${outfit.id}`} className="flex-1">
-                        <Button variant="outline" size="sm" className="w-full">
+                        <Button variant="outline" size="sm" className="w-full bg-transparent">
                           <Edit className="h-4 w-4 mr-1" />
                           Изменить
                         </Button>
@@ -299,7 +323,7 @@ export default function OutfitsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 bg-transparent"
                             disabled={deletingId === outfit.id}
                           >
                             {deletingId === outfit.id ? (

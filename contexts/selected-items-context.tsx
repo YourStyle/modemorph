@@ -1,66 +1,67 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react"
-import type { WardrobeItem } from "@/lib/wardrobe"
+import { createContext, useContext, useState, type ReactNode } from "react"
+
+export interface WardrobeItem {
+  id: number
+  item_name: string
+  size_type?: string
+  color?: string
+  shade?: string
+  material?: string
+  style?: string
+  image_url?: string
+  is_basic?: boolean
+  has_print?: string
+  has_details?: string
+  notes?: string
+  type: "basic" | "user"
+}
 
 interface SelectedItemsContextType {
   selectedItems: WardrobeItem[]
-  isSelected: (itemId: number) => boolean
-  toggleItem: (item: WardrobeItem) => void
-  removeItem: (itemId: number) => void
+  addItem: (item: WardrobeItem) => void
+  removeItem: (type: "basic" | "user", id: number) => void
   clearItems: () => void
-  setItems: (items: WardrobeItem[]) => void
-  editingOutfitId: number | null
-  setEditingOutfitId: (id: number | null) => void
+  isSelected: (type: "basic" | "user", id: number) => boolean
 }
 
 const SelectedItemsContext = createContext<SelectedItemsContextType | undefined>(undefined)
 
 export function SelectedItemsProvider({ children }: { children: ReactNode }) {
   const [selectedItems, setSelectedItems] = useState<WardrobeItem[]>([])
-  const [editingOutfitId, setEditingOutfitId] = useState<number | null>(null)
 
-  const isSelected = useCallback(
-    (itemId: number) => {
-      return selectedItems.some((item) => item.id === itemId)
-    },
-    [selectedItems],
-  )
-
-  const toggleItem = useCallback((item: WardrobeItem) => {
+  const addItem = (item: WardrobeItem) => {
     setSelectedItems((prev) => {
-      const isItemSelected = prev.some((i) => i.id === item.id)
-      if (isItemSelected) {
-        return prev.filter((i) => i.id !== item.id)
-      } else {
-        return [...prev, item]
+      // Check if item already exists
+      const exists = prev.some((existingItem) => existingItem.type === item.type && existingItem.id === item.id)
+      if (exists) {
+        return prev
       }
+      return [...prev, item]
     })
-  }, [])
+  }
 
-  const removeItem = useCallback((itemId: number) => {
-    setSelectedItems((prev) => prev.filter((item) => item.id !== itemId))
-  }, [])
+  const removeItem = (type: "basic" | "user", id: number) => {
+    setSelectedItems((prev) => prev.filter((item) => !(item.type === type && item.id === id)))
+  }
 
-  const clearItems = useCallback(() => {
+  const clearItems = () => {
     setSelectedItems([])
-  }, [])
+  }
 
-  const setItems = useCallback((items: WardrobeItem[]) => {
-    setSelectedItems(items)
-  }, [])
+  const isSelected = (type: "basic" | "user", id: number) => {
+    return selectedItems.some((item) => item.type === type && item.id === id)
+  }
 
   return (
     <SelectedItemsContext.Provider
       value={{
         selectedItems,
-        isSelected,
-        toggleItem,
+        addItem,
         removeItem,
         clearItems,
-        setItems,
-        editingOutfitId,
-        setEditingOutfitId,
+        isSelected,
       }}
     >
       {children}

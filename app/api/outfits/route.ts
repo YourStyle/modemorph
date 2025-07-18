@@ -125,7 +125,9 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const limit = Number.parseInt(searchParams.get("limit") || "50")
+
+    console.log("GET /api/outfits - fetching outfits with limit:", limit)
 
     // Получаем текущего пользователя
     const supabase = createClient()
@@ -140,17 +142,33 @@ export async function GET(request: Request) {
     }
 
     if (!user) {
+      console.log("No user found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Получаем образы пользователя
+    console.log("Fetching outfits for user:", user.id)
+
+    // Получаем образы пользователя с элементами - используем правильные названия колонок
     const { data: outfits, error } = await supabase
       .from("outfits")
       .select(`
         *,
         outfit_items (
           *,
-          wardrobe_items (*)
+          wardrobe_items (
+            id,
+            item_name,
+            size_type,
+            color,
+            shade,
+            material,
+            style,
+            image_url,
+            is_basic,
+            has_print,
+            has_details,
+            notes
+          )
         )
       `)
       .eq("user_id", user.id)
@@ -162,7 +180,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `Failed to fetch outfits: ${error.message}` }, { status: 500 })
     }
 
-    return NextResponse.json({ outfits })
+    console.log("Fetched outfits:", outfits?.length || 0)
+    console.log("Sample outfit:", outfits?.[0])
+
+    return NextResponse.json({ outfits: outfits || [] })
   } catch (error) {
     console.error("Error in outfits GET API:", error)
     return NextResponse.json(
