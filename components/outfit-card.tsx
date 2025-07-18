@@ -2,21 +2,31 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Bookmark, BookmarkCheck, Sparkles, User, Clock } from "lucide-react"
+import { Bookmark, Package, BookmarkCheck, Sparkles, User, Clock } from "lucide-react"
+import Image from "next/image"
 import { toast } from "sonner"
+import { ItemDetailsModal } from "./item-details-modal"
 
 interface OutfitItem {
   id: string
   name: string
   image_url: string
-  color: string
-  shade: string
-  has_print: string
+  color?: string
+  shade?: string
+  style?: string
+  material?: string
+  url?: string
+  size_type?: string
+  has_print?: string
+  has_details?: string
   notes?: string
+  is_basic?: boolean
+  basic_item_id?: number | null
   user_id?: string
+  source?: "wardrobe_items" | "wardrobe_user_items"
 }
 
 interface OutfitSuggestion {
@@ -35,10 +45,19 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showTryOnModal, setShowTryOnModal] = useState(false)
   const [userLooks, setUserLooks] = useState<any[]>([])
+  const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
+
+  const items = suggestion.items || []
+  const title = suggestion.title || "Без названия"
+  const suggestedItemsCount = suggestion.suggested_items_count || 0
 
   useEffect(() => {
+    if (!suggestion) {
+      return
+    }
     loadUserLooks()
-  }, [])
+  }, [suggestion])
 
   const loadUserLooks = async () => {
     try {
@@ -50,10 +69,10 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
         // Check if this outfit is already saved
         const isAlreadySaved = looks.some(
           (look: any) =>
-            look.name === suggestion.title ||
+            look.name === title ||
             (look.items &&
-              look.items.length === suggestion.items.length &&
-              look.items.every((item: any) => suggestion.items.some((suggItem) => suggItem.id === item.id.toString()))),
+              look.items.length === items.length &&
+              look.items.every((item: any) => items.some((suggItem) => suggItem.id === item.id.toString()))),
         )
         setIsSaved(isAlreadySaved)
       }
@@ -63,10 +82,15 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
   }
 
   const handleSaveOutfit = async () => {
+    if (items.length === 0) {
+      toast.error("Нет вещей для сохранения")
+      return
+    }
+
     setSaving(true)
     try {
       // Transform items to the format expected by the API
-      const items = suggestion.items.map((item) => ({
+      const transformedItems = items.map((item) => ({
         type: item.user_id ? "user" : "basic",
         id: Number.parseInt(item.id),
       }))
@@ -77,9 +101,9 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: suggestion.title,
-          description: `Рекомендованный образ с ${suggestion.suggested_items_count} предложенными вещами`,
-          items,
+          name: title,
+          description: `Рекомендованный образ с ${suggestedItemsCount} предложенными вещами`,
+          items: transformedItems,
         }),
       })
 
@@ -97,6 +121,14 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
     }
   }
 
+  const handleImageError = (itemId: string) => {
+    setImageErrors((prev) => ({ ...prev, [itemId]: true }))
+  }
+
+  const handleItemClick = (item: OutfitItem) => {
+    setSelectedItem(item)
+  }
+
   return (
     <>
       <Card className="bg-white border-0 shadow-sm overflow-hidden w-96">
@@ -104,11 +136,11 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
           {/* Header */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 mb-2 text-lg">{suggestion.title}</h3>
-              {suggestion.suggested_items_count > 0 && (
+              <h3 className="font-semibold text-gray-900 mb-2 text-lg">{title}</h3>
+              {suggestedItemsCount > 0 && (
                 <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200">
                   <Sparkles className="w-3 h-3 mr-1" />
-                  {suggestion.suggested_items_count} рекомендаций
+                  {suggestedItemsCount} рекомендаций
                 </Badge>
               )}
               {isSaved && (
@@ -124,57 +156,79 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
               size="sm"
               className={`p-2 ${isSaved ? "text-green-600" : "text-gray-400 hover:text-green-600"}`}
               onClick={handleSaveOutfit}
-              disabled={saving || isSaved}
+              disabled={saving || isSaved || items.length === 0}
             >
               {isSaved ? <BookmarkCheck className="w-5 h-5" /> : <Bookmark className="w-5 h-5" />}
             </Button>
           </div>
 
           {/* Items Grid */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            {suggestion.items.slice(0, 4).map((item, index) => (
-              <div key={`${item.id}-${index}`} className="relative">
-                <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden">
-                  <img
-                    src={item.image_url || "/placeholder.svg"}
-                    alt={item.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+          {items.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              {items.slice(0, 4).map((item, index) => {
+                const hasError = imageErrors[item.id]
+                return (
+                  <div
+                    key={`${item.id}-${index}`}
+                    className="relative cursor-pointer group/item"
+                    onClick={() => handleItemClick(item)}
+                  >
+                    <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden">
+                      {item.image_url && !hasError ? (
+                        <Image
+                          src={item.image_url || "/placeholder.svg"}
+                          alt={item.name || "Вещь"}
+                          fill
+                          className="object-cover group-hover/item:scale-105 transition-transform duration-200"
+                          onError={() => handleImageError(item.id)}
+                          sizes="(max-width: 768px) 50vw, 25vw"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                          <Package className="h-6 w-6 text-gray-400" />
+                        </div>
+                      )}
+                    </div>
 
-                {/* Item overlay with info */}
-                <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors rounded-lg flex items-end p-2">
-                  <div className="bg-white/90 backdrop-blur-sm rounded px-2 py-1 opacity-0 hover:opacity-100 transition-opacity">
-                    <p className="text-xs font-medium truncate">{item.name}</p>
-                    <p className="text-xs text-gray-600">{item.color}</p>
-                  </div>
-                </div>
+                    {/* Hover overlay with item name */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/item:opacity-100 transition-opacity duration-200 flex items-center justify-center rounded-lg">
+                      <div className="text-center px-2">
+                        <p className="text-white text-xs font-medium">{item.name || "Без названия"}</p>
+                        <p className="text-white/80 text-xs">{item.color || "Цвет не указан"}</p>
+                      </div>
+                    </div>
 
-                {/* Item type indicator */}
-                {!item.user_id ? (
-                  <div className="absolute top-2 right-2">
-                    <Badge className="bg-orange-500 text-white text-xs px-1.5 py-0.5">
-                      <Sparkles className="w-2.5 h-2.5 mr-0.5" />
-                      Рекомендуем
-                    </Badge>
+                    {/* Item type indicator */}
+                    {!item.user_id ? (
+                      <div className="absolute top-2 right-2">
+                        <Badge className="bg-orange-500 text-white text-xs px-1.5 py-0.5">
+                          <Sparkles className="w-2.5 h-2.5 mr-0.5" />
+                          Рекомендуем
+                        </Badge>
+                      </div>
+                    ) : (
+                      <div className="absolute top-2 right-2">
+                        <Badge className="bg-blue-500 text-white text-xs px-1.5 py-0.5">
+                          <User className="w-2.5 h-2.5 mr-0.5" />
+                          Ваше
+                        </Badge>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="absolute top-2 right-2">
-                    <Badge className="bg-blue-500 text-white text-xs px-1.5 py-0.5">
-                      <User className="w-2.5 h-2.5 mr-0.5" />
-                      Ваше
-                    </Badge>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="mb-6 p-8 text-center text-gray-500">
+              <p>Нет вещей для отображения</p>
+            </div>
+          )}
 
           {/* Show more items indicator */}
-          {suggestion.items.length > 4 && (
+          {items.length > 4 && (
             <div className="mb-4 text-center">
               <p className="text-sm text-gray-500">
-                +{suggestion.items.length - 4} еще {suggestion.items.length - 4 === 1 ? "вещь" : "вещей"}
+                +{items.length - 4} еще {items.length - 4 === 1 ? "вещь" : "вещей"}
               </p>
             </div>
           )}
@@ -189,7 +243,6 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
             >
               Примерить
             </Button>
- 
           </div>
         </CardContent>
       </Card>
@@ -205,7 +258,7 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
           </DialogHeader>
           <div className="py-6 text-center">
             <p className="text-gray-600 mb-4">
-              Совсем скор�� вы сможете сразу на себе примерять образы, но нужно чуть-чуть подождать.
+              Совсем скоро вы сможете сразу на себе примерять образы, но нужно чуть-чуть подождать.
             </p>
             <div className="flex justify-center">
               <div className="animate-pulse flex space-x-1">
@@ -220,6 +273,35 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Item Details Modal */}
+      {selectedItem && (
+        <ItemDetailsModal
+          item={{
+            id: Number.parseInt(selectedItem.id),
+            item_name: selectedItem.name,
+            image_url: selectedItem.image_url,
+            color: selectedItem.color,
+            shade: selectedItem.shade,
+            style: selectedItem.style,
+            material: selectedItem.material,
+            url: selectedItem.url,
+            size_type: selectedItem.size_type,
+            has_print: selectedItem.has_print,
+            has_details: selectedItem.has_details,
+            notes: selectedItem.notes,
+            is_basic: selectedItem.is_basic || false,
+            basic_item_id: selectedItem.basic_item_id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            basic_material_id: null,
+            is_hidden: false,
+            user_id: selectedItem.user_id,
+          }}
+          isOpen={!!selectedItem}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
     </>
   )
 }

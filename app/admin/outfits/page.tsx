@@ -4,59 +4,51 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, FolderIcon as Hanger, Plus, Edit, Trash2, Eye, Calendar, MapPin } from "lucide-react"
-import Link from "next/link"
-import { useToast } from "@/hooks/use-toast"
+import { Loader2, Plus, Eye, Edit, Trash2 } from "lucide-react"
 import { OutfitPreviewGrid } from "@/components/outfit-preview-grid"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
 
 interface OutfitItem {
   id: number
-  outfit_id: number
-  wardrobe_item_id: number
   position: number
   wardrobe_items: {
     id: number
     item_name: string
-    size_type: string
-    color: string
-    shade: string
-    material: string
-    style: string
     image_url?: string
-    is_basic: boolean
-    has_print: string
-    has_details: string
+    color?: string
+    shade?: string
+    material?: string
+    style?: string
+    url?: string
+    size_type?: string
+    has_print?: string
+    has_details?: string
     notes?: string
+    is_basic: boolean
+    basic_item_id?: number | null
+    created_at: string
+    updated_at: string
+    basic_material_id?: number | null
+    is_hidden: boolean
+    basic_wardrobe_items?: {
+      name_ru?: string
+      image_url?: string
+    }
   }
 }
 
 interface Outfit {
   id: number
   name: string
-  description: string
-  season: string
-  occasion: string
+  description?: string
   created_at: string
-  updated_at: string
   outfit_items: OutfitItem[]
 }
 
-export default function AdminOutfitsPage() {
+export default function OutfitsPage() {
   const [outfits, setOutfits] = useState<Outfit[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -65,299 +57,173 @@ export default function AdminOutfitsPage() {
 
   const fetchOutfits = async () => {
     try {
-      setLoading(true)
-      setError(null)
-
-      console.log("Fetching outfits from /api/outfits...")
-
       const response = await fetch("/api/outfits")
-
-      console.log("Response status:", response.status)
-      console.log("Response ok:", response.ok)
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("API error response:", errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      if (response.ok) {
+        const data = await response.json()
+        setOutfits(data.outfits || [])
+      } else {
+        toast({
+          title: "Ошибка",
+          description: "Не удалось загрузить образы",
+          variant: "destructive",
+        })
       }
-
-      const data = await response.json()
-      console.log("Received data:", data)
-
-      // Ensure we get the outfits array from the response
-      const outfitsArray = data.outfits || []
-      console.log("Outfits array:", outfitsArray)
-      setOutfits(outfitsArray)
     } catch (error) {
       console.error("Error fetching outfits:", error)
-      setError(error instanceof Error ? error.message : "Failed to fetch outfits")
+      toast({
+        title: "Ошибка",
+        description: "Произошла ошибка при загрузке образов",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleDelete = async (outfitId: number) => {
-    try {
-      setDeletingId(outfitId)
-      const response = await fetch(`/api/outfits?id=${outfitId}`, {
-        method: "DELETE",
-      })
+  const handleDelete = async (outfitId: number, outfitName: string) => {
+    if (confirm(`Вы уверены, что хотите удалить образ "${outfitName}"?`)) {
+      try {
+        const response = await fetch(`/api/outfits/${outfitId}`, {
+          method: "DELETE",
+        })
 
-      if (!response.ok) {
-        throw new Error("Failed to delete outfit")
+        if (response.ok) {
+          setOutfits((prev) => prev.filter((outfit) => outfit.id !== outfitId))
+          toast({
+            title: "Образ удален",
+            description: "Образ успешно удален",
+          })
+        } else {
+          throw new Error("Failed to delete outfit")
+        }
+      } catch (error) {
+        console.error("Error deleting outfit:", error)
+        toast({
+          title: "Ошибка",
+          description: "Не удалось удалить образ",
+          variant: "destructive",
+        })
       }
-
-      toast({
-        title: "Успешно",
-        description: "Образ удален",
-      })
-
-      // Обновляем список образов
-      setOutfits((prev) => prev.filter((outfit) => outfit.id !== outfitId))
-    } catch (error) {
-      console.error("Error deleting outfit:", error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось удалить образ",
-        variant: "destructive",
-      })
-    } finally {
-      setDeletingId(null)
     }
-  }
-
-  const getSeasonName = (season: string) => {
-    const seasons: Record<string, string> = {
-      spring: "Весна",
-      summer: "Лето",
-      autumn: "Осень",
-      winter: "Зима",
-      all: "Всесезонный",
-    }
-    return seasons[season] || season
-  }
-
-  const getOccasionName = (occasion: string) => {
-    const occasions: Record<string, string> = {
-      casual: "Повседневный",
-      office: "Офис",
-      sport: "Спорт",
-      party: "Вечеринка",
-      date: "Свидание",
-      formal: "Формальный",
-    }
-    return occasions[occasion] || occasion
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("ru-RU", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    })
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
-          <span className="text-gray-600">Загрузка образов...</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-red-600 text-lg font-semibold">Ошибка загрузки образов</div>
-          <p className="text-gray-600">{error}</p>
-          <Button onClick={fetchOutfits}>Попробовать снова</Button>
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+            <span className="ml-2 text-gray-600">Загрузка образов...</span>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-6xl mx-auto">
-          {/* Заголовок */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <Hanger className="h-8 w-8 text-gray-700" />
-                <h1 className="text-3xl font-bold text-gray-900">Управление образами</h1>
-              </div>
-              <Link href="/admin/wardrobe">
-                <Button className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Создать образ
-                </Button>
-              </Link>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Образы</h1>
+            <p className="text-gray-600 mt-1">Управление сохраненными образами ({outfits.length})</p>
+          </div>
+
+          <Link href="/admin/wardrobe">
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Создать образ
+            </Button>
+          </Link>
+        </div>
+
+        {/* Outfits Grid */}
+        {outfits.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="text-gray-400 mb-4">
+              <svg className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
             </div>
-            <p className="text-gray-600">
-              Управляйте своими образами: просматривайте, редактируйте и удаляйте сохраненные комплекты одежды
-            </p>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Нет сохраненных образов</h3>
+            <p className="text-gray-600 mb-4">Создайте первый образ, выбрав вещи из гардероба</p>
+            <Link href="/admin/wardrobe">
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Создать образ
+              </Button>
+            </Link>
           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {outfits.map((outfit) => {
+              const sortedItems = outfit.outfit_items.sort((a, b) => a.position - b.position)
 
-          {/* Статистика */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3">
-                  <Hanger className="h-8 w-8 text-blue-600" />
-                  <div>
-                    <p className="text-2xl font-bold">{outfits.length}</p>
-                    <p className="text-gray-600">Всего образов</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3">
-                  <Calendar className="h-8 w-8 text-green-600" />
-                  <div>
-                    <p className="text-2xl font-bold">{outfits.filter((o) => o.season && o.season !== "all").length}</p>
-                    <p className="text-gray-600">Сезонных образов</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3">
-                  <MapPin className="h-8 w-8 text-purple-600" />
-                  <div>
-                    <p className="text-2xl font-bold">{outfits.filter((o) => o.occasion).length}</p>
-                    <p className="text-gray-600">С указанным поводом</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Список образов */}
-          {outfits.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Hanger className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">У вас пока нет сохраненных образов</h3>
-                <p className="text-gray-600 mb-6">Создайте свой первый образ, выбрав элементы гардероба</p>
-                <Link href="/admin/wardrobe">
-                  <Button>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Создать первый образ
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-              {outfits.map((outfit) => (
-                <Card key={outfit.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                  <CardHeader className="pb-3">
+              return (
+                <Card key={outfit.id} className="group hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-4">
                     <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-2">{outfit.name}</CardTitle>
-                        {outfit.description && (
-                          <p className="text-sm text-gray-600 line-clamp-2">{outfit.description}</p>
-                        )}
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-lg truncate">{outfit.name}</CardTitle>
+                        <p className="text-sm text-gray-500 mt-1">
+                          {sortedItems.length}{" "}
+                          {sortedItems.length === 1 ? "элемент" : sortedItems.length < 5 ? "элемента" : "элементов"}
+                        </p>
                       </div>
-                    </div>
-
-                    {/* Бейджи */}
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {outfit.season && (
-                        <Badge variant="secondary" className="text-xs">
-                          {getSeasonName(outfit.season)}
-                        </Badge>
-                      )}
-                      {outfit.occasion && (
-                        <Badge variant="outline" className="text-xs">
-                          {getOccasionName(outfit.occasion)}
-                        </Badge>
-                      )}
+                      <Badge variant="outline" className="ml-2">
+                        #{outfit.id}
+                      </Badge>
                     </div>
                   </CardHeader>
 
-                  <CardContent className="pt-0">
-                    {/* Превью образа с кэшированными изображениями */}
-                    <div className="mb-4">
-                      <OutfitPreviewGrid
-                        items={outfit.outfit_items.sort((a, b) => a.position - b.position)}
-                        maxItems={6}
-                      />
+                  <CardContent className="space-y-4">
+                    {/* Outfit Preview */}
+                    <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden">
+                      <OutfitPreviewGrid items={sortedItems} />
                     </div>
 
-                    {/* Информация */}
-                    <div className="space-y-2 text-sm text-gray-600 mb-4">
-                      <div>Элементов: {outfit.outfit_items.length}</div>
-                      <div>Создан: {formatDate(outfit.created_at)}</div>
-                      {outfit.updated_at !== outfit.created_at && <div>Обновлен: {formatDate(outfit.updated_at)}</div>}
+                    {/* Description */}
+                    {outfit.description && <p className="text-sm text-gray-600 line-clamp-2">{outfit.description}</p>}
+
+                    {/* Metadata */}
+                    <div className="text-xs text-gray-500">
+                      Создан {new Date(outfit.created_at).toLocaleDateString("ru-RU")}
                     </div>
 
-                    {/* Действия */}
-                    <div className="flex gap-2">
+                    {/* Actions */}
+                    <div className="flex gap-2 pt-2">
                       <Link href={`/admin/outfits/${outfit.id}`} className="flex-1">
                         <Button variant="outline" size="sm" className="w-full bg-transparent">
-                          <Eye className="h-4 w-4 mr-1" />
+                          <Eye className="h-4 w-4 mr-2" />
                           Просмотр
                         </Button>
                       </Link>
-
-                      <Link href={`/admin/wardrobe?edit=${outfit.id}`} className="flex-1">
-                        <Button variant="outline" size="sm" className="w-full bg-transparent">
-                          <Edit className="h-4 w-4 mr-1" />
-                          Изменить
+                      <Link href={`/admin/wardrobe?edit=${outfit.id}`}>
+                        <Button variant="outline" size="sm">
+                          <Edit className="h-4 w-4" />
                         </Button>
                       </Link>
-
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50 bg-transparent"
-                            disabled={deletingId === outfit.id}
-                          >
-                            {deletingId === outfit.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Удалить образ?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Вы уверены, что хотите удалить образ "{outfit.name}"? Это действие нельзя отменить.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Отмена</AlertDialogCancel>
-                            <AlertDialogAction
-                              onClick={() => handleDelete(outfit.id)}
-                              className="bg-red-600 hover:bg-red-700"
-                            >
-                              Удалить
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDelete(outfit.id, outfit.name)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
-          )}
-        </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

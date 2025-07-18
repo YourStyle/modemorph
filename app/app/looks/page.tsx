@@ -390,7 +390,7 @@ export default function LooksPage() {
             className="flex-1 border-gray-200 text-gray-700 hover:bg-gray-50 h-12 rounded-xl font-medium"
           >
             <Plus className="w-5 h-5 mr-2" />
-            Добавить подборку
+            Добавить чемодан
           </Button>
         </div>
       </div>

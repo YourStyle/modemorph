@@ -5,51 +5,47 @@ import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, ArrowLeft, Edit, Trash2, Calendar, MapPin, Package } from "lucide-react"
-import Link from "next/link"
+import { Separator } from "@/components/ui/separator"
+import { ArrowLeft, Edit, Trash2, Package, ExternalLink } from "lucide-react"
+import { OutfitPreviewGrid } from "@/components/outfit-preview-grid"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
+import Link from "next/link"
 
 interface OutfitItem {
   id: number
-  outfit_id: number
-  wardrobe_item_id: number
   position: number
   wardrobe_items: {
     id: number
     item_name: string
-    size_type: string
-    color: string
-    shade: string
-    material: string
-    style: string
     image_url?: string
-    is_basic: boolean
-    has_print: string
-    has_details: string
+    color?: string
+    shade?: string
+    material?: string
+    style?: string
+    url?: string
+    size_type?: string
+    has_print?: string
+    has_details?: string
     notes?: string
+    is_basic: boolean
+    basic_item_id?: number | null
+    created_at: string
+    updated_at: string
+    basic_material_id?: number | null
+    is_hidden: boolean
+    basic_wardrobe_items?: {
+      name_ru?: string
+      image_url?: string
+    }
   }
 }
 
 interface Outfit {
   id: number
   name: string
-  description: string
-  season: string
-  occasion: string
+  description?: string
   created_at: string
-  updated_at: string
   outfit_items: OutfitItem[]
 }
 
@@ -59,9 +55,7 @@ export default function OutfitDetailPage() {
   const { toast } = useToast()
   const [outfit, setOutfit] = useState<Outfit | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  const [imageErrors, setImageErrors] = useState<Set<number>>(new Set())
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
 
   const outfitId = params.id as string
 
@@ -73,28 +67,24 @@ export default function OutfitDetailPage() {
 
   const fetchOutfit = async () => {
     try {
-      setLoading(true)
-      setError(null)
-
-      console.log("Fetching outfit with ID:", outfitId)
-
       const response = await fetch(`/api/outfits/${outfitId}`)
-
-      console.log("Response status:", response.status)
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error("API error response:", errorText)
-        throw new Error(`HTTP ${response.status}: ${errorText}`)
+      if (response.ok) {
+        const data = await response.json()
+        setOutfit(data.outfit)
+      } else {
+        toast({
+          title: "Ошибка",
+          description: "Не удалось загрузить образ",
+          variant: "destructive",
+        })
       }
-
-      const data = await response.json()
-      console.log("Received outfit data:", data)
-
-      setOutfit(data.outfit)
     } catch (error) {
       console.error("Error fetching outfit:", error)
-      setError(error instanceof Error ? error.message : "Failed to fetch outfit")
+      toast({
+        title: "Ошибка",
+        description: "Произошла ошибка при загрузке образа",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
@@ -103,93 +93,65 @@ export default function OutfitDetailPage() {
   const handleDelete = async () => {
     if (!outfit) return
 
-    try {
-      setDeleting(true)
-      const response = await fetch(`/api/outfits/${outfit.id}`, {
-        method: "DELETE",
-      })
+    if (confirm(`Вы уверены, что хотите удалить образ "${outfit.name}"?`)) {
+      try {
+        const response = await fetch(`/api/outfits/${outfit.id}`, {
+          method: "DELETE",
+        })
 
-      if (!response.ok) {
-        throw new Error("Failed to delete outfit")
+        if (response.ok) {
+          toast({
+            title: "Образ удален",
+            description: "Образ успешно удален",
+          })
+          router.push("/admin/outfits")
+        } else {
+          throw new Error("Failed to delete outfit")
+        }
+      } catch (error) {
+        console.error("Error deleting outfit:", error)
+        toast({
+          title: "Ошибка",
+          description: "Не удалось удалить образ",
+          variant: "destructive",
+        })
       }
-
-      toast({
-        title: "Успешно",
-        description: "Образ удален",
-      })
-
-      router.push("/admin/outfits")
-    } catch (error) {
-      console.error("Error deleting outfit:", error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось удалить образ",
-        variant: "destructive",
-      })
-    } finally {
-      setDeleting(false)
     }
   }
 
-  const handleImageError = (itemId: number) => {
-    setImageErrors((prev) => new Set(prev).add(itemId))
+  const handleImageError = (itemId: string) => {
+    setImageErrors((prev) => ({ ...prev, [itemId]: true }))
   }
 
-  const getSeasonName = (season: string) => {
-    const seasons: Record<string, string> = {
-      spring: "Весна",
-      summer: "Лето",
-      autumn: "Осень",
-      winter: "Зима",
-      all: "Всесезонный",
+  const getImageSrc = (item: OutfitItem) => {
+    if (item.wardrobe_items.image_url) {
+      return item.wardrobe_items.image_url
     }
-    return seasons[season] || season
-  }
-
-  const getOccasionName = (occasion: string) => {
-    const occasions: Record<string, string> = {
-      casual: "Повседневный",
-      office: "Офис",
-      sport: "Спорт",
-      party: "Вечеринка",
-      date: "Свидание",
-      formal: "Формальный",
+    if (item.wardrobe_items.basic_wardrobe_items?.image_url) {
+      return item.wardrobe_items.basic_wardrobe_items.image_url
     }
-    return occasions[occasion] || occasion
+    return null
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("ru-RU", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
+  const getItemName = (item: OutfitItem) => {
+    return item.wardrobe_items.item_name || item.wardrobe_items.basic_wardrobe_items?.name_ru || "Без названия"
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
-          <span className="text-gray-600">Загрузка образа...</span>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-red-600 text-lg font-semibold">Ошибка загрузки образа</div>
-          <p className="text-gray-600">{error}</p>
-          <div className="flex gap-2 justify-center">
-            <Button onClick={fetchOutfit}>Попробовать снова</Button>
-            <Link href="/admin/outfits">
-              <Button variant="outline">Вернуться к списку</Button>
-            </Link>
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="animate-pulse space-y-6">
+            <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+            <div className="h-64 bg-gray-200 rounded"></div>
+            <div className="space-y-4">
+              <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-48 bg-gray-200 rounded"></div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -198,11 +160,14 @@ export default function OutfitDetailPage() {
 
   if (!outfit) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-gray-600 text-lg">Образ не найден</div>
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-2xl font-bold text-gray-900 mb-4">Образ не найден</h1>
           <Link href="/admin/outfits">
-            <Button>Вернуться к списку</Button>
+            <Button>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Вернуться к образам
+            </Button>
           </Link>
         </div>
       </div>
@@ -212,190 +177,149 @@ export default function OutfitDetailPage() {
   const sortedItems = outfit.outfit_items.sort((a, b) => a.position - b.position)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Заголовок */}
-          <div className="mb-8">
-            <div className="flex items-center gap-4 mb-4">
-              <Link href="/admin/outfits">
-                <Button variant="outline" size="sm">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Назад
-                </Button>
-              </Link>
+    <div className="container mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <Link href="/admin/outfits">
+              <Button variant="ghost" size="sm">
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Назад
+              </Button>
+            </Link>
+            <div>
               <h1 className="text-3xl font-bold text-gray-900">{outfit.name}</h1>
-            </div>
-
-            {outfit.description && <p className="text-gray-600 text-lg">{outfit.description}</p>}
-
-            {/* Метаданные */}
-            <div className="flex flex-wrap gap-2 mt-4">
-              {outfit.season && (
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
-                  {getSeasonName(outfit.season)}
-                </Badge>
-              )}
-              {outfit.occasion && (
-                <Badge variant="outline" className="flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  {getOccasionName(outfit.occasion)}
-                </Badge>
-              )}
-              <Badge variant="outline">
-                {outfit.outfit_items.length} {outfit.outfit_items.length === 1 ? "вещь" : "вещей"}
-              </Badge>
-            </div>
-
-            {/* Даты */}
-            <div className="text-sm text-gray-500 mt-2">
-              <div>Создан: {formatDate(outfit.created_at)}</div>
-              {outfit.updated_at !== outfit.created_at && <div>Обновлен: {formatDate(outfit.updated_at)}</div>}
+              <p className="text-gray-500 mt-1">Создан {new Date(outfit.created_at).toLocaleDateString("ru-RU")}</p>
             </div>
           </div>
 
-          {/* Действия */}
-          <div className="flex gap-2 mb-8">
+          <div className="flex gap-2">
             <Link href={`/admin/wardrobe?edit=${outfit.id}`}>
-              <Button className="flex items-center gap-2">
-                <Edit className="h-4 w-4" />
+              <Button variant="outline">
+                <Edit className="h-4 w-4 mr-2" />
                 Редактировать
               </Button>
             </Link>
-
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" disabled={deleting}>
-                  {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
-                  Удалить
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Удалить образ?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Вы уверены, что хотите удалить образ "{outfit.name}"? Это действие нельзя отменить.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Отмена</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
-                    Удалить
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            <Button variant="destructive" onClick={handleDelete}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Удалить
+            </Button>
           </div>
+        </div>
 
-          {/* Элементы образа */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Элементы образа</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {sortedItems.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                  <p>В этом образе нет элементов</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {sortedItems.map((item) => {
-                    const hasError = imageErrors.has(item.wardrobe_items.id)
-                    const imageUrl = item.wardrobe_items.image_url
+        {/* Outfit Preview */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Превью образа</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="max-w-md mx-auto">
+              <OutfitPreviewGrid items={sortedItems} />
+            </div>
+            {outfit.description && (
+              <div className="mt-6 pt-6 border-t">
+                <h3 className="font-semibold text-gray-900 mb-2">Описание</h3>
+                <p className="text-gray-600">{outfit.description}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-                    return (
-                      <Card key={item.id} className="overflow-hidden">
-                        {/* Изображение */}
-                        <div className="aspect-square bg-gray-100 relative">
-                          {imageUrl && !hasError ? (
-                            <Image
-                              src={imageUrl || "/placeholder.svg"}
-                              alt={item.wardrobe_items.item_name}
-                              fill
-                              className="object-cover"
-                              onError={() => handleImageError(item.wardrobe_items.id)}
-                              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <Package className="h-8 w-8 text-gray-400" />
-                            </div>
-                          )}
+        {/* Items Details */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Детали образа ({sortedItems.length} элементов)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              {sortedItems.map((item, index) => {
+                const imageSrc = getImageSrc(item)
+                const itemName = getItemName(item)
+                const itemKey = `${item.wardrobe_items.id}-${index}`
+                const hasImageError = imageErrors[itemKey]
 
-                          {/* Позиция */}
-                          <Badge className="absolute top-2 left-2 bg-black/70 text-white">{item.position + 1}</Badge>
+                return (
+                  <div key={item.id}>
+                    <div className="flex gap-4">
+                      {/* Image */}
+                      <div className="flex-shrink-0 w-24 h-24 bg-gray-100 rounded-lg overflow-hidden">
+                        {imageSrc && !hasImageError ? (
+                          <Image
+                            src={imageSrc || "/placeholder.svg"}
+                            alt={itemName}
+                            width={96}
+                            height={96}
+                            className="w-full h-full object-cover"
+                            onError={() => handleImageError(itemKey)}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <Package className="h-8 w-8 text-gray-400" />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Details */}
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{itemName}</h3>
+                            <p className="text-sm text-gray-500">Позиция: {item.position}</p>
+                          </div>
+                          <Badge variant="outline">#{item.wardrobe_items.id}</Badge>
                         </div>
 
-                        {/* Информация */}
-                        <CardContent className="p-3">
-                          <h3 className="font-medium text-sm mb-2 line-clamp-2">{item.wardrobe_items.item_name}</h3>
-
-                          <div className="space-y-1 text-xs text-gray-600">
-                            {item.wardrobe_items.color && (
-                              <div className="flex items-center gap-2">
-                                <span>Цвет:</span>
-                                <span className="font-medium">{item.wardrobe_items.color}</span>
-                                {item.wardrobe_items.shade && (
-                                  <span className="text-gray-500">({item.wardrobe_items.shade})</span>
-                                )}
-                              </div>
-                            )}
-
-                            {item.wardrobe_items.material && (
-                              <div>
-                                <span>Материал: </span>
-                                <span className="font-medium">{item.wardrobe_items.material}</span>
-                              </div>
-                            )}
-
-                            {item.wardrobe_items.style && (
-                              <div>
-                                <span>Стиль: </span>
-                                <span className="font-medium">{item.wardrobe_items.style}</span>
-                              </div>
-                            )}
-
-                            {item.wardrobe_items.size_type && (
-                              <div>
-                                <span>Размер: </span>
-                                <span className="font-medium">{item.wardrobe_items.size_type}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Дополнительные бейджи */}
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            {item.wardrobe_items.is_basic && (
-                              <Badge variant="secondary" className="text-xs">
-                                Базовая
-                              </Badge>
-                            )}
-                            {item.wardrobe_items.has_print === "yes" && (
-                              <Badge variant="outline" className="text-xs">
-                                С принтом
-                              </Badge>
-                            )}
-                            {item.wardrobe_items.has_details === "yes" && (
-                              <Badge variant="outline" className="text-xs">
-                                С деталями
-                              </Badge>
-                            )}
-                          </div>
-
-                          {item.wardrobe_items.notes && (
-                            <p className="text-xs text-gray-500 mt-2 line-clamp-2">{item.wardrobe_items.notes}</p>
+                        {/* Characteristics */}
+                        <div className="flex flex-wrap gap-2">
+                          {item.wardrobe_items.color && <Badge variant="secondary">{item.wardrobe_items.color}</Badge>}
+                          {item.wardrobe_items.shade && item.wardrobe_items.shade !== item.wardrobe_items.color && (
+                            <Badge variant="outline">{item.wardrobe_items.shade}</Badge>
                           )}
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                          {item.wardrobe_items.material && (
+                            <Badge variant="outline">{item.wardrobe_items.material}</Badge>
+                          )}
+                          {item.wardrobe_items.style && <Badge variant="outline">{item.wardrobe_items.style}</Badge>}
+                          {item.wardrobe_items.size_type && (
+                            <Badge variant="outline">Размер: {item.wardrobe_items.size_type}</Badge>
+                          )}
+                        </div>
+
+                        {/* Additional details */}
+                        <div className="text-sm text-gray-600 space-y-1">
+                          {item.wardrobe_items.has_print && item.wardrobe_items.has_print !== "false" && (
+                            <div>Принт: {item.wardrobe_items.has_print}</div>
+                          )}
+                          {item.wardrobe_items.has_details && item.wardrobe_items.has_details !== "false" && (
+                            <div>Детали: {item.wardrobe_items.has_details}</div>
+                          )}
+                          {item.wardrobe_items.notes && <div>Заметки: {item.wardrobe_items.notes}</div>}
+                        </div>
+
+                        {/* Purchase URL */}
+                        {item.wardrobe_items.url && (
+                          <div className="pt-2">
+                            <a
+                              href={item.wardrobe_items.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                              Ссылка на покупку
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {index < sortedItems.length - 1 && <Separator className="mt-6" />}
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

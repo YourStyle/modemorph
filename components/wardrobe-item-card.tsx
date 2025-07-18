@@ -7,318 +7,143 @@ import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"
-import type { WardrobeItem } from "@/lib/wardrobe"
-import { Package, Eye, EyeOff, Trash2, Loader2 } from "lucide-react"
-import { useSelectedItems } from "@/contexts/selected-items-context"
-import { useToast } from "@/hooks/use-toast"
+import { Package, Eye, EyeOff, Trash2 } from "lucide-react"
+import { ItemDetailsModal } from "./item-details-modal"
+import type { WardrobeItem } from "./item-details-modal"
 
 interface WardrobeItemCardProps {
   item: WardrobeItem
-  showImage?: boolean
-  onSelect?: (item: WardrobeItem) => void
+  onToggleVisibility?: (id: number, isHidden: boolean) => void
+  onDelete?: (id: number) => void
+  showActions?: boolean
   isSelected?: boolean
-  isAdmin?: boolean
-  onVisibilityChange?: (itemId: number, isHidden: boolean) => void
-  onDelete?: (itemId: number) => void
+  onSelect?: (item: WardrobeItem) => void
 }
 
 export function WardrobeItemCard({
   item,
-  showImage = true,
-  onSelect,
-  isSelected = false,
-  isAdmin = false,
-  onVisibilityChange,
+  onToggleVisibility,
   onDelete,
+  showActions = false,
+  isSelected = false,
+  onSelect,
 }: WardrobeItemCardProps) {
   const [imageError, setImageError] = useState(false)
-  const [imageLoading, setImageLoading] = useState(true)
-  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
-  const { addItem, removeItem, selectedItems } = useSelectedItems()
-  const { toast } = useToast()
+  const [showModal, setShowModal] = useState(false)
 
   const handleImageError = () => {
     setImageError(true)
-    setImageLoading(false)
   }
 
-  const handleImageLoad = () => {
-    setImageLoading(false)
-  }
-
-  const handleClick = (e: React.MouseEvent) => {
-    // Предотвращаем выбор при клике на кнопки
-    if ((e.target as HTMLElement).closest("button")) {
-      return
-    }
-
+  const handleCardClick = () => {
     if (onSelect) {
       onSelect(item)
     } else {
-      // Логика для выбора элементов в контексте
-      const isCurrentlySelected = selectedItems.some((selectedItem) => selectedItem.id === item.id)
-      if (isCurrentlySelected) {
-        removeItem(item.id)
-      } else {
-        addItem(item)
-      }
+      setShowModal(true)
     }
   }
 
-  const handleToggleVisibility = async (e: React.MouseEvent) => {
+  const handleToggleVisibility = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setIsUpdatingVisibility(true)
-
-    try {
-      console.log("Toggling visibility for item:", item.id, "current state:", item.is_hidden)
-
-      const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          is_hidden: !item.is_hidden,
-        }),
-      })
-
-      console.log("PATCH response status:", response.status)
-
-      let responseData
-      try {
-        responseData = await response.json()
-        console.log("PATCH response data:", responseData)
-      } catch (jsonError) {
-        console.error("Failed to parse JSON response:", jsonError)
-        throw new Error("Invalid response from server")
-      }
-
-      if (!response.ok) {
-        throw new Error(responseData.error || `HTTP ${response.status}: Failed to update visibility`)
-      }
-
-      // Обновляем локальное состояние через callback
-      if (onVisibilityChange) {
-        onVisibilityChange(item.id, !item.is_hidden)
-      }
-
-      toast({
-        title: item.is_hidden ? "Вещь показана" : "Вещь скрыта",
-        description: item.is_hidden ? "Вещь теперь видна в публичном просмотре" : "Вещь скрыта из публичного просмотра",
-      })
-    } catch (error) {
-      console.error("Error updating visibility:", error)
-      toast({
-        title: "Ошибка",
-        description: error instanceof Error ? error.message : "Не удалось изменить видимость вещи",
-        variant: "destructive",
-      })
-    } finally {
-      setIsUpdatingVisibility(false)
+    if (onToggleVisibility) {
+      onToggleVisibility(item.id, !item.is_hidden)
     }
   }
 
-  const handleDelete = async () => {
-    setIsDeleting(true)
-
-    try {
-      console.log("=== DELETE OPERATION START ===")
-      console.log("Item object:", item)
-      console.log("Item ID:", item.id, "Type:", typeof item.id)
-      console.log("Request URL will be:", `/api/wardrobe/${item.id}`)
-
-      const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      console.log("DELETE response status:", response.status)
-      console.log("DELETE response ok:", response.ok)
-      console.log("DELETE response headers:", Object.fromEntries(response.headers.entries()))
-
-      let responseData
-      try {
-        const responseText = await response.text()
-        console.log("Raw response text:", responseText)
-        responseData = JSON.parse(responseText)
-        console.log("Parsed response data:", responseData)
-      } catch (jsonError) {
-        console.error("Failed to parse JSON response:", jsonError)
-        throw new Error("Invalid response from server")
-      }
-
-      if (!response.ok) {
-        console.log("Response not ok, throwing error")
-        throw new Error(responseData.error || `HTTP ${response.status}: Failed to delete item`)
-      }
-
-      console.log("Delete successful!")
-      toast({
-        title: "Вещь удалена",
-        description: "Элемент гардероба успешно удален",
-      })
-
-      // Используем только callback, убираем перезагрузку страницы
-      if (onDelete) {
-        console.log("Calling onDelete callback with item ID:", item.id)
-        onDelete(item.id)
-      } else {
-        console.log("No onDelete callback provided - item will remain visible until page refresh")
-      }
-    } catch (error) {
-      console.error("=== DELETE ERROR ===")
-      console.error("Error deleting item:", error)
-      toast({
-        title: "Ошибка удаления",
-        description: error instanceof Error ? error.message : "Не удалось удалить вещь",
-        variant: "destructive",
-      })
-    } finally {
-      setIsDeleting(false)
-      console.log("=== DELETE OPERATION END ===")
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (onDelete) {
+      onDelete(item.id)
     }
   }
 
-  // Определяем источник изображения
-  const getImageSrc = () => {
-    if (item.image_url) {
-      return item.image_url
-    }
-    if (item.basic_wardrobe_items?.image_url) {
-      return item.basic_wardrobe_items.image_url
-    }
-    return null
-  }
-
-  const imageSrc = getImageSrc()
-  const isCurrentlySelected = selectedItems.some((selectedItem) => selectedItem.id === item.id)
-  const cardSelected = isSelected || isCurrentlySelected
+  const imageUrl = item.image_url || item.basic_wardrobe_items?.image_url
+  const itemName = item.item_name || item.basic_wardrobe_items?.name_ru || "Без названия"
 
   return (
-    <Card
-      className={`cursor-pointer transition-all hover:shadow-md relative group ${
-        cardSelected ? "ring-2 ring-blue-500" : ""
-      } ${item.is_hidden ? "opacity-60" : ""}`}
-      onClick={handleClick}
-    >
-      {/* Admin controls */}
-      {isAdmin && (
-        <div className="absolute top-2 right-2 z-10 flex gap-1 bg-white/90 backdrop-blur-sm p-1 rounded-lg shadow-sm">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleToggleVisibility}
-            disabled={isUpdatingVisibility}
-            className="h-8 w-8 p-0"
-          >
-            {isUpdatingVisibility ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : item.is_hidden ? (
-              <Eye className="h-4 w-4" />
-            ) : (
-              <EyeOff className="h-4 w-4" />
-            )}
-          </Button>
-
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive" disabled={isDeleting} className="h-8 w-8 p-0">
-                {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Удалить вещь?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Это действие нельзя отменить. Вещь "{item.item_name}" будет удалена навсегда.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Отмена</AlertDialogCancel>
-                <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">
-                  Удалить
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </div>
-      )}
-
-      <CardContent className="p-4">
-        {showImage && (
-          <div className="aspect-square mb-3 bg-gray-100 rounded-lg overflow-hidden relative">
-            {imageSrc && !imageError ? (
-              <>
-                {imageLoading && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Package className="h-8 w-8 text-gray-400 animate-pulse" />
-                  </div>
-                )}
-                <Image
-                  src={imageSrc || "/placeholder.svg"}
-                  alt={item.item_name}
-                  fill
-                  className="object-cover"
-                  onError={handleImageError}
-                  onLoad={handleImageLoad}
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                />
-              </>
+    <>
+      <Card
+        className={`group cursor-pointer transition-all duration-200 hover:shadow-md ${
+          isSelected ? "ring-2 ring-blue-500 shadow-md" : ""
+        } ${item.is_hidden ? "opacity-60" : ""}`}
+        onClick={handleCardClick}
+      >
+        <CardContent className="p-3">
+          {/* Image */}
+          <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-3 relative">
+            {imageUrl && !imageError ? (
+              <Image
+                src={imageUrl || "/placeholder.svg"}
+                alt={itemName}
+                fill
+                className="object-cover group-hover:scale-105 transition-transform duration-200"
+                onError={handleImageError}
+                sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <Package className="h-8 w-8 text-gray-400" />
               </div>
             )}
-          </div>
-        )}
 
-        <div className="space-y-2">
-          <h3 className="font-medium text-gray-900 truncate">{item.item_name}</h3>
-
-          <div className="flex flex-wrap gap-1">
-            {item.material && (
-              <Badge variant="secondary" className="text-xs">
-                {item.material}
-              </Badge>
+            {/* Actions overlay */}
+            {showActions && (
+              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-1">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 w-8 p-0 bg-white/90 hover:bg-white"
+                  onClick={handleToggleVisibility}
+                >
+                  {item.is_hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-8 w-8 p-0 bg-red-500/90 hover:bg-red-500"
+                  onClick={handleDelete}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             )}
-            {item.color && (
-              <Badge variant="outline" className="text-xs">
-                {item.color}
-              </Badge>
-            )}
-            {item.style && (
-              <Badge variant="outline" className="text-xs">
-                {item.style}
-              </Badge>
-            )}
-          </div>
 
-          {item.created_at && (
-            <p className="text-xs text-gray-500">{new Date(item.created_at).toLocaleDateString("ru-RU")}</p>
-          )}
-
-          {item.is_hidden && (
-            <div className="flex items-center gap-1 text-xs text-orange-600">
-              <EyeOff className="h-3 w-3" />
-              <span>Скрыто</span>
+            {/* Status badges */}
+            <div className="absolute top-2 left-2 flex flex-col gap-1">
+              {item.is_basic && <Badge className="bg-green-500 text-white text-xs">Базовая</Badge>}
+              {item.user_id && <Badge className="bg-blue-500 text-white text-xs">Ваша</Badge>}
+              {item.is_hidden && (
+                <Badge variant="secondary" className="text-xs">
+                  Скрыта
+                </Badge>
+              )}
             </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+
+          {/* Item info */}
+          <div className="space-y-2">
+            <h3 className="font-medium text-sm line-clamp-2 min-h-[2.5rem]">{itemName}</h3>
+
+            <div className="flex flex-wrap gap-1">
+              {item.color && (
+                <Badge variant="secondary" className="text-xs">
+                  {item.color}
+                </Badge>
+              )}
+              {item.material && (
+                <Badge variant="outline" className="text-xs">
+                  {item.material}
+                </Badge>
+              )}
+            </div>
+
+            {item.style && <p className="text-xs text-gray-600 line-clamp-1">{item.style}</p>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Item Details Modal */}
+      <ItemDetailsModal item={item} isOpen={showModal} onClose={() => setShowModal(false)} />
+    </>
   )
 }

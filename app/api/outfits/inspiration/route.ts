@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
 
-    // Get outfits with their items and wardrobe item details
+    // Get outfits with their items
     const { data: outfits, error } = await supabase
       .from("outfits")
       .select(`
@@ -14,12 +14,11 @@ export async function GET() {
         description,
         season,
         occasion,
-        created_at,
+        likes,
         outfit_items (
-          id,
           position,
           wardrobe_item_id,
-          wardrobe_items (
+          wardrobe_items!wardrobe_item_id (
             id,
             item_name,
             image_url,
@@ -27,55 +26,74 @@ export async function GET() {
             shade,
             style,
             material,
+            size_type,
+            has_print,
+            has_details,
+            notes,
             is_basic,
-            basic_item_id
+            basic_item_id,
+            url
           )
         )
       `)
-      .order("created_at", { ascending: false })
+      .order("likes", { ascending: false })
+      .limit(12)
 
     if (error) {
-      console.error("Database error:", error)
+      console.error("Error fetching outfits:", error)
       return NextResponse.json({ error: "Failed to fetch outfits" }, { status: 500 })
     }
 
     // Transform data for frontend
-    const transformedOutfits =
-      outfits?.map((outfit) => {
-        const items =
-          outfit.outfit_items
-            ?.sort((a, b) => (a.position || 0) - (b.position || 0))
-            .map((item) => ({
-              id: item.wardrobe_items?.id?.toString() || "",
-              name: item.wardrobe_items?.item_name || "",
-              image_url: item.wardrobe_items?.image_url || "",
-              color: item.wardrobe_items?.color || "",
-              shade: item.wardrobe_items?.shade || "",
-              style: item.wardrobe_items?.style || "",
-              material: item.wardrobe_items?.material || "",
-              is_basic: item.wardrobe_items?.is_basic || false,
-              basic_item_id: item.wardrobe_items?.basic_item_id,
-            })) || []
+    const transformedOutfits = (outfits || []).map((outfit: any) => {
+      const items = (outfit.outfit_items || [])
+        .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
+        .map((item: any) => {
+          const wardrobeItem = item.wardrobe_items
+          if (!wardrobeItem) return null
 
-        // Generate tags from outfit metadata
-        const tags = [outfit.season, outfit.occasion, ...items.map((item) => item.color).filter(Boolean)].filter(
-          Boolean,
-        )
+          return {
+            id: wardrobeItem.id.toString(),
+            name: wardrobeItem.item_name || "Без названия",
+            image_url: wardrobeItem.image_url || "",
+            color: wardrobeItem.color || "",
+            shade: wardrobeItem.shade || "",
+            style: wardrobeItem.style || "",
+            material: wardrobeItem.material || "",
+            size_type: wardrobeItem.size_type || "",
+            has_print: wardrobeItem.has_print || "",
+            has_details: wardrobeItem.has_details || "",
+            notes: wardrobeItem.notes || "",
+            url: wardrobeItem.url || "",
+            is_basic: wardrobeItem.is_basic || false,
+            basic_item_id: wardrobeItem.basic_item_id || null,
+            user_id: wardrobeItem.is_basic ? null : wardrobeItem.user_id,
+          }
+        })
+        .filter(Boolean)
 
-        return {
-          id: outfit.id.toString(),
-          title: outfit.name || "Без названия",
-          description: outfit.description || "",
-          items,
-          tags,
-          likes: Math.floor(Math.random() * 100) + 10, // Random likes for demo
-          isLiked: false,
-        }
-      }) || []
+      const tags = [outfit.season, outfit.occasion].filter(Boolean)
 
-    return NextResponse.json(transformedOutfits)
+      return {
+        id: outfit.id.toString(),
+        title: outfit.name || "Образ без названия",
+        description: outfit.description || "Описание отсутствует",
+        items,
+        tags,
+        likes: outfit.likes || 0,
+        isLiked: false, // TODO: implement user likes tracking
+      }
+    })
+
+    return NextResponse.json({ outfits: transformedOutfits })
   } catch (error) {
-    console.error("API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Error in inspiration API:", error)
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 },
+    )
   }
 }

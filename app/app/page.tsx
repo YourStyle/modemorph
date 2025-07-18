@@ -168,7 +168,7 @@ export default function HomePage() {
   const saveRecommendationsToDatabase = async (recommendations: LookSection[]) => {
     try {
       // Flatten all suggestions from all sections
-      const allSuggestions = recommendations.flatMap((section) => section.suggestions)
+      const allSuggestions = recommendations.flatMap((section) => section.suggestions || [])
 
       console.log("Saving recommendations to database:", allSuggestions.length)
 
@@ -200,7 +200,7 @@ export default function HomePage() {
         const response = await fetch("/api/wardrobe-user-items")
         if (response.ok) {
           const data = await response.json()
-          setUserItemsCount(data.length)
+          setUserItemsCount(Array.isArray(data) ? data.length : 0)
         }
       } catch (error) {
         console.error("Error loading user items count:", error)
@@ -221,7 +221,7 @@ export default function HomePage() {
 
         if (cachedRecommendations && isCacheValidForUser(cachedRecommendations, userItemsCount)) {
           console.log("Loading recommendations from cache")
-          setOutfitSections(cachedRecommendations.data)
+          setOutfitSections(Array.isArray(cachedRecommendations.data) ? cachedRecommendations.data : [])
           setIsFromCache(true)
           setLoading(false)
           return
@@ -265,19 +265,34 @@ export default function HomePage() {
         if (response.ok) {
           const recommendations = await response.json()
           console.log("Recommendations received:", recommendations)
-          setOutfitSections(recommendations)
+
+          // Ensure recommendations is an array and has proper structure
+          const validRecommendations = Array.isArray(recommendations) ? recommendations : []
+          const processedRecommendations = validRecommendations.map((section) => ({
+            ...section,
+            suggestions: Array.isArray(section.suggestions)
+              ? section.suggestions.map((suggestion) => ({
+                  ...suggestion,
+                  items: Array.isArray(suggestion.items) ? suggestion.items : [],
+                }))
+              : [],
+          }))
+
+          setOutfitSections(processedRecommendations)
 
           // Cache the new recommendations
-          setCachedRecommendations(recommendations, userItemsCount)
+          setCachedRecommendations(processedRecommendations, userItemsCount)
 
           // Save recommendations to database (only those with user items only) - only if not from cache
-          await saveRecommendationsToDatabase(recommendations)
+          await saveRecommendationsToDatabase(processedRecommendations)
         } else {
           const errorText = await response.text()
           console.error("API error:", response.status, errorText)
+          setOutfitSections([])
         }
       } catch (error) {
         console.error("Error loading outfit suggestions:", error)
+        setOutfitSections([])
       } finally {
         setLoading(false)
       }
@@ -330,19 +345,34 @@ export default function HomePage() {
       if (response.ok) {
         const recommendations = await response.json()
         console.log("Manual recommendations received:", recommendations)
-        setOutfitSections(recommendations)
+
+        // Ensure recommendations is an array and has proper structure
+        const validRecommendations = Array.isArray(recommendations) ? recommendations : []
+        const processedRecommendations = validRecommendations.map((section) => ({
+          ...section,
+          suggestions: Array.isArray(section.suggestions)
+            ? section.suggestions.map((suggestion) => ({
+                ...suggestion,
+                items: Array.isArray(suggestion.items) ? suggestion.items : [],
+              }))
+            : [],
+        }))
+
+        setOutfitSections(processedRecommendations)
 
         // Update cache with new recommendations
-        setCachedRecommendations(recommendations, userItemsCount)
+        setCachedRecommendations(processedRecommendations, userItemsCount)
 
         // Save recommendations to database (only those with user items only)
-        await saveRecommendationsToDatabase(recommendations)
+        await saveRecommendationsToDatabase(processedRecommendations)
       } else {
         const errorText = await response.text()
         console.error("Manual API error:", response.status, errorText)
+        setOutfitSections([])
       }
     } catch (error) {
       console.error("Error getting recommendations:", error)
+      setOutfitSections([])
     } finally {
       setRecommendationsLoading(false)
     }
@@ -492,30 +522,49 @@ export default function HomePage() {
               </div>
             ) : (
               <div className="space-y-8">
-                {outfitSections.map((section, sectionIndex) => (
-                  <div key={`${section.title}-${sectionIndex}`} className="space-y-4">
-                    {/* Section Header */}
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-xl font-semibold text-gray-900">{section.title}</h2>
-                      <span className="text-sm text-gray-500">{section.looks_count} образов</span>
-                    </div>
+                {outfitSections.map((section, sectionIndex) => {
+                  // Add safety checks for section data
+                  if (!section || !section.suggestions || !Array.isArray(section.suggestions)) {
+                    return null
+                  }
 
-                    {/* Horizontal Scrolling Container */}
-                    <div className="relative">
-                      <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 snap-x snap-mandatory">
-                        {section.suggestions.map((suggestion) => (
-                          <div key={suggestion.id} className="flex-shrink-0 snap-start">
-                            <OutfitCard suggestion={suggestion} />
-                          </div>
-                        ))}
+                  return (
+                    <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-4">
+                      {/* Section Header */}
+                      <div className="flex items-center justify-between">
+                        <h2 className="text-xl font-semibold text-gray-900">{section.title || "Образы"}</h2>
+                        <span className="text-sm text-gray-500">
+                          {section.looks_count || section.suggestions.length} образов
+                        </span>
                       </div>
 
-                      {/* Scroll indicators */}
-                      <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-gray-50 to-transparent pointer-events-none opacity-50" />
-                      <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-gray-50 to-transparent pointer-events-none opacity-50" />
+                      {/* Horizontal Scrolling Container */}
+                      <div className="relative">
+                        <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 snap-x snap-mandatory">
+                          {section.suggestions.map((suggestion, suggestionIndex) => {
+                            // Add safety check for suggestion
+                            if (!suggestion) {
+                              return null
+                            }
+
+                            return (
+                              <div
+                                key={suggestion.id || `suggestion-${suggestionIndex}`}
+                                className="flex-shrink-0 snap-start"
+                              >
+                                <OutfitCard suggestion={suggestion} />
+                              </div>
+                            )
+                          })}
+                        </div>
+
+                        {/* Scroll indicators */}
+                        <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-gray-50 to-transparent pointer-events-none opacity-50" />
+                        <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-gray-50 to-transparent pointer-events-none opacity-50" />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </>
