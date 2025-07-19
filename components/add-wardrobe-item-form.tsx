@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, Upload, X } from "lucide-react"
 import Image from "next/image"
+import { ColorPicker } from "./color-picker"
 
 interface BasicWardrobeItem {
   id: number
@@ -31,7 +32,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel, editingItem }: AddWar
   const [formData, setFormData] = useState({
     item_name: "",
     size_type: "",
-    color: "",
+    color: "#808080",
     shade: "",
     material: "",
     style: "",
@@ -74,7 +75,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel, editingItem }: AddWar
       setFormData({
         item_name: editingItem.item_name || "",
         size_type: editingItem.size_type || "",
-        color: editingItem.color || "",
+        color: editingItem.color || "#808080",
         shade: editingItem.shade || "",
         material: editingItem.material || "",
         style: editingItem.style || "",
@@ -125,6 +126,16 @@ export function AddWardrobeItemForm({ onSuccess, onCancel, editingItem }: AddWar
       return
     }
 
+    // Проверяем валидность HEX цвета
+    if (formData.color && !/^#[0-9A-Fa-f]{6}$/.test(formData.color)) {
+      toast({
+        title: "Ошибка",
+        description: "Цвет должен быть в формате HEX (#RRGGBB)",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
 
     try {
@@ -152,6 +163,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel, editingItem }: AddWar
       const submitData = {
         ...formData,
         image_url: imageUrl,
+        color: formData.color.toUpperCase(), // Приводим к верхнему регистру
         basic_item_id:
           formData.basic_item_id && formData.basic_item_id !== "0" ? Number.parseInt(formData.basic_item_id) : null,
       }
@@ -177,7 +189,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel, editingItem }: AddWar
         setFormData({
           item_name: "",
           size_type: "",
-          color: "",
+          color: "#808080",
           shade: "",
           material: "",
           style: "",
@@ -269,15 +281,13 @@ export function AddWardrobeItemForm({ onSuccess, onCancel, editingItem }: AddWar
 
       {/* Цвет и оттенок */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="color">Цвет</Label>
-          <Input
-            id="color"
-            value={formData.color}
-            onChange={(e) => handleInputChange("color", e.target.value)}
-            placeholder="Например: Белый"
-          />
-        </div>
+        <ColorPicker
+          label="Цвет *"
+          value={formData.color}
+          onChange={(color) => handleInputChange("color", color)}
+          placeholder="#808080"
+          imagePreview={imagePreview}
+        />
 
         <div className="space-y-2">
           <Label htmlFor="shade">Оттенок</Label>
