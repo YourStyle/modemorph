@@ -2,17 +2,18 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
+import type { WardrobeItem } from "./item-details-modal"
 
 interface BasicItem {
   id: number
@@ -22,12 +23,14 @@ interface BasicItem {
   image_url: string | null
 }
 
-interface AddWardrobeItemFormProps {
+interface EditWardrobeItemModalProps {
+  item: WardrobeItem | null
+  isOpen: boolean
+  onClose: () => void
   onSuccess?: () => void
-  onCancel?: () => void
 }
 
-export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemFormProps) {
+export function EditWardrobeItemModal({ item, isOpen, onClose, onSuccess }: EditWardrobeItemModalProps) {
   const [formData, setFormData] = useState({
     item_name: "",
     size_type: "",
@@ -39,7 +42,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     has_details: false,
     url: "",
     notes: "",
-    basic_item_id: "",
+    basic_item_id: "0", // Updated default value to be a non-empty string
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -48,10 +51,26 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Загрузка базовых вещей при первом рендере
-  useState(() => {
-    loadBasicItems()
-  })
+  // Загрузка данных при открытии модалки
+  useEffect(() => {
+    if (isOpen && item) {
+      setFormData({
+        item_name: item.item_name || "",
+        size_type: item.size_type || "",
+        material: item.material || "",
+        style: item.style || "",
+        has_print: item.has_print === true || item.has_print === "true",
+        color: item.color || "",
+        shade: item.shade || "",
+        has_details: item.has_details === true || item.has_details === "true",
+        url: item.url || "",
+        notes: item.notes || "",
+        basic_item_id: item.basic_item_id?.toString() || "0", // Updated default value to be a non-empty string
+      })
+      setImagePreview(item.image_url || null)
+      loadBasicItems()
+    }
+  }, [isOpen, item])
 
   const loadBasicItems = async () => {
     setIsLoadingBasicItems(true)
@@ -98,7 +117,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!formData.item_name.trim()) {
+    if (!item || !formData.item_name.trim()) {
       toast.error("Название вещи обязательно для заполнения")
       return
     }
@@ -106,9 +125,9 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     setIsLoading(true)
 
     try {
-      let imageUrl = ""
+      let imageUrl = imagePreview
 
-      // Загрузка изображения если есть
+      // Загрузка нового изображения если есть
       if (imageFile) {
         const imageFormData = new FormData()
         imageFormData.append("file", imageFile)
@@ -142,8 +161,8 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         image_url: imageUrl || null,
       }
 
-      const response = await fetch("/api/wardrobe", {
-        method: "POST",
+      const response = await fetch(`/api/wardrobe/${item.id}`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
@@ -151,47 +170,28 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       })
 
       if (response.ok) {
-        toast.success("Вещь успешно добавлена в гардероб!")
-
-        // Сброс формы
-        setFormData({
-          item_name: "",
-          size_type: "",
-          material: "",
-          style: "",
-          has_print: false,
-          color: "",
-          shade: "",
-          has_details: false,
-          url: "",
-          notes: "",
-          basic_item_id: "",
-        })
-        setImageFile(null)
-        setImagePreview(null)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
-        }
-
+        toast.success("Вещь успешно обновлена!")
         onSuccess?.()
+        onClose()
       } else {
         const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to add item")
+        throw new Error(errorData.error || "Failed to update item")
       }
     } catch (error) {
-      console.error("Error adding item:", error)
-      toast.error("Ошибка при добавлении вещи")
+      console.error("Error updating item:", error)
+      toast.error("Ошибка при обновлении вещи")
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader>
-        <CardTitle>Добавить вещь в гардероб</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Редактировать вещь</DialogTitle>
+        </DialogHeader>
+
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Фото */}
           <div className="space-y-2">
@@ -323,7 +323,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                 <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Не выбрано</SelectItem>
+                <SelectItem value="0">Не выбрано</SelectItem> {/* Updated value to be a non-empty string */}
                 {basicItems.map((item) => (
                   <SelectItem key={item.id} value={item.id.toString()}>
                     {item.name_ru}
@@ -360,16 +360,14 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
           {/* Кнопки */}
           <div className="flex gap-4">
             <Button type="submit" disabled={isLoading} className="flex-1">
-              {isLoading ? "Добавление..." : "Добавить вещь"}
+              {isLoading ? "Обновление..." : "Обновить"}
             </Button>
-            {onCancel && (
-              <Button type="button" variant="outline" onClick={onCancel}>
-                Отмена
-              </Button>
-            )}
+            <Button type="button" variant="outline" onClick={onClose}>
+              Отмена
+            </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   )
 }

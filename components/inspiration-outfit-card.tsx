@@ -1,12 +1,15 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Bookmark, Package, Heart } from "lucide-react"
+import { Bookmark, Package, Heart, BookmarkCheck, Loader2 } from "lucide-react"
 import Image from "next/image"
 import { ItemDetailsModal } from "./item-details-modal"
+import { OutfitDetailsModal } from "./outfit-details-modal"
 import { toast } from "sonner"
 
 interface OutfitItem {
@@ -51,22 +54,31 @@ export function InspirationOutfitCard({
   onSave,
 }: InspirationOutfitCardProps) {
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
+  const [showOutfitDetails, setShowOutfitDetails] = useState(false)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
-  const [likes, setLikes] = useState(initialLikes)
-  const [isLiked, setIsLiked] = useState(initialIsLiked)
+  const [likes, setLikes] = useState(initialLikes || 0)
+  const [isLiked, setIsLiked] = useState(initialIsLiked || false)
   const [isLiking, setIsLiking] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [isSaved, setIsSaved] = useState(false)
 
   const handleImageError = (itemId: string) => {
     setImageErrors((prev) => ({ ...prev, [itemId]: true }))
   }
 
-  const handleItemClick = (item: OutfitItem) => {
+  const handleItemClick = (item: OutfitItem, e: React.MouseEvent) => {
+    e.stopPropagation()
     setSelectedItem(item)
   }
 
-  const handleLike = async () => {
+  const handleOutfitClick = () => {
+    setShowOutfitDetails(true)
+  }
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation()
     if (isLiking) return
+
     setIsLiking(true)
 
     try {
@@ -79,9 +91,15 @@ export function InspirationOutfitCard({
 
       if (response.ok) {
         const data = await response.json()
-        setLikes(data.likes)
+        setLikes(data.likes || (isLiked ? likes - 1 : likes + 1))
         setIsLiked(!isLiked)
         onLike?.(id, action)
+
+        toast.success(isLiked ? "Лайк убран" : "Лайк поставлен", {
+          duration: 1500,
+        })
+      } else {
+        throw new Error("Failed to update like")
       }
     } catch (error) {
       toast.error("Не удалось обновить лайк")
@@ -90,8 +108,10 @@ export function InspirationOutfitCard({
     }
   }
 
-  const handleSave = async () => {
-    if (isSaving) return
+  const handleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (isSaving || isSaved) return
+
     setIsSaving(true)
 
     try {
@@ -102,37 +122,54 @@ export function InspirationOutfitCard({
       })
 
       if (response.ok) {
-        toast.success("Образ сохранен в ваши образы!")
+        setIsSaved(true)
+        toast.success("Образ сохранен в ваши образы!", {
+          duration: 2000,
+        })
         onSave?.(id)
       } else {
-        toast.error("Не удалось сохранить образ")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to save outfit")
       }
     } catch (error) {
+      console.error("Save error:", error)
       toast.error("Не удалось сохранить образ")
     } finally {
       setIsSaving(false)
     }
   }
 
+  // Безопасная проверка данных
+  const safeItems = items || []
+  const safeTags = tags || []
+
   return (
     <>
-      <Card className="group overflow-hidden bg-white hover:shadow-lg transition-all duration-300">
+      <Card
+        className="group overflow-hidden bg-white hover:shadow-lg transition-all duration-300 cursor-pointer"
+        onClick={handleOutfitClick}
+      >
         <CardContent className="p-0">
           {/* Outfit Grid - показываем все элементы */}
           <div className="aspect-square bg-gray-50 p-4">
-            {items.length === 1 ? (
+            {safeItems.length === 0 ? (
+              <div className="w-full h-full flex items-center justify-center bg-gray-100 rounded-lg">
+                <Package className="h-8 w-8 text-gray-400" />
+                <span className="ml-2 text-gray-500">Нет элементов</span>
+              </div>
+            ) : safeItems.length === 1 ? (
               // Один элемент - показываем на весь контейнер
               <div
-                className="w-full h-full bg-white rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-200"
-                onClick={() => handleItemClick(items[0])}
+                className="w-full h-full bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200 relative"
+                onClick={(e) => handleItemClick(safeItems[0], e)}
               >
-                {items[0].image_url && !imageErrors[items[0].id] ? (
+                {safeItems[0].image_url && !imageErrors[safeItems[0].id] ? (
                   <Image
-                    src={items[0].image_url || "/placeholder.svg"}
-                    alt={items[0].name}
+                    src={safeItems[0].image_url || "/placeholder.svg"}
+                    alt={safeItems[0].name}
                     fill
                     className="object-cover"
-                    onError={() => handleImageError(items[0].id)}
+                    onError={() => handleImageError(safeItems[0].id)}
                     sizes="(max-width: 768px) 100vw, 50vw"
                   />
                 ) : (
@@ -141,14 +178,14 @@ export function InspirationOutfitCard({
                   </div>
                 )}
               </div>
-            ) : items.length === 2 ? (
+            ) : safeItems.length === 2 ? (
               // Два элемента - показываем в ряд
               <div className="grid grid-cols-2 gap-2 h-full">
-                {items.map((item, index) => (
+                {safeItems.map((item, index) => (
                   <div
                     key={`${item.id}-${index}`}
-                    className="relative bg-white rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-200"
-                    onClick={() => handleItemClick(item)}
+                    className="relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200"
+                    onClick={(e) => handleItemClick(item, e)}
                   >
                     {item.image_url && !imageErrors[item.id] ? (
                       <Image
@@ -167,20 +204,20 @@ export function InspirationOutfitCard({
                   </div>
                 ))}
               </div>
-            ) : items.length === 3 ? (
+            ) : safeItems.length === 3 ? (
               // Три элемента - первый большой, два маленьких
               <div className="grid grid-cols-2 gap-2 h-full">
                 <div
-                  className="relative bg-white rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-200"
-                  onClick={() => handleItemClick(items[0])}
+                  className="relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200"
+                  onClick={(e) => handleItemClick(safeItems[0], e)}
                 >
-                  {items[0].image_url && !imageErrors[items[0].id] ? (
+                  {safeItems[0].image_url && !imageErrors[safeItems[0].id] ? (
                     <Image
-                      src={items[0].image_url || "/placeholder.svg"}
-                      alt={items[0].name}
+                      src={safeItems[0].image_url || "/placeholder.svg"}
+                      alt={safeItems[0].name}
                       fill
                       className="object-cover"
-                      onError={() => handleImageError(items[0].id)}
+                      onError={() => handleImageError(safeItems[0].id)}
                       sizes="(max-width: 768px) 50vw, 25vw"
                     />
                   ) : (
@@ -190,11 +227,11 @@ export function InspirationOutfitCard({
                   )}
                 </div>
                 <div className="grid grid-rows-2 gap-2">
-                  {items.slice(1, 3).map((item, index) => (
+                  {safeItems.slice(1, 3).map((item, index) => (
                     <div
                       key={`${item.id}-${index + 1}`}
-                      className="relative bg-white rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-200"
-                      onClick={() => handleItemClick(item)}
+                      className="relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200"
+                      onClick={(e) => handleItemClick(item, e)}
                     >
                       {item.image_url && !imageErrors[item.id] ? (
                         <Image
@@ -217,11 +254,11 @@ export function InspirationOutfitCard({
             ) : (
               // Четыре или больше элементов - сетка 2x2
               <div className="grid grid-cols-2 gap-2 h-full relative">
-                {items.slice(0, 4).map((item, index) => (
+                {safeItems.slice(0, 4).map((item, index) => (
                   <div
                     key={`${item.id}-${index}`}
-                    className="relative bg-white rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform duration-200"
-                    onClick={() => handleItemClick(item)}
+                    className="relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200"
+                    onClick={(e) => handleItemClick(item, e)}
                   >
                     {item.image_url && !imageErrors[item.id] ? (
                       <Image
@@ -241,9 +278,9 @@ export function InspirationOutfitCard({
                 ))}
 
                 {/* Show more items indicator */}
-                {items.length > 4 && (
+                {safeItems.length > 4 && (
                   <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                    +{items.length - 4}
+                    +{safeItems.length - 4}
                   </div>
                 )}
               </div>
@@ -258,16 +295,16 @@ export function InspirationOutfitCard({
             </div>
 
             {/* Tags */}
-            {tags && tags.length > 0 && (
+            {safeTags && safeTags.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {tags.slice(0, 3).map((tag, index) => (
+                {safeTags.slice(0, 3).map((tag, index) => (
                   <Badge key={index} variant="secondary" className="text-xs">
                     {tag}
                   </Badge>
                 ))}
-                {tags.length > 3 && (
+                {safeTags.length > 3 && (
                   <Badge variant="outline" className="text-xs">
-                    +{tags.length - 3}
+                    +{safeTags.length - 3}
                   </Badge>
                 )}
               </div>
@@ -281,26 +318,43 @@ export function InspirationOutfitCard({
                   size="sm"
                   onClick={handleLike}
                   disabled={isLiking}
-                  className={`p-1 h-auto ${isLiked ? "text-red-500" : "text-gray-500"}`}
+                  className={`p-1 h-auto transition-all duration-200 ${
+                    isLiked ? "text-red-500 hover:text-red-600" : "text-gray-500 hover:text-red-500"
+                  }`}
                 >
-                  <Heart className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
-                  <span className="ml-1 text-sm">{likes}</span>
+                  {isLiking ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Heart
+                      className={`h-4 w-4 transition-all duration-200 ${isLiked ? "fill-current scale-110" : ""}`}
+                    />
+                  )}
+                  <span className="ml-1 text-sm font-medium">{likes}</span>
                 </Button>
 
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={handleSave}
-                  disabled={isSaving}
-                  className="p-1 h-auto text-gray-500 hover:text-green-600"
+                  disabled={isSaving || isSaved}
+                  className={`p-1 h-auto transition-all duration-200 ${
+                    isSaved ? "text-green-600 hover:text-green-700" : "text-gray-500 hover:text-green-600"
+                  }`}
                 >
-                  <Bookmark className="h-4 w-4" />
-                  {isSaving && <span className="ml-1 text-xs">...</span>}
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : isSaved ? (
+                    <BookmarkCheck className="h-4 w-4 fill-current" />
+                  ) : (
+                    <Bookmark className="h-4 w-4" />
+                  )}
+                  {isSaving && <span className="ml-1 text-xs">Сохранение...</span>}
+                  {isSaved && <span className="ml-1 text-xs">Сохранено</span>}
                 </Button>
               </div>
 
               <Badge variant="outline" className="text-xs">
-                {items.length} {items.length === 1 ? "элемент" : "элементов"}
+                {safeItems.length} {safeItems.length === 1 ? "элемент" : "элементов"}
               </Badge>
             </div>
           </div>
@@ -323,7 +377,6 @@ export function InspirationOutfitCard({
             has_print: selectedItem.has_print,
             has_details: selectedItem.has_details,
             notes: selectedItem.notes,
-            is_basic: selectedItem.is_basic || false,
             basic_item_id: selectedItem.basic_item_id,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -335,6 +388,26 @@ export function InspirationOutfitCard({
           onClose={() => setSelectedItem(null)}
         />
       )}
+
+      {/* Outfit Details Modal */}
+      <OutfitDetailsModal
+        isOpen={showOutfitDetails}
+        onClose={() => setShowOutfitDetails(false)}
+        outfit={{
+          id,
+          title,
+          description,
+          items: safeItems,
+          tags: safeTags,
+          likes,
+          isLiked,
+        }}
+        onLike={handleLike}
+        onSave={handleSave}
+        isLiking={isLiking}
+        isSaving={isSaving}
+        isSaved={isSaved}
+      />
     </>
   )
 }

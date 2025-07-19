@@ -204,6 +204,10 @@ export default function WardrobePage() {
     })
   }
 
+  const handleRefresh = () => {
+    fetchItems({ search: "", types: selectedTypes })
+  }
+
   const handleItemSelect = (item: WardrobeItem) => {
     const itemWithType = { ...item, type: "user" as const }
     if (isSelected("user", item.id)) {
@@ -409,6 +413,7 @@ export default function WardrobePage() {
                         onDelete={handleDelete}
                         isSelected={isCreatingOutfit && isSelected("user", item.id)}
                         onSelect={isCreatingOutfit ? handleItemSelect : undefined}
+                        onRefresh={handleRefresh}
                       />
                     ))}
                   </div>

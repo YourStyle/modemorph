@@ -5,104 +5,71 @@ import type React from "react"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Pipette, Palette } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"
 
 interface ColorPickerProps {
   value: string
   onChange: (color: string) => void
-  label?: string
-  placeholder?: string
-  imagePreview?: string
+  imagePreview?: string | null
 }
 
 const PRESET_COLORS = [
   "#000000",
   "#FFFFFF",
-  "#808080",
   "#FF0000",
   "#00FF00",
   "#0000FF",
   "#FFFF00",
   "#FF00FF",
   "#00FFFF",
-  "#FFA500",
-  "#800080",
+  "#800000",
   "#008000",
   "#000080",
-  "#800000",
   "#808000",
+  "#800080",
+  "#008080",
   "#C0C0C0",
-  "#F5F5DC",
-  "#FFD700",
+  "#808080",
+  "#FFA500",
   "#FFC0CB",
-  "#87CEEB",
+  "#A52A2A",
   "#DDA0DD",
   "#98FB98",
   "#F0E68C",
-  "#D2B48C",
+  "#DEB887",
+  "#D2691E",
 ]
 
-export function ColorPicker({ value, onChange, label, placeholder, imagePreview }: ColorPickerProps) {
-  const [hexInput, setHexInput] = useState(value || "#808080")
+export function ColorPicker({ value, onChange, imagePreview }: ColorPickerProps) {
   const [isPickingFromImage, setIsPickingFromImage] = useState(false)
-  const [showPresets, setShowPresets] = useState(false)
+  const [showPalette, setShowPalette] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const { toast } = useToast()
+  const imageRef = useRef<HTMLImageElement>(null)
 
   useEffect(() => {
-    setHexInput(value || "#808080")
-  }, [value])
+    if (isPickingFromImage && imagePreview && canvasRef.current && imageRef.current) {
+      const canvas = canvasRef.current
+      const ctx = canvas.getContext("2d")
+      const img = imageRef.current
 
-  const handleColorChange = (color: string) => {
-    const validColor = color.startsWith("#") ? color : `#${color}`
-    setHexInput(validColor)
-    onChange(validColor)
-  }
+      img.onload = () => {
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        ctx?.drawImage(img, 0, 0)
+      }
 
-  const handleHexInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let inputValue = e.target.value
-
-    if (!inputValue.startsWith("#")) {
-      inputValue = `#${inputValue}`
+      if (img.complete) {
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        ctx?.drawImage(img, 0, 0)
+      }
     }
+  }, [isPickingFromImage, imagePreview])
 
-    setHexInput(inputValue)
-
-    if (/^#[0-9A-Fa-f]{6}$/.test(inputValue)) {
-      onChange(inputValue.toUpperCase())
-    }
-  }
-
-  const loadImageToCanvas = () => {
-    if (!imagePreview || !canvasRef.current) return
-
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    const img = new Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => {
-      // Устанавливаем размер canvas равным размеру изображения
-      canvas.width = img.width
-      canvas.height = img.height
-      ctx.drawImage(img, 0, 0)
-
-      // Показываем canvas
-      canvas.style.display = "block"
-      canvas.style.maxWidth = "300px"
-      canvas.style.maxHeight = "200px"
-      canvas.style.cursor = "crosshair"
-      canvas.style.border = "2px solid #3b82f6"
-      canvas.style.borderRadius = "8px"
-    }
-    img.src = imagePreview
-  }
-
-  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isPickingFromImage || !canvasRef.current) return
+  const handleImageClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current || !isPickingFromImage) return
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext("2d")
@@ -118,118 +85,99 @@ export function ColorPicker({ value, onChange, label, placeholder, imagePreview 
     const imageData = ctx.getImageData(x, y, 1, 1)
     const [r, g, b] = imageData.data
 
-    const hex =
-      `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`.toUpperCase()
+    const hexColor = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b
+      .toString(16)
+      .padStart(2, "0")}`
 
-    handleColorChange(hex)
+    onChange(hexColor)
     setIsPickingFromImage(false)
-
-    // Скрываем canvas
-    canvas.style.display = "none"
-
-    toast({
-      title: "Цвет выбран",
-      description: `Выбран цвет: ${hex}`,
-    })
+    toast.success(`Выбран цвет: ${hexColor}`)
   }
 
-  const toggleImagePicker = () => {
+  const handlePipetteClick = () => {
     if (!imagePreview) {
-      toast({
-        title: "Нет изображения",
-        description: "Сначала загрузите изображение вещи",
-        variant: "destructive",
-      })
+      toast.error("Сначала загрузите изображение")
       return
     }
+    setIsPickingFromImage(!isPickingFromImage)
+  }
 
-    if (!isPickingFromImage) {
-      setIsPickingFromImage(true)
-      loadImageToCanvas()
-    } else {
-      setIsPickingFromImage(false)
-      if (canvasRef.current) {
-        canvasRef.current.style.display = "none"
-      }
+  const handlePresetColorClick = (color: string) => {
+    onChange(color)
+    setShowPalette(false)
+  }
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const color = e.target.value
+    if (/^#[0-9A-F]{6}$/i.test(color)) {
+      onChange(color)
     }
   }
 
-  const currentColor = value || "#808080"
-
   return (
-    <div className="space-y-2">
-      {label && <Label>{label}</Label>}
-
-      {/* Основной ряд с цветом и кнопками */}
-      <div className="flex gap-2">
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
         <div className="flex items-center gap-2 flex-1">
           <div
-            className="w-10 h-10 rounded border-2 border-gray-300 cursor-pointer flex-shrink-0"
-            style={{ backgroundColor: currentColor }}
-            onClick={() => setShowPresets(!showPresets)}
-            title="Кликните для выбора готового цвета"
+            className="w-10 h-10 rounded border border-gray-300 flex-shrink-0"
+            style={{ backgroundColor: value || "#ffffff" }}
           />
-          <Input
-            value={hexInput}
-            onChange={handleHexInputChange}
-            placeholder={placeholder || "#808080"}
-            className="flex-1"
-            maxLength={7}
-          />
+          <Input type="text" value={value} onChange={handleInputChange} placeholder="#000000" className="font-mono" />
         </div>
 
         <Button
           type="button"
           variant="outline"
-          size="icon"
-          onClick={() => setShowPresets(!showPresets)}
-          title="Готовые цвета"
-        >
-          <Palette className="h-4 w-4" />
-        </Button>
-
-        <Button
-          type="button"
-          variant={isPickingFromImage ? "default" : "outline"}
-          size="icon"
-          onClick={toggleImagePicker}
-          title={isPickingFromImage ? "Отменить выбор" : "Выбрать цвет с изображения"}
+          size="sm"
+          onClick={handlePipetteClick}
+          className={`p-2 ${isPickingFromImage ? "bg-blue-100 border-blue-300" : ""}`}
+          title="Выбрать цвет с изображения"
         >
           <Pipette className="h-4 w-4" />
         </Button>
+
+        <Popover open={showPalette} onOpenChange={setShowPalette}>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" size="sm" className="p-2 bg-transparent" title="Палитра цветов">
+              <Palette className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-64">
+            <div className="grid grid-cols-8 gap-2">
+              {PRESET_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className="w-6 h-6 rounded border border-gray-300 hover:scale-110 transition-transform"
+                  style={{ backgroundColor: color }}
+                  onClick={() => handlePresetColorClick(color)}
+                  title={color}
+                />
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
-      {/* Готовые цвета */}
-      {showPresets && (
-        <div className="p-3 border rounded-lg bg-gray-50">
-          <Label className="text-sm font-medium mb-2 block">Готовые цвета</Label>
-          <div className="grid grid-cols-8 gap-2">
-            {PRESET_COLORS.map((color) => (
-              <button
-                key={color}
-                type="button"
-                className={`w-8 h-8 rounded border-2 cursor-pointer hover:scale-110 transition-transform ${
-                  currentColor.toUpperCase() === color ? "border-blue-500 ring-2 ring-blue-200" : "border-gray-300"
-                }`}
-                style={{ backgroundColor: color }}
-                onClick={() => {
-                  handleColorChange(color)
-                  setShowPresets(false)
-                }}
-                title={color}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Canvas для выбора цвета с изображения */}
-      <canvas ref={canvasRef} onClick={handleCanvasClick} className="hidden" />
-
-      {/* Подсказка при выборе цвета */}
-      {isPickingFromImage && (
-        <div className="p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
-          <strong>Режим выбора цвета:</strong> Кликните по изображению выше, чтобы выбрать цвет
+      {isPickingFromImage && imagePreview && (
+        <div className="relative">
+          <div className="text-sm text-blue-600 mb-2">Кликните по изображению, чтобы выбрать цвет</div>
+          <div className="relative border-2 border-blue-300 rounded-lg overflow-hidden">
+            <img
+              ref={imageRef}
+              src={imagePreview || "/placeholder.svg"}
+              alt="Color picker"
+              className="max-w-full h-auto"
+              style={{ maxHeight: "300px" }}
+            />
+            <canvas
+              ref={canvasRef}
+              className="absolute inset-0 w-full h-full cursor-crosshair"
+              onClick={handleImageClick}
+              style={{ maxHeight: "300px" }}
+            />
+          </div>
         </div>
       )}
     </div>

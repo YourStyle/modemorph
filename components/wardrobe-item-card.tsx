@@ -3,147 +3,191 @@
 import type React from "react"
 
 import { useState } from "react"
-import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Package, Eye, EyeOff, Trash2 } from "lucide-react"
-import { ItemDetailsModal } from "./item-details-modal"
-import type { WardrobeItem } from "./item-details-modal"
+import { Badge } from "@/components/ui/badge"
+import { MoreVertical, Eye, EyeOff, Trash2, Edit } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import Image from "next/image"
+import { ItemDetailsModal, type WardrobeItem } from "./item-details-modal"
+import { useToast } from "@/hooks/use-toast"
 
 interface WardrobeItemCardProps {
   item: WardrobeItem
-  onToggleVisibility?: (id: number, isHidden: boolean) => void
-  onDelete?: (id: number) => void
-  isAdmin?: boolean
-  isSelected?: boolean
-  onSelect?: (item: WardrobeItem) => void
+  onRefresh?: () => void
 }
 
-export function WardrobeItemCard({
-  item,
-  onToggleVisibility,
-  onDelete,
-  isAdmin = false,
-  isSelected = false,
-  onSelect,
-}: WardrobeItemCardProps) {
-  const [imageError, setImageError] = useState(false)
-  const [showModal, setShowModal] = useState(false)
+export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
+  const [showDetails, setShowDetails] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const { toast } = useToast()
 
-  const handleImageError = () => {
-    setImageError(true)
-  }
-
-  const handleCardClick = () => {
-    if (onSelect) {
-      onSelect(item)
-    } else {
-      setShowModal(true)
-    }
-  }
-
-  const handleToggleVisibility = (e: React.MouseEvent) => {
+  const handleToggleVisibility = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (onToggleVisibility) {
-      onToggleVisibility(item.id, !item.is_hidden)
+    setIsUpdating(true)
+
+    try {
+      const response = await fetch(`/api/wardrobe/${item.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...item,
+          is_hidden: !item.is_hidden,
+        }),
+      })
+
+      if (response.ok) {
+        toast({
+          title: item.is_hidden ? "Вещь показана" : "Вещь скрыта",
+          description: `Вещь "${item.item_name}" ${item.is_hidden ? "теперь видна" : "скрыта"} в гардеробе`,
+        })
+        onRefresh?.()
+      } else {
+        throw new Error("Failed to update visibility")
+      }
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось изменить видимость вещи",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdating(false)
     }
   }
 
-  const handleDelete = (e: React.MouseEvent) => {
+  const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (onDelete) {
-      onDelete(item.id)
+
+    if (!confirm(`Вы уверены, что хотите удалить "${item.item_name}"?`)) {
+      return
+    }
+
+    setIsUpdating(true)
+
+    try {
+      const response = await fetch(`/api/wardrobe/${item.id}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        toast({
+          title: "Вещь удалена",
+          description: `Вещь "${item.item_name}" успешно удалена из гардероба`,
+        })
+        onRefresh?.()
+      } else {
+        throw new Error("Failed to delete item")
+      }
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось удалить вещь",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdating(false)
     }
   }
-
-  const imageUrl = item.image_url || item.basic_wardrobe_items?.image_url
-  const itemName = item.item_name || item.basic_wardrobe_items?.name_ru || "Без названия"
 
   return (
     <>
-      <Card
-        className={`group cursor-pointer transition-all duration-200 hover:shadow-md ${
-          isSelected ? "ring-2 ring-blue-500 shadow-md" : ""
-        } ${item.is_hidden ? "opacity-60" : ""}`}
-        onClick={handleCardClick}
-      >
-        <CardContent className="p-3">
-          {/* Image */}
-          <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-3 relative">
-            {imageUrl && !imageError ? (
+      <Card className="group cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowDetails(true)}>
+        <CardContent className="p-4">
+          <div className="relative aspect-square mb-3 bg-gray-100 rounded-lg overflow-hidden">
+            {item.image_url ? (
               <Image
-                src={imageUrl || "/placeholder.svg"}
-                alt={itemName}
+                src={item.image_url || "/placeholder.svg"}
+                alt={item.item_name}
                 fill
                 className="object-cover group-hover:scale-105 transition-transform duration-200"
-                onError={handleImageError}
-                sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+                sizes="(max-width: 768px) 50vw, 25vw"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <Package className="h-8 w-8 text-gray-400" />
+                <span className="text-gray-400 text-sm">Нет фото</span>
               </div>
             )}
 
-            {/* Actions overlay */}
-            {isAdmin && (
-              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-1">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-8 w-8 p-0 bg-white/90 hover:bg-white"
-                  onClick={handleToggleVisibility}
-                >
-                  {item.is_hidden ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-8 w-8 p-0 bg-red-500/90 hover:bg-red-500"
-                  onClick={handleDelete}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            )}
-
-            {/* Status badges */}
-            <div className="absolute top-2 left-2 flex flex-col gap-1">
-              {item.is_basic && <Badge className="bg-green-500 text-white text-xs">Базовая</Badge>}
-              {item.user_id && <Badge className="bg-blue-500 text-white text-xs">Ваша</Badge>}
+            {/* Status indicators */}
+            <div className="absolute top-2 left-2 flex gap-1">
               {item.is_hidden && (
-                <Badge variant="secondary" className="text-xs">
-                  Скрыта
+                <Badge variant="destructive" className="text-xs">
+                  Скрыто
                 </Badge>
               )}
+            </div>
+
+            {/* Actions menu */}
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => setShowDetails(true)}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Редактировать
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleToggleVisibility} disabled={isUpdating}>
+                    {item.is_hidden ? (
+                      <>
+                        <Eye className="h-4 w-4 mr-2" />
+                        Показать
+                      </>
+                    ) : (
+                      <>
+                        <EyeOff className="h-4 w-4 mr-2" />
+                        Скрыть
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDelete} disabled={isUpdating} className="text-red-600">
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Удалить
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
-          {/* Item info */}
           <div className="space-y-2">
-            <h3 className="font-medium text-sm line-clamp-2 min-h-[2.5rem]">{itemName}</h3>
+            <h3 className="font-medium text-sm line-clamp-2">{item.item_name}</h3>
+
+            <div className="flex items-center gap-2">
+              {item.color && (
+                <div className="flex items-center gap-1">
+                  <div
+                    className="w-3 h-3 rounded-full border border-gray-300"
+                    style={{ backgroundColor: item.color }}
+                  />
+                  <span className="text-xs text-gray-500">{item.color}</span>
+                </div>
+              )}
+              {item.size_type && <span className="text-xs text-gray-500">{item.size_type}</span>}
+            </div>
 
             <div className="flex flex-wrap gap-1">
-              {item.color && (
-                <Badge variant="secondary" className="text-xs">
-                  {item.color}
+              {(item.has_print === true || item.has_print === "true") && (
+                <Badge variant="outline" className="text-xs">
+                  Принт
                 </Badge>
               )}
-              {item.material && (
+              {(item.has_details === true || item.has_details === "true") && (
                 <Badge variant="outline" className="text-xs">
-                  {item.material}
+                  Детали
                 </Badge>
               )}
             </div>
-
-            {item.style && <p className="text-xs text-gray-600 line-clamp-1">{item.style}</p>}
           </div>
         </CardContent>
       </Card>
 
-      {/* Item Details Modal */}
-      {!onSelect && <ItemDetailsModal item={item} isOpen={showModal} onClose={() => setShowModal(false)} />}
+      <ItemDetailsModal item={item} isOpen={showDetails} onClose={() => setShowDetails(false)} onRefresh={onRefresh} />
     </>
   )
 }
