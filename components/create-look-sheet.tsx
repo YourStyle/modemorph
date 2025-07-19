@@ -106,7 +106,7 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
             {loading ? (
               <div className="text-center py-8 text-gray-500">Загрузка...</div>
             ) : wardrobeItems.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">Нет вещей �� гардеробе</div>
+              <div className="text-center py-8 text-gray-500">Нет вещей в гардеробе</div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 pt-8">
                 {wardrobeItems.map((item) => (

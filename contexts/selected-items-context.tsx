@@ -24,12 +24,16 @@ interface SelectedItemsContextType {
   removeItem: (type: "basic" | "user", id: number) => void
   clearItems: () => void
   isSelected: (type: "basic" | "user", id: number) => boolean
+  setItems: (items: WardrobeItem[]) => void
+  setEditingOutfitId: (id: number | null) => void
+  editingOutfitId: number | null
 }
 
 const SelectedItemsContext = createContext<SelectedItemsContextType | undefined>(undefined)
 
 export function SelectedItemsProvider({ children }: { children: ReactNode }) {
   const [selectedItems, setSelectedItems] = useState<WardrobeItem[]>([])
+  const [editingOutfitId, setEditingOutfitId] = useState<number | null>(null)
 
   const addItem = (item: WardrobeItem) => {
     setSelectedItems((prev) => {
@@ -54,6 +58,10 @@ export function SelectedItemsProvider({ children }: { children: ReactNode }) {
     return selectedItems.some((item) => item.type === type && item.id === id)
   }
 
+  const setItems = (items: WardrobeItem[]) => {
+    setSelectedItems(items)
+  }
+
   return (
     <SelectedItemsContext.Provider
       value={{
@@ -62,6 +70,9 @@ export function SelectedItemsProvider({ children }: { children: ReactNode }) {
         removeItem,
         clearItems,
         isSelected,
+        setItems,
+        setEditingOutfitId,
+        editingOutfitId,
       }}
     >
       {children}

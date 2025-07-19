@@ -212,7 +212,7 @@ export function AddOutfitsToCollectionSheet({
             disabled={selectedLooks.size === 0}
             className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
           >
-            ��обавить ({selectedLooks.size})
+            Добавить ({selectedLooks.size})
           </Button>
         </div>
       </div>

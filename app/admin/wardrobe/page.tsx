@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { WardrobeItemCard } from "@/components/wardrobe-item-card"
 import { WardrobeFilters } from "@/components/wardrobe-filters"
 import { Button } from "@/components/ui/button"
-import { Loader2, Shirt, Plus, Settings, EyeOff, Eye } from "lucide-react"
+import { Loader2, Shirt, Plus, Settings, EyeOff, Eye, X, Upload } from "lucide-react"
 import type { WardrobeItem } from "@/lib/wardrobe"
 import { SelectedItemsBar } from "@/components/selected-items-bar"
 import { useSelectedItems } from "@/contexts/selected-items-context"
@@ -17,9 +17,18 @@ export default function WardrobePage() {
   const [error, setError] = useState<string | null>(null)
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [isUpdatingAll, setIsUpdatingAll] = useState(false)
-  const { setItems: setSelectedItems, setEditingOutfitId } = useSelectedItems()
+  const {
+    selectedItems,
+    setItems: setSelectedItems,
+    setEditingOutfitId,
+    addItem,
+    removeItem,
+    isSelected,
+    clearItems,
+  } = useSelectedItems()
   const [editingOutfit, setEditingOutfit] = useState<any>(null)
   const { toast } = useToast()
+  const [isCreatingOutfit, setIsCreatingOutfit] = useState(false)
 
   // Проверяем URL параметры для редактирования
   useEffect(() => {
@@ -47,6 +56,7 @@ export default function WardrobePage() {
         .map((item: any) => ({
           ...item.wardrobe_items,
           image_url: item.wardrobe_items.image_url,
+          type: "user",
         }))
 
       setSelectedItems(outfitItems)
@@ -126,7 +136,7 @@ export default function WardrobePage() {
 
       toast({
         title: "Все вещи скрыты",
-        description: "Все элементы гардероба скрыты из ��убличного просмотра",
+        description: "Все элементы гардероба скрыты из публичного просмотра",
       })
 
       // Обновляем локальное состояние
@@ -192,6 +202,22 @@ export default function WardrobePage() {
       console.log("Items after filter:", newItems.length)
       return newItems
     })
+  }
+
+  const handleItemSelect = (item: WardrobeItem) => {
+    const itemWithType = { ...item, type: "user" as const }
+    if (isSelected("user", item.id)) {
+      removeItem("user", item.id)
+    } else {
+      addItem(itemWithType)
+    }
+  }
+
+  const handleCreateOutfitToggle = () => {
+    if (isCreatingOutfit) {
+      clearItems()
+    }
+    setIsCreatingOutfit(!isCreatingOutfit)
   }
 
   if (error) {
@@ -267,7 +293,11 @@ export default function WardrobePage() {
             <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm text-gray-600">
               <p className="flex-1">
                 Коллекция одежды с фотографиями и подробной информацией.
-                <span className="font-medium ml-1">Нажмите на карточку, чтобы выбрать вещь для образа.</span>
+                <span className="font-medium ml-1">
+                  {isCreatingOutfit
+                    ? "Нажмите на карточки, чтобы выбрать вещи для образа."
+                    : "Нажмите на карточку, чтобы посмотреть детали."}
+                </span>
               </p>
               {hiddenCount > 0 && (
                 <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap">
@@ -283,7 +313,7 @@ export default function WardrobePage() {
           </div>
 
           {/* Результаты */}
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="bg-white rounded-lg shadow-sm">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
@@ -303,28 +333,85 @@ export default function WardrobePage() {
               </div>
             ) : (
               <>
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-semibold text-gray-900">
-                    Найдено: {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
-                    {selectedTypes.length > 0 && (
-                      <span className="text-sm text-gray-500 ml-2">
-                        (фильтр: {selectedTypes.length}{" "}
-                        {selectedTypes.length === 1 ? "тип" : selectedTypes.length < 5 ? "типа" : "типов"})
-                      </span>
-                    )}
-                  </h2>
+                {/* Sticky заголовок с кнопками */}
+                <div className="sticky top-16 z-40 bg-white border-b border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      Найдено: {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
+                      {selectedTypes.length > 0 && (
+                        <span className="text-sm text-gray-500 ml-2">
+                          (фильтр: {selectedTypes.length}{" "}
+                          {selectedTypes.length === 1 ? "тип" : selectedTypes.length < 5 ? "типа" : "типов"})
+                        </span>
+                      )}
+                    </h2>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex items-center gap-2 bg-white border-gray-300 hover:bg-gray-50"
+                      >
+                        <Upload className="h-4 w-4" />
+                        Загрузить фото
+                      </Button>
+                      <Button
+                        onClick={handleCreateOutfitToggle}
+                        variant={isCreatingOutfit ? "destructive" : "default"}
+                        className="flex items-center gap-2 shadow-sm"
+                      >
+                        {isCreatingOutfit ? (
+                          <>
+                            <X className="h-4 w-4" />
+                            Отменить
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4" />
+                            Создать образ
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Индикатор режима создания образа */}
+                  {isCreatingOutfit && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-blue-800">
+                          <Plus className="h-5 w-5" />
+                          <span className="font-medium">Режим создания образа</span>
+                        </div>
+                        <Button
+                          onClick={handleCreateOutfitToggle}
+                          variant="ghost"
+                          size="sm"
+                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-sm text-blue-600 mt-1">
+                        Выберите вещи для создания образа. Выбрано: {selectedItems.length}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {items.map((item) => (
-                    <WardrobeItemCard
-                      key={item.id}
-                      item={item}
-                      isAdmin={true}
-                      onVisibilityChange={handleVisibilityChange}
-                      onDelete={handleDelete}
-                    />
-                  ))}
+                {/* Сетка вещей */}
+                <div className="p-6 pt-0">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {items.map((item) => (
+                      <WardrobeItemCard
+                        key={item.id}
+                        item={item}
+                        isAdmin={!isCreatingOutfit}
+                        onVisibilityChange={handleVisibilityChange}
+                        onDelete={handleDelete}
+                        isSelected={isCreatingOutfit && isSelected("user", item.id)}
+                        onSelect={isCreatingOutfit ? handleItemSelect : undefined}
+                      />
+                    ))}
+                  </div>
                 </div>
               </>
             )}
@@ -333,7 +420,7 @@ export default function WardrobePage() {
       </div>
 
       {/* Панель выбранных элементов */}
-      <SelectedItemsBar />
+      {isCreatingOutfit && <SelectedItemsBar />}
     </div>
   )
 }

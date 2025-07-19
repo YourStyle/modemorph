@@ -90,6 +90,7 @@ export function SelectedItemsBar({ editingOutfitId }: SelectedItemsBarProps) {
               <Button
                 onClick={() => setShowSaveDialog(true)}
                 className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+                disabled={selectedItems.length === 0}
               >
                 <Save className="h-4 w-4 mr-2" />
                 {editingOutfitId ? "Обновить образ" : "Сохранить образ"}

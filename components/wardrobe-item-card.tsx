@@ -15,7 +15,7 @@ interface WardrobeItemCardProps {
   item: WardrobeItem
   onToggleVisibility?: (id: number, isHidden: boolean) => void
   onDelete?: (id: number) => void
-  showActions?: boolean
+  isAdmin?: boolean
   isSelected?: boolean
   onSelect?: (item: WardrobeItem) => void
 }
@@ -24,7 +24,7 @@ export function WardrobeItemCard({
   item,
   onToggleVisibility,
   onDelete,
-  showActions = false,
+  isAdmin = false,
   isSelected = false,
   onSelect,
 }: WardrobeItemCardProps) {
@@ -87,7 +87,7 @@ export function WardrobeItemCard({
             )}
 
             {/* Actions overlay */}
-            {showActions && (
+            {isAdmin && (
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex gap-1">
                 <Button
                   variant="secondary"
@@ -143,7 +143,7 @@ export function WardrobeItemCard({
       </Card>
 
       {/* Item Details Modal */}
-      <ItemDetailsModal item={item} isOpen={showModal} onClose={() => setShowModal(false)} />
+      {!onSelect && <ItemDetailsModal item={item} isOpen={showModal} onClose={() => setShowModal(false)} />}
     </>
   )
 }

@@ -1,68 +1,44 @@
 "use client"
 
-import type React from "react"
-
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
+import { useSelectedItems } from "@/contexts/selected-items-context"
 import { Loader2 } from "lucide-react"
-import type { WardrobeItem } from "@/lib/wardrobe"
 
 interface SaveOutfitDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  selectedItems: WardrobeItem[]
-  onSuccess: () => void
-  editingOutfit?: {
-    id: number
-    name: string
-    description: string
-    season: string
-    occasion: string
-  } | null
+  isOpen: boolean
+  onClose: () => void
+  selectedItems: any[]
+  editingOutfitId?: number | null
 }
 
-export function SaveOutfitDialog({
-  open,
-  onOpenChange,
-  selectedItems,
-  onSuccess,
-  editingOutfit,
-}: SaveOutfitDialogProps) {
+export function SaveOutfitDialog({ isOpen, onClose, selectedItems, editingOutfitId }: SaveOutfitDialogProps) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [season, setSeason] = useState("")
   const [occasion, setOccasion] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const { toast } = useToast()
+  const { clearItems, setEditingOutfitId } = useSelectedItems()
 
-  // Заполняем форму при редактировании
-  useEffect(() => {
-    if (editingOutfit) {
-      setName(editingOutfit.name)
-      setDescription(editingOutfit.description || "")
-      setSeason(editingOutfit.season || "")
-      setOccasion(editingOutfit.occasion || "")
-    } else {
-      setName("")
-      setDescription("")
-      setSeason("")
-      setOccasion("")
-    }
-  }, [editingOutfit, open])
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!name) {
+  const handleSave = async () => {
+    if (!name.trim()) {
       toast({
         title: "Ошибка",
-        description: "Название образа обязательно",
+        description: "Введите название образа",
         variant: "destructive",
       })
       return
@@ -71,63 +47,61 @@ export function SaveOutfitDialog({
     if (selectedItems.length === 0) {
       toast({
         title: "Ошибка",
-        description: "Выберите хотя бы один элемент гардероба",
+        description: "Выберите хотя бы одну вещь",
         variant: "destructive",
       })
       return
     }
 
-    setLoading(true)
+    setIsLoading(true)
 
     try {
-      const method = editingOutfit ? "PUT" : "POST"
-      const body = editingOutfit
-        ? {
-            id: editingOutfit.id,
-            name,
-            description,
-            season,
-            occasion,
-            items: selectedItems.map((item) => item.id),
-          }
-        : {
-            name,
-            description,
-            season,
-            occasion,
-            items: selectedItems.map((item) => item.id),
-          }
+      const method = editingOutfitId ? "PUT" : "POST"
+
+      // Исправляем формат данных для API
+      const requestBody = {
+        name: name.trim(),
+        description: description.trim(),
+        season,
+        occasion,
+        items: selectedItems.map((item, index) => ({
+          wardrobe_item_id: item.id,
+          position: index + 1,
+        })),
+      }
+
+      if (editingOutfitId) {
+        requestBody.id = editingOutfitId
+      }
 
       const response = await fetch("/api/outfits", {
         method,
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(requestBody),
       })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to save outfit")
+      }
 
       const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error(data.error || "Ошибка при сохранении образа")
-      }
-
       toast({
-        title: "Успешно",
-        description: editingOutfit ? "Образ успешно обновлен" : "Образ успешно сохранен",
+        title: editingOutfitId ? "Образ обновлен" : "Образ сохранен",
+        description: `Образ "${name}" успешно ${editingOutfitId ? "обновлен" : "сохранен"}`,
       })
 
-      // Сбрасываем форму
+      // Очищаем форму и выбранные элементы
       setName("")
       setDescription("")
       setSeason("")
       setOccasion("")
-
-      // Закрываем диалог
-      onOpenChange(false)
-
-      // Вызываем колбэк успешного сохранения
-      onSuccess()
+      clearItems()
+      setEditingOutfitId(null)
+      onClose()
     } catch (error) {
       console.error("Error saving outfit:", error)
       toast({
@@ -136,45 +110,47 @@ export function SaveOutfitDialog({
         variant: "destructive",
       })
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{editingOutfit ? "Редактировать образ" : "Сохранить образ"}</DialogTitle>
+          <DialogTitle>{editingOutfitId ? "Обновить образ" : "Сохранить образ"}</DialogTitle>
+          <DialogDescription>
+            {editingOutfitId ? "Обновите информацию об образе" : "Создайте новый образ из выбранных вещей"}
+          </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 py-4">
-          <div className="space-y-2">
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
             <Label htmlFor="name">Название образа *</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Например: Повседневный образ для офиса"
-              required
+              placeholder="Например: Деловой стиль"
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="grid gap-2">
             <Label htmlFor="description">Описание</Label>
             <Textarea
               id="description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Опишите образ..."
+              placeholder="Описание образа..."
               rows={3}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+            <div className="grid gap-2">
               <Label htmlFor="season">Сезон</Label>
               <Select value={season} onValueChange={setSeason}>
-                <SelectTrigger id="season">
+                <SelectTrigger>
                   <SelectValue placeholder="Выберите сезон" />
                 </SelectTrigger>
                 <SelectContent>
@@ -182,50 +158,39 @@ export function SaveOutfitDialog({
                   <SelectItem value="summer">Лето</SelectItem>
                   <SelectItem value="autumn">Осень</SelectItem>
                   <SelectItem value="winter">Зима</SelectItem>
-                  <SelectItem value="all">Всесезонный</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="grid gap-2">
               <Label htmlFor="occasion">Повод</Label>
               <Select value={occasion} onValueChange={setOccasion}>
-                <SelectTrigger id="occasion">
+                <SelectTrigger>
                   <SelectValue placeholder="Выберите повод" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="casual">Повседневный</SelectItem>
-                  <SelectItem value="office">Офис</SelectItem>
-                  <SelectItem value="sport">Спорт</SelectItem>
+                  <SelectItem value="work">Работа</SelectItem>
                   <SelectItem value="party">Вечеринка</SelectItem>
-                  <SelectItem value="date">Свидание</SelectItem>
-                  <SelectItem value="formal">Формальный</SelectItem>
+                  <SelectItem value="sport">Спорт</SelectItem>
+                  <SelectItem value="formal">Официальный</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          <div className="pt-2">
-            <div className="text-sm font-medium mb-2">Выбранные элементы: {selectedItems.length}</div>
-            <div className="flex flex-wrap gap-2">
-              {selectedItems.map((item) => (
-                <div key={item.id} className="bg-gray-100 rounded-md px-2 py-1 text-xs">
-                  {item.item_type} ({item.color})
-                </div>
-              ))}
-            </div>
-          </div>
+          <div className="text-sm text-gray-600">Выбрано вещей: {selectedItems.length}</div>
+        </div>
 
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
-              Отмена
-            </Button>
-            <Button type="submit" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {editingOutfit ? "Обновить" : "Сохранить"}
-            </Button>
-          </DialogFooter>
-        </form>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>
+            Отмена
+          </Button>
+          <Button onClick={handleSave} disabled={isLoading}>
+            {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {editingOutfitId ? "Обновить" : "Сохранить"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
