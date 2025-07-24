@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Sun, Cloud, CloudRain, CloudSnowIcon as Snow } from 'lucide-react'
+import { Sun, Cloud, CloudRain, CloudSnowIcon as Snow } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -64,12 +64,12 @@ export function TopNavigation() {
       condition: "sunny",
       icon: "sun",
       temp: 22,
-      description: "Солнечно"
+      description: "Солнечно",
     })
 
     return () => clearInterval(timer)
   }, [supabase])
-  
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("ru-RU", {
       weekday: "long",
@@ -154,6 +154,7 @@ export function TopNavigation() {
                 <p className="text-sm font-medium leading-none">{user?.full_name || "Пользователь"}</p>
                 <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
               </div>
+              <DropdownMenuItem onClick={() => router.push("/app/avatar")}>Аватар</DropdownMenuItem>
               <DropdownMenuSeparator />
               {user?.is_admin && (
                 <>
