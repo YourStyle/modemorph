@@ -8,6 +8,7 @@ export interface ConnectionInfo {
   rtt: number
   saveData: boolean
   isSlowConnection: boolean
+  isVerySlowConnection: boolean
 }
 
 export function useConnectionSpeed(): ConnectionInfo {
@@ -17,27 +18,50 @@ export function useConnectionSpeed(): ConnectionInfo {
     rtt: 0,
     saveData: false,
     isSlowConnection: false,
+    isVerySlowConnection: false,
   })
 
   useEffect(() => {
     const updateConnectionInfo = () => {
       if ("connection" in navigator) {
-        const connection = (navigator as any).connection
+        const connection =
+          (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection
 
-        const info: ConnectionInfo = {
-          effectiveType: connection.effectiveType || "unknown",
-          downlink: connection.downlink || 0,
-          rtt: connection.rtt || 0,
-          saveData: connection.saveData || false,
-          isSlowConnection:
-            connection.effectiveType === "slow-2g" ||
-            connection.effectiveType === "2g" ||
-            connection.effectiveType === "3g" ||
-            connection.downlink < 1.5 ||
-            connection.saveData,
+        if (connection) {
+          const effectiveType = connection.effectiveType || "unknown"
+          const downlink = connection.downlink || 0
+          const rtt = connection.rtt || 0
+          const saveData = connection.saveData || false
+
+          const isVerySlowConnection = effectiveType === "slow-2g" || saveData
+          const isSlowConnection =
+            isVerySlowConnection || effectiveType === "2g" || effectiveType === "3g" || downlink < 1.5
+
+          const info: ConnectionInfo = {
+            effectiveType,
+            downlink,
+            rtt,
+            saveData,
+            isSlowConnection,
+            isVerySlowConnection,
+          }
+
+          setConnectionInfo(info)
         }
+      } else {
+        // Fallback для браузеров без Network Information API
+        // Определяем по User Agent (особенно важно для iOS)
+        const userAgent = navigator.userAgent.toLowerCase()
+        const isMobile = /iphone|ipad|android|mobile/.test(userAgent)
 
-        setConnectionInfo(info)
+        setConnectionInfo({
+          effectiveType: "unknown",
+          downlink: 0,
+          rtt: 0,
+          saveData: false,
+          isSlowConnection: isMobile, // Предполагаем медленное соединение для мобильных
+          isVerySlowConnection: false,
+        })
       }
     }
 
@@ -46,11 +70,15 @@ export function useConnectionSpeed(): ConnectionInfo {
 
     // Слушаем изменения соединения
     if ("connection" in navigator) {
-      const connection = (navigator as any).connection
-      connection.addEventListener("change", updateConnectionInfo)
+      const connection =
+        (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection
 
-      return () => {
-        connection.removeEventListener("change", updateConnectionInfo)
+      if (connection) {
+        connection.addEventListener("change", updateConnectionInfo)
+
+        return () => {
+          connection.removeEventListener("change", updateConnectionInfo)
+        }
       }
     }
   }, [])
