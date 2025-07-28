@@ -1,94 +1,105 @@
--- Скрипт для проверки миграции URL изображений
--- Запускать после выполнения update-blob-urls-to-new-storage.sql
+-- Скрипт для проверки успешности миграции URL изображений
 
--- Проверяем количество записей с новыми URL в каждой таблице
+-- Проверяем количество записей с новыми URL
 SELECT 
-    'NEW STORAGE URLs' as status,
-    'wardrobe_user_items' as table_name,
-    COUNT(*) as count
+  'New URLs count' as check_type,
+  'wardrobe_user_items' as table_name,
+  COUNT(*) as count
 FROM wardrobe_user_items 
 WHERE image_url LIKE 'https://bgkosez9szawb1ks.public.blob.vercel-storage.com%'
 
 UNION ALL
 
 SELECT 
-    'NEW STORAGE URLs' as status,
-    'basic_wardrobe_items' as table_name,
-    COUNT(*) as count
+  'New URLs count' as check_type,
+  'basic_wardrobe_items' as table_name,
+  COUNT(*) as count
 FROM basic_wardrobe_items 
 WHERE image_url LIKE 'https://bgkosez9szawb1ks.public.blob.vercel-storage.com%'
 
 UNION ALL
 
 SELECT 
-    'NEW STORAGE URLs' as status,
-    'wardrobe_items' as table_name,
-    COUNT(*) as count
+  'New URLs count' as check_type,
+  'wardrobe_items' as table_name,
+  COUNT(*) as count
 FROM wardrobe_items 
 WHERE image_url LIKE 'https://bgkosez9szawb1ks.public.blob.vercel-storage.com%';
 
--- Проверяем, остались ли записи со старыми URL
+-- Проверяем, что старых URL не осталось
 SELECT 
-    'OLD STORAGE URLs (should be 0)' as status,
-    'wardrobe_user_items' as table_name,
-    COUNT(*) as count
+  'Old URLs remaining' as check_type,
+  'wardrobe_user_items' as table_name,
+  COUNT(*) as count
 FROM wardrobe_user_items 
 WHERE image_url LIKE 'https://qkoy1wcphb97gms9.public.blob.vercel-storage.com%'
 
 UNION ALL
 
 SELECT 
-    'OLD STORAGE URLs (should be 0)' as status,
-    'basic_wardrobe_items' as table_name,
-    COUNT(*) as count
+  'Old URLs remaining' as check_type,
+  'basic_wardrobe_items' as table_name,
+  COUNT(*) as count
 FROM basic_wardrobe_items 
 WHERE image_url LIKE 'https://qkoy1wcphb97gms9.public.blob.vercel-storage.com%'
 
 UNION ALL
 
 SELECT 
-    'OLD STORAGE URLs (should be 0)' as status,
-    'wardrobe_items' as table_name,
-    COUNT(*) as count
+  'Old URLs remaining' as check_type,
+  'wardrobe_items' as table_name,
+  COUNT(*) as count
 FROM wardrobe_items 
 WHERE image_url LIKE 'https://qkoy1wcphb97gms9.public.blob.vercel-storage.com%';
 
--- Показываем общую статистику по всем изображениям
+-- Общая статистика по изображениям
 SELECT 
-    'TOTAL IMAGES' as info,
-    (
-        SELECT COUNT(*) FROM wardrobe_user_items WHERE image_url IS NOT NULL AND image_url != ''
-    ) as wardrobe_user_items_total,
-    (
-        SELECT COUNT(*) FROM basic_wardrobe_items WHERE image_url IS NOT NULL AND image_url != ''
-    ) as basic_wardrobe_items_total,
-    (
-        SELECT COUNT(*) FROM wardrobe_items WHERE image_url IS NOT NULL AND image_url != ''
-    ) as wardrobe_items_total;
+  'Total images' as stat_type,
+  'wardrobe_user_items' as table_name,
+  COUNT(*) as total_records,
+  COUNT(image_url) as records_with_images,
+  COUNT(CASE WHEN image_url IS NOT NULL AND image_url != '' THEN 1 END) as non_empty_images
+FROM wardrobe_user_items
 
--- Проверяем наличие других blob-хранилищ (если есть)
-SELECT DISTINCT 
-    CASE 
-        WHEN image_url LIKE 'https://bgkosez9szawb1ks.public.blob.vercel-storage.com%' THEN 'NEW STORAGE'
-        WHEN image_url LIKE 'https://qkoy1wcphb97gms9.public.blob.vercel-storage.com%' THEN 'OLD STORAGE'
-        WHEN image_url LIKE 'https://%.public.blob.vercel-storage.com%' THEN 'OTHER VERCEL BLOB'
-        WHEN image_url LIKE 'http%' THEN 'EXTERNAL URL'
-        ELSE 'OTHER'
-    END as url_type,
-    COUNT(*) as count
+UNION ALL
+
+SELECT 
+  'Total images' as stat_type,
+  'basic_wardrobe_items' as table_name,
+  COUNT(*) as total_records,
+  COUNT(image_url) as records_with_images,
+  COUNT(CASE WHEN image_url IS NOT NULL AND image_url != '' THEN 1 END) as non_empty_images
+FROM basic_wardrobe_items
+
+UNION ALL
+
+SELECT 
+  'Total images' as stat_type,
+  'wardrobe_items' as table_name,
+  COUNT(*) as total_records,
+  COUNT(image_url) as records_with_images,
+  COUNT(CASE WHEN image_url IS NOT NULL AND image_url != '' THEN 1 END) as non_empty_images
+FROM wardrobe_items;
+
+-- Анализ всех типов URL в базе
+SELECT 
+  'URL analysis' as analysis_type,
+  CASE 
+    WHEN image_url LIKE 'https://bgkosez9szawb1ks.public.blob.vercel-storage.com%' THEN 'New Blob Storage'
+    WHEN image_url LIKE 'https://qkoy1wcphb97gms9.public.blob.vercel-storage.com%' THEN 'Old Blob Storage'
+    WHEN image_url LIKE 'https://%' THEN 'Other HTTPS'
+    WHEN image_url LIKE 'http://%' THEN 'HTTP'
+    WHEN image_url IS NULL THEN 'NULL'
+    WHEN image_url = '' THEN 'Empty String'
+    ELSE 'Other'
+  END as url_type,
+  COUNT(*) as count
 FROM (
-    SELECT image_url FROM wardrobe_user_items WHERE image_url IS NOT NULL AND image_url != ''
-    UNION ALL
-    SELECT image_url FROM basic_wardrobe_items WHERE image_url IS NOT NULL AND image_url != ''
-    UNION ALL
-    SELECT image_url FROM wardrobe_items WHERE image_url IS NOT NULL AND image_url != ''
-) as all_urls
-GROUP BY 
-    CASE 
-        WHEN image_url LIKE 'https://bgkosez9szawb1ks.public.blob.vercel-storage.com%' THEN 'NEW STORAGE'
-        WHEN image_url LIKE 'https://qkoy1wcphb97gms9.public.blob.vercel-storage.com%' THEN 'OLD STORAGE'
-        WHEN image_url LIKE 'https://%.public.blob.vercel-storage.com%' THEN 'OTHER VERCEL BLOB'
-        WHEN image_url LIKE 'http%' THEN 'EXTERNAL URL'
-        ELSE 'OTHER'
-    END
+  SELECT image_url FROM wardrobe_user_items
+  UNION ALL
+  SELECT image_url FROM basic_wardrobe_items
+  UNION ALL
+  SELECT image_url FROM wardrobe_items
+) all_urls
+GROUP BY url_type
 ORDER BY count DESC;
