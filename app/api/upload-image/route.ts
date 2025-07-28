@@ -1,44 +1,40 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { put } from "@vercel/blob"
 import { nanoid } from "nanoid"
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const formData = await request.formData()
     const file = formData.get("file") as File
-    const prefix = formData.get("prefix") as string
 
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    // Проверяем токен
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      return NextResponse.json({ error: "Blob storage not configured" }, { status: 500 })
+    if (!process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN) {
+      return NextResponse.json({ error: "Blob token not configured" }, { status: 500 })
     }
 
-    // Генерируем уникальное имя файла
-    const fileExtension = file.name.split(".").pop()
-    const fileName = `${nanoid()}.${fileExtension}`
-    const filePath = prefix ? `${prefix}/${fileName}` : fileName
+    // Создаем уникальное имя файла
+    const fileName = `upload-${nanoid(8)}`
+    const fileExtension = file.name.split(".").pop()?.toLowerCase() || "jpg"
+    const fullFileName = `${fileName}.${fileExtension}`
 
-    // Загружаем файл в Blob storage
-    const blob = await put(filePath, file, {
+    // Загружаем файл в Vercel Blob
+    const blob = await put(fullFileName, file, {
       access: "public",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      token: process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN,
     })
 
     return NextResponse.json({
       success: true,
       url: blob.url,
-      pathname: blob.pathname,
+      fileName: fullFileName,
     })
   } catch (error) {
-    console.error("Error uploading to blob:", error)
+    console.error("Error uploading image:", error)
     return NextResponse.json(
-      {
-        error: `Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`,
-      },
+      { error: error instanceof Error ? error.message : "Failed to upload image" },
       { status: 500 },
     )
   }

@@ -9,12 +9,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Item name is required" }, { status: 400 })
     }
 
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    if (!process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN) {
       return NextResponse.json({ error: "Blob token not configured" }, { status: 500 })
     }
 
     const { blobs } = await list({
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      token: process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN,
     })
 
     const originalImageBlobs = blobs.filter((blob) => {

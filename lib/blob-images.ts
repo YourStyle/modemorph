@@ -3,7 +3,9 @@ import { nanoid } from "nanoid"
 
 export async function getBlobImages() {
   try {
-    const { blobs } = await list()
+    const { blobs } = await list({
+      token: process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN,
+    })
     return blobs.filter((blob) => blob.pathname.match(/\.(jpg|jpeg|png|webp|gif)$/i))
   } catch (error) {
     console.error("Error fetching blob images:", error)
@@ -51,8 +53,8 @@ export async function uploadToBlob(file: File, prefix = "") {
     }
 
     // Проверяем наличие токена
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      throw new Error("BLOB_READ_WRITE_TOKEN environment variable is not configured")
+    if (!process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN) {
+      throw new Error("BLOB_MODEMORPH_READ_WRITE_TOKEN environment variable is not configured")
     }
 
     // Создаем уникальное имя файла
@@ -63,7 +65,7 @@ export async function uploadToBlob(file: File, prefix = "") {
     // Загружаем файл в Vercel Blob
     const blob = await put(fullFileName, file, {
       access: "public",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+      token: process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN,
     })
 
     return {
