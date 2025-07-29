@@ -1,6 +1,6 @@
 /**
  * Утилиты для оптимизации изображений на мобильных устройствах
- * Специально оптимизировано для iPhone с медленным интернетом
+ * Специально оптимизировано для российских пользователей с проблемами доступа к Vercel Blob
  */
 
 // Определяем размеры изображений для разных устройств и скоростей соединения
@@ -55,6 +55,31 @@ export function getConnectionType(): "wifi" | "4g" | "3g" | "2g" | "slow" {
 }
 
 /**
+ * Определяет, находится ли пользователь в России (для выбора стратегии загрузки)
+ */
+export function isRussianUser(): boolean {
+  if (typeof navigator === "undefined") return false
+
+  // Проверяем язык браузера
+  const language = navigator.language || (navigator as any).userLanguage
+  if (language && language.toLowerCase().startsWith("ru")) {
+    return true
+  }
+
+  // Проверяем временную зону
+  try {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+    if (timeZone && (timeZone.includes("Moscow") || timeZone.includes("Europe/Moscow"))) {
+      return true
+    }
+  } catch (error) {
+    // Игнорируем ошибки определения временной зоны
+  }
+
+  return false
+}
+
+/**
  * Определяет оптимальный размер изображения
  */
 export function getOptimalImageSize(): ImageSize {
@@ -63,25 +88,33 @@ export function getOptimalImageSize(): ImageSize {
   const connectionType = getConnectionType()
   const screenWidth = window.innerWidth
   const isRetina = window.devicePixelRatio > 1
+  const isRussian = isRussianUser()
 
-  // Для очень медленного соединения
+  // Для российских пользователей используем более консервативные размеры
+  if (isRussian) {
+    if (connectionType === "slow") return "micro"
+    if (connectionType === "2g") return "thumbnail"
+    if (connectionType === "3g") return screenWidth <= 375 ? "thumbnail" : "small"
+    if (connectionType === "4g") return screenWidth <= 375 ? "small" : "medium"
+    // Для WiFi тоже не используем самые большие размеры
+    return screenWidth <= 375 ? "small" : "medium"
+  }
+
+  // Для других пользователей используем стандартную логику
   if (connectionType === "slow") {
     return screenWidth <= 375 ? "micro" : "thumbnail"
   }
 
-  // Для 2G соединения
   if (connectionType === "2g") {
     return screenWidth <= 375 ? "thumbnail" : "small"
   }
 
-  // Для 3G соединения
   if (connectionType === "3g") {
     if (screenWidth <= 375) return "thumbnail"
     if (screenWidth <= 768) return "small"
     return "medium"
   }
 
-  // Для 4G соединения
   if (connectionType === "4g") {
     if (screenWidth <= 375) return "small"
     if (screenWidth <= 768) return "medium"
@@ -95,9 +128,32 @@ export function getOptimalImageSize(): ImageSize {
 }
 
 /**
+ * Создает URL с проксированием для российских пользователей
+ */
+export function createProxiedImageUrl(originalUrl: string, useProxy = false): string {
+  if (!originalUrl || originalUrl === "") {
+    return "/placeholder.svg?height=150&width=150&text=No+Image"
+  }
+
+  // Если не нужно проксировать, возвращаем оригинал
+  if (!useProxy) {
+    return originalUrl
+  }
+
+  // Проксируем через наш сервер
+  try {
+    const encodedUrl = encodeURIComponent(originalUrl)
+    return `/api/proxy-image?url=${encodedUrl}`
+  } catch (error) {
+    console.warn("Failed to create proxied URL:", error)
+    return originalUrl
+  }
+}
+
+/**
  * Создает оптимизированный URL для Vercel Blob Storage
  */
-export function createOptimizedImageUrl(originalUrl: string, size?: ImageSize): string {
+export function createOptimizedImageUrl(originalUrl: string, size?: ImageSize, useProxy = false): string {
   if (!originalUrl || originalUrl === "") {
     return "/placeholder.svg?height=150&width=150&text=No+Image"
   }
@@ -117,21 +173,32 @@ export function createOptimizedImageUrl(originalUrl: string, size?: ImageSize): 
       url.searchParams.set("fit", "cover")
       url.searchParams.set("auto", "format")
 
-      return url.toString()
+      const optimizedUrl = url.toString()
+
+      // Если нужно проксировать, используем наш прокси
+      if (useProxy) {
+        return createProxiedImageUrl(optimizedUrl, true)
+      }
+
+      return optimizedUrl
     } catch (error) {
       console.warn("Invalid URL:", originalUrl)
       return "/placeholder.svg?height=150&width=150&text=Invalid+URL"
     }
   }
 
-  // Для других URL возвращаем как есть
+  // Для других URL возвращаем как есть или проксируем
+  if (useProxy && originalUrl.includes("http")) {
+    return createProxiedImageUrl(originalUrl, true)
+  }
+
   return originalUrl
 }
 
 /**
  * Создает набор URL для разных размеров (srcSet)
  */
-export function createImageSrcSet(originalUrl: string): string {
+export function createImageSrcSet(originalUrl: string, useProxy = false): string {
   if (!originalUrl) return ""
 
   const connectionType = getConnectionType()
@@ -145,7 +212,7 @@ export function createImageSrcSet(originalUrl: string): string {
 
   return sizes
     .map((size) => {
-      const optimizedUrl = createOptimizedImageUrl(originalUrl, size)
+      const optimizedUrl = createOptimizedImageUrl(originalUrl, size, useProxy)
       const { width } = IMAGE_SIZES[size]
       return `${optimizedUrl} ${width}w`
     })
@@ -180,6 +247,28 @@ export function isSlowConnection(): boolean {
 export function isVerySlowConnection(): boolean {
   const connectionType = getConnectionType()
   return connectionType === "slow"
+}
+
+/**
+ * Тестирует доступность изображения
+ */
+export async function testImageAvailability(url: string, timeout = 5000): Promise<boolean> {
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeout)
+
+    const response = await fetch(url, {
+      method: "HEAD",
+      signal: controller.signal,
+      mode: "no-cors", // Избегаем CORS проблем
+    })
+
+    clearTimeout(timeoutId)
+    return response.ok || response.type === "opaque" // opaque для no-cors запросов
+  } catch (error) {
+    console.warn("Image availability test failed:", url, error)
+    return false
+  }
 }
 
 /**
@@ -295,5 +384,6 @@ export function getConnectionInfo() {
     rtt: connection.rtt,
     saveData: connection.saveData,
     type: connection.type,
+    isRussian: isRussianUser(),
   }
 }

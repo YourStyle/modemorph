@@ -11,6 +11,8 @@ import {
   isSlowConnection,
   isVerySlowConnection,
   getConnectionType,
+  isRussianUser,
+  testImageAvailability,
 } from "@/lib/image-optimization"
 
 interface OptimizedImageProps {
@@ -45,6 +47,7 @@ export function OptimizedImage({
   const [imageSrc, setImageSrc] = useState("")
   const [loadAttempts, setLoadAttempts] = useState(0)
   const [connectionType, setConnectionType] = useState<string>("")
+  const [useProxy, setUseProxy] = useState(false)
   const timeoutRef = useRef<NodeJS.Timeout>()
 
   useEffect(() => {
@@ -56,21 +59,53 @@ export function OptimizedImage({
     const connType = getConnectionType()
     setConnectionType(connType)
 
-    // Определяем оптимальный размер изображения
-    const optimalSize = getOptimalImageSize()
-    const optimizedSrc = createOptimizedImageUrl(src, optimalSize)
-    setImageSrc(optimizedSrc)
+    // Для российских пользователей сначала пробуем без прокси
+    const isRussian = isRussianUser()
 
-    // Устанавливаем таймаут для медленных соединений
-    const timeout = connType === "slow" ? 15000 : connType === "2g" ? 12000 : 8000
+    const initializeImage = async () => {
+      // Определяем оптимальный размер изображения
+      const optimalSize = getOptimalImageSize()
 
-    timeoutRef.current = setTimeout(() => {
-      if (isLoading) {
-        console.warn(`Image load timeout for: ${src}`)
-        setHasError(true)
-        setIsLoading(false)
+      // Сначала пробуем прямое подключение
+      let optimizedSrc = createOptimizedImageUrl(src, optimalSize, false)
+
+      // Для российских пользователей тестируем доступность
+      if (isRussian && src.includes("blob.vercel-storage.com")) {
+        const isAvailable = await testImageAvailability(optimizedSrc, 3000)
+
+        if (!isAvailable) {
+          console.log("Direct access failed, using proxy for:", src)
+          setUseProxy(true)
+          optimizedSrc = createOptimizedImageUrl(src, optimalSize, true)
+        }
       }
-    }, timeout)
+
+      setImageSrc(optimizedSrc)
+
+      // Устанавливаем таймаут для медленных соединений
+      const timeout = connType === "slow" ? 20000 : connType === "2g" ? 15000 : 10000
+
+      timeoutRef.current = setTimeout(() => {
+        if (isLoading) {
+          console.warn(`Image load timeout for: ${src}`)
+
+          // Если еще не пробовали прокси, пробуем его
+          if (isRussian && !useProxy && src.includes("blob.vercel-storage.com")) {
+            console.log("Timeout reached, trying proxy for:", src)
+            setUseProxy(true)
+            const proxiedSrc = createOptimizedImageUrl(src, optimalSize, true)
+            setImageSrc(proxiedSrc)
+            setLoadAttempts((prev) => prev + 1)
+            return
+          }
+
+          setHasError(true)
+          setIsLoading(false)
+        }
+      }, timeout)
+    }
+
+    initializeImage()
 
     return () => {
       if (timeoutRef.current) {
@@ -95,14 +130,23 @@ export function OptimizedImage({
 
     setLoadAttempts((prev) => prev + 1)
 
-    // Пробуем загрузить оригинальное изображение как fallback
-    if (loadAttempts === 0 && imageSrc !== src) {
-      console.warn(`Optimized image failed, trying original: ${src}`)
+    // Если это первая попытка и мы не используем прокси, пробуем прокси
+    if (loadAttempts === 0 && !useProxy && isRussianUser() && src.includes("blob.vercel-storage.com")) {
+      console.warn(`Direct image failed, trying proxy: ${src}`)
+      setUseProxy(true)
+      const proxiedSrc = createOptimizedImageUrl(src, getOptimalImageSize(), true)
+      setImageSrc(proxiedSrc)
+      return
+    }
+
+    // Если используем прокси и он не работает, пробуем оригинал
+    if (loadAttempts === 1 && useProxy && imageSrc !== src) {
+      console.warn(`Proxied image failed, trying original: ${src}`)
       setImageSrc(src)
       return
     }
 
-    // Если и оригинал не загрузился, показываем ошибку
+    // Если все попытки неудачны, показываем ошибку
     console.error(`Failed to load image after ${loadAttempts + 1} attempts: ${src}`)
     setIsLoading(false)
     setHasError(true)
@@ -128,7 +172,11 @@ export function OptimizedImage({
           <div>Изображение</div>
           <div>недоступно</div>
         </div>
-        {showConnectionInfo && <div className="text-xs text-gray-300 mt-1">{connectionType}</div>}
+        {showConnectionInfo && (
+          <div className="text-xs text-gray-300 mt-1">
+            {connectionType} {useProxy ? "(proxy)" : "(direct)"}
+          </div>
+        )}
       </div>
     )
   }
@@ -142,7 +190,9 @@ export function OptimizedImage({
           style={{ width, height }}
         >
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-gray-400 text-xs">{isVerySlowConnection() ? "Загрузка..." : "📷"}</div>
+            <div className="text-gray-400 text-xs">
+              {isVerySlowConnection() ? "Загрузка..." : useProxy ? "Через прокси..." : "📷"}
+            </div>
           </div>
         </div>
       )}
@@ -150,7 +200,7 @@ export function OptimizedImage({
       {/* Индикатор соединения для отладки */}
       {showConnectionInfo && connectionType && (
         <div className="absolute top-1 left-1 bg-black bg-opacity-50 text-white text-xs px-1 rounded z-10">
-          {connectionType}
+          {connectionType} {useProxy ? "P" : "D"}
         </div>
       )}
 
@@ -168,9 +218,9 @@ export function OptimizedImage({
             width: "100%",
             height: "100%",
           }}
-          // Для медленных соединений не используем srcSet
-          srcSet={isSlowConnection() ? undefined : createImageSrcSet(src)}
-          sizes={isSlowConnection() ? undefined : createImageSizes()}
+          // Для медленных соединений или при использовании прокси не используем srcSet
+          srcSet={isSlowConnection() || useProxy ? undefined : createImageSrcSet(src, useProxy)}
+          sizes={isSlowConnection() || useProxy ? undefined : createImageSizes()}
           onLoad={handleLoad}
           onError={handleError}
           loading={priority ? "eager" : "lazy"}
