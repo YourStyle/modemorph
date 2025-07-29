@@ -32,19 +32,19 @@ interface FileInfo {
 
 export class YandexMigrationService {
   private readonly BATCH_SIZES = {
-    small: 10, // увеличил для маленьких файлов
-    medium: 5, // увеличил для средних файлов
-    large: 2, // увеличил для больших файлов
+    small: 10,
+    medium: 5,
+    large: 2,
   }
 
   private readonly TIMEOUTS = {
-    small: 20000, // уменьшил таймауты
+    small: 20000,
     medium: 40000,
     large: 80000,
   }
 
   private readonly PAUSES = {
-    small: 500, // уменьшил паузы
+    small: 500,
     medium: 1000,
     large: 2000,
   }
@@ -154,17 +154,40 @@ export class YandexMigrationService {
   private async getAllBlobFiles(supabase: SupabaseClient): Promise<FileInfo[]> {
     const files: FileInfo[] = []
 
-    // Только существующие таблицы
+    // Расширенный список всех возможных таблиц и колонок с изображениями
     const imageTables = [
+      // Основные таблицы гардероба
       { table: "wardrobe_items", column: "image_url" },
       { table: "wardrobe_user_items", column: "image_url" },
       { table: "basic_wardrobe_items", column: "image_url" },
+
+      // Образы и луки
       { table: "outfits", column: "image_url" },
       { table: "user_looks", column: "image_url" },
+
+      // Профили пользователей
+      { table: "user_profiles", column: "avatar_url" },
+      { table: "user_profiles", column: "profile_image" },
+
+      // Возможные дополнительные таблицы
+      { table: "looks_sections", column: "image_url" },
+      { table: "inspiration_outfits", column: "image_url" },
+      { table: "outfit_items", column: "image_url" },
+      { table: "wardrobe_collections", column: "image_url" },
+      { table: "style_recommendations", column: "image_url" },
+
+      // Базовые элементы
+      { table: "basic_items", column: "image_url" },
+      { table: "clothing_items", column: "image_url" },
+      { table: "fashion_items", column: "image_url" },
     ]
+
+    console.log("🔍 Scanning all tables for blob images...")
 
     for (const { table, column } of imageTables) {
       try {
+        console.log(`📋 Checking table: ${table}, column: ${column}`)
+
         const { data, error } = await supabase
           .from(table)
           .select(`id, ${column}`)
@@ -172,11 +195,21 @@ export class YandexMigrationService {
           .like(column, "%blob.vercel-storage.com%")
 
         if (error) {
-          console.error(`Error fetching from ${table}:`, error)
+          // Игнорируем ошибки несуществующих таблиц/колонок
+          if (
+            error.message.includes("does not exist") ||
+            (error.message.includes("column") && error.message.includes("does not exist"))
+          ) {
+            console.log(`⚠️ Table/column ${table}.${column} does not exist, skipping...`)
+            continue
+          }
+          console.error(`❌ Error fetching from ${table}.${column}:`, error)
           continue
         }
 
-        if (data) {
+        if (data && data.length > 0) {
+          console.log(`✅ Found ${data.length} blob files in ${table}.${column}`)
+
           for (const row of data) {
             const url = row[column]
             if (url && typeof url === "string" && url.includes("blob.vercel-storage.com")) {
@@ -190,14 +223,119 @@ export class YandexMigrationService {
               })
             }
           }
+        } else {
+          console.log(`📭 No blob files found in ${table}.${column}`)
         }
       } catch (error) {
-        console.error(`Error processing table ${table}:`, error)
+        console.error(`❌ Error processing table ${table}.${column}:`, error)
+        continue
       }
     }
 
-    console.log(`📊 Found ${files.length} blob files to migrate`)
-    return files
+    // Дополнительно ищем файлы по всем возможным blob URL паттернам
+    await this.findAdditionalBlobFiles(supabase, files)
+
+    // Удаляем дубликаты по URL
+    const uniqueFiles = files.filter((file, index, self) => index === self.findIndex((f) => f.url === file.url))
+
+    console.log(`📊 Total unique blob files found: ${uniqueFiles.length}`)
+    console.log(`📊 Files by table:`)
+
+    const filesByTable = uniqueFiles.reduce(
+      (acc, file) => {
+        const key = `${file.table}.${file.column}`
+        acc[key] = (acc[key] || 0) + 1
+        return acc
+      },
+      {} as Record<string, number>,
+    )
+
+    Object.entries(filesByTable).forEach(([table, count]) => {
+      console.log(`   ${table}: ${count} files`)
+    })
+
+    return uniqueFiles
+  }
+
+  private async findAdditionalBlobFiles(supabase: SupabaseClient, existingFiles: FileInfo[]) {
+    console.log("🔍 Searching for additional blob files in all text columns...")
+
+    try {
+      // Получаем список всех таблиц
+      const { data: tables, error: tablesError } = await supabase
+        .rpc("get_all_tables")
+        .catch(() => ({ data: null, error: null }))
+
+      if (tablesError || !tables) {
+        console.log("⚠️ Could not get table list, using common table names")
+        return
+      }
+
+      // Для каждой таблицы ищем текстовые колонки с blob URL
+      for (const tableInfo of tables) {
+        const tableName = tableInfo.table_name
+
+        try {
+          // Получаем информацию о колонках таблицы
+          const { data: columns, error: columnsError } = await supabase
+            .rpc("get_table_columns", { table_name: tableName })
+            .catch(() => ({ data: null, error: null }))
+
+          if (columnsError || !columns) continue
+
+          // Ищем текстовые колонки
+          const textColumns = columns.filter(
+            (col: any) =>
+              col.data_type === "text" || col.data_type === "varchar" || col.data_type === "character varying",
+          )
+
+          for (const column of textColumns) {
+            const columnName = column.column_name
+
+            try {
+              const { data, error } = await supabase
+                .from(tableName)
+                .select(`id, ${columnName}`)
+                .like(columnName, "%blob.vercel-storage.com%")
+                .limit(100)
+
+              if (!error && data && data.length > 0) {
+                console.log(`🎯 Found additional blob URLs in ${tableName}.${columnName}: ${data.length}`)
+
+                for (const row of data) {
+                  const value = row[columnName]
+                  if (typeof value === "string") {
+                    // Извлекаем все blob URL из текста
+                    const blobUrls = value.match(/https:\/\/[^/]*\.blob\.vercel-storage\.com\/[^\s"'<>)]+/g) || []
+
+                    for (const url of blobUrls) {
+                      // Проверяем, что этот URL еще не добавлен
+                      if (!existingFiles.some((f) => f.url === url)) {
+                        existingFiles.push({
+                          url,
+                          table: tableName,
+                          column: columnName,
+                          id: row.id,
+                          size: this.estimateFileSize(url),
+                          estimatedSize: this.getEstimatedBytes(url),
+                        })
+                      }
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              // Игнорируем ошибки для отдельных колонок
+              continue
+            }
+          }
+        } catch (error) {
+          continue
+        }
+      }
+    } catch (error) {
+      console.log("⚠️ Could not perform additional blob search:", error)
+    }
   }
 
   private async getRetryFiles(supabase: SupabaseClient, retryUrls: string[]): Promise<FileInfo[]> {
@@ -209,6 +347,7 @@ export class YandexMigrationService {
       { table: "basic_wardrobe_items", column: "image_url" },
       { table: "outfits", column: "image_url" },
       { table: "user_looks", column: "image_url" },
+      { table: "user_profiles", column: "avatar_url" },
     ]
 
     for (const { table, column } of imageTables) {
@@ -276,7 +415,7 @@ export class YandexMigrationService {
 
   private async migrateFile(file: FileInfo, supabase: SupabaseClient): Promise<string> {
     const timeout = this.TIMEOUTS[file.size]
-    const maxRetries = 2 // уменьшил количество попыток
+    const maxRetries = 2
     let lastError: Error | null = null
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {

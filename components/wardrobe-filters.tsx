@@ -49,7 +49,7 @@ export function WardrobeFilters({ onFilterChange, selectedTypes }: WardrobeFilte
       const newTypes = selectedTypes.filter((type) => !categoryTypes.includes(type))
       onFilterChange({ search, types: newTypes })
     } else {
-      // Добавляем все типы из этой категории
+      // ��обавляем все типы из этой категории
       const newTypes = [...new Set([...selectedTypes, ...categoryTypes])]
       onFilterChange({ search, types: newTypes })
     }
