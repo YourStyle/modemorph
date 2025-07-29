@@ -5,9 +5,12 @@ export default function YandexS3TestPage() {
     <div className="container mx-auto py-8">
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">Тестирование Yandex Cloud Object Storage</h1>
-          <p className="text-gray-600 mt-2">Проверка загрузки, получения списка и удаления файлов из Yandex S3</p>
+          <h1 className="text-3xl font-bold">Yandex S3 Test</h1>
+          <p className="text-gray-600 mt-2">
+            Test uploading, listing, and deleting files in Yandex Cloud Object Storage
+          </p>
         </div>
+
         <YandexS3Test />
       </div>
     </div>

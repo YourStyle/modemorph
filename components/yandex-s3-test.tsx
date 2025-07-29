@@ -1,152 +1,130 @@
 "use client"
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Upload, List, Trash2, Download, AlertCircle } from "lucide-react"
-import { toast } from "sonner"
+import type React from "react"
 
-interface S3File {
+import { useState, useRef } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Loader2, Upload, Trash2, RefreshCw } from "lucide-react"
+
+interface FileInfo {
   key: string
   size: number
   lastModified: Date
 }
 
 export function YandexS3Test() {
-  const [files, setFiles] = useState<S3File[]>([])
-  const [loading, setLoading] = useState(false)
-  const [uploadFile, setUploadFile] = useState<File | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [files, setFiles] = useState<FileInfo[]>([])
+  const [uploadResult, setUploadResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [prefix, setPrefix] = useState("test")
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Загрузка файла
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      setSelectedFile(file)
+      setUploadResult(null)
+    }
+  }
+
   const handleUpload = async () => {
-    if (!uploadFile) {
-      toast.error("Выберите файл для загрузки")
+    if (!selectedFile) {
+      setUploadResult({ success: false, message: "Please select a file first" })
       return
     }
 
-    // Проверяем размер файла
-    if (uploadFile.size > 10 * 1024 * 1024) {
-      toast.error("Файл слишком большой (максимум 10MB)")
-      return
-    }
-
-    setLoading(true)
-    setError(null)
+    setIsUploading(true)
+    setUploadResult(null)
 
     try {
-      console.log("Starting upload for file:", {
-        name: uploadFile.name,
-        size: uploadFile.size,
-        type: uploadFile.type,
-      })
-
       const formData = new FormData()
-      formData.append("file", uploadFile)
-      formData.append("prefix", "test")
+      formData.append("file", selectedFile)
+      formData.append("prefix", prefix)
 
-      console.log("FormData created, making request...")
+      console.log("Uploading file:", {
+        name: selectedFile.name,
+        size: selectedFile.size,
+        type: selectedFile.type,
+        prefix,
+      })
 
       const response = await fetch("/api/upload-to-yandex", {
         method: "POST",
         body: formData,
       })
 
-      console.log("Response received:", response.status, response.statusText)
-
       const result = await response.json()
-      console.log("Response data:", result)
+
+      console.log("Upload response:", result)
 
       if (result.success) {
-        toast.success("Файл успешно загружен!")
-        console.log("Uploaded file URL:", result.url)
-        setUploadFile(null)
-        // Сбрасываем input
-        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
-        if (fileInput) fileInput.value = ""
-        loadFiles() // Обновляем список файлов
+        setUploadResult({
+          success: true,
+          message: `File uploaded successfully! URL: ${result.url}`,
+        })
+        setSelectedFile(null)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ""
+        }
+        // Обновляем список файлов
+        await loadFiles()
       } else {
-        const errorMsg = result.error || "Неизвестная ошибка"
-        setError(errorMsg)
-        toast.error(`Ошибка загрузки: ${errorMsg}`)
-        console.error("Upload error details:", result)
+        setUploadResult({
+          success: false,
+          message: result.error || "Upload failed",
+        })
       }
     } catch (error) {
       console.error("Upload error:", error)
-      const errorMsg = error instanceof Error ? error.message : "Ошибка при загрузке файла"
-      setError(errorMsg)
-      toast.error(errorMsg)
+      setUploadResult({
+        success: false,
+        message: error instanceof Error ? error.message : "Unknown error",
+      })
     } finally {
-      setLoading(false)
+      setIsUploading(false)
     }
   }
 
-  // Получение списка файлов
   const loadFiles = async () => {
-    setLoading(true)
-    setError(null)
-
+    setIsLoading(true)
     try {
-      console.log("Loading files list...")
-
-      const response = await fetch("/api/yandex-s3/list?prefix=test")
+      const response = await fetch("/api/yandex-s3/list")
       const result = await response.json()
-
-      console.log("Files list response:", result)
 
       if (result.success) {
         setFiles(result.files || [])
-        toast.success(`Загружено ${result.files?.length || 0} файлов`)
       } else {
-        const errorMsg = result.error || "Неизвестная ошибка"
-        setError(errorMsg)
-        toast.error(`Ошибка получения списка: ${errorMsg}`)
-        console.error("List error details:", result)
+        console.error("Failed to load files:", result.error)
       }
     } catch (error) {
-      console.error("List error:", error)
-      const errorMsg = error instanceof Error ? error.message : "Ошибка при получении списка файлов"
-      setError(errorMsg)
-      toast.error(errorMsg)
+      console.error("Error loading files:", error)
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  // Удаление файла
   const deleteFile = async (key: string) => {
-    setLoading(true)
-    setError(null)
-
     try {
-      console.log("Deleting file:", key)
-
       const response = await fetch(`/api/yandex-s3/delete?key=${encodeURIComponent(key)}`, {
         method: "DELETE",
       })
 
       const result = await response.json()
 
-      console.log("Delete response:", result)
-
       if (result.success) {
-        toast.success("Файл удален")
-        loadFiles() // Обновляем список файлов
+        // Обновляем список файлов
+        await loadFiles()
       } else {
-        const errorMsg = result.error || "Неизвестная ошибка"
-        setError(errorMsg)
-        toast.error(`Ошибка удаления: ${errorMsg}`)
-        console.error("Delete error details:", result)
+        console.error("Failed to delete file:", result.error)
       }
     } catch (error) {
-      console.error("Delete error:", error)
-      const errorMsg = error instanceof Error ? error.message : "Ошибка при удалении файла"
-      setError(errorMsg)
-      toast.error(errorMsg)
-    } finally {
-      setLoading(false)
+      console.error("Error deleting file:", error)
     }
   }
 
@@ -162,128 +140,97 @@ export function YandexS3Test() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
-            Тестирование Yandex Cloud Object Storage
-          </CardTitle>
+          <CardTitle>Yandex S3 Upload Test</CardTitle>
+          <CardDescription>Test uploading files to Yandex Cloud Object Storage</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Показываем ошибки */}
-          {error && (
-            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <div className="text-sm">
-                <p className="font-medium">Ошибка:</p>
-                <p>{error}</p>
-              </div>
+          <div className="space-y-2">
+            <Label htmlFor="prefix">Prefix (folder)</Label>
+            <Input id="prefix" value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="test" />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="file">Select File</Label>
+            <Input id="file" type="file" ref={fileInputRef} onChange={handleFileSelect} accept="image/*" />
+          </div>
+
+          {selectedFile && (
+            <div className="p-3 bg-gray-50 rounded-md">
+              <p className="text-sm">
+                <strong>Selected:</strong> {selectedFile.name} ({formatFileSize(selectedFile.size)})
+              </p>
+              <p className="text-sm text-gray-600">Type: {selectedFile.type}</p>
             </div>
           )}
 
-          {/* Загрузка файла */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Загрузить файл (максимум 10MB)</label>
-            <div className="flex gap-2">
-              <Input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] || null
-                  console.log("File selected:", file ? { name: file.name, size: file.size, type: file.type } : null)
-                  setUploadFile(file)
-                  setError(null) // Сбрасываем ошибку при выборе нового файла
-                }}
-                className="flex-1"
-                disabled={loading}
-              />
-              <Button onClick={handleUpload} disabled={loading || !uploadFile} className="shrink-0">
-                {loading ? "Загрузка..." : "Загрузить"}
-              </Button>
-            </div>
-            {uploadFile && (
-              <div className="text-sm text-gray-600 space-y-1">
-                <p>Выбран файл: {uploadFile.name}</p>
-                <p>Размер: {formatFileSize(uploadFile.size)}</p>
-                <p>Тип: {uploadFile.type}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Список файлов */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium">Файлы в хранилище</label>
-              <Button onClick={loadFiles} disabled={loading} variant="outline" size="sm">
-                <List className="h-4 w-4 mr-2" />
-                {loading ? "Загрузка..." : "Обновить"}
-              </Button>
-            </div>
-
-            {files.length > 0 ? (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {files.map((file) => (
-                  <div key={file.key} className="flex items-center justify-between p-3 border rounded-lg">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{file.key}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge variant="secondary" className="text-xs">
-                          {formatFileSize(file.size)}
-                        </Badge>
-                        <span className="text-xs text-gray-500">{new Date(file.lastModified).toLocaleString()}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 ml-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          const url = `https://storage.yandexcloud.net/modemorphs3/${file.key}`
-                          console.log("Opening file URL:", url)
-                          window.open(url, "_blank")
-                        }}
-                        disabled={loading}
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => deleteFile(file.key)} disabled={loading}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <Button onClick={handleUpload} disabled={isUploading || !selectedFile} className="w-full">
+            {isUploading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Uploading...
+              </>
             ) : (
-              <p className="text-sm text-gray-500 text-center py-4">
-                Файлы не найдены. Загрузите файл или нажмите "Обновить"
-              </p>
+              <>
+                <Upload className="mr-2 h-4 w-4" />
+                Upload File
+              </>
             )}
-          </div>
+          </Button>
+
+          {uploadResult && (
+            <Alert className={uploadResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
+              <AlertDescription className={uploadResult.success ? "text-green-800" : "text-red-800"}>
+                {uploadResult.message}
+              </AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
-      {/* Информация о конфигурации */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm">Конфигурация</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <span className="font-medium">Хост:</span>
-              <p className="text-gray-600">storage.yandexcloud.net</p>
-            </div>
-            <div>
-              <span className="font-medium">Бакет:</span>
-              <p className="text-gray-600">modemorphs3</p>
-            </div>
-            <div>
-              <span className="font-medium">Регион:</span>
-              <p className="text-gray-600">ru-central1</p>
-            </div>
-            <div>
-              <span className="font-medium">Подпись:</span>
-              <p className="text-gray-600">AWS Signature Version 4</p>
-            </div>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Files in Bucket</CardTitle>
+            <CardDescription>Files stored in the Yandex S3 bucket</CardDescription>
           </div>
+          <Button onClick={loadFiles} disabled={isLoading} variant="outline" size="sm">
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {files.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">No files found. Upload some files to see them here.</p>
+          ) : (
+            <div className="space-y-2">
+              {files.map((file) => (
+                <div key={file.key} className="flex items-center justify-between p-3 border rounded-md">
+                  <div className="flex-1">
+                    <p className="font-medium">{file.key}</p>
+                    <p className="text-sm text-gray-600">
+                      {formatFileSize(file.size)} • {file.lastModified.toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      onClick={() => window.open(`https://storage.yandexcloud.net/modemorphs3/${file.key}`, "_blank")}
+                      variant="outline"
+                      size="sm"
+                    >
+                      View
+                    </Button>
+                    <Button
+                      onClick={() => deleteFile(file.key)}
+                      variant="outline"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

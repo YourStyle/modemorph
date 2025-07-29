@@ -23,29 +23,29 @@ function createSignature(
     const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, "")
     const timeStamp = now.toISOString().slice(0, 19).replace(/[-:]/g, "") + "Z"
 
-    // Создаем канонический запрос
-    const canonicalUri = path.startsWith("/") ? path : `/${path}`
+    // Создаем канонический URI (должен быть URL-encoded)
+    const canonicalUri = encodeURI(path).replace(/%2F/g, "/")
 
-    // Сортируем query параметры
+    // Сортируем и кодируем query параметры
     const sortedQueryParams = Object.keys(queryParams)
       .sort()
       .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
       .join("&")
 
     // Добавляем обязательные заголовки
-    const requestHeaders = {
+    const requestHeaders: Record<string, string> = {
       host: YC_HOST,
       "x-amz-date": timeStamp,
       "x-amz-content-sha256": payloadHash,
       ...headers,
     }
 
-    // Сортируем заголовки
-    const sortedHeaders = Object.keys(requestHeaders).sort()
+    // Сортируем заголовки и создаем канонические заголовки
+    const sortedHeaderKeys = Object.keys(requestHeaders).sort()
     const canonicalHeaders =
-      sortedHeaders.map((key) => `${key.toLowerCase()}:${requestHeaders[key].toString().trim()}`).join("\n") + "\n"
+      sortedHeaderKeys.map((key) => `${key.toLowerCase()}:${requestHeaders[key].toString().trim()}`).join("\n") + "\n"
 
-    const signedHeaders = sortedHeaders.map((key) => key.toLowerCase()).join(";")
+    const signedHeaders = sortedHeaderKeys.map((key) => key.toLowerCase()).join(";")
 
     // Создаем канонический запрос
     const canonicalRequest = [
@@ -57,6 +57,8 @@ function createSignature(
       payloadHash,
     ].join("\n")
 
+    console.log("Canonical request:", canonicalRequest)
+
     // Создаем строку для подписи
     const credentialScope = `${dateStamp}/${YC_REGION}/${YC_SERVICE}/aws4_request`
     const stringToSign = [
@@ -65,6 +67,8 @@ function createSignature(
       credentialScope,
       crypto.createHash("sha256").update(canonicalRequest).digest("hex"),
     ].join("\n")
+
+    console.log("String to sign:", stringToSign)
 
     // Создаем ключ для подписи
     const kDate = crypto.createHmac("sha256", `AWS4${YC_SECRET_ACCESS_KEY}`).update(dateStamp).digest()
@@ -76,12 +80,7 @@ function createSignature(
     const signature = crypto.createHmac("sha256", kSigning).update(stringToSign).digest("hex")
 
     // Создаем заголовок авторизации
-    const authorizationHeader = [
-      "AWS4-HMAC-SHA256",
-      `Credential=${YC_ACCESS_KEY_ID}/${credentialScope}`,
-      `SignedHeaders=${signedHeaders}`,
-      `Signature=${signature}`,
-    ].join(" ")
+    const authorizationHeader = `AWS4-HMAC-SHA256 Credential=${YC_ACCESS_KEY_ID}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`
 
     const finalHeaders = {
       ...requestHeaders,
@@ -89,6 +88,9 @@ function createSignature(
     }
 
     const url = `https://${YC_HOST}${canonicalUri}${sortedQueryParams ? "?" + sortedQueryParams : ""}`
+
+    console.log("Authorization header:", authorizationHeader)
+    console.log("Final URL:", url)
 
     return { headers: finalHeaders, url }
   } catch (error) {
@@ -132,8 +134,8 @@ export async function uploadToYandexS3(
     const payloadHash = crypto.createHash("sha256").update(fileBuffer).digest("hex")
 
     const headers = {
-      "Content-Type": contentType || "application/octet-stream",
-      "Content-Length": fileBuffer.length.toString(),
+      "content-type": contentType || "application/octet-stream",
+      "content-length": fileBuffer.length.toString(),
     }
 
     console.log("Creating signature for:", {
