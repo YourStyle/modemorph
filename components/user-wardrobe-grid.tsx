@@ -87,7 +87,7 @@ export function UserWardrobeGrid({ onItemsChange, refreshTrigger }: UserWardrobe
 
       if (response.ok) {
         toast({
-          title: "Вещь удалена",
+          title: "Вещь уда��ена",
           description: "Вещь успешно удалена из гардероба",
         })
         fetchItems() // Refresh the list
