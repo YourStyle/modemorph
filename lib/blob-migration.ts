@@ -266,7 +266,7 @@ export class BlobMigrationService {
         largeFiles: largeFiles.length,
       })
 
-      // Сортируем файлы: сначала маленькие, потом средние, потом большие
+      // Сортируем файлы: сначала мален��кие, потом средние, потом большие
       const sortedFiles = [...smallFiles, ...mediumFiles, ...largeFiles]
 
       // Группируем файлы по категориям для батчевой обработки

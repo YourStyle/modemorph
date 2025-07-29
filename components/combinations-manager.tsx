@@ -162,7 +162,7 @@ export function CombinationsManager() {
 
     try {
       if (!supabase) {
-        throw new Error("Supabase не настроен")
+        throw new Error("Supabase н�� настроен")
       }
 
       await checkSupabaseConnection()
