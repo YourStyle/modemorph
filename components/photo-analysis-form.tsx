@@ -559,7 +559,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           <div className="space-y-3">
             {analysisResults.some((result) => !result.success) && (
               <div className="space-y-2">
-                <h4 className="text-sm font-medium text-white">Результаты анализа</h4>
+                <h4 className="text-sm font-medium text-white">Проблемы с анализом</h4>
                 {analysisResults.map((result, index) => {
                   if (result.success) return null
 
@@ -569,7 +569,9 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                         <div className="flex items-start gap-2">
                           <AlertCircle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-orange-800">{result.fileName}</p>
+                            <p className="text-sm font-medium text-orange-800">
+                              Фото #{index + 1}: {result.fileName}
+                            </p>
                             <p className="text-xs text-orange-600 mt-1">{result.rejectionReason || result.error}</p>
                             {result.rejectionReason && (
                               <p className="text-xs text-orange-500 mt-1">Попробуйте загрузить другое изображение</p>
