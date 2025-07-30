@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -36,23 +36,45 @@ export function FixCorruptedFilesCard() {
   })
   const [preview, setPreview] = useState<CorruptedPreview | null>(null)
   const [loading, setLoading] = useState(false)
+  const [shouldPoll, setShouldPoll] = useState(false)
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       const response = await fetch("/api/admin/fix-corrupted-files")
-      const data = await response.json()
+      if (response.ok) {
+        const data = await response.json()
 
-      if (data.progress) {
-        setProgress(data.progress)
-      }
+        if (data.progress) {
+          setProgress(data.progress)
 
-      if (data.preview) {
-        setPreview(data.preview)
+          // Останавливаем опрос если процесс не запущен
+          if (!data.progress.isRunning) {
+            setShouldPoll(false)
+          }
+        }
+
+        if (data.preview) {
+          setPreview(data.preview)
+        }
       }
     } catch (error) {
       console.error("Error fetching status:", error)
+      setShouldPoll(false)
     }
-  }
+  }, [])
+
+  // Опрашиваем статус только когда процесс запущен
+  useEffect(() => {
+    if (!shouldPoll) return
+
+    const interval = setInterval(fetchStatus, 3000)
+    return () => clearInterval(interval)
+  }, [shouldPoll, fetchStatus])
+
+  // Загружаем начальный статус только один раз
+  useEffect(() => {
+    fetchStatus()
+  }, [fetchStatus])
 
   const startFix = async () => {
     setLoading(true)
@@ -66,11 +88,7 @@ export function FixCorruptedFilesCard() {
         throw new Error(error.error || "Failed to start fix")
       }
 
-      // Начинаем опрос статуса
-      const interval = setInterval(fetchStatus, 2000)
-
-      // Останавливаем опрос через 10 минут
-      setTimeout(() => clearInterval(interval), 600000)
+      setShouldPoll(true) // Начинаем опрос
     } catch (error) {
       console.error("Error starting fix:", error)
       alert(`Ошибка запуска: ${error instanceof Error ? error.message : "Unknown error"}`)
@@ -78,19 +96,6 @@ export function FixCorruptedFilesCard() {
       setLoading(false)
     }
   }
-
-  useEffect(() => {
-    fetchStatus()
-
-    // Опрашиваем статус каждые 3 секунды если процесс запущен
-    const interval = setInterval(() => {
-      if (progress.isRunning) {
-        fetchStatus()
-      }
-    }, 3000)
-
-    return () => clearInterval(interval)
-  }, [progress.isRunning])
 
   const progressPercentage = progress.total > 0 ? (progress.processed / progress.total) * 100 : 0
 

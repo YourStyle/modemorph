@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -50,23 +50,38 @@ export function YandexMigrationCard() {
   })
 
   const [isLoading, setIsLoading] = useState(false)
+  const [shouldPoll, setShouldPoll] = useState(false)
 
-  // Получаем статус миграции каждые 2 секунды
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const response = await fetch("/api/admin/migrate-to-yandex")
-        if (response.ok) {
-          const data = await response.json()
-          setStatus(data)
+  const fetchStatus = useCallback(async () => {
+    try {
+      const response = await fetch("/api/admin/migrate-to-yandex")
+      if (response.ok) {
+        const data = await response.json()
+        setStatus(data)
+
+        // Останавливаем опрос если процесс не запущен
+        if (!data.isRunning) {
+          setShouldPoll(false)
         }
-      } catch (error) {
-        console.error("Error fetching migration status:", error)
       }
-    }, 2000)
-
-    return () => clearInterval(interval)
+    } catch (error) {
+      console.error("Error fetching migration status:", error)
+      setShouldPoll(false)
+    }
   }, [])
+
+  // Опрашиваем статус только когда процесс запущен
+  useEffect(() => {
+    if (!shouldPoll) return
+
+    const interval = setInterval(fetchStatus, 2000)
+    return () => clearInterval(interval)
+  }, [shouldPoll, fetchStatus])
+
+  // Загружаем начальный статус только один раз
+  useEffect(() => {
+    fetchStatus()
+  }, [fetchStatus])
 
   const startMigration = async (retryFailed = false) => {
     setIsLoading(true)
@@ -81,6 +96,7 @@ export function YandexMigrationCard() {
 
       if (response.ok) {
         toast.success(retryFailed ? "Повторная миграция запущена!" : "Миграция в Yandex S3 запущена!")
+        setShouldPoll(true) // Начинаем опрос
       } else {
         const errorData = await response.json()
         throw new Error(errorData.error || "Failed to start migration")
@@ -208,23 +224,6 @@ export function YandexMigrationCard() {
                   <span>{status.skippedFiles}</span>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {(status.smallFiles > 0 || status.mediumFiles > 0 || status.largeFiles > 0) && (
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="text-center p-2 bg-green-50 rounded">
-              <div className="font-medium text-green-700">Маленькие</div>
-              <div className="text-green-600">{status.smallFiles}</div>
-            </div>
-            <div className="text-center p-2 bg-yellow-50 rounded">
-              <div className="font-medium text-yellow-700">Средние</div>
-              <div className="text-yellow-600">{status.mediumFiles}</div>
-            </div>
-            <div className="text-center p-2 bg-red-50 rounded">
-              <div className="font-medium text-red-700">Большие</div>
-              <div className="text-red-600">{status.largeFiles}</div>
             </div>
           </div>
         )}

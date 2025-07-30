@@ -152,28 +152,47 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
     try {
       let allResults: ItemWithImage[] = []
 
-      // Анализируем каждое фото
+      // Анализируем каждое фото с улучшенной обработкой ошибок
       for (const photo of selectedFiles) {
         const formData = new FormData()
         formData.append("image", photo.file)
 
         // Используем переменную окружения для AI API
-        const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
-        const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
-          method: "POST",
-          body: formData,
-        })
+        const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
 
-        if (!response.ok) {
-          throw new Error("Ошибка анализа изображения")
-        }
+        // Добавляем таймаут и обработку ошибок
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 минуты
 
-        const data = await response.json()
-        console.log("AI Response:", data)
+        try {
+          const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+            method: "POST",
+            body: formData,
+            signal: controller.signal,
+            headers: {
+              Accept: "application/json",
+            },
+          })
 
-        if (Array.isArray(data) && data.length > 0) {
-          const itemsWithImages = await loadBasicItemImages(data)
-          allResults = [...allResults, ...itemsWithImages]
+          clearTimeout(timeoutId)
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`AI API Error for ${photo.file.name}:`, errorText)
+            continue // Пропускаем этот файл и продолжаем с остальными
+          }
+
+          const data = await response.json()
+          console.log(`AI Response for ${photo.file.name}:`, data)
+
+          if (Array.isArray(data) && data.length > 0) {
+            const itemsWithImages = await loadBasicItemImages(data)
+            allResults = [...allResults, ...itemsWithImages]
+          }
+        } catch (fileError) {
+          clearTimeout(timeoutId)
+          console.error(`Error processing ${photo.file.name}:`, fileError)
+          // Продолжаем с остальными файлами
         }
       }
 

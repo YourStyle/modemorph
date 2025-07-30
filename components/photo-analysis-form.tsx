@@ -47,7 +47,7 @@ interface PhotoAnalysisFormProps {
 }
 
 export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: PhotoAnalysisFormProps) {
-  const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>(initialPhotos)
+  const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<ItemWithImage[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -58,16 +58,27 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   // Автоматически запускаем анализ если есть начальные фото
   useEffect(() => {
     if (initialPhotos && initialPhotos.length > 0 && !hasAnalyzed) {
-      setSelectedFiles(initialPhotos)
-      handleAnalyze()
+      // Ограничиваем до 2 фото
+      const limitedPhotos = initialPhotos.slice(0, 2)
+      setSelectedFiles(limitedPhotos)
+      handleAnalyze(limitedPhotos)
     }
-  }, [initialPhotos, hasAnalyzed])
+  }, [initialPhotos])
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length === 0) return
 
-    const newPhotos: UploadedPhoto[] = files.map((file) => ({
+    // Ограничиваем общее количество фото до 2
+    const remainingSlots = 2 - selectedFiles.length
+    const filesToAdd = files.slice(0, remainingSlots)
+
+    if (filesToAdd.length === 0) {
+      setError("Максимум 2 фото для анализа")
+      return
+    }
+
+    const newPhotos: UploadedPhoto[] = filesToAdd.map((file) => ({
       file,
       preview: URL.createObjectURL(file),
       id: Math.random().toString(36).substr(2, 9),
@@ -96,11 +107,13 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
       }
       const newFiles = prev.filter((p) => p.id !== id)
 
-      // Если удалили все фото, сбрасываем состояние
+      // Если удалили все фото, полностью сбрасываем состояние
       if (newFiles.length === 0) {
         setResults([])
         setHasAnalyzed(false)
         setNeedsReanalysis(false)
+        setError(null)
+        setLoading(false) // Важно: останавливаем загрузку
       } else if (results.length > 0) {
         // Если есть результаты и остались фото, нужен повторный анализ
         setNeedsReanalysis(true)
@@ -174,8 +187,58 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     return itemsWithImages
   }
 
-  const handleAnalyze = async () => {
-    if (selectedFiles.length === 0) return
+  const analyzePhoto = async (file: File): Promise<ItemWithImage[]> => {
+    const formData = new FormData()
+    formData.append("image", file)
+
+    // Используем переменную окружения для AI API
+    const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
+
+    // Добавляем таймаут и улучшенную обработку ошибок
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 минуты
+
+    try {
+      const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+        },
+      })
+
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("AI API Error Response:", errorText)
+        throw new Error(`Ошибка анализа изображения: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      console.log("AI Response:", data)
+
+      if (Array.isArray(data) && data.length > 0) {
+        return await loadBasicItemImages(data)
+      } else {
+        throw new Error("Не удалось найти вещи на изображении")
+      }
+    } catch (error) {
+      clearTimeout(timeoutId)
+
+      if (error.name === "AbortError") {
+        throw new Error("Превышено время ожидания анализа изображения")
+      }
+
+      console.error("AI Analysis Error:", error)
+      throw error
+    }
+  }
+
+  const handleAnalyze = async (photosToAnalyze?: UploadedPhoto[]) => {
+    const photos = photosToAnalyze || selectedFiles
+    if (photos.length === 0) return
 
     setLoading(true)
     setError(null)
@@ -187,27 +250,13 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
       let allResults: ItemWithImage[] = []
 
       // Анализируем каждое фото
-      for (const photo of selectedFiles) {
-        const formData = new FormData()
-        formData.append("image", photo.file)
-
-        // Используем переменную окружения для AI API
-        const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
-        const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
-          method: "POST",
-          body: formData,
-        })
-
-        if (!response.ok) {
-          throw new Error("Ошибка анализа изображения")
-        }
-
-        const data = await response.json()
-        console.log("AI Response:", data)
-
-        if (Array.isArray(data) && data.length > 0) {
-          const itemsWithImages = await loadBasicItemImages(data)
+      for (const photo of photos) {
+        try {
+          const itemsWithImages = await analyzePhoto(photo.file)
           allResults = [...allResults, ...itemsWithImages]
+        } catch (error: any) {
+          console.error(`Error analyzing image ${photo.file.name}:`, error)
+          setError(`Ошибка анализа изображения ${photo.file.name}: ${error.message}`)
         }
       }
 
@@ -267,15 +316,21 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     selectedFiles.forEach((photo) => {
       URL.revokeObjectURL(photo.preview)
     })
+
+    // Полностью сбрасываем все состояния
     setSelectedFiles([])
     setResults([])
     setError(null)
     setHasAnalyzed(false)
-    setLoading(false)
+    setLoading(false) // Важно: останавливаем загрузку
     setNeedsReanalysis(false)
+
+    // Очищаем input
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
+
+    // Вызываем callback для родительского компонента
     onReset?.()
   }
 
@@ -314,10 +369,12 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   return (
     <div className="h-full overflow-y-auto">
       <div className="space-y-4 p-4">
-        {/* Header with Clear Button */}
-        {hasAnalyzed && !loading && (
+        {/* Header with Clear Button - показываем только если есть результаты или фото */}
+        {(hasAnalyzed || selectedFiles.length > 0) && !loading && (
           <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-white">Анализ фото</h3>
+            <h3 className="text-base font-semibold text-white">
+              {selectedFiles.length > 0 ? "Анализ фото" : "Результаты анализа"}
+            </h3>
             <Button variant="outline" size="sm" onClick={handleClear}>
               <X className="h-3 w-3 mr-1" />
               Очистить
@@ -325,7 +382,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           </div>
         )}
 
-        {/* Photos Section */}
+        {/* Photos Section - показываем только если есть фото и не загружаем */}
         {selectedFiles.length > 0 && !loading && (
           <Card>
             <CardContent className="p-4">
@@ -339,6 +396,11 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                           src={photo.preview || "/placeholder.svg"}
                           alt="Preview"
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            console.error("Image load error:", e)
+                            // Удаляем фото с битой ссылкой
+                            removePhoto(photo.id)
+                          }}
                         />
                       </div>
                       <button
@@ -350,39 +412,39 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                     </div>
                   ))}
 
-                  {/* Add More Button */}
-                  <div className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      multiple
-                    />
-                    <label
-                      htmlFor="file-upload"
-                      className="cursor-pointer flex flex-col items-center justify-center space-y-1 p-4 text-center"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Plus className="h-6 w-6 text-gray-400" />
-                      <span className="text-xs text-gray-600">Добавить еще</span>
-                    </label>
-                  </div>
+                  {/* Add More Button - показываем только если меньше 2 фото */}
+                  {selectedFiles.length < 2 && (
+                    <div className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        multiple
+                      />
+                      <label
+                        htmlFor="file-upload"
+                        className="cursor-pointer flex flex-col items-center justify-center space-y-1 p-4 text-center"
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Plus className="h-6 w-6 text-gray-400" />
+                        <span className="text-xs text-gray-600">Добавить еще</span>
+                      </label>
+                    </div>
+                  )}
                 </div>
 
                 {/* Кнопка анализа - показываем если не анализировали или нужен повторный анализ */}
                 {(!hasAnalyzed || needsReanalysis) && selectedFiles.length > 0 && (
-                  <Button onClick={handleAnalyze} disabled={loading} className="w-full" size="sm">
+                  <Button onClick={() => handleAnalyze()} disabled={loading} className="w-full" size="sm">
                     {loading ? (
                       <>
                         <Loader2 className="h-3 w-3 mr-2 animate-spin" />
                         Анализируем...
                       </>
                     ) : (
-                      `Найти вещи на ${selectedFiles.length} ${
-                        selectedFiles.length === 1 ? "фото" : selectedFiles.length < 5 ? "фото" : "фото"
-                      }`
+                      `Найти вещи на ${selectedFiles.length} ${selectedFiles.length === 1 ? "фото" : "фото"}`
                     )}
                   </Button>
                 )}
@@ -393,12 +455,13 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           </Card>
         )}
 
-        {/* Upload Section - показываем только если нет фото */}
-        {selectedFiles.length === 0 && (
+        {/* Upload Section - показываем только если нет фото и не загружаем */}
+        {selectedFiles.length === 0 && !loading && (
           <Card>
             <CardContent className="p-4">
               <div className="space-y-3">
                 <h3 className="text-base font-semibold">Загрузить фото одежды</h3>
+                <p className="text-xs text-gray-500">Максимум 2 фото для анализа</p>
 
                 <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
                   <input
@@ -427,9 +490,10 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           </Card>
         )}
 
-        {/* Results Section */}
+        {/* Loading Section - показываем только когда идет загрузка */}
         {loading && <ResultsSkeleton />}
 
+        {/* Results Section - показываем только если есть результаты и не загружаем */}
         {!loading && results.length > 0 && (
           <div className="space-y-3">
             <h3 className="text-base font-semibold text-white">Найденные вещи ({results.length})</h3>

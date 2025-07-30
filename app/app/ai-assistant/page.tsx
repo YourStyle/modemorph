@@ -164,23 +164,48 @@ export default function AIAssistantPage() {
     formData.append("image", file)
 
     // Используем переменную окружения для AI API
-    const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://primary-production-84ad.up.railway.app/webhook"
-    const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
-      method: "POST",
-      body: formData,
-    })
+    const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
 
-    if (!response.ok) {
-      throw new Error("Ошибка анализа изображения")
-    }
+    // Увеличиваем таймаут и добавляем обработку ошибок
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 минуты таймаут
 
-    const data = await response.json()
-    console.log("AI Response:", data)
+    try {
+      const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+        method: "POST",
+        body: formData,
+        signal: controller.signal,
+        // Добавляем заголовки для стабильности соединения
+        headers: {
+          Accept: "application/json",
+        },
+      })
 
-    if (Array.isArray(data) && data.length > 0) {
-      return await loadBasicItemImages(data)
-    } else {
-      throw new Error("Не удалось найти вещи на изображении")
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("AI API Error Response:", errorText)
+        throw new Error(`Ошибка анализа изображения: ${response.status} ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      console.log("AI Response:", data)
+
+      if (Array.isArray(data) && data.length > 0) {
+        return await loadBasicItemImages(data)
+      } else {
+        throw new Error("Не удалось найти вещи на изображении")
+      }
+    } catch (error) {
+      clearTimeout(timeoutId)
+
+      if (error.name === "AbortError") {
+        throw new Error("Превышено время ожидания анализа изображения")
+      }
+
+      console.error("AI Analysis Error:", error)
+      throw error
     }
   }
 
