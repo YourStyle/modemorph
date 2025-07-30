@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { put } from "@vercel/blob"
+import { uploadToYandexS3 } from "@/lib/yandex-s3"
 import { nanoid } from "nanoid"
 
 export async function POST(request: Request) {
@@ -11,24 +11,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 })
     }
 
-    if (!process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN) {
-      return NextResponse.json({ error: "Blob token not configured" }, { status: 500 })
-    }
-
     // Создаем уникальное имя файла
     const fileName = `upload-${nanoid(8)}`
     const fileExtension = file.name.split(".").pop()?.toLowerCase() || "jpg"
     const fullFileName = `${fileName}.${fileExtension}`
 
-    // Загружаем файл в Vercel Blob
-    const blob = await put(fullFileName, file, {
-      access: "public",
-      token: process.env.BLOB_MODEMORPH_READ_WRITE_TOKEN,
-    })
+    // Конвертируем файл в ArrayBuffer
+    const buffer = await file.arrayBuffer()
+    const contentType = file.type || "image/jpeg"
+
+    // Загружаем файл в Yandex S3
+    const result = await uploadToYandexS3(buffer, fullFileName, contentType)
+
+    if (!result.success) {
+      return NextResponse.json({ error: result.error || "Failed to upload image" }, { status: 500 })
+    }
 
     return NextResponse.json({
       success: true,
-      url: blob.url,
+      url: result.url,
       fileName: fullFileName,
     })
   } catch (error) {
