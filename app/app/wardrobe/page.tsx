@@ -10,8 +10,9 @@ import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { Progress } from "@/components/ui/progress"
-import { Plus, ChevronDown, ChevronUp } from "lucide-react"
+import { Plus, ChevronDown, ChevronUp, Search } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Input } from "@/components/ui/input"
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -91,10 +92,13 @@ export default function WardrobePage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
+  const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
+  const [searchQuery, setSearchQuery] = useState("")
+
   useEffect(() => {
     fetchBasicItems()
-    fetchUserItemsCount()
-  }, [])
+    fetchUserItems()
+  }, [sortBy, searchQuery])
 
   const fetchBasicItems = async () => {
     try {
@@ -117,16 +121,24 @@ export default function WardrobePage() {
     }
   }
 
-  const fetchUserItemsCount = async () => {
+  const fetchUserItems = async () => {
     try {
       setIsLoadingUserItems(true)
-      const response = await fetch("/api/wardrobe-user-items")
+
+      // Строим URL с параметрами
+      const params = new URLSearchParams()
+      if (searchQuery.trim()) {
+        params.append("search", searchQuery.trim())
+      }
+      params.append("sort", sortBy)
+
+      const response = await fetch(`/api/wardrobe-user-items?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
         setUserItemsCount(Array.isArray(data) ? data.length : 0)
       }
     } catch (error) {
-      console.error("Error fetching user items count:", error)
+      console.error("Error fetching user items:", error)
     } finally {
       setIsLoadingUserItems(false)
     }
@@ -169,7 +181,7 @@ export default function WardrobePage() {
     setIsAddSheetOpen(false)
 
     // Обновляем данные пользователя после закрытия шторки
-    fetchUserItemsCount()
+    fetchUserItems()
     setRefreshUserItems((prev) => prev + 1)
   }
 
@@ -211,7 +223,7 @@ export default function WardrobePage() {
 
       // Обновляем список базовых вещей и количество пользовательских вещей
       fetchBasicItems()
-      fetchUserItemsCount()
+      fetchUserItems()
 
       // Принудительно обновляем UserWardrobeGrid
       setRefreshUserItems((prev) => prev + 1)
@@ -291,9 +303,21 @@ export default function WardrobePage() {
           </Button>
         </Card>
 
-        {/* Sorting */}
-        <div className="flex items-center justify-between mb-6">
-          <Select defaultValue="newest">
+        {/* Фильтры и поиск */}
+        <div className="space-y-4 mb-6">
+          {/* Поиск */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Поиск по названию вещи..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white border-gray-200"
+            />
+          </div>
+
+          {/* Сортировка */}
+          <Select value={sortBy} onValueChange={(value: "newest" | "oldest" | "name") => setSortBy(value)}>
             <SelectTrigger className="w-48 bg-white border-gray-200">
               <SelectValue />
             </SelectTrigger>
@@ -311,7 +335,12 @@ export default function WardrobePage() {
           {isLoadingUserItems ? (
             <UserWardrobeSkeleton />
           ) : (
-            <UserWardrobeGrid onItemsChange={setUserItemsCount} refreshTrigger={refreshUserItems} />
+            <UserWardrobeGrid
+              onItemsChange={setUserItemsCount}
+              refreshTrigger={refreshUserItems}
+              searchQuery={searchQuery}
+              sortBy={sortBy}
+            />
           )}
         </div>
 
