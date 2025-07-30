@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Upload, X, Loader2, Check, Plus } from "lucide-react"
+import { Upload, X, Loader2, Check, Plus, AlertCircle } from "lucide-react"
 import { AIAssistantLoader } from "@/components/ai-assistant-loader"
 import Image from "next/image"
 
@@ -28,6 +28,17 @@ interface ResponseItem {
   image_url?: string
 }
 
+interface RejectedPhoto {
+  acceptable: false
+  reason: string
+  headers?: any
+  params?: any
+  query?: any
+  body?: any
+  webhookUrl?: string
+  executionMode?: string
+}
+
 interface ItemWithImage extends ResponseItem {
   finalImageUrl?: string
   isAdding?: boolean
@@ -40,6 +51,14 @@ interface UploadedPhoto {
   id: string
 }
 
+interface PhotoAnalysisResult {
+  success: boolean
+  items: ItemWithImage[]
+  error?: string
+  rejectionReason?: string
+  fileName: string
+}
+
 interface PhotoAnalysisFormProps {
   initialPhotos?: UploadedPhoto[]
   onSuccess?: () => void
@@ -50,6 +69,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
   const [loading, setLoading] = useState(false)
   const [results, setResults] = useState<ItemWithImage[]>([])
+  const [analysisResults, setAnalysisResults] = useState<PhotoAnalysisResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [hasAnalyzed, setHasAnalyzed] = useState(false)
   const [needsReanalysis, setNeedsReanalysis] = useState(false)
@@ -110,6 +130,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
       // Если удалили все фото, полностью сбрасываем состояние
       if (newFiles.length === 0) {
         setResults([])
+        setAnalysisResults([])
         setHasAnalyzed(false)
         setNeedsReanalysis(false)
         setError(null)
@@ -187,7 +208,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     return itemsWithImages
   }
 
-  const analyzePhoto = async (file: File): Promise<ItemWithImage[]> => {
+  const analyzePhoto = async (file: File): Promise<PhotoAnalysisResult> => {
     const formData = new FormData()
     formData.append("image", file)
 
@@ -213,26 +234,64 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
       if (!response.ok) {
         const errorText = await response.text()
         console.error("AI API Error Response:", errorText)
-        throw new Error(`Ошибка анализа изображения: ${response.status} ${response.statusText}`)
+        return {
+          success: false,
+          items: [],
+          error: `Ошибка анализа: ${response.status} ${response.statusText}`,
+          fileName: file.name,
+        }
       }
 
       const data = await response.json()
       console.log("AI Response:", data)
 
-      if (Array.isArray(data) && data.length > 0) {
-        return await loadBasicItemImages(data)
-      } else {
-        throw new Error("Не удалось найти вещи на изображении")
+      // Проверяем, является ли ответ массивом с отклонением
+      if (Array.isArray(data) && data.length > 0 && data[0].acceptable === false) {
+        const rejectedItem = data[0] as RejectedPhoto
+        return {
+          success: false,
+          items: [],
+          rejectionReason: rejectedItem.reason,
+          fileName: file.name,
+        }
+      }
+
+      // Проверяем, является ли ответ массивом с вещами
+      if (Array.isArray(data) && data.length > 0 && data[0].item_name) {
+        const itemsWithImages = await loadBasicItemImages(data)
+        return {
+          success: true,
+          items: itemsWithImages,
+          fileName: file.name,
+        }
+      }
+
+      // Если ответ не подходит ни под один формат
+      return {
+        success: false,
+        items: [],
+        error: "Не удалось найти вещи на изображении",
+        fileName: file.name,
       }
     } catch (error) {
       clearTimeout(timeoutId)
 
       if (error.name === "AbortError") {
-        throw new Error("Превышено время ожидания анализа изображения")
+        return {
+          success: false,
+          items: [],
+          error: "Превышено время ожидания анализа изображения",
+          fileName: file.name,
+        }
       }
 
       console.error("AI Analysis Error:", error)
-      throw error
+      return {
+        success: false,
+        items: [],
+        error: `Ошибка анализа: ${error.message}`,
+        fileName: file.name,
+      }
     }
   }
 
@@ -245,32 +304,33 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     setHasAnalyzed(true)
     setNeedsReanalysis(false)
     setResults([]) // Очищаем предыдущие результаты
+    setAnalysisResults([]) // Очищаем результаты анализа
 
-    try {
-      let allResults: ItemWithImage[] = []
+    const analysisPromises = photos.map((photo) => analyzePhoto(photo.file))
+    const analysisResults = await Promise.all(analysisPromises)
 
-      // Анализируем каждое фото
-      for (const photo of photos) {
-        try {
-          const itemsWithImages = await analyzePhoto(photo.file)
-          allResults = [...allResults, ...itemsWithImages]
-        } catch (error: any) {
-          console.error(`Error analyzing image ${photo.file.name}:`, error)
-          setError(`Ошибка анализа изображения ${photo.file.name}: ${error.message}`)
-        }
-      }
+    // Собираем все успешные результаты
+    const allSuccessfulItems: ItemWithImage[] = []
+    const failedAnalyses: PhotoAnalysisResult[] = []
 
-      if (allResults.length > 0) {
-        setResults(allResults)
+    analysisResults.forEach((result) => {
+      if (result.success) {
+        allSuccessfulItems.push(...result.items)
       } else {
-        setError("Не удалось найти вещи на изображениях")
+        failedAnalyses.push(result)
       }
-    } catch (err) {
-      console.error("Error analyzing images:", err)
-      setError("Ошибка при анализе изображений")
-    } finally {
-      setLoading(false)
+    })
+
+    // Устанавливаем результаты
+    setResults(allSuccessfulItems)
+    setAnalysisResults(analysisResults)
+
+    // Если есть хотя бы один успешный результат, не показываем общую ошибку
+    if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {
+      setError("Не удалось проанализировать ни одно изображение")
     }
+
+    setLoading(false)
   }
 
   const handleSaveItem = async (item: ItemWithImage, index: number) => {
@@ -320,6 +380,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     // Полностью сбрасываем все состояния
     setSelectedFiles([])
     setResults([])
+    setAnalysisResults([])
     setError(null)
     setHasAnalyzed(false)
     setLoading(false) // Важно: останавливаем загрузку
@@ -492,6 +553,37 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
 
         {/* Loading Section - показываем только когда идет загрузка */}
         {loading && <ResultsSkeleton />}
+
+        {/* Analysis Results Section - показываем ошибки и отклонения */}
+        {!loading && hasAnalyzed && analysisResults.length > 0 && (
+          <div className="space-y-3">
+            {analysisResults.some((result) => !result.success) && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-white">Результаты анализа</h4>
+                {analysisResults.map((result, index) => {
+                  if (result.success) return null
+
+                  return (
+                    <Card key={index} className="border-orange-200 bg-orange-50">
+                      <CardContent className="p-3">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-orange-800">{result.fileName}</p>
+                            <p className="text-xs text-orange-600 mt-1">{result.rejectionReason || result.error}</p>
+                            {result.rejectionReason && (
+                              <p className="text-xs text-orange-500 mt-1">Попробуйте загрузить другое изображение</p>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Results Section - показываем только если есть результаты и не загружаем */}
         {!loading && results.length > 0 && (
