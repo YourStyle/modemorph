@@ -7,7 +7,14 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Menu, Home, Shirt, Package, Palette, Settings, LogOut, User } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Menu, Home, Shirt, Package, Palette, Settings, LogOut, User, UserCog } from "lucide-react"
 
 interface UserProfile {
   id: string
@@ -142,22 +149,45 @@ export function Navigation() {
 
           {/* User Menu */}
           <div className="flex items-center space-x-4">
-            <div className="hidden md:flex md:items-center md:space-x-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>
-                  <User className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="text-sm">
-                <p className="font-medium text-gray-900">{profile?.full_name || user.email}</p>
-                <p className="text-gray-500">{profile?.is_admin ? "Администратор" : "Пользователь"}</p>
-              </div>
+            {/* Desktop User Menu */}
+            <div className="hidden md:flex md:items-center">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="flex items-center space-x-2 h-auto p-2">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback>
+                        <User className="h-4 w-4" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="text-left">
+                      <p className="text-sm font-medium text-gray-900">{profile?.full_name || user.email}</p>
+                      <p className="text-xs text-gray-500">{profile?.is_admin ? "Администратор" : "Пользователь"}</p>
+                    </div>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem asChild>
+                    <Link href="/app/profile" className="flex items-center">
+                      <UserCog className="h-4 w-4 mr-2" />
+                      Настройки профиля
+                    </Link>
+                  </DropdownMenuItem>
+                  {profile?.is_admin && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin/profile" className="flex items-center">
+                        <User className="h-4 w-4 mr-2" />
+                        Профиль администратора
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Выйти
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-
-            <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex items-center">
-              <LogOut className="h-4 w-4 mr-2" />
-              Выйти
-            </Button>
 
             {/* Mobile menu */}
             <Sheet>
@@ -182,10 +212,29 @@ export function Navigation() {
 
                   <div className="flex-1 space-y-1">
                     <NavItems mobile />
+
+                    <div className="pt-4 border-t">
+                      <Link
+                        href="/app/profile"
+                        className="flex items-center px-4 py-2 text-base font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                      >
+                        <UserCog className="mr-3 h-5 w-5" />
+                        Настройки профиля
+                      </Link>
+                      {profile?.is_admin && (
+                        <Link
+                          href="/admin/profile"
+                          className="flex items-center px-4 py-2 text-base font-medium rounded-md text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                        >
+                          <User className="mr-3 h-5 w-5" />
+                          Профиль администратора
+                        </Link>
+                      )}
+                    </div>
                   </div>
 
                   <div className="pt-4 border-t">
-                    <Button variant="ghost" onClick={handleSignOut} className="w-full justify-start">
+                    <Button variant="ghost" onClick={handleSignOut} className="w-full justify-start text-red-600">
                       <LogOut className="h-4 w-4 mr-2" />
                       Выйти
                     </Button>

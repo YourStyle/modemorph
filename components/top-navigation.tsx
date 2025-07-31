@@ -21,6 +21,8 @@ interface WeatherData {
   location: string
   humidity: number
   windSpeed: number
+  icon: string
+  fromCache?: boolean
 }
 
 interface UserProfile {
@@ -39,7 +41,7 @@ export function TopNavigation() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(true)
   const [weatherRefreshing, setWeatherRefreshing] = useState(false)
-  const [weatherError, setWeatherError] = useState(false)
+  const [weatherError, setWeatherError] = useState<string | null>(null)
   const [user, setUser] = useState<UserProfile | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -68,7 +70,43 @@ export function TopNavigation() {
     loadUser()
 
     // Загружаем погоду
-    loadWeather()
+    const fetchWeather = async () => {
+      try {
+        // Get user's location
+        if (!navigator.geolocation) {
+          throw new Error("Geolocation not supported")
+        }
+
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 10000,
+            enableHighAccuracy: false,
+            maximumAge: 300000, // 5 minutes
+          })
+        })
+
+        const { latitude, longitude } = position.coords
+
+        // Fetch weather from our API
+        const response = await fetch(`/api/weather?lat=${latitude}&lon=${longitude}`)
+
+        if (!response.ok) {
+          throw new Error("Weather service unavailable")
+        }
+
+        const weatherData = await response.json()
+        setWeather(weatherData)
+        setWeatherError(null)
+      } catch (err) {
+        console.error("Weather fetch error:", err)
+        setWeatherError("Погода недоступна")
+        setWeather(null)
+      } finally {
+        setWeatherLoading(false)
+      }
+    }
+
+    fetchWeather()
 
     return () => clearInterval(timer)
   }, [supabase])
@@ -110,7 +148,7 @@ export function TopNavigation() {
       } else {
         setWeatherLoading(true)
       }
-      setWeatherError(false)
+      setWeatherError(null)
 
       // Get user location
       const coords = await getLocation()
@@ -136,10 +174,10 @@ export function TopNavigation() {
       }
 
       setWeather(result)
-      setWeatherError(false)
+      setWeatherError(null)
     } catch (error) {
       console.error("Failed to load weather:", error)
-      setWeatherError(true)
+      setWeatherError("Погода недоступна")
       setWeather(null)
     } finally {
       setWeatherLoading(false)
@@ -207,29 +245,31 @@ export function TopNavigation() {
             <p className="text-sm sm:text-lg text-gray-600">{formatTime(currentTime)}</p>
 
             {/* Погода */}
-            {weatherLoading ? (
-              <div className="flex items-center space-x-2">
-                <div className="w-4 h-4 sm:w-5 sm:h-5 bg-gray-200 rounded animate-pulse" />
-                <div className="w-8 h-4 bg-gray-200 rounded animate-pulse" />
-              </div>
-            ) : weatherError ? (
-              <div className="flex items-center space-x-1 sm:space-x-2 text-gray-400">
-                <Cloud className="w-4 h-4 sm:w-5 sm:h-5" />
-                <span className="text-xs sm:text-sm">Погода недоступна</span>
-              </div>
-            ) : weather ? (
-              <div className="flex items-center space-x-1 sm:space-x-2">
-                <div
-                  className="flex items-center space-x-1 sm:space-x-2 cursor-pointer group"
-                  title={`${weather.location}: ${weather.description}, влажность ${weather.humidity}%, ветер ${weather.windSpeed} м/с`}
-                >
-                  {getWeatherIcon(weather.condition)}
-                  <span className="text-sm sm:text-base text-gray-700">{weather.temperature}°</span>
-                  {/* Описание погоды только на больших экранах */}
-                  <span className="hidden sm:inline text-sm text-gray-600">{weather.description}</span>
-                  <MapPin className="hidden sm:inline w-3 h-3 text-gray-400 group-hover:text-gray-600" />
-                  <span className="hidden lg:inline text-xs text-gray-500">{weather.location}</span>
-                </div>
+            <div className="flex items-center space-x-1 sm:space-x-2">
+              <div
+                className="flex items-center space-x-1 sm:space-x-2 cursor-pointer group"
+                title={`${weather?.location}: ${weather?.description}, влажность ${weather?.humidity}%, ветер ${weather?.windSpeed} м/с`}
+              >
+                {weatherLoading ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 sm:w-5 sm:h-5 bg-gray-200 rounded animate-pulse" />
+                    <div className="w-8 h-4 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                ) : weatherError ? (
+                  <div className="flex items-center space-x-1 sm:space-x-2 text-gray-400">
+                    <Cloud className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="text-xs sm:text-sm">{weatherError}</span>
+                  </div>
+                ) : weather ? (
+                  <div className="flex items-center space-x-1 sm:space-x-2">
+                    {getWeatherIcon(weather.condition)}
+                    <span className="text-sm sm:text-base text-gray-700">{weather.temperature}°</span>
+                    {/* Описание погоды только на больших экранах */}
+                    <span className="hidden sm:inline text-sm text-gray-600">{weather.description}</span>
+                    <MapPin className="hidden sm:inline w-3 h-3 text-gray-400 group-hover:text-gray-600" />
+                    <span className="hidden lg:inline text-xs text-gray-500">{weather.location}</span>
+                  </div>
+                ) : null}
 
                 {/* Кнопка обновления погоды */}
                 <Button
@@ -245,7 +285,7 @@ export function TopNavigation() {
                   />
                 </Button>
               </div>
-            ) : null}
+            </div>
           </div>
         </div>
 

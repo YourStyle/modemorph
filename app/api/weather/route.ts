@@ -1,135 +1,128 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { WeatherCache } from "@/lib/weather-cache"
+import { createClient } from "@/lib/supabase/server"
 
-interface WeatherResponse {
+interface WeatherData {
   temperature: number
-  condition: string
   description: string
+  icon: string
   location: string
-  humidity: number
-  windSpeed: number
 }
 
-interface GeolocationCoords {
-  latitude: number
-  longitude: number
+interface CachedWeather {
+  id: string
+  location: string
+  temperature: number
+  description: string
+  icon: string
+  cached_at: string
 }
 
-async function fetchWeatherWithRetry(
-  latitude: number,
-  longitude: number,
-  apiKey: string,
-  maxRetries = 3,
-): Promise<any> {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY
+const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes in milliseconds
+
+async function fetchWeatherWithRetry(lat: number, lon: number, retries = 3): Promise<WeatherData | null> {
+  for (let i = 0; i < retries; i++) {
     try {
-      console.log(`Weather API attempt ${attempt}/${maxRetries}`)
-
       const response = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric&lang=ru`,
+        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=ru`,
         {
-          next: { revalidate: 0 },
+          next: { revalidate: 600 }, // Cache for 10 minutes
           headers: {
-            "User-Agent": "ModeMorph/1.0",
+            "User-Agent": "ModeMorph-Weather-App/1.0",
           },
         },
       )
 
       if (!response.ok) {
-        throw new Error(`Weather API returned ${response.status}: ${response.statusText}`)
+        throw new Error(`Weather API error: ${response.status}`)
       }
 
       const data = await response.json()
-      console.log("Weather API success:", data.name, data.main.temp + "°C")
-      return data
-    } catch (error) {
-      console.error(`Weather API attempt ${attempt} failed:`, error)
 
-      if (attempt === maxRetries) {
-        throw error
+      return {
+        temperature: Math.round(data.main.temp),
+        description: data.weather[0].description,
+        icon: data.weather[0].icon,
+        location: data.name || "Unknown",
+      }
+    } catch (error) {
+      console.error(`Weather fetch attempt ${i + 1} failed:`, error)
+
+      if (i === retries - 1) {
+        return null
       }
 
-      // Wait before retry (exponential backoff)
-      const delay = Math.pow(2, attempt) * 1000
-      await new Promise((resolve) => setTimeout(resolve, delay))
+      // Exponential backoff
+      await new Promise((resolve) => setTimeout(resolve, Math.pow(2, i) * 1000))
     }
   }
+
+  return null
 }
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const { latitude, longitude }: GeolocationCoords = await request.json()
+    const { searchParams } = new URL(request.url)
+    const lat = searchParams.get("lat")
+    const lon = searchParams.get("lon")
 
-    if (!latitude || !longitude) {
-      throw new Error("Invalid coordinates provided")
+    if (!lat || !lon) {
+      return NextResponse.json({ error: "Latitude and longitude are required" }, { status: 400 })
     }
 
-    const weatherCache = new WeatherCache()
-
-    // First, try to get cached weather data by location
-    let weatherData = await weatherCache.getCachedWeatherByLocation({ latitude, longitude })
-
-    if (weatherData) {
-      console.log("Using cached weather data for:", weatherData.location)
-      return NextResponse.json(weatherData)
+    if (!OPENWEATHER_API_KEY) {
+      return NextResponse.json({ error: "Weather service not configured" }, { status: 503 })
     }
 
-    // If no cached data by location, fetch from API
-    const API_KEY = process.env.OPENWEATHER_API_KEY
-    if (!API_KEY) {
-      throw new Error("Weather API key not configured")
+    const latitude = Number.parseFloat(lat)
+    const longitude = Number.parseFloat(lon)
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return NextResponse.json({ error: "Invalid coordinates" }, { status: 400 })
     }
 
-    console.log("Fetching fresh weather data from API for coordinates:", latitude, longitude)
+    const supabase = createClient()
 
-    const data = await fetchWeatherWithRetry(latitude, longitude, API_KEY)
+    // Check cache first
+    const cacheKey = `${latitude.toFixed(2)},${longitude.toFixed(2)}`
+    const { data: cachedWeather } = await supabase.from("weather_cache").select("*").eq("location", cacheKey).single()
 
-    // Map OpenWeatherMap conditions to our conditions
-    const getCondition = (weatherCode: string): string => {
-      const code = weatherCode.toLowerCase()
-      if (code.includes("clear")) return "sunny"
-      if (code.includes("cloud")) return "cloudy"
-      if (code.includes("rain") || code.includes("drizzle")) return "rainy"
-      if (code.includes("snow")) return "snowy"
-      return "cloudy"
-    }
+    if (cachedWeather) {
+      const cacheAge = Date.now() - new Date(cachedWeather.cached_at).getTime()
 
-    weatherData = {
-      temperature: Math.round(data.main.temp),
-      condition: getCondition(data.weather[0].main),
-      description: data.weather[0].description,
-      location: data.name,
-      humidity: data.main.humidity,
-      windSpeed: Math.round(data.wind?.speed || 0),
-    }
-
-    // Save to cache for future requests
-    await weatherCache.saveWeatherData({ latitude, longitude }, weatherData)
-
-    // Clean up old data (run occasionally)
-    if (Math.random() < 0.1) {
-      // 10% chance to run cleanup
-      weatherCache.cleanupOldWeatherData().catch(console.error)
-    }
-
-    return NextResponse.json(weatherData)
-  } catch (error) {
-    console.error("Failed to load weather after all retries:", error)
-
-    // Try to get any cached data as fallback (even if older than 1 hour)
-    try {
-      const weatherCache = new WeatherCache()
-      const fallbackWeather = await weatherCache.getCachedWeather("Москва")
-
-      if (fallbackWeather) {
-        console.log("Using cached Moscow weather as fallback")
-        return NextResponse.json(fallbackWeather)
+      if (cacheAge < CACHE_DURATION) {
+        return NextResponse.json({
+          temperature: cachedWeather.temperature,
+          description: cachedWeather.description,
+          icon: cachedWeather.icon,
+          location: cachedWeather.location,
+          fromCache: true,
+        })
       }
-    } catch (fallbackError) {
-      console.error("Fallback cache lookup failed:", fallbackError)
     }
 
-    // Return error response instead of hardcoded data
-    return NextResponse.json({ error: "Weather service temporarily unavailable" }, { status: 503 })
+    // Fetch fresh weather data
+    const weatherData = await fetchWeatherWithRetry(latitude, longitude)
+
+    if (!weatherData) {
+      return NextResponse.json({ error: "Weather data unavailable" }, { status: 503 })
+    }
+
+    // Update cache
+    await supabase.from("weather_cache").upsert({
+      location: cacheKey,
+      temperature: weatherData.temperature,
+      description: weatherData.description,
+      icon: weatherData.icon,
+      cached_at: new Date().toISOString(),
+    })
+
+    return NextResponse.json({
+      ...weatherData,
+      fromCache: false,
+    })
+  } catch (error) {
+    console.error("Weather API error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

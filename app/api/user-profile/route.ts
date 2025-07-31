@@ -7,13 +7,14 @@ export async function GET() {
 
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Get user profile data
     const { data: profile, error: profileError } = await supabase
       .from("user_profiles")
       .select("*")
@@ -21,53 +22,61 @@ export async function GET() {
       .single()
 
     if (profileError && profileError.code !== "PGRST116") {
-      console.error("Error fetching profile:", profileError)
+      console.error("Error fetching user profile:", profileError)
       return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 })
     }
 
-    return NextResponse.json({ profile })
+    return NextResponse.json({
+      user_id: user.id,
+      email: user.email,
+      avatar_url: profile?.avatar_url || null,
+      full_name: profile?.full_name || null,
+      preferences: profile?.preferences || null,
+      created_at: profile?.created_at || user.created_at,
+    })
   } catch (error) {
-    console.error("Error in GET /api/user-profile:", error)
+    console.error("Error in user profile API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function PATCH(request: NextRequest) {
   try {
     const supabase = createClient()
 
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const body = await request.json()
+    const { avatar_url, full_name, preferences } = body
 
-    const { data: profile, error: profileError } = await supabase
+    // Update or insert user profile
+    const { data, error } = await supabase
       .from("user_profiles")
-      .insert([
-        {
-          user_id: user.id,
-          email: user.email,
-          is_admin: false,
-          ...body,
-        },
-      ])
+      .upsert({
+        user_id: user.id,
+        avatar_url,
+        full_name,
+        preferences,
+        updated_at: new Date().toISOString(),
+      })
       .select()
       .single()
 
-    if (profileError) {
-      console.error("Error creating profile:", profileError)
-      return NextResponse.json({ error: "Failed to create profile" }, { status: 500 })
+    if (error) {
+      console.error("Error updating user profile:", error)
+      return NextResponse.json({ error: "Failed to update profile" }, { status: 500 })
     }
 
-    return NextResponse.json({ profile })
+    return NextResponse.json(data)
   } catch (error) {
-    console.error("Error in POST /api/user-profile:", error)
+    console.error("Error in user profile update API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

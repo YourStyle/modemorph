@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Bookmark, Package, BookmarkCheck, Sparkles, User, Clock } from "lucide-react"
+import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucide-react"
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
@@ -47,6 +47,8 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
   const [userLooks, setUserLooks] = useState<any[]>([])
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
+  const [vtonLoading, setVtonLoading] = useState(false)
+  const [vtonResult, setVtonResult] = useState<any>(null)
 
   const items = suggestion.items || []
   const title = suggestion.title || "Без названия"
@@ -118,6 +120,51 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
       toast.error("Ошибка сохранения образа")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleTryOn = async () => {
+    if (items.length === 0) {
+      toast.error("Нет вещей для примерки")
+      return
+    }
+
+    setVtonLoading(true)
+    setVtonResult(null)
+
+    try {
+      // Prepare items for VTON request
+      const vtonItems = items.map((item) => ({
+        name: item.name,
+        description: `${item.style || ""} ${item.has_print || ""} ${item.has_details || ""}`.trim(),
+        color: item.color,
+        material: item.material,
+        image_url: item.image_url,
+      }))
+
+      const response = await fetch("/api/vton", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          items: vtonItems,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to process virtual try-on")
+      }
+
+      setVtonResult(result.result)
+      toast.success("Примерка готова!")
+    } catch (error) {
+      console.error("Error in virtual try-on:", error)
+      toast.error(error instanceof Error ? error.message : "Ошибка при примерке")
+    } finally {
+      setVtonLoading(false)
     }
   }
 
@@ -240,8 +287,16 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
               size="sm"
               className="flex-1 text-gray-700 border-gray-200 bg-transparent"
               onClick={() => setShowTryOnModal(true)}
+              disabled={vtonLoading}
             >
-              Примерить
+              {vtonLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Примеряем...
+                </>
+              ) : (
+                "Примерить"
+              )}
             </Button>
           </div>
         </CardContent>
@@ -252,24 +307,61 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-blue-500" />
-              Скоро будет доступно
+              <Sparkles className="w-5 h-5 text-blue-500" />
+              Виртуальная примерка
             </DialogTitle>
           </DialogHeader>
-          <div className="py-6 text-center">
-            <p className="text-gray-600 mb-4">
-              Совсем скоро вы сможете сразу на себе примерять образы, но нужно чуть-чуть подождать.
-            </p>
-            <div className="flex justify-center">
-              <div className="animate-pulse flex space-x-1">
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                <div className="w-2 h-2 bg-blue-500 rounded-full animation-delay-200"></div>
-                <div className="w-2 h-2 bg-blue-500 rounded-full animation-delay-400"></div>
+          <div className="py-6">
+            {vtonLoading ? (
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-500" />
+                <p className="text-gray-600 mb-2">Создаем примерку...</p>
+                <p className="text-sm text-gray-500">Это может занять несколько секунд</p>
               </div>
-            </div>
+            ) : vtonResult ? (
+              <div className="text-center">
+                <div className="mb-4">
+                  {vtonResult.image_url && (
+                    <Image
+                      src={vtonResult.image_url || "/placeholder.svg"}
+                      alt="Virtual try-on result"
+                      width={300}
+                      height={400}
+                      className="rounded-lg mx-auto"
+                    />
+                  )}
+                </div>
+                <p className="text-green-600 font-medium">Примерка готова!</p>
+                {vtonResult.message && <p className="text-sm text-gray-600 mt-2">{vtonResult.message}</p>}
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-gray-600 mb-4">
+                  Хотите примерить этот образ? Мы создадим виртуальную примерку с вашим аватаром.
+                </p>
+                <div className="space-y-2 text-sm text-gray-500">
+                  <p>• Убедитесь, что у вас загружен аватар в профиле</p>
+                  <p>• Примерка займет несколько секунд</p>
+                </div>
+              </div>
+            )}
           </div>
-          <div className="flex justify-end">
-            <Button onClick={() => setShowTryOnModal(false)}>Понятно</Button>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowTryOnModal(false)}>
+              Закрыть
+            </Button>
+            {!vtonResult && (
+              <Button onClick={handleTryOn} disabled={vtonLoading}>
+                {vtonLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Примеряем...
+                  </>
+                ) : (
+                  "Начать примерку"
+                )}
+              </Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

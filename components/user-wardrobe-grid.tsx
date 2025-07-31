@@ -1,367 +1,320 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { Search, Filter, Grid, List } from "lucide-react"
-import { Input } from "@/components/ui/input"
+import { useState, useMemo } from "react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
-import { WardrobeItemCard } from "@/components/wardrobe-item-card"
-import { createClient } from "@/lib/supabase/client"
-import { useToast } from "@/hooks/use-toast"
+import { Search, Edit, Trash2, Package, Eye, EyeOff } from "lucide-react"
+import Image from "next/image"
+import { toast } from "sonner"
+import { EditWardrobeItemModal } from "./edit-wardrobe-item-modal"
 
 interface WardrobeItem {
-  id: string
-  name: string
-  type: string
+  id: number
+  item_name: string
+  image_url: string
   color: string
+  shade?: string
+  style?: string
   material?: string
-  brand?: string
-  season?: string
-  image_url?: string
-  tags?: string[]
+  url?: string
+  size_type?: string
+  has_print?: string
+  has_details?: string
+  notes?: string
+  is_basic: boolean
+  basic_item_id?: number | null
   created_at: string
   updated_at: string
+  basic_material_id?: number | null
+  is_hidden: boolean
+  user_id: string
 }
 
 interface UserWardrobeGridProps {
-  userId?: string
+  items: WardrobeItem[]
+  onItemsChange: () => void
 }
 
-export function UserWardrobeGrid({ userId }: UserWardrobeGridProps) {
-  const [items, setItems] = useState<WardrobeItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [sortBy, setSortBy] = useState<"name" | "type" | "created_at">("created_at")
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
-  const [filterType, setFilterType] = useState<string>("all")
-  const [filterSeason, setFilterSeason] = useState<string>("all")
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
-  const [availableTypes, setAvailableTypes] = useState<string[]>([])
-  const [availableSeasons, setAvailableSeasons] = useState<string[]>([])
+export function UserWardrobeGrid({ items, onItemsChange }: UserWardrobeGridProps) {
+  const [searchTerm, setSearchTerm] = useState("")
+  const [sortBy, setSortBy] = useState<string>("newest")
+  const [filterBy, setFilterBy] = useState<string>("all")
+  const [editingItem, setEditingItem] = useState<WardrobeItem | null>(null)
+  const [imageErrors, setImageErrors] = useState<Record<number, boolean>>({})
 
-  const supabase = createClient()
-  const { toast } = useToast()
+  // Get unique colors and materials for filtering
+  const uniqueColors = useMemo(() => {
+    const colors = items.map((item) => item.color).filter(Boolean)
+    return [...new Set(colors)].sort()
+  }, [items])
 
-  useEffect(() => {
-    loadWardrobeItems()
-  }, [userId])
+  const uniqueMaterials = useMemo(() => {
+    const materials = items.map((item) => item.material).filter(Boolean)
+    return [...new Set(materials)].sort()
+  }, [items])
 
-  const loadWardrobeItems = async () => {
-    try {
-      setLoading(true)
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) {
-        throw new Error("User not authenticated")
-      }
-
-      const targetUserId = userId || user.id
-
-      const { data, error } = await supabase
-        .from("wardrobe_user_items")
-        .select(`
-          id,
-          name,
-          type,
-          color,
-          material,
-          brand,
-          season,
-          image_url,
-          tags,
-          created_at,
-          updated_at
-        `)
-        .eq("user_id", targetUserId)
-        .order("created_at", { ascending: false })
-
-      if (error) {
-        throw error
-      }
-
-      setItems(data || [])
-
-      // Extract unique types and seasons for filters
-      const types = [...new Set(data?.map((item) => item.type).filter(Boolean) || [])]
-      const seasons = [...new Set(data?.map((item) => item.season).filter(Boolean) || [])]
-
-      setAvailableTypes(types)
-      setAvailableSeasons(seasons)
-    } catch (error) {
-      console.error("Error loading wardrobe items:", error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось загрузить вещи из гардероба",
-        variant: "destructive",
-      })
-    } finally {
-      setLoading(false)
-    }
-  }
-
+  // Filter and sort items
   const filteredAndSortedItems = useMemo(() => {
-    let filtered = items
+    const filtered = items.filter((item) => {
+      // Search filter
+      const matchesSearch =
+        searchTerm === "" ||
+        item.item_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.color?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.material?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.style?.toLowerCase().includes(searchTerm.toLowerCase())
 
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(
-        (item) =>
-          item.name?.toLowerCase().includes(query) ||
-          item.type?.toLowerCase().includes(query) ||
-          item.brand?.toLowerCase().includes(query) ||
-          item.material?.toLowerCase().includes(query) ||
-          item.tags?.some((tag) => tag.toLowerCase().includes(query)),
-      )
-    }
+      // Category filter
+      const matchesFilter =
+        filterBy === "all" ||
+        (filterBy === "basic" && item.is_basic) ||
+        (filterBy === "user" && !item.is_basic) ||
+        (filterBy === "hidden" && item.is_hidden) ||
+        (filterBy === "visible" && !item.is_hidden) ||
+        item.color === filterBy ||
+        item.material === filterBy
 
-    // Apply type filter
-    if (filterType !== "all") {
-      filtered = filtered.filter((item) => item.type === filterType)
-    }
+      return matchesSearch && matchesFilter
+    })
 
-    // Apply season filter
-    if (filterSeason !== "all") {
-      filtered = filtered.filter((item) => item.season === filterSeason)
-    }
-
-    // Apply sorting
+    // Sort items
     filtered.sort((a, b) => {
-      let aValue: string | number = ""
-      let bValue: string | number = ""
-
       switch (sortBy) {
+        case "newest":
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        case "oldest":
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
         case "name":
-          aValue = a.name || ""
-          bValue = b.name || ""
-          break
-        case "type":
-          aValue = a.type || ""
-          bValue = b.type || ""
-          break
-        case "created_at":
-          aValue = new Date(a.created_at).getTime()
-          bValue = new Date(b.created_at).getTime()
-          break
+          return a.item_name.localeCompare(b.item_name)
+        case "color":
+          return (a.color || "").localeCompare(b.color || "")
+        default:
+          return 0
       }
-
-      if (typeof aValue === "string" && typeof bValue === "string") {
-        return sortOrder === "asc" ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue)
-      }
-
-      return sortOrder === "asc" ? (aValue as number) - (bValue as number) : (bValue as number) - (aValue as number)
     })
 
     return filtered
-  }, [items, searchQuery, sortBy, sortOrder, filterType, filterSeason])
+  }, [items, searchTerm, sortBy, filterBy])
 
-  const handleItemUpdate = (updatedItem: WardrobeItem) => {
-    setItems((prev) => prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)))
+  const handleImageError = (itemId: number) => {
+    setImageErrors((prev) => ({ ...prev, [itemId]: true }))
   }
 
-  const handleItemDelete = (deletedItemId: string) => {
-    setItems((prev) => prev.filter((item) => item.id !== deletedItemId))
+  const handleDeleteItem = async (itemId: number) => {
+    if (!confirm("Вы уверены, что хотите удалить эту вещь?")) {
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/wardrobe-user-items/${itemId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        toast.success("Вещь удалена")
+        onItemsChange()
+      } else {
+        throw new Error("Failed to delete item")
+      }
+    } catch (error) {
+      console.error("Error deleting item:", error)
+      toast.error("Ошибка при удалении вещи")
+    }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        {/* Filters skeleton */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Skeleton className="h-10 flex-1" />
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-10 w-32" />
-        </div>
+  const handleToggleVisibility = async (item: WardrobeItem) => {
+    try {
+      const response = await fetch(`/api/wardrobe-user-items/${item.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          is_hidden: !item.is_hidden,
+        }),
+      })
 
-        {/* Grid skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <Skeleton className="aspect-square w-full mb-4" />
-                <Skeleton className="h-4 w-3/4 mb-2" />
-                <Skeleton className="h-3 w-1/2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    )
+      if (response.ok) {
+        toast.success(item.is_hidden ? "Вещь показана" : "Вещь скрыта")
+        onItemsChange()
+      } else {
+        throw new Error("Failed to toggle visibility")
+      }
+    } catch (error) {
+      console.error("Error toggling visibility:", error)
+      toast.error("Ошибка при изменении видимости")
+    }
   }
 
   return (
     <div className="space-y-6">
       {/* Search and Filters */}
-      <div className="flex flex-col gap-4">
+      <div className="space-y-4">
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
-            placeholder="Поиск по названию, типу, бренду..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Поиск по названию, цвету, материалу..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
           />
         </div>
 
         {/* Filters and Sort */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-          <div className="flex flex-wrap gap-2 flex-1">
-            {/* Type Filter */}
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Тип вещи" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все типы</SelectItem>
-                {availableTypes.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
+        <div className="flex gap-4 flex-wrap">
+          <Select value={sortBy} onValueChange={setSortBy}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Сортировка" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Сначала новые</SelectItem>
+              <SelectItem value="oldest">Сначала старые</SelectItem>
+              <SelectItem value="name">По названию</SelectItem>
+              <SelectItem value="color">По цвету</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Select value={filterBy} onValueChange={setFilterBy}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Фильтр" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все вещи</SelectItem>
+              <SelectItem value="basic">Базовые</SelectItem>
+              <SelectItem value="user">Пользовательские</SelectItem>
+              <SelectItem value="visible">Видимые</SelectItem>
+              <SelectItem value="hidden">Скрытые</SelectItem>
+              {uniqueColors.length > 0 && (
+                <>
+                  <SelectItem value="color-separator" disabled>
+                    — Цвета —
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Season Filter */}
-            <Select value={filterSeason} onValueChange={setFilterSeason}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Сезон" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все сезоны</SelectItem>
-                {availableSeasons.map((season) => (
-                  <SelectItem key={season} value={season}>
-                    {season}
+                  {uniqueColors.map((color) => (
+                    <SelectItem key={color} value={color}>
+                      {color}
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+              {uniqueMaterials.length > 0 && (
+                <>
+                  <SelectItem value="material-separator" disabled>
+                    — Материалы —
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Sort */}
-            <Select
-              value={`${sortBy}-${sortOrder}`}
-              onValueChange={(value) => {
-                const [field, order] = value.split("-")
-                setSortBy(field as typeof sortBy)
-                setSortOrder(order as typeof sortOrder)
-              }}
-            >
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Сортировка" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="created_at-desc">Сначала новые</SelectItem>
-                <SelectItem value="created_at-asc">Сначала старые</SelectItem>
-                <SelectItem value="name-asc">По названию А-Я</SelectItem>
-                <SelectItem value="name-desc">По названию Я-А</SelectItem>
-                <SelectItem value="type-asc">По типу А-Я</SelectItem>
-                <SelectItem value="type-desc">По типу Я-А</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* View Mode Toggle */}
-          <div className="flex gap-1 border rounded-lg p-1">
-            <Button
-              variant={viewMode === "grid" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("grid")}
-              className="h-8 w-8 p-0"
-            >
-              <Grid className="w-4 h-4" />
-            </Button>
-            <Button
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("list")}
-              className="h-8 w-8 p-0"
-            >
-              <List className="w-4 h-4" />
-            </Button>
-          </div>
+                  {uniqueMaterials.map((material) => (
+                    <SelectItem key={material} value={material}>
+                      {material}
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* Active Filters */}
-        {(searchQuery || filterType !== "all" || filterSeason !== "all") && (
-          <div className="flex flex-wrap gap-2">
-            {searchQuery && (
-              <Badge variant="secondary" className="gap-1">
-                Поиск: {searchQuery}
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="ml-1 hover:bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center text-xs"
-                >
-                  ×
-                </button>
-              </Badge>
-            )}
-            {filterType !== "all" && (
-              <Badge variant="secondary" className="gap-1">
-                Тип: {filterType}
-                <button
-                  onClick={() => setFilterType("all")}
-                  className="ml-1 hover:bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center text-xs"
-                >
-                  ×
-                </button>
-              </Badge>
-            )}
-            {filterSeason !== "all" && (
-              <Badge variant="secondary" className="gap-1">
-                Сезон: {filterSeason}
-                <button
-                  onClick={() => setFilterSeason("all")}
-                  className="ml-1 hover:bg-gray-300 rounded-full w-4 h-4 flex items-center justify-center text-xs"
-                >
-                  ×
-                </button>
-              </Badge>
-            )}
-          </div>
-        )}
+        {/* Results count */}
+        <div className="text-sm text-gray-500">
+          Найдено: {filteredAndSortedItems.length} из {items.length} вещей
+        </div>
       </div>
 
-      {/* Results Count */}
-      <div className="text-sm text-gray-600">
-        Найдено: {filteredAndSortedItems.length} из {items.length} вещей
-      </div>
-
-      {/* Items Grid/List */}
+      {/* Items Grid */}
       {filteredAndSortedItems.length === 0 ? (
         <div className="text-center py-12">
-          <div className="text-gray-400 mb-4">
-            <Filter className="w-12 h-12 mx-auto" />
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            {items.length === 0 ? "Гардероб пуст" : "Ничего не найдено"}
-          </h3>
-          <p className="text-gray-600">
-            {items.length === 0
-              ? "Добавьте первую вещь в свой гардероб"
-              : "Попробуйте изменить параметры поиска или фильтры"}
+          <Package className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-500">
+            {searchTerm || filterBy !== "all" ? "Ничего не найдено" : "Нет вещей в гардеробе"}
           </p>
         </div>
       ) : (
-        <div
-          className={
-            viewMode === "grid" ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" : "space-y-4"
-          }
-        >
-          {filteredAndSortedItems.map((item) => (
-            <WardrobeItemCard
-              key={item.id}
-              item={item}
-              viewMode={viewMode}
-              onUpdate={handleItemUpdate}
-              onDelete={handleItemDelete}
-            />
-          ))}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {filteredAndSortedItems.map((item) => {
+            const hasError = imageErrors[item.id]
+
+            return (
+              <Card key={item.id} className={`overflow-hidden ${item.is_hidden ? "opacity-50" : ""}`}>
+                <div className="aspect-square relative">
+                  {item.image_url && !hasError ? (
+                    <Image
+                      src={item.image_url || "/placeholder.svg"}
+                      alt={item.item_name}
+                      fill
+                      className="object-cover"
+                      onError={() => handleImageError(item.id)}
+                      sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                      <Package className="h-8 w-8 text-gray-400" />
+                    </div>
+                  )}
+
+                  {/* Overlay with actions */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 hover:opacity-100 transition-opacity duration-200 flex items-center justify-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => setEditingItem(item)} className="h-8 w-8 p-0">
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => handleToggleVisibility(item)}
+                      className="h-8 w-8 p-0"
+                    >
+                      {item.is_hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleDeleteItem(item.id)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                <CardContent className="p-3">
+                  <h3 className="font-medium text-sm truncate mb-1">{item.item_name}</h3>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {item.color && (
+                      <Badge variant="secondary" className="text-xs">
+                        {item.color}
+                      </Badge>
+                    )}
+                    {item.is_basic && (
+                      <Badge variant="outline" className="text-xs">
+                        Базовая
+                      </Badge>
+                    )}
+                    {item.is_hidden && (
+                      <Badge variant="destructive" className="text-xs">
+                        Скрыта
+                      </Badge>
+                    )}
+                  </div>
+                  {item.material && <p className="text-xs text-gray-500 truncate">{item.material}</p>}
+                </CardContent>
+              </Card>
+            )
+          })}
         </div>
+      )}
+
+      {/* Edit Modal */}
+      {editingItem && (
+        <EditWardrobeItemModal
+          item={editingItem}
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)}
+          onSave={() => {
+            setEditingItem(null)
+            onItemsChange()
+          }}
+        />
       )}
     </div>
   )
