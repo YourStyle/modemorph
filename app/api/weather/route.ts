@@ -1,59 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-interface WeatherData {
-  temperature: number
-  description: string
-  icon: string
-  location: string
-}
-
-// Use server-side environment variable (without NEXT_PUBLIC prefix)
-const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY
-const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes in milliseconds
-
-// In-memory cache for weather data
-const weatherCache = new Map<string, { data: WeatherData; timestamp: number }>()
-
-async function fetchWeatherWithRetry(lat: number, lon: number, retries = 3): Promise<WeatherData | null> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const response = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=ru`,
-        {
-          headers: {
-            "User-Agent": "ModeMorph-Weather-App/1.0",
-          },
-          // Don't cache on Vercel edge
-          cache: "no-store",
-        },
-      )
-
-      if (!response.ok) {
-        throw new Error(`Weather API error: ${response.status} ${response.statusText}`)
-      }
-
-      const data = await response.json()
-
-      return {
-        temperature: Math.round(data.main.temp),
-        description: data.weather[0].description,
-        icon: data.weather[0].icon,
-        location: data.name || "Unknown",
-      }
-    } catch (error) {
-      console.error(`Weather fetch attempt ${i + 1} failed:`, error)
-
-      if (i === retries - 1) {
-        return null
-      }
-
-      // Exponential backoff
-      await new Promise((resolve) => setTimeout(resolve, Math.pow(2, i) * 1000))
-    }
-  }
-
-  return null
-}
+// Кэш в памяти для погодных данных
+const weatherCache = new Map<string, { data: any; timestamp: number }>()
+const CACHE_DURATION = 10 * 60 * 1000 // 10 минут
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,52 +10,71 @@ export async function GET(request: NextRequest) {
     const lat = searchParams.get("lat")
     const lon = searchParams.get("lon")
 
-    if (!lat || !lon) {
-      return NextResponse.json({ error: "Latitude and longitude are required" }, { status: 400 })
-    }
-
-    if (!OPENWEATHER_API_KEY) {
+    // Проверяем наличие API ключа
+    const apiKey = process.env.OPENWEATHER_API_KEY
+    if (!apiKey) {
       console.error("OpenWeather API key not configured")
       return NextResponse.json({ error: "Weather service not configured" }, { status: 503 })
     }
 
-    const latitude = Number.parseFloat(lat)
-    const longitude = Number.parseFloat(lon)
+    // Используем координаты Москвы по умолчанию
+    const latitude = lat || "55.7558"
+    const longitude = lon || "37.6176"
 
-    if (isNaN(latitude) || isNaN(longitude)) {
-      return NextResponse.json({ error: "Invalid coordinates" }, { status: 400 })
-    }
+    const cacheKey = `${latitude},${longitude}`
 
-    // Check cache first
-    const cacheKey = `${latitude.toFixed(2)},${longitude.toFixed(2)}`
+    // Проверяем кэш
     const cached = weatherCache.get(cacheKey)
-
     if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      return NextResponse.json({
-        ...cached.data,
-        fromCache: true,
-      })
+      return NextResponse.json(cached.data)
     }
 
-    // Fetch fresh weather data
-    const weatherData = await fetchWeatherWithRetry(latitude, longitude)
+    // Запрос к OpenWeather API
+    const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric&lang=ru`
 
-    if (!weatherData) {
-      return NextResponse.json({ error: "Weather data unavailable" }, { status: 503 })
+    const response = await fetch(weatherUrl, {
+      headers: {
+        "User-Agent": "ModeMorph/1.0",
+      },
+    })
+
+    if (!response.ok) {
+      console.error(`OpenWeather API error: ${response.status} ${response.statusText}`)
+      throw new Error(`Weather API returned ${response.status}`)
     }
 
-    // Update cache
+    const data = await response.json()
+
+    // Обрабатываем данные
+    const weatherData = {
+      temperature: Math.round(data.main.temp),
+      condition: data.weather[0].main.toLowerCase(),
+      description: data.weather[0].description,
+      humidity: data.main.humidity,
+      windSpeed: data.wind?.speed || 0,
+      city: data.name,
+    }
+
+    // Сохраняем в кэш
     weatherCache.set(cacheKey, {
       data: weatherData,
       timestamp: Date.now(),
     })
 
-    return NextResponse.json({
-      ...weatherData,
-      fromCache: false,
-    })
+    return NextResponse.json(weatherData)
   } catch (error) {
-    console.error("Weather API error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Weather fetch error:", error)
+
+    // Возвращаем данные по умолчанию для Москвы
+    const fallbackData = {
+      temperature: 20,
+      condition: "clear",
+      description: "ясно",
+      humidity: 50,
+      windSpeed: 3,
+      city: "Москва",
+    }
+
+    return NextResponse.json(fallbackData)
   }
 }

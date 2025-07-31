@@ -25,56 +25,71 @@ export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }
           error: userError,
         } = await supabase.auth.getUser()
 
-        if (userError || !user) {
+        if (userError) {
+          console.error("Auth error:", userError)
           router.push("/auth/login")
           return
         }
 
-        // Сначала пытаемся получить существующий профиль
-        const profileResponse = await fetch("/api/user-profile")
+        if (!user) {
+          router.push("/auth/login")
+          return
+        }
 
-        if (profileResponse.ok) {
-          const { profile } = await profileResponse.json()
+        // Пытаемся получить существующий профиль
+        try {
+          const profileResponse = await fetch("/api/user-profile")
 
-          if (profile) {
-            // Профиль существует, перенаправляем по роли
-            if (profile.is_admin) {
+          if (profileResponse.ok) {
+            const { profile } = await profileResponse.json()
+
+            if (profile) {
+              // Профиль существует, перенаправляем по роли
+              if (profile.is_admin) {
+                router.push(adminRedirect)
+              } else {
+                router.push(userRedirect)
+              }
+              return
+            }
+          }
+
+          // Профиля нет, создаем новый
+          const createResponse = await fetch("/api/user-profile", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              full_name: user.user_metadata?.full_name || "",
+            }),
+          })
+
+          if (createResponse.ok) {
+            const { profile } = await createResponse.json()
+
+            if (profile?.is_admin) {
               router.push(adminRedirect)
             } else {
               router.push(userRedirect)
             }
-            return
-          }
-        }
-
-        // Профиля нет, создаем новый
-        const createResponse = await fetch("/api/user-profile", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            full_name: user.user_metadata?.full_name || "",
-          }),
-        })
-
-        if (createResponse.ok) {
-          const { profile } = await createResponse.json()
-
-          if (profile.is_admin) {
-            router.push(adminRedirect)
           } else {
+            // Если не удалось создать профиль, перенаправляем как обычного пользователя
+            console.warn("Failed to create profile, redirecting as regular user")
             router.push(userRedirect)
           }
-        } else {
-          // Если не удалось создать профиль, перенаправляем как обычного пользователя
+        } catch (profileError) {
+          console.error("Profile error:", profileError)
+          // В случае ошибки с профилем, перенаправляем как обычного пользователя
           router.push(userRedirect)
         }
       } catch (err) {
         console.error("Error checking user role:", err)
         setError("Ошибка проверки роли пользователя")
-        // В случае ошибки перенаправляем как обычного пользователя
-        router.push(userRedirect)
+        // В случае критической ошибки перенаправляем на страницу входа
+        setTimeout(() => {
+          router.push("/auth/login")
+        }, 3000)
       } finally {
         setLoading(false)
       }
@@ -85,14 +100,15 @@ export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center p-6 bg-white rounded-lg shadow-sm border max-w-md">
           <p className="text-red-600 mb-4">{error}</p>
+          <p className="text-sm text-gray-500 mb-4">Перенаправление на страницу входа...</p>
           <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            onClick={() => router.push("/auth/login")}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
           >
-            Попробовать снова
+            Перейти к входу
           </button>
         </div>
       </div>
@@ -101,9 +117,9 @@ export function AuthRedirect({ adminRedirect = "/admin", userRedirect = "/app" }
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400 mx-auto mb-4" />
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
           <p className="text-gray-600">Проверка роли пользователя...</p>
         </div>
       </div>

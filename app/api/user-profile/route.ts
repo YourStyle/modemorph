@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
 export async function GET() {
@@ -7,10 +7,10 @@ export async function GET() {
 
     const {
       data: { user },
-      error: authError,
+      error: userError,
     } = await supabase.auth.getUser()
 
-    if (authError || !user) {
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -22,47 +22,65 @@ export async function GET() {
 
     if (profileError) {
       console.error("Profile fetch error:", profileError)
-
-      // If profile doesn't exist, create it
-      if (profileError.code === "PGRST116") {
-        const { data: newProfile, error: createError } = await supabase
-          .from("profiles")
-          .insert({
-            id: user.id,
-            email: user.email,
-            full_name: user.user_metadata?.full_name || null,
-          })
-          .select()
-          .single()
-
-        if (createError) {
-          console.error("Profile creation error:", createError)
-          return NextResponse.json({ error: "Failed to create profile" }, { status: 500 })
-        }
-
-        return NextResponse.json({ profile: newProfile })
-      }
-
-      return NextResponse.json({ error: "Failed to fetch profile" }, { status: 500 })
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 })
     }
 
     return NextResponse.json({ profile })
   } catch (error) {
-    console.error("User profile API error:", error)
+    console.error("API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function PUT(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
 
     const {
       data: { user },
-      error: authError,
+      error: userError,
     } = await supabase.auth.getUser()
 
-    if (authError || !user) {
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { full_name } = body
+
+    const { data: profile, error: insertError } = await supabase
+      .from("profiles")
+      .insert({
+        id: user.id,
+        email: user.email,
+        full_name: full_name || "",
+        is_admin: false,
+      })
+      .select()
+      .single()
+
+    if (insertError) {
+      console.error("Profile creation error:", insertError)
+      return NextResponse.json({ error: "Failed to create profile" }, { status: 500 })
+    }
+
+    return NextResponse.json({ profile })
+  } catch (error) {
+    console.error("API error:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function PUT(request: NextRequest) {
+  try {
+    const supabase = createClient()
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -87,7 +105,7 @@ export async function PUT(request: Request) {
 
     return NextResponse.json({ profile })
   } catch (error) {
-    console.error("User profile update API error:", error)
+    console.error("API error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
