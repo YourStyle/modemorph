@@ -5,68 +5,79 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import type { User } from "@supabase/supabase-js"
 
 interface AuthRedirectProps {
   children: React.ReactNode
+  requireAuth?: boolean
   redirectTo?: string
 }
 
-export function AuthRedirect({ children, redirectTo = "/auth/login" }: AuthRedirectProps) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth/login" }: AuthRedirectProps) {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const {
-          data: { user },
-          error,
-        } = await supabase.auth.getUser()
-
-        if (error) {
-          console.error("Auth check error:", error)
-          setIsAuthenticated(false)
-          router.push(redirectTo)
-          return
-        }
-
-        if (user) {
-          setIsAuthenticated(true)
-        } else {
-          setIsAuthenticated(false)
-          router.push(redirectTo)
-        }
-      } catch (error) {
-        console.error("Auth check failed:", error)
-        setIsAuthenticated(false)
-        router.push(redirectTo)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     checkAuth()
 
-    // Подписываемся на изменения состояния аутентификации
+    // Подписываемся на изменения авторизации
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT" || !session) {
-        setIsAuthenticated(false)
-        router.push(redirectTo)
-      } else if (event === "SIGNED_IN" && session) {
-        setIsAuthenticated(true)
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "SIGNED_IN" && session?.user) {
+        setUser(session.user)
+        setLoading(false)
+      } else if (event === "SIGNED_OUT") {
+        setUser(null)
+        setLoading(false)
+        if (requireAuth) {
+          router.push(redirectTo)
+        }
       }
     })
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [supabase, router, redirectTo])
+  }, [requireAuth, redirectTo, router, supabase.auth])
 
-  if (isLoading) {
+  const checkAuth = async () => {
+    try {
+      const {
+        data: { user: currentUser },
+        error,
+      } = await supabase.auth.getUser()
+
+      if (error) {
+        console.error("Auth error:", error)
+        setUser(null)
+      } else {
+        setUser(currentUser)
+      }
+
+      // Если требуется авторизация, но пользователя нет
+      if (requireAuth && !currentUser) {
+        router.push(redirectTo)
+        return
+      }
+
+      // Если не требуется авторизация, но пользователь есть
+      if (!requireAuth && currentUser) {
+        router.push("/app")
+        return
+      }
+    } catch (error) {
+      console.error("Error checking auth:", error)
+      setUser(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Показываем загрузку
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
@@ -74,14 +85,14 @@ export function AuthRedirect({ children, redirectTo = "/auth/login" }: AuthRedir
     )
   }
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-gray-600">Перенаправление...</p>
-        </div>
-      </div>
-    )
+  // Если требуется авторизация, но пользователя нет
+  if (requireAuth && !user) {
+    return null // Редирект уже произошел
+  }
+
+  // Если не требуется авторизация, но пользователь есть
+  if (!requireAuth && user) {
+    return null // Редирект уже произошел
   }
 
   return <>{children}</>

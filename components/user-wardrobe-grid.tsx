@@ -2,35 +2,44 @@
 
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { WardrobeItemCard } from "@/components/wardrobe-item-card"
-import { WardrobeFilters } from "@/components/wardrobe-filters"
 import { Button } from "@/components/ui/button"
-import { Plus, Search, Filter } from "lucide-react"
+import { Plus, Search, Filter, Package } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { useRouter } from "next/navigation"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import Image from "next/image"
 
-interface WardrobeItem {
-  id: string
-  name: string
-  category: string
-  color: string
-  brand?: string
-  image_url?: string
-  tags?: string[]
-  created_at: string
+interface WardrobeUserItem {
+  id: number
   user_id: string
+  item_name: string
+  material: string
+  color: string
+  style: string
+  has_print: string
+  image_url: string | null
+  basic_item_id: number | null
+  is_hidden: boolean
+  size_type: string
+  shade: string
+  has_details: string
+  url: string
+  notes: string
+  created_at: string
+  updated_at: string
 }
 
 interface FilterState {
   category: string
   color: string
-  brand: string
-  tags: string[]
+  material: string
+  style: string
 }
 
 export function UserWardrobeGrid() {
-  const [items, setItems] = useState<WardrobeItem[]>([])
-  const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([])
+  const [items, setItems] = useState<WardrobeUserItem[]>([])
+  const [filteredItems, setFilteredItems] = useState<WardrobeUserItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -38,8 +47,8 @@ export function UserWardrobeGrid() {
   const [filters, setFilters] = useState<FilterState>({
     category: "",
     color: "",
-    brand: "",
-    tags: [],
+    material: "",
+    style: "",
   })
 
   const router = useRouter()
@@ -67,10 +76,12 @@ export function UserWardrobeGrid() {
         return
       }
 
+      // Получаем данные из правильной таблицы wardrobe_user_items
       const { data, error: fetchError } = await supabase
-        .from("wardrobe_items")
+        .from("wardrobe_user_items")
         .select("*")
         .eq("user_id", user.id)
+        .eq("is_hidden", false)
         .order("created_at", { ascending: false })
 
       if (fetchError) {
@@ -103,16 +114,11 @@ export function UserWardrobeGrid() {
       const query = searchQuery.toLowerCase().trim()
       filtered = filtered.filter(
         (item) =>
-          item.name?.toLowerCase().includes(query) ||
-          item.category?.toLowerCase().includes(query) ||
-          item.brand?.toLowerCase().includes(query) ||
-          (Array.isArray(item.tags) && item.tags.some((tag) => tag.toLowerCase().includes(query))),
+          item.item_name?.toLowerCase().includes(query) ||
+          item.color?.toLowerCase().includes(query) ||
+          item.material?.toLowerCase().includes(query) ||
+          item.style?.toLowerCase().includes(query),
       )
-    }
-
-    // Фильтр по категории
-    if (filters.category) {
-      filtered = filtered.filter((item) => item.category === filters.category)
     }
 
     // Фильтр по цвету
@@ -120,16 +126,14 @@ export function UserWardrobeGrid() {
       filtered = filtered.filter((item) => item.color === filters.color)
     }
 
-    // Фильтр по бренду
-    if (filters.brand) {
-      filtered = filtered.filter((item) => item.brand === filters.brand)
+    // Фильтр по материалу
+    if (filters.material) {
+      filtered = filtered.filter((item) => item.material === filters.material)
     }
 
-    // Фильтр по тегам
-    if (Array.isArray(filters.tags) && filters.tags.length > 0) {
-      filtered = filtered.filter((item) =>
-        Array.isArray(item.tags) ? filters.tags.some((tag) => item.tags.includes(tag)) : false,
-      )
+    // Фильтр по стилю
+    if (filters.style) {
+      filtered = filtered.filter((item) => item.style === filters.style)
     }
 
     setFilteredItems(filtered)
@@ -143,8 +147,8 @@ export function UserWardrobeGrid() {
     setFilters({
       category: "",
       color: "",
-      brand: "",
-      tags: [],
+      material: "",
+      style: "",
     })
     setSearchQuery("")
   }
@@ -213,7 +217,7 @@ export function UserWardrobeGrid() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
           <Input
-            placeholder="Поиск по названию, категории, бренду..."
+            placeholder="Поиск по названию, цвету, материалу..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -225,23 +229,13 @@ export function UserWardrobeGrid() {
         </Button>
       </div>
 
-      {/* Filters Panel */}
-      {showFilters && (
-        <WardrobeFilters
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          onClearFilters={clearFilters}
-          items={Array.isArray(items) ? items : []}
-        />
-      )}
-
       {/* Results Info */}
-      {(searchQuery || filters.category || filters.color || filters.brand || filters.tags.length > 0) && (
+      {(searchQuery || filters.color || filters.material || filters.style) && (
         <div className="flex items-center justify-between text-sm text-gray-600">
           <span>
             Показано {itemsToShow.length} из {Array.isArray(items) ? items.length : 0} предметов
           </span>
-          {(searchQuery || filters.category || filters.color || filters.brand || filters.tags.length > 0) && (
+          {(searchQuery || filters.color || filters.material || filters.style) && (
             <Button variant="ghost" size="sm" onClick={clearFilters}>
               Сбросить фильтры
             </Button>
@@ -252,6 +246,7 @@ export function UserWardrobeGrid() {
       {/* Items Grid */}
       {itemsToShow.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 space-y-4">
+          <Package className="w-16 h-16 text-gray-300" />
           <div className="text-gray-500 text-center">
             <p className="text-lg font-medium">
               {Array.isArray(items) && items.length === 0 ? "Ваш гардероб пуст" : "Ничего не найдено"}
@@ -272,7 +267,39 @@ export function UserWardrobeGrid() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {itemsToShow.map((item) => (
-            <WardrobeItemCard key={item.id} item={item} onUpdate={loadWardrobeItems} />
+            <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
+              <div className="aspect-square relative">
+                {item.image_url ? (
+                  <Image
+                    src={item.image_url || "/placeholder.svg"}
+                    alt={item.item_name}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                    <Package className="h-8 w-8 text-gray-400" />
+                  </div>
+                )}
+              </div>
+              <CardContent className="p-3">
+                <h3 className="font-medium text-sm truncate mb-1">{item.item_name}</h3>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {item.color && (
+                    <Badge variant="secondary" className="text-xs">
+                      {item.color}
+                    </Badge>
+                  )}
+                  {item.material && (
+                    <Badge variant="outline" className="text-xs">
+                      {item.material}
+                    </Badge>
+                  )}
+                </div>
+                {item.style && <p className="text-xs text-gray-500 truncate">{item.style}</p>}
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}

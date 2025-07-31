@@ -10,24 +10,22 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { User, Settings, LogOut, Cloud, Sun, CloudRain, Snowflake } from "lucide-react"
+import { User, Settings, LogOut, MapPin, Thermometer } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
 interface WeatherData {
+  location: string
   temperature: number
   description: string
-  location: string
   icon: string
-  error?: string
 }
 
 interface UserProfile {
   id: string
   email: string
-  full_name?: string
-  avatar_url?: string
-  is_admin?: boolean
+  full_name: string
+  avatar_url: string | null
 }
 
 export function TopNavigation() {
@@ -53,26 +51,11 @@ export function TopNavigation() {
         try {
           const profileResponse = await fetch("/api/user-profile")
           if (profileResponse.ok) {
-            const { profile } = await profileResponse.json()
+            const profile = await profileResponse.json()
             setUser(profile)
-          } else {
-            // Fallback к данным из auth
-            setUser({
-              id: authUser.id,
-              email: authUser.email || "",
-              full_name: authUser.user_metadata?.full_name,
-              avatar_url: authUser.user_metadata?.avatar_url,
-            })
           }
         } catch (error) {
           console.error("Error loading profile:", error)
-          // Fallback к данным из auth
-          setUser({
-            id: authUser.id,
-            email: authUser.email || "",
-            full_name: authUser.user_metadata?.full_name,
-            avatar_url: authUser.user_metadata?.avatar_url,
-          })
         }
       }
 
@@ -94,42 +77,42 @@ export function TopNavigation() {
             const { latitude, longitude } = position.coords
             await fetchWeather(latitude, longitude)
           },
-          async (error) => {
-            console.log("Geolocation error:", error)
-            // Fallback на Москву
-            await fetchWeather(55.7558, 37.6176)
+          async () => {
+            // Если геолокация недоступна, используем Москву по умолчанию
+            await fetchWeather()
           },
-          { timeout: 5000, maximumAge: 300000 }, // 5 секунд таймаут, кэш 5 минут
+          { timeout: 5000 },
         )
       } else {
-        // Fallback на Москву
-        await fetchWeather(55.7558, 37.6176)
+        await fetchWeather()
       }
     } catch (error) {
       console.error("Error loading weather:", error)
-      // Устанавливаем fallback погоду
-      setWeather({
-        temperature: 20,
-        description: "Ясно",
-        location: "Москва",
-        icon: "☀️",
-      })
+      await fetchWeather()
     }
   }
 
-  const fetchWeather = async (lat: number, lon: number) => {
+  const fetchWeather = async (lat?: number, lon?: number) => {
     try {
-      const response = await fetch(`/api/weather?lat=${lat}&lon=${lon}`)
-      const data = await response.json()
-      setWeather(data)
+      const params = new URLSearchParams()
+      if (lat && lon) {
+        params.append("lat", lat.toString())
+        params.append("lon", lon.toString())
+      }
+
+      const response = await fetch(`/api/weather?${params.toString()}`)
+      if (response.ok) {
+        const weatherData = await response.json()
+        setWeather(weatherData)
+      }
     } catch (error) {
-      console.error("Weather fetch error:", error)
+      console.error("Error fetching weather:", error)
+      // Устанавливаем fallback данные
       setWeather({
+        location: "Москва",
         temperature: 20,
         description: "Ясно",
-        location: "Москва",
-        icon: "☀️",
-        error: "Weather unavailable",
+        icon: "01d",
       })
     }
   }
@@ -140,23 +123,6 @@ export function TopNavigation() {
       router.push("/auth/login")
     } catch (error) {
       console.error("Error signing out:", error)
-    }
-  }
-
-  const getWeatherIcon = (iconText: string) => {
-    switch (iconText) {
-      case "☀️":
-        return <Sun className="h-4 w-4" />
-      case "⛅":
-      case "☁️":
-        return <Cloud className="h-4 w-4" />
-      case "🌧️":
-      case "🌦️":
-        return <CloudRain className="h-4 w-4" />
-      case "❄️":
-        return <Snowflake className="h-4 w-4" />
-      default:
-        return <Sun className="h-4 w-4" />
     }
   }
 
@@ -180,82 +146,85 @@ export function TopNavigation() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-between p-4 bg-white border-b">
-        <div className="flex items-center space-x-4">
-          <div className="h-4 w-24 bg-gray-200 rounded animate-pulse"></div>
-          <div className="h-4 w-16 bg-gray-200 rounded animate-pulse"></div>
+      <header className="bg-white border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="h-4 w-32 bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-4 w-16 bg-gray-200 rounded animate-pulse"></div>
+          </div>
+          <div className="h-8 w-8 bg-gray-200 rounded-full animate-pulse"></div>
         </div>
-        <div className="h-8 w-8 bg-gray-200 rounded-full animate-pulse"></div>
-      </div>
+      </header>
     )
   }
 
   return (
-    <div className="flex items-center justify-between p-4 bg-white border-b">
-      {/* Left side - Date and Weather */}
-      <div className="flex items-center space-x-4">
-        <div className="text-sm text-gray-600">
-          <div className="font-medium">{formatDate()}</div>
-          <div className="text-xs text-gray-500">{formatTime()}</div>
+    <header className="bg-white border-b border-gray-200 px-4 py-3">
+      <div className="flex items-center justify-between">
+        {/* Left side - Date, Time, Weather */}
+        <div className="flex items-center space-x-6">
+          <div className="text-sm text-gray-600">
+            <div className="font-medium">{formatDate()}</div>
+            <div className="text-xs">{formatTime()}</div>
+          </div>
+
+          {weather && (
+            <div className="flex items-center space-x-2 text-sm text-gray-600">
+              <MapPin className="h-3 w-3" />
+              <span>{weather.location}</span>
+              <div className="flex items-center space-x-1">
+                <Thermometer className="h-3 w-3" />
+                <span>{weather.temperature}°C</span>
+              </div>
+              <span className="text-xs">{weather.description}</span>
+            </div>
+          )}
         </div>
 
-        {weather && (
-          <div className="flex items-center space-x-2 text-sm">
-            {getWeatherIcon(weather.icon)}
-            <span className="font-medium">{weather.temperature}°</span>
-            <span className="text-gray-600 hidden sm:inline">{weather.description}</span>
-            {weather.location && <span className="text-gray-500 text-xs hidden md:inline">{weather.location}</span>}
-          </div>
-        )}
-      </div>
-
-      {/* Right side - User menu */}
-      {user ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={user.avatar_url || "/placeholder.svg"} alt={user.full_name || user.email} />
-                <AvatarFallback>
-                  {user.full_name ? user.full_name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+        {/* Right side - User menu */}
+        <div className="flex items-center space-x-4">
+          {user ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={user.avatar_url || undefined} alt={user.full_name || user.email} />
+                    <AvatarFallback>
+                      {user.full_name ? user.full_name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <div className="flex items-center justify-start gap-2 p-2">
+                  <div className="flex flex-col space-y-1 leading-none">
+                    {user.full_name && <p className="font-medium">{user.full_name}</p>}
+                    <p className="w-[200px] truncate text-sm text-muted-foreground">{user.email}</p>
+                  </div>
+                </div>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => router.push("/app/profile")}>
+                  <User className="mr-2 h-4 w-4" />
+                  <span>Профиль</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/app/settings")}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Настройки</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Выйти</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button variant="outline" size="sm" onClick={() => router.push("/auth/login")}>
+              Войти
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="end" forceMount>
-            <div className="flex items-center justify-start gap-2 p-2">
-              <div className="flex flex-col space-y-1 leading-none">
-                {user.full_name && <p className="font-medium">{user.full_name}</p>}
-                <p className="w-[200px] truncate text-sm text-muted-foreground">{user.email}</p>
-              </div>
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/app/profile")}>
-              <User className="mr-2 h-4 w-4" />
-              <span>Профиль</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/app/settings")}>
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Настройки</span>
-            </DropdownMenuItem>
-            {user.is_admin && (
-              <DropdownMenuItem onClick={() => router.push("/admin")}>
-                <Settings className="mr-2 h-4 w-4" />
-                <span>Админ панель</span>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleSignOut}>
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Выйти</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : (
-        <Button variant="ghost" size="sm" onClick={() => router.push("/auth/login")}>
-          Войти
-        </Button>
-      )}
-    </div>
+          )}
+        </div>
+      </div>
+    </header>
   )
 }
