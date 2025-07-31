@@ -1,5 +1,4 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 
 interface WeatherData {
   temperature: number
@@ -8,17 +7,12 @@ interface WeatherData {
   location: string
 }
 
-interface CachedWeather {
-  id: string
-  location: string
-  temperature: number
-  description: string
-  icon: string
-  cached_at: string
-}
-
+// Use server-side environment variable (without NEXT_PUBLIC prefix)
 const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY
 const CACHE_DURATION = 10 * 60 * 1000 // 10 minutes in milliseconds
+
+// In-memory cache for weather data
+const weatherCache = new Map<string, { data: WeatherData; timestamp: number }>()
 
 async function fetchWeatherWithRetry(lat: number, lon: number, retries = 3): Promise<WeatherData | null> {
   for (let i = 0; i < retries; i++) {
@@ -26,15 +20,16 @@ async function fetchWeatherWithRetry(lat: number, lon: number, retries = 3): Pro
       const response = await fetch(
         `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=ru`,
         {
-          next: { revalidate: 600 }, // Cache for 10 minutes
           headers: {
             "User-Agent": "ModeMorph-Weather-App/1.0",
           },
+          // Don't cache on Vercel edge
+          cache: "no-store",
         },
       )
 
       if (!response.ok) {
-        throw new Error(`Weather API error: ${response.status}`)
+        throw new Error(`Weather API error: ${response.status} ${response.statusText}`)
       }
 
       const data = await response.json()
@@ -71,6 +66,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!OPENWEATHER_API_KEY) {
+      console.error("OpenWeather API key not configured")
       return NextResponse.json({ error: "Weather service not configured" }, { status: 503 })
     }
 
@@ -81,24 +77,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid coordinates" }, { status: 400 })
     }
 
-    const supabase = createClient()
-
     // Check cache first
     const cacheKey = `${latitude.toFixed(2)},${longitude.toFixed(2)}`
-    const { data: cachedWeather } = await supabase.from("weather_cache").select("*").eq("location", cacheKey).single()
+    const cached = weatherCache.get(cacheKey)
 
-    if (cachedWeather) {
-      const cacheAge = Date.now() - new Date(cachedWeather.cached_at).getTime()
-
-      if (cacheAge < CACHE_DURATION) {
-        return NextResponse.json({
-          temperature: cachedWeather.temperature,
-          description: cachedWeather.description,
-          icon: cachedWeather.icon,
-          location: cachedWeather.location,
-          fromCache: true,
-        })
-      }
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      return NextResponse.json({
+        ...cached.data,
+        fromCache: true,
+      })
     }
 
     // Fetch fresh weather data
@@ -109,12 +96,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Update cache
-    await supabase.from("weather_cache").upsert({
-      location: cacheKey,
-      temperature: weatherData.temperature,
-      description: weatherData.description,
-      icon: weatherData.icon,
-      cached_at: new Date().toISOString(),
+    weatherCache.set(cacheKey, {
+      data: weatherData,
+      timestamp: Date.now(),
     })
 
     return NextResponse.json({

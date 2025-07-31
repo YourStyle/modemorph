@@ -1,196 +1,148 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Menu, Home, Shirt, Package, Palette, Settings, LogOut, User } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface UserProfile {
-  id: string
   email: string
   full_name?: string
-  is_admin: boolean
+  is_admin?: boolean
 }
 
 export function Navigation() {
-  const pathname = usePathname()
-  const router = useRouter()
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [user, setUser] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
+  const router = useRouter()
+  const pathname = usePathname()
+  const supabase = createClient()
 
   useEffect(() => {
-    async function getUser() {
-      const supabase = createClient()
+    const loadUser = async () => {
+      try {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser()
 
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
-
-      if (authUser) {
-        setUser(authUser)
-
-        // Получаем профиль пользователя
-        try {
-          const { data: profileData } = await supabase.from("profiles").select("*").eq("id", authUser.id).single()
-          setProfile(profileData)
-        } catch (error) {
-          console.error("Error fetching profile:", error)
+        if (authUser) {
+          const response = await fetch("/api/user-profile")
+          if (response.ok) {
+            const { profile } = await response.json()
+            setUser({
+              email: authUser.email || "",
+              full_name: profile?.full_name,
+              is_admin: profile?.is_admin,
+            })
+          }
         }
+      } catch (error) {
+        console.error("Error loading user:", error)
+      } finally {
+        setLoading(false)
       }
-
-      setLoading(false)
     }
 
-    getUser()
-  }, [])
+    loadUser()
+  }, [supabase])
 
   const handleSignOut = async () => {
-    const supabase = createClient()
     await supabase.auth.signOut()
     router.push("/auth/login")
   }
 
+  const getUserInitials = () => {
+    if (user?.full_name) {
+      return user.full_name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+    }
+    return user?.email?.[0]?.toUpperCase() || "U"
+  }
+
   if (loading) {
     return (
-      <nav className="border-b bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center">
-              <div className="h-8 w-32 bg-gray-200 animate-pulse rounded" />
-            </div>
-          </div>
+      <nav className="bg-white border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-32 bg-gray-200 rounded animate-pulse" />
+          <div className="h-8 w-8 bg-gray-200 rounded-full animate-pulse" />
         </div>
       </nav>
     )
   }
 
-  if (!user) {
-    return null
-  }
-
-  // Определяем навигационные элементы в зависимости от роли
-  const adminNavItems = [
-    { href: "/admin", label: "Главная", icon: Home },
-    { href: "/admin/wardrobe", label: "Гардероб", icon: Shirt },
-    { href: "/admin/wardrobe/basics", label: "Базовые вещи", icon: Package },
-    { href: "/admin/outfits", label: "Образы", icon: Palette },
-    { href: "/admin/settings", label: "Настройки", icon: Settings },
-  ]
-
-  const userNavItems = [
-    { href: "/app", label: "Главная", icon: Home },
-    { href: "/app/wardrobe", label: "Мой гардероб", icon: Shirt },
-  ]
-
-  const navItems = profile?.is_admin ? adminNavItems : userNavItems
-
-  const NavItems = ({ mobile = false }: { mobile?: boolean }) => (
-    <>
-      {navItems.map((item) => {
-        const Icon = item.icon
-        const isActive = pathname === item.href
-
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`${
-              mobile
-                ? "flex items-center px-4 py-2 text-base font-medium rounded-md"
-                : "inline-flex items-center px-1 pt-1 text-sm font-medium"
-            } ${
-              isActive
-                ? mobile
-                  ? "bg-gray-100 text-gray-900"
-                  : "border-b-2 border-blue-500 text-gray-900"
-                : mobile
-                  ? "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                  : "text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <Icon className={`${mobile ? "mr-3 h-5 w-5" : "mr-1 h-4 w-4"}`} />
-            {item.label}
-          </Link>
-        )
-      })}
-    </>
-  )
-
   return (
-    <nav className="border-b bg-white sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          {/* Desktop Navigation */}
-          <div className="hidden md:flex md:items-center md:space-x-8">
-            <Link href={profile?.is_admin ? "/admin" : "/app"} className="flex-shrink-0">
-              <span className="text-xl font-bold text-gray-900">
-                {profile?.is_admin ? "Wardrobe Admin" : "My Wardrobe"}
-              </span>
-            </Link>
-            <div className="flex space-x-8">
-              <NavItems />
-            </div>
-          </div>
+    <nav className="bg-white border-b border-gray-200 px-4 py-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <h1 className="text-xl font-bold text-gray-900">ModeMorph</h1>
 
-          {/* User Menu */}
-          <div className="flex items-center space-x-4">
-            <div className="hidden md:flex md:items-center md:space-x-2">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback>
-                  <User className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="text-sm">
-                <p className="font-medium text-gray-900">{profile?.full_name || user.email}</p>
-                <p className="text-gray-500">{profile?.is_admin ? "Администратор" : "Пользователь"}</p>
-              </div>
-            </div>
-
-            <Button variant="ghost" size="sm" onClick={handleSignOut} className="hidden md:flex items-center">
-              <LogOut className="h-4 w-4 mr-2" />
-              Выйти
+          {/* Navigation links */}
+          <div className="hidden md:flex items-center space-x-4">
+            <Button variant={pathname === "/app" ? "default" : "ghost"} onClick={() => router.push("/app")} size="sm">
+              Главная
             </Button>
-
-            {/* Mobile menu */}
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="sm" className="md:hidden">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-64">
-                <div className="flex flex-col h-full">
-                  <div className="flex items-center space-x-2 mb-6">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>
-                        <User className="h-5 w-5" />
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium text-gray-900">{profile?.full_name || user.email}</p>
-                      <p className="text-sm text-gray-500">{profile?.is_admin ? "Администратор" : "Пользователь"}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex-1 space-y-1">
-                    <NavItems mobile />
-                  </div>
-
-                  <div className="pt-4 border-t">
-                    <Button variant="ghost" onClick={handleSignOut} className="w-full justify-start">
-                      <LogOut className="h-4 w-4 mr-2" />
-                      Выйти
-                    </Button>
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
+            <Button
+              variant={pathname === "/app/wardrobe" ? "default" : "ghost"}
+              onClick={() => router.push("/app/wardrobe")}
+              size="sm"
+            >
+              Гардероб
+            </Button>
+            <Button
+              variant={pathname === "/app/looks" ? "default" : "ghost"}
+              onClick={() => router.push("/app/looks")}
+              size="sm"
+            >
+              Образы
+            </Button>
+            <Button
+              variant={pathname === "/app/inspiration" ? "default" : "ghost"}
+              onClick={() => router.push("/app/inspiration")}
+              size="sm"
+            >
+              Вдохновение
+            </Button>
           </div>
+        </div>
+
+        {/* User menu */}
+        <div className="flex items-center space-x-4">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="bg-gray-200 text-gray-700 text-sm">{getUserInitials()}</AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end" forceMount>
+              <div className="flex flex-col space-y-1 p-2">
+                <p className="text-sm font-medium leading-none">{user?.full_name || "Пользователь"}</p>
+                <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+              </div>
+              <DropdownMenuSeparator />
+              {user?.is_admin && (
+                <>
+                  <DropdownMenuItem onClick={() => router.push("/admin")}>Панель администратора</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem onClick={handleSignOut} className="text-red-600 focus:text-red-600 focus:bg-red-50">
+                Выйти
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </nav>

@@ -53,17 +53,24 @@ export function TopNavigation() {
 
     // Загружаем данные пользователя
     const loadUser = async () => {
-      const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser()
-      if (authUser) {
-        const { data: profile } = await supabase.from("profiles").select("*").eq("id", authUser.id).single()
+      try {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser()
 
-        setUser({
-          email: authUser.email || "",
-          full_name: profile?.full_name,
-          is_admin: profile?.is_admin,
-        })
+        if (authUser) {
+          const response = await fetch("/api/user-profile")
+          if (response.ok) {
+            const { profile } = await response.json()
+            setUser({
+              email: authUser.email || "",
+              full_name: profile?.full_name,
+              is_admin: profile?.is_admin,
+            })
+          }
+        }
+      } catch (error) {
+        console.error("Error loading user:", error)
       }
     }
 
@@ -94,14 +101,51 @@ export function TopNavigation() {
         }
 
         // Fetch weather from our API
-        const response = await fetch(`/api/weather?lat=${latitude}&lon=${longitude}`)
+        const response = await fetch(`/api/weather?lat=${latitude}&lon=${longitude}`, {
+          cache: "no-store",
+        })
 
         if (!response.ok) {
-          throw new Error("Weather service unavailable")
+          throw new Error(`Weather service unavailable: ${response.status}`)
         }
 
         const weatherData = await response.json()
-        setWeather(weatherData)
+
+        if (weatherData.error) {
+          throw new Error(weatherData.error)
+        }
+
+        // Map weather condition from icon
+        let condition = "sunny"
+        if (weatherData.icon) {
+          const iconCode = weatherData.icon.substring(0, 2)
+          switch (iconCode) {
+            case "01":
+              condition = "sunny"
+              break
+            case "02":
+            case "03":
+            case "04":
+              condition = "cloudy"
+              break
+            case "09":
+            case "10":
+              condition = "rainy"
+              break
+            case "13":
+              condition = "snowy"
+              break
+            default:
+              condition = "cloudy"
+          }
+        }
+
+        setWeather({
+          ...weatherData,
+          condition,
+          humidity: 0,
+          windSpeed: 0,
+        })
         setWeatherError(null)
       } catch (err) {
         console.error("Weather fetch error:", err)
@@ -159,13 +203,8 @@ export function TopNavigation() {
       // Get user location
       const coords = await getLocation()
 
-      // Call our server-side weather API
-      const response = await fetch("/api/weather", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(coords),
+      // Call our weather API
+      const response = await fetch(`/api/weather?lat=${coords.latitude}&lon=${coords.longitude}`, {
         cache: forceRefresh ? "no-cache" : "default",
       })
 
@@ -179,7 +218,37 @@ export function TopNavigation() {
         throw new Error(result.error)
       }
 
-      setWeather(result)
+      // Map weather condition from icon
+      let condition = "sunny"
+      if (result.icon) {
+        const iconCode = result.icon.substring(0, 2)
+        switch (iconCode) {
+          case "01":
+            condition = "sunny"
+            break
+          case "02":
+          case "03":
+          case "04":
+            condition = "cloudy"
+            break
+          case "09":
+          case "10":
+            condition = "rainy"
+            break
+          case "13":
+            condition = "snowy"
+            break
+          default:
+            condition = "cloudy"
+        }
+      }
+
+      setWeather({
+        ...result,
+        condition,
+        humidity: 0,
+        windSpeed: 0,
+      })
       setWeatherError(null)
     } catch (error) {
       console.error("Failed to load weather:", error)
@@ -254,7 +323,7 @@ export function TopNavigation() {
             <div className="flex items-center space-x-1 sm:space-x-2">
               <div
                 className="flex items-center space-x-1 sm:space-x-2 cursor-pointer group"
-                title={`${weather?.location}: ${weather?.description}, влажность ${weather?.humidity}%, ветер ${weather?.windSpeed} м/с`}
+                title={`${weather?.location}: ${weather?.description}`}
               >
                 {weatherLoading ? (
                   <div className="flex items-center space-x-2">

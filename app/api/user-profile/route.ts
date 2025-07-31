@@ -1,4 +1,4 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
 export async function GET() {
@@ -14,7 +14,6 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user profile
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
@@ -23,6 +22,7 @@ export async function GET() {
 
     if (profileError) {
       console.error("Profile fetch error:", profileError)
+
       // If profile doesn't exist, create it
       if (profileError.code === "PGRST116") {
         const { data: newProfile, error: createError } = await supabase
@@ -31,7 +31,6 @@ export async function GET() {
             id: user.id,
             email: user.email,
             full_name: user.user_metadata?.full_name || null,
-            is_admin: false,
           })
           .select()
           .single()
@@ -54,7 +53,7 @@ export async function GET() {
   }
 }
 
-export async function PUT(request: NextRequest) {
+export async function PUT(request: Request) {
   try {
     const supabase = createClient()
 
@@ -70,7 +69,6 @@ export async function PUT(request: NextRequest) {
     const body = await request.json()
     const { full_name, avatar_url } = body
 
-    // Update user profile
     const { data: profile, error: updateError } = await supabase
       .from("profiles")
       .update({
