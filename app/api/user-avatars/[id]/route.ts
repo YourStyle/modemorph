@@ -3,12 +3,13 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
 
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser()
+
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -16,7 +17,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const { is_primary } = await request.json()
     const avatarId = params.id
 
-    // Verify avatar belongs to user
+    // Verify the avatar belongs to the user
     const { data: avatar, error: fetchError } = await supabase
       .from("user_avatars")
       .select("*")
@@ -29,27 +30,25 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     if (is_primary) {
-      // First, set all user's avatars to non-primary
-      await supabase.from("user_avatars").update({ is_primary: false }).eq("user_id", user.id)
-
-      // Then set this avatar as primary
-      const { data: updatedAvatar, error: updateError } = await supabase
-        .from("user_avatars")
-        .update({ is_primary: true })
-        .eq("id", avatarId)
-        .eq("user_id", user.id)
-        .select()
-        .single()
-
-      if (updateError) {
-        console.error("Error updating avatar:", updateError)
-        return NextResponse.json({ error: "Failed to update avatar" }, { status: 500 })
-      }
-
-      return NextResponse.json({ avatar: updatedAvatar })
+      // Set all other avatars to non-primary first
+      await supabase.from("user_avatars").update({ is_primary: false }).eq("user_id", user.id).neq("id", avatarId)
     }
 
-    return NextResponse.json({ avatar })
+    // Update the avatar
+    const { data: updatedAvatar, error: updateError } = await supabase
+      .from("user_avatars")
+      .update({ is_primary })
+      .eq("id", avatarId)
+      .eq("user_id", user.id)
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error("Error updating avatar:", updateError)
+      return NextResponse.json({ error: "Failed to update avatar" }, { status: 500 })
+    }
+
+    return NextResponse.json({ avatar: updatedAvatar })
   } catch (error) {
     console.error("Error in PUT /api/user-avatars/[id]:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -58,19 +57,20 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
 
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser()
+
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const avatarId = params.id
 
-    // Get avatar info before deletion
+    // Get the avatar to delete
     const { data: avatar, error: fetchError } = await supabase
       .from("user_avatars")
       .select("*")
@@ -83,21 +83,23 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     // Extract file path from URL
-    const url = new URL(avatar.url)
-    const filePath = url.pathname.split("/").slice(-2).join("/") // Get last two parts of path
+    const url = new URL(avatar.avatar_url)
+    const filePath = url.pathname.split("/storage/v1/object/public/avatars/")[1]
 
     // Delete from storage
-    const { error: storageError } = await supabase.storage.from("avatars").remove([filePath])
-
-    if (storageError) {
-      console.error("Error deleting file from storage:", storageError)
+    if (filePath) {
+      await supabase.storage.from("avatars").remove([filePath])
     }
 
     // Delete from database
-    const { error: dbError } = await supabase.from("user_avatars").delete().eq("id", avatarId).eq("user_id", user.id)
+    const { error: deleteError } = await supabase
+      .from("user_avatars")
+      .delete()
+      .eq("id", avatarId)
+      .eq("user_id", user.id)
 
-    if (dbError) {
-      console.error("Error deleting avatar from database:", dbError)
+    if (deleteError) {
+      console.error("Error deleting avatar:", deleteError)
       return NextResponse.json({ error: "Failed to delete avatar" }, { status: 500 })
     }
 

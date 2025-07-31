@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
 
     const {
       data: { user },
@@ -14,11 +14,11 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user profile from profiles table
+    // Get user profile from user_profiles table
     const { data: profile, error: profileError } = await supabase
-      .from("profiles")
+      .from("user_profiles")
       .select("*")
-      .eq("id", user.id)
+      .eq("user_id", user.id)
       .single()
 
     if (profileError && profileError.code !== "PGRST116") {
@@ -29,9 +29,9 @@ export async function GET() {
     // If no profile exists, create one
     if (!profile) {
       const { data: newProfile, error: createError } = await supabase
-        .from("profiles")
+        .from("user_profiles")
         .insert({
-          id: user.id,
+          user_id: user.id,
           email: user.email,
           full_name: user.user_metadata?.full_name || null,
           is_admin: false,
@@ -56,7 +56,7 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
 
     const {
       data: { user },
@@ -70,9 +70,9 @@ export async function PUT(request: Request) {
     const { full_name } = await request.json()
 
     const { data: profile, error: updateError } = await supabase
-      .from("profiles")
-      .update({ full_name })
-      .eq("id", user.id)
+      .from("user_profiles")
+      .update({ full_name, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id)
       .select()
       .single()
 
@@ -84,6 +84,47 @@ export async function PUT(request: Request) {
     return NextResponse.json({ profile })
   } catch (error) {
     console.error("Error in PUT /api/user-profile:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const supabase = createClient()
+
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { avatar_url, full_name, preferences } = body
+
+    // Update or insert user profile
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .upsert({
+        user_id: user.id,
+        avatar_url,
+        full_name,
+        preferences,
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error updating user profile:", error)
+      return NextResponse.json({ error: "Failed to update profile" }, { status: 500 })
+    }
+
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error("Error in PATCH /api/user-profile:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
