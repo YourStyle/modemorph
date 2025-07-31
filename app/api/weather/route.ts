@@ -1,21 +1,36 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-// Кэш в памяти для погодных данных
+// Кэш для погодных данных
 const weatherCache = new Map<string, { data: any; timestamp: number }>()
 const CACHE_DURATION = 10 * 60 * 1000 // 10 минут
+
+// Маппинг OpenWeather иконок на эмодзи
+const weatherIcons: Record<string, string> = {
+  "01d": "☀️", // clear sky day
+  "01n": "🌙", // clear sky night
+  "02d": "⛅", // few clouds day
+  "02n": "☁️", // few clouds night
+  "03d": "☁️", // scattered clouds
+  "03n": "☁️",
+  "04d": "☁️", // broken clouds
+  "04n": "☁️",
+  "09d": "🌧️", // shower rain
+  "09n": "🌧️",
+  "10d": "🌦️", // rain day
+  "10n": "🌧️", // rain night
+  "11d": "⛈️", // thunderstorm
+  "11n": "⛈️",
+  "13d": "❄️", // snow
+  "13n": "❄️",
+  "50d": "🌫️", // mist
+  "50n": "🌫️",
+}
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const lat = searchParams.get("lat")
     const lon = searchParams.get("lon")
-
-    // Проверяем наличие API ключа
-    const apiKey = process.env.OPENWEATHER_API_KEY
-    if (!apiKey) {
-      console.error("OpenWeather API key not configured")
-      return NextResponse.json({ error: "Weather service not configured" }, { status: 503 })
-    }
 
     // Используем координаты Москвы по умолчанию
     const latitude = lat || "55.7558"
@@ -29,7 +44,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(cached.data)
     }
 
-    // Запрос к OpenWeather API
+    const apiKey = process.env.OPENWEATHER_API_KEY
+    if (!apiKey) {
+      console.error("OpenWeather API key not found")
+      return NextResponse.json(
+        {
+          error: "Weather service configuration error",
+          fallback: {
+            temperature: 20,
+            description: "Ясно",
+            location: "Москва",
+            icon: "☀️",
+          },
+        },
+        { status: 500 },
+      )
+    }
+
     const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric&lang=ru`
 
     const response = await fetch(weatherUrl, {
@@ -39,22 +70,18 @@ export async function GET(request: NextRequest) {
     })
 
     if (!response.ok) {
-      console.error(`OpenWeather API error: ${response.status} ${response.statusText}`)
-      throw new Error(`Weather API returned ${response.status}`)
+      throw new Error(`OpenWeather API error: ${response.status}`)
     }
 
     const data = await response.json()
 
-    // Обрабатываем данные
     const weatherData = {
       temperature: Math.round(data.main.temp),
-      condition: data.weather[0].main.toLowerCase(),
       description: data.weather[0].description,
+      location: data.name || "Москва",
+      icon: weatherIcons[data.weather[0].icon] || "☀️",
       humidity: data.main.humidity,
-      windSpeed: data.wind?.speed || 0,
-      city: data.name,
-      location: data.name,
-      icon: data.weather[0].icon,
+      windSpeed: data.wind.speed,
     }
 
     // Сохраняем в кэш
@@ -67,18 +94,13 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Weather fetch error:", error)
 
-    // Возвращаем данные по умолчанию для Москвы
-    const fallbackData = {
+    // Возвращаем fallback данные
+    return NextResponse.json({
       temperature: 20,
-      condition: "clear",
-      description: "ясно",
-      humidity: 50,
-      windSpeed: 3,
-      city: "Москва",
+      description: "Ясно",
       location: "Москва",
-      icon: "01d",
-    }
-
-    return NextResponse.json(fallbackData)
+      icon: "☀️",
+      error: "Weather service unavailable",
+    })
   }
 }

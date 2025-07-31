@@ -5,6 +5,7 @@ export async function GET() {
   try {
     const supabase = createClient()
 
+    // Получаем текущего пользователя
     const {
       data: { user },
       error: authError,
@@ -14,6 +15,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Получаем профиль пользователя
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("*")
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
 
+    // Получаем текущего пользователя
     const {
       data: { user },
       error: authError,
@@ -46,14 +49,16 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { full_name } = body
+    const { full_name, avatar_url } = body
 
+    // Создаем или обновляем профиль
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .upsert({
         id: user.id,
         email: user.email,
         full_name: full_name || "",
+        avatar_url: avatar_url || "",
         updated_at: new Date().toISOString(),
       })
       .select()
@@ -75,6 +80,7 @@ export async function PUT(request: NextRequest) {
   try {
     const supabase = createClient()
 
+    // Получаем текущего пользователя
     const {
       data: { user },
       error: authError,
@@ -87,11 +93,12 @@ export async function PUT(request: NextRequest) {
     const body = await request.json()
     const { full_name, avatar_url } = body
 
+    // Обновляем профиль
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .update({
-        full_name,
-        avatar_url,
+        full_name: full_name || "",
+        avatar_url: avatar_url || "",
         updated_at: new Date().toISOString(),
       })
       .eq("id", user.id)
