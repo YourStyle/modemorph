@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Sun, Cloud, CloudRain, CloudSnowIcon as Snow } from 'lucide-react'
+import { Sun, Cloud, CloudRain, CloudSnowIcon as Snow, MapPin, RefreshCw } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,9 +17,10 @@ import { useRouter } from "next/navigation"
 interface WeatherData {
   temperature: number
   condition: string
-  icon: string
-  temp: number
   description: string
+  location: string
+  humidity: number
+  windSpeed: number
 }
 
 interface UserProfile {
@@ -28,9 +29,16 @@ interface UserProfile {
   is_admin?: boolean
 }
 
+interface GeolocationCoords {
+  latitude: number
+  longitude: number
+}
+
 export function TopNavigation() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [weather, setWeather] = useState<WeatherData | null>(null)
+  const [weatherLoading, setWeatherLoading] = useState(true)
+  const [weatherRefreshing, setWeatherRefreshing] = useState(false)
   const [user, setUser] = useState<UserProfile | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -58,18 +66,90 @@ export function TopNavigation() {
 
     loadUser()
 
-    // Симуляция погоды
-    setWeather({
-      temperature: 22,
-      condition: "sunny",
-      icon: "sun",
-      temp: 22,
-      description: "Солнечно"
-    })
+    // Загружаем погоду
+    loadWeather()
 
     return () => clearInterval(timer)
   }, [supabase])
-  
+
+  const getLocation = (): Promise<GeolocationCoords> => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation is not supported"))
+        return
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          })
+        },
+        (error) => {
+          // Fallback to Moscow coordinates if geolocation fails
+          console.warn("Geolocation failed, using Moscow coordinates:", error)
+          resolve({
+            latitude: 55.7558,
+            longitude: 37.6176,
+          })
+        },
+        {
+          timeout: 10000,
+          enableHighAccuracy: false,
+        },
+      )
+    })
+  }
+
+  const loadWeather = async (forceRefresh = false) => {
+    try {
+      if (forceRefresh) {
+        setWeatherRefreshing(true)
+      } else {
+        setWeatherLoading(true)
+      }
+
+      // Get user location
+      const coords = await getLocation()
+
+      // Call our server-side weather API
+      const response = await fetch("/api/weather", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(coords),
+        cache: forceRefresh ? "no-cache" : "default",
+      })
+
+      if (!response.ok) {
+        throw new Error("Weather API request failed")
+      }
+
+      const weatherData: WeatherData = await response.json()
+      setWeather(weatherData)
+    } catch (error) {
+      console.error("Failed to load weather:", error)
+      // Fallback weather data
+      setWeather({
+        temperature: 22,
+        condition: "sunny",
+        description: "Солнечно",
+        location: "Москва",
+        humidity: 60,
+        windSpeed: 5,
+      })
+    } finally {
+      setWeatherLoading(false)
+      setWeatherRefreshing(false)
+    }
+  }
+
+  const handleRefreshWeather = () => {
+    loadWeather(true)
+  }
+
   const formatDate = (date: Date) => {
     return date.toLocaleDateString("ru-RU", {
       weekday: "long",
@@ -126,14 +206,40 @@ export function TopNavigation() {
             <p className="text-sm sm:text-lg text-gray-600">{formatTime(currentTime)}</p>
 
             {/* Погода */}
-            {weather && (
-              <div className="flex items-center space-x-1 sm:space-x-2">
-                {getWeatherIcon(weather.condition)}
-                <span className="text-sm sm:text-base text-gray-700">{weather.temp}°</span>
-                {/* Описание погоды только на больших экранах */}
-                <span className="hidden sm:inline text-sm text-gray-600">{weather.description}</span>
+            {weatherLoading ? (
+              <div className="flex items-center space-x-2">
+                <div className="w-4 h-4 sm:w-5 sm:h-5 bg-gray-200 rounded animate-pulse" />
+                <div className="w-8 h-4 bg-gray-200 rounded animate-pulse" />
               </div>
-            )}
+            ) : weather ? (
+              <div className="flex items-center space-x-1 sm:space-x-2">
+                <div
+                  className="flex items-center space-x-1 sm:space-x-2 cursor-pointer group"
+                  title={`${weather.location}: ${weather.description}, влажность ${weather.humidity}%, ветер ${weather.windSpeed} м/с`}
+                >
+                  {getWeatherIcon(weather.condition)}
+                  <span className="text-sm sm:text-base text-gray-700">{weather.temperature}°</span>
+                  {/* Описание погоды только на больших экранах */}
+                  <span className="hidden sm:inline text-sm text-gray-600">{weather.description}</span>
+                  <MapPin className="hidden sm:inline w-3 h-3 text-gray-400 group-hover:text-gray-600" />
+                  <span className="hidden lg:inline text-xs text-gray-500">{weather.location}</span>
+                </div>
+
+                {/* Кнопка обновления погоды */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefreshWeather}
+                  disabled={weatherRefreshing}
+                  className="h-6 w-6 p-0 hover:bg-gray-100"
+                  title="Обновить погоду"
+                >
+                  <RefreshCw
+                    className={`w-3 h-3 text-gray-400 hover:text-gray-600 ${weatherRefreshing ? "animate-spin" : ""}`}
+                  />
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
 
