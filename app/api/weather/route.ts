@@ -53,6 +53,8 @@ export async function GET(request: NextRequest) {
       humidity: data.main.humidity,
       windSpeed: data.wind?.speed || 0,
       city: data.name,
+      location: data.name,
+      icon: data.weather[0].icon,
     }
 
     // Сохраняем в кэш
@@ -73,6 +75,8 @@ export async function GET(request: NextRequest) {
       humidity: 50,
       windSpeed: 3,
       city: "Москва",
+      location: "Москва",
+      icon: "01d",
     }
 
     return NextResponse.json(fallbackData)
