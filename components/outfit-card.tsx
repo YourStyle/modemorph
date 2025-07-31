@@ -1,234 +1,399 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Heart, Sparkles, Loader2 } from "lucide-react"
-import { toast } from "@/hooks/use-toast"
+import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucide-react"
+import Image from "next/image"
+import { toast } from "sonner"
+import { ItemDetailsModal } from "./item-details-modal"
 
 interface OutfitItem {
   id: string
   name: string
-  color?: string
-  material?: string
-  style_description?: string
   image_url: string
+  color?: string
+  shade?: string
+  style?: string
+  material?: string
+  url?: string
+  size_type?: string
+  has_print?: string
+  has_details?: string
+  notes?: string
+  is_basic?: boolean
+  basic_item_id?: number | null
+  user_id?: string
+  source?: "wardrobe_items" | "wardrobe_user_items"
+}
+
+interface OutfitSuggestion {
+  id: string
+  title: string
+  items: OutfitItem[]
+  suggested_items_count: number
 }
 
 interface OutfitCardProps {
-  id: string
-  title: string
-  description?: string
-  image_url: string
-  items?: OutfitItem[]
-  likes_count?: number
-  is_liked?: boolean
-  tags?: string[]
-  onLike?: (id: string) => void
-  onSave?: (id: string) => void
+  suggestion: OutfitSuggestion
 }
 
-export function OutfitCard({
-  id,
-  title,
-  description,
-  image_url,
-  items = [],
-  likes_count = 0,
-  is_liked = false,
-  tags = [],
-  onLike,
-  onSave,
-}: OutfitCardProps) {
-  const [liked, setLiked] = useState(is_liked)
-  const [likesCount, setLikesCount] = useState(likes_count)
-  const [isVtonLoading, setIsVtonLoading] = useState(false)
+export function OutfitCard({ suggestion }: OutfitCardProps) {
+  const [isSaved, setIsSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [showTryOnModal, setShowTryOnModal] = useState(false)
+  const [userLooks, setUserLooks] = useState<any[]>([])
+  const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
+  const [vtonLoading, setVtonLoading] = useState(false)
   const [vtonResult, setVtonResult] = useState<any>(null)
-  const [showVtonDialog, setShowVtonDialog] = useState(false)
 
-  const handleLike = async () => {
+  const items = suggestion.items || []
+  const title = suggestion.title || "Без названия"
+  const suggestedItemsCount = suggestion.suggested_items_count || 0
+
+  useEffect(() => {
+    if (!suggestion) {
+      return
+    }
+    loadUserLooks()
+  }, [suggestion])
+
+  const loadUserLooks = async () => {
     try {
-      const response = await fetch("/api/outfits/like", {
+      const response = await fetch("/api/user-looks")
+      if (response.ok) {
+        const looks = await response.json()
+        setUserLooks(looks)
+
+        // Check if this outfit is already saved
+        const isAlreadySaved = looks.some(
+          (look: any) =>
+            look.name === title ||
+            (look.items &&
+              look.items.length === items.length &&
+              look.items.every((item: any) => items.some((suggItem) => suggItem.id === item.id.toString()))),
+        )
+        setIsSaved(isAlreadySaved)
+      }
+    } catch (error) {
+      console.error("Error loading user looks:", error)
+    }
+  }
+
+  const handleSaveOutfit = async () => {
+    if (items.length === 0) {
+      toast.error("Нет вещей для сохранения")
+      return
+    }
+
+    setSaving(true)
+    try {
+      // Transform items to the format expected by the API
+      const transformedItems = items.map((item) => ({
+        type: item.user_id ? "user" : "basic",
+        id: Number.parseInt(item.id),
+      }))
+
+      const response = await fetch("/api/user-looks", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ outfit_id: id }),
+        body: JSON.stringify({
+          name: title,
+          description: `Рекомендованный образ с ${suggestedItemsCount} предложенными вещами`,
+          items: transformedItems,
+        }),
       })
 
       if (response.ok) {
-        const newLiked = !liked
-        setLiked(newLiked)
-        setLikesCount((prev) => (newLiked ? prev + 1 : prev - 1))
-        onLike?.(id)
+        setIsSaved(true)
+        toast.success("Образ сохранен в вашу коллекцию!")
+      } else {
+        throw new Error("Failed to save outfit")
       }
     } catch (error) {
-      console.error("Error liking outfit:", error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось поставить лайк",
-        variant: "destructive",
-      })
+      console.error("Error saving outfit:", error)
+      toast.error("Ошибка сохранения образа")
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleVirtualTryOn = async () => {
-    setIsVtonLoading(true)
+  const handleTryOn = async () => {
+    if (items.length === 0) {
+      toast.error("Нет вещей для примерки")
+      return
+    }
+
+    setVtonLoading(true)
+    setVtonResult(null)
+
     try {
+      // Prepare items for VTON request
+      const vtonItems = items.map((item) => ({
+        name: item.name,
+        description: `${item.style || ""} ${item.has_print || ""} ${item.has_details || ""}`.trim(),
+        color: item.color,
+        material: item.material,
+        image_url: item.image_url,
+      }))
+
       const response = await fetch("/api/vton", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          outfit_id: id,
-          items: items,
+          items: vtonItems,
         }),
       })
 
-      const data = await response.json()
+      const result = await response.json()
 
-      if (response.ok) {
-        setVtonResult(data.result)
-        setShowVtonDialog(true)
-        toast({
-          title: "Успешно",
-          description: "Виртуальная примерка завершена",
-        })
-      } else {
-        throw new Error(data.error || "Virtual try-on failed")
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to process virtual try-on")
       }
+
+      setVtonResult(result.result)
+      toast.success("Примерка готова!")
     } catch (error) {
-      console.error("Error with virtual try-on:", error)
-      toast({
-        title: "Ошибка",
-        description: error instanceof Error ? error.message : "Не удалось выполнить виртуальную примерку",
-        variant: "destructive",
-      })
+      console.error("Error in virtual try-on:", error)
+      toast.error(error instanceof Error ? error.message : "Ошибка при примерке")
     } finally {
-      setIsVtonLoading(false)
+      setVtonLoading(false)
     }
   }
 
-  const handleSave = () => {
-    onSave?.(id)
-    toast({
-      title: "Сохранено",
-      description: "Образ добавлен в избранное",
-    })
+  const handleImageError = (itemId: string) => {
+    setImageErrors((prev) => ({ ...prev, [itemId]: true }))
+  }
+
+  const handleItemClick = (item: OutfitItem) => {
+    setSelectedItem(item)
   }
 
   return (
     <>
-      <Card className="group overflow-hidden hover:shadow-lg transition-shadow duration-300">
-        <div className="relative aspect-[3/4] overflow-hidden">
-          <img
-            src={image_url || "/placeholder.svg?height=400&width=300"}
-            alt={title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
-          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300" />
-
-          {/* Action buttons overlay */}
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={handleVirtualTryOn}
-                disabled={isVtonLoading}
-                className="bg-white/90 hover:bg-white text-black"
-              >
-                {isVtonLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <Sparkles className="h-4 w-4 mr-2" />
-                )}
-                {isVtonLoading ? "Примеряем..." : "Примерить"}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-2">
-            <h3 className="font-semibold text-lg line-clamp-1">{title}</h3>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLike}
-              className={`p-1 ${liked ? "text-red-500" : "text-gray-400"}`}
-            >
-              <Heart className={`h-5 w-5 ${liked ? "fill-current" : ""}`} />
-              <span className="ml-1 text-sm">{likesCount}</span>
-            </Button>
-          </div>
-
-          {description && <p className="text-sm text-gray-600 mb-3 line-clamp-2">{description}</p>}
-
-          {tags.length > 0 && (
-            <div className="flex flex-wrap gap-1 mb-3">
-              {tags.slice(0, 3).map((tag, index) => (
-                <Badge key={index} variant="secondary" className="text-xs">
-                  {tag}
+      <Card className="bg-white border-0 shadow-sm overflow-hidden w-96">
+        <CardContent className="p-6">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1">
+              <h3 className="font-semibold text-gray-900 mb-2 text-lg">{title}</h3>
+              {suggestedItemsCount > 0 && (
+                <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200">
+                  <Sparkles className="w-3 h-3 mr-1" />
+                  {suggestedItemsCount} рекомендаций
                 </Badge>
-              ))}
-              {tags.length > 3 && (
-                <Badge variant="outline" className="text-xs">
-                  +{tags.length - 3}
+              )}
+              {isSaved && (
+                <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200 ml-2">
+                  <BookmarkCheck className="w-3 h-3 mr-1" />
+                  Сохранено
                 </Badge>
               )}
             </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`p-2 ${isSaved ? "text-green-600" : "text-gray-400 hover:text-green-600"}`}
+              onClick={handleSaveOutfit}
+              disabled={saving || isSaved || items.length === 0}
+            >
+              {isSaved ? <BookmarkCheck className="w-5 h-5" /> : <Bookmark className="w-5 h-5" />}
+            </Button>
+          </div>
+
+          {/* Items Grid */}
+          {items.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              {items.slice(0, 4).map((item, index) => {
+                const hasError = imageErrors[item.id]
+                return (
+                  <div
+                    key={`${item.id}-${index}`}
+                    className="relative cursor-pointer group/item"
+                    onClick={() => handleItemClick(item)}
+                  >
+                    <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden">
+                      {item.image_url && !hasError ? (
+                        <Image
+                          src={item.image_url || "/placeholder.svg"}
+                          alt={item.name || "Вещь"}
+                          fill
+                          className="object-cover group-hover/item:scale-105 transition-transform duration-200"
+                          onError={() => handleImageError(item.id)}
+                          sizes="(max-width: 768px) 50vw, 25vw"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                          <Package className="h-6 w-6 text-gray-400" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Hover overlay with item name */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover/item:opacity-100 transition-opacity duration-200 flex items-center justify-center rounded-lg">
+                      <div className="text-center px-2">
+                        <p className="text-white text-xs font-medium">{item.name || "Без названия"}</p>
+                        <p className="text-white/80 text-xs">{item.color || "Цвет не указан"}</p>
+                      </div>
+                    </div>
+
+                    {/* Item type indicator */}
+                    {!item.user_id ? (
+                      <div className="absolute top-2 right-2">
+                        <Badge className="bg-orange-500 text-white text-xs px-1.5 py-0.5">
+                          <Sparkles className="w-2.5 h-2.5 mr-0.5" />
+                          Рекомендуем
+                        </Badge>
+                      </div>
+                    ) : (
+                      <div className="absolute top-2 right-2">
+                        <Badge className="bg-blue-500 text-white text-xs px-1.5 py-0.5">
+                          <User className="w-2.5 h-2.5 mr-0.5" />
+                          Ваше
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="mb-6 p-8 text-center text-gray-500">
+              <p>Нет вещей для отображения</p>
+            </div>
           )}
 
+          {/* Show more items indicator */}
+          {items.length > 4 && (
+            <div className="mb-4 text-center">
+              <p className="text-sm text-gray-500">
+                +{items.length - 4} еще {items.length - 4 === 1 ? "вещь" : "вещей"}
+              </p>
+            </div>
+          )}
+
+          {/* Action buttons */}
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleSave} className="flex-1 bg-transparent">
-              Сохранить
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex-1 text-gray-700 border-gray-200 bg-transparent"
+              onClick={() => setShowTryOnModal(true)}
+              disabled={vtonLoading}
+            >
+              {vtonLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Примеряем...
+                </>
+              ) : (
+                "Примерить"
+              )}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Virtual Try-On Result Dialog */}
-      <Dialog open={showVtonDialog} onOpenChange={setShowVtonDialog}>
-        <DialogContent className="max-w-2xl">
+      {/* Try On Modal */}
+      <Dialog open={showTryOnModal} onOpenChange={setShowTryOnModal}>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Результат виртуальной примерки</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-blue-500" />
+              Виртуальная примерка
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            {vtonResult && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <h4 className="font-medium mb-2">Исходное фото</h4>
-                  <img
-                    src={vtonResult.original_avatar || "/placeholder.svg"}
-                    alt="Original avatar"
-                    className="w-full rounded-lg"
-                  />
+          <div className="py-6">
+            {vtonLoading ? (
+              <div className="text-center">
+                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-500" />
+                <p className="text-gray-600 mb-2">Создаем примерку...</p>
+                <p className="text-sm text-gray-500">Это может занять несколько секунд</p>
+              </div>
+            ) : vtonResult ? (
+              <div className="text-center">
+                <div className="mb-4">
+                  {vtonResult.image_url && (
+                    <Image
+                      src={vtonResult.image_url || "/placeholder.svg"}
+                      alt="Virtual try-on result"
+                      width={300}
+                      height={400}
+                      className="rounded-lg mx-auto"
+                    />
+                  )}
                 </div>
-                <div>
-                  <h4 className="font-medium mb-2">С примеркой</h4>
-                  <img
-                    src={vtonResult.result_image || "/placeholder.svg"}
-                    alt="Virtual try-on result"
-                    className="w-full rounded-lg"
-                  />
+                <p className="text-green-600 font-medium">Примерка готова!</p>
+                {vtonResult.message && <p className="text-sm text-gray-600 mt-2">{vtonResult.message}</p>}
+              </div>
+            ) : (
+              <div className="text-center">
+                <p className="text-gray-600 mb-4">
+                  Хотите примерить этот образ? Мы создадим виртуальную примерку с вашим аватаром.
+                </p>
+                <div className="space-y-2 text-sm text-gray-500">
+                  <p>• Убедитесь, что у вас загружен аватар в профиле</p>
+                  <p>• Примерка займет несколько секунд</p>
                 </div>
               </div>
             )}
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowVtonDialog(false)}>
-                Закрыть
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowTryOnModal(false)}>
+              Закрыть
+            </Button>
+            {!vtonResult && (
+              <Button onClick={handleTryOn} disabled={vtonLoading}>
+                {vtonLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Примеряем...
+                  </>
+                ) : (
+                  "Начать примерку"
+                )}
               </Button>
-              {vtonResult?.result_image && (
-                <Button onClick={() => window.open(vtonResult.result_image, "_blank")}>Скачать результат</Button>
-              )}
-            </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Item Details Modal */}
+      {selectedItem && (
+        <ItemDetailsModal
+          item={{
+            id: Number.parseInt(selectedItem.id),
+            item_name: selectedItem.name,
+            image_url: selectedItem.image_url,
+            color: selectedItem.color,
+            shade: selectedItem.shade,
+            style: selectedItem.style,
+            material: selectedItem.material,
+            url: selectedItem.url,
+            size_type: selectedItem.size_type,
+            has_print: selectedItem.has_print,
+            has_details: selectedItem.has_details,
+            notes: selectedItem.notes,
+            is_basic: selectedItem.is_basic || false,
+            basic_item_id: selectedItem.basic_item_id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            basic_material_id: null,
+            is_hidden: false,
+            user_id: selectedItem.user_id,
+          }}
+          isOpen={!!selectedItem}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
     </>
   )
 }

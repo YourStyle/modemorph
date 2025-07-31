@@ -1,6 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+interface VTONRequest {
+  avatar_url: string
+  items: Array<{
+    name: string
+    description?: string
+    color?: string
+    material?: string
+    image_url?: string
+  }>
+}
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -14,49 +25,64 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { outfit_id, items } = await request.json()
+    const body = await request.json()
+    const { items } = body
 
-    // Get user's primary avatar
-    const { data: primaryAvatar, error: avatarError } = await supabase
-      .from("user_avatars")
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ error: "Items are required" }, { status: 400 })
+    }
+
+    // Get user profile to get avatar URL
+    const { data: profile, error: profileError } = await supabase
+      .from("user_profiles")
       .select("avatar_url")
       .eq("user_id", user.id)
-      .eq("is_primary", true)
       .single()
 
-    if (avatarError || !primaryAvatar) {
+    if (profileError || !profile?.avatar_url) {
       return NextResponse.json(
-        { error: "No primary avatar found. Please upload and set a primary avatar first." },
+        {
+          error: "User avatar not found. Please upload an avatar in your profile.",
+        },
         { status: 400 },
       )
     }
 
     // Prepare VTON request
-    const vtonPayload = {
-      avatar_url: primaryAvatar.avatar_url,
-      items: items.map((item: any) => ({
-        name: item.name || "Clothing item",
-        description: item.description || item.style_description || "",
-        color: item.color || "Unknown",
-        material: item.material || "Unknown",
-        image_url: item.image_url,
+    const vtonRequest: VTONRequest = {
+      avatar_url: profile.avatar_url,
+      items: items.map((item) => ({
+        name: item.name || "Unnamed item",
+        description: item.description || "",
+        color: item.color || "",
+        material: item.material || "",
+        image_url: item.image_url || "",
       })),
     }
 
-    // Make request to VTON service
+    console.log("Sending VTON request:", vtonRequest)
+
+    // Use NEXT_PUBLIC_AI_API_URL + /vton
     const vtonUrl = `${process.env.NEXT_PUBLIC_AI_API_URL}/vton`
+
+    // Make request to VTON service
     const vtonResponse = await fetch(vtonUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(vtonPayload),
+      body: JSON.stringify(vtonRequest),
     })
 
     if (!vtonResponse.ok) {
       const errorText = await vtonResponse.text()
-      console.error("VTON service error:", errorText)
-      return NextResponse.json({ error: "Virtual try-on service is currently unavailable" }, { status: 503 })
+      console.error("VTON service error:", vtonResponse.status, errorText)
+      return NextResponse.json(
+        {
+          error: "Virtual try-on service is temporarily unavailable",
+        },
+        { status: 503 },
+      )
     }
 
     const vtonResult = await vtonResponse.json()
@@ -64,7 +90,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       result: vtonResult,
-      avatar_url: primaryAvatar.avatar_url,
     })
   } catch (error) {
     console.error("Error in VTON API:", error)
