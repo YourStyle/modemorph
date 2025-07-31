@@ -28,19 +28,16 @@ export function Navigation() {
       const supabase = createClient()
 
       const {
-        data: { user },
+        data: { user: authUser },
       } = await supabase.auth.getUser()
 
-      if (user) {
-        setUser(user)
+      if (authUser) {
+        setUser(authUser)
 
         // Получаем профиль пользователя
         try {
-          const response = await fetch("/api/user-profile")
-          if (response.ok) {
-            const { profile } = await response.json()
-            setProfile(profile)
-          }
+          const { data: profileData } = await supabase.from("profiles").select("*").eq("id", authUser.id).single()
+          setProfile(profileData)
         } catch (error) {
           console.error("Error fetching profile:", error)
         }

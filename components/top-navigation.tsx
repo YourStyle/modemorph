@@ -57,7 +57,7 @@ export function TopNavigation() {
         data: { user: authUser },
       } = await supabase.auth.getUser()
       if (authUser) {
-        const { data: profile } = await supabase.from("user_profiles").select("*").eq("id", authUser.id).single()
+        const { data: profile } = await supabase.from("profiles").select("*").eq("id", authUser.id).single()
 
         setUser({
           email: authUser.email || "",
@@ -72,20 +72,26 @@ export function TopNavigation() {
     // Загружаем погоду
     const fetchWeather = async () => {
       try {
-        // Get user's location
-        if (!navigator.geolocation) {
-          throw new Error("Geolocation not supported")
+        let latitude = 55.7558 // Moscow coordinates as fallback
+        let longitude = 37.6176
+
+        // Try to get user's location
+        if (navigator.geolocation) {
+          try {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                timeout: 5000,
+                enableHighAccuracy: false,
+                maximumAge: 300000, // 5 minutes
+              })
+            })
+            latitude = position.coords.latitude
+            longitude = position.coords.longitude
+          } catch (geoError) {
+            console.warn("Geolocation failed, using Moscow coordinates:", geoError)
+            // Keep fallback coordinates
+          }
         }
-
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            timeout: 10000,
-            enableHighAccuracy: false,
-            maximumAge: 300000, // 5 minutes
-          })
-        })
-
-        const { latitude, longitude } = position.coords
 
         // Fetch weather from our API
         const response = await fetch(`/api/weather?lat=${latitude}&lon=${longitude}`)

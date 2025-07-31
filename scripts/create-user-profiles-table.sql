@@ -1,42 +1,42 @@
--- Create user_profiles table for storing user avatars and profile data
-CREATE TABLE IF NOT EXISTS user_profiles (
-  id SERIAL PRIMARY KEY,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  avatar_url TEXT,
-  display_name TEXT,
-  bio TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(user_id)
+-- Create profiles table if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    email TEXT,
+    full_name TEXT,
+    avatar_url TEXT,
+    is_admin BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON user_profiles(user_id);
-
 -- Enable RLS
-ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Create RLS policies
-CREATE POLICY "Users can view their own profile" ON user_profiles
-  FOR SELECT USING (auth.uid() = user_id);
+-- Create policies
+CREATE POLICY "Users can view own profile" ON public.profiles
+    FOR SELECT USING (auth.uid() = id);
 
-CREATE POLICY "Users can insert their own profile" ON user_profiles
-  FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own profile" ON public.profiles
+    FOR UPDATE USING (auth.uid() = id);
 
-CREATE POLICY "Users can update their own profile" ON user_profiles
-  FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own profile" ON public.profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
 
--- Create function to automatically update updated_at
-CREATE OR REPLACE FUNCTION update_user_profiles_updated_at()
+-- Create function to handle user creation
+CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
+    INSERT INTO public.profiles (id, email, full_name)
+    VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'full_name');
+    RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Create trigger for updated_at
-CREATE TRIGGER update_user_profiles_updated_at
-  BEFORE UPDATE ON user_profiles
-  FOR EACH ROW
-  EXECUTE FUNCTION update_user_profiles_updated_at();
+-- Create trigger for new user creation
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Create index for better performance
+CREATE INDEX IF NOT EXISTS profiles_id_idx ON public.profiles(id);
