@@ -1,20 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
-interface VTONRequest {
-  avatar_url: string
-  items: Array<{
-    name: string
-    description?: string
-    color?: string
-    material?: string
-    image_url?: string
-  }>
-}
-
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },
@@ -25,64 +14,76 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await request.json()
-    const { items } = body
+    const { outfit_id } = await request.json()
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ error: "Items are required" }, { status: 400 })
+    if (!outfit_id) {
+      return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
     }
 
-    // Get user profile to get avatar URL
-    const { data: profile, error: profileError } = await supabase
-      .from("user_profiles")
-      .select("avatar_url")
+    // Get user's primary avatar
+    const { data: avatar, error: avatarError } = await supabase
+      .from("user_avatars")
+      .select("url")
       .eq("user_id", user.id)
+      .eq("is_primary", true)
       .single()
 
-    if (profileError || !profile?.avatar_url) {
+    if (avatarError || !avatar) {
       return NextResponse.json(
-        {
-          error: "User avatar not found. Please upload an avatar in your profile.",
-        },
+        { error: "No primary avatar found. Please upload and set a primary avatar first." },
         { status: 400 },
       )
     }
 
-    // Prepare VTON request
-    const vtonRequest: VTONRequest = {
-      avatar_url: profile.avatar_url,
-      items: items.map((item) => ({
-        name: item.name || "Unnamed item",
-        description: item.description || "",
-        color: item.color || "",
-        material: item.material || "",
-        image_url: item.image_url || "",
-      })),
+    // Get outfit details with items
+    const { data: outfit, error: outfitError } = await supabase
+      .from("outfits")
+      .select(`
+        *,
+        outfit_items (
+          wardrobe_items (
+            id,
+            name,
+            description,
+            color,
+            material,
+            image_url
+          )
+        )
+      `)
+      .eq("id", outfit_id)
+      .single()
+
+    if (outfitError || !outfit) {
+      return NextResponse.json({ error: "Outfit not found" }, { status: 404 })
     }
 
-    console.log("Sending VTON request:", vtonRequest)
+    // Prepare items data for VTON API
+    const items = outfit.outfit_items.map((item: any) => ({
+      name: item.wardrobe_items.name,
+      description: item.wardrobe_items.description || "",
+      color: item.wardrobe_items.color || "",
+      material: item.wardrobe_items.material || "",
+      image_url: item.wardrobe_items.image_url,
+    }))
 
-    // Use NEXT_PUBLIC_AI_API_URL + /vton
-    const vtonUrl = `${process.env.NEXT_PUBLIC_AI_API_URL}/vton`
-
-    // Make request to VTON service
-    const vtonResponse = await fetch(vtonUrl, {
+    // Call VTON API
+    const vtonApiUrl = `${process.env.NEXT_PUBLIC_AI_API_URL}/vton`
+    const vtonResponse = await fetch(vtonApiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(vtonRequest),
+      body: JSON.stringify({
+        avatar_url: avatar.url,
+        items: items,
+      }),
     })
 
     if (!vtonResponse.ok) {
       const errorText = await vtonResponse.text()
-      console.error("VTON service error:", vtonResponse.status, errorText)
-      return NextResponse.json(
-        {
-          error: "Virtual try-on service is temporarily unavailable",
-        },
-        { status: 503 },
-      )
+      console.error("VTON API error:", errorText)
+      return NextResponse.json({ error: "Virtual try-on service is currently unavailable" }, { status: 503 })
     }
 
     const vtonResult = await vtonResponse.json()

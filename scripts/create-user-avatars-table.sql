@@ -1,5 +1,8 @@
+-- Drop existing table if it exists to recreate with correct structure
+DROP TABLE IF EXISTS user_avatars CASCADE;
+
 -- Create user_avatars table
-CREATE TABLE IF NOT EXISTS user_avatars (
+CREATE TABLE user_avatars (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   url TEXT NOT NULL,
@@ -9,8 +12,8 @@ CREATE TABLE IF NOT EXISTS user_avatars (
 );
 
 -- Create indexes
-CREATE INDEX IF NOT EXISTS idx_user_avatars_user_id ON user_avatars(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_avatars_is_primary ON user_avatars(user_id, is_primary);
+CREATE INDEX idx_user_avatars_user_id ON user_avatars(user_id);
+CREATE INDEX idx_user_avatars_is_primary ON user_avatars(user_id, is_primary);
 
 -- Enable RLS
 ALTER TABLE user_avatars ENABLE ROW LEVEL SECURITY;
