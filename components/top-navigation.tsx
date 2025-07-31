@@ -39,6 +39,7 @@ export function TopNavigation() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [weatherLoading, setWeatherLoading] = useState(true)
   const [weatherRefreshing, setWeatherRefreshing] = useState(false)
+  const [weatherError, setWeatherError] = useState(false)
   const [user, setUser] = useState<UserProfile | null>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -109,6 +110,7 @@ export function TopNavigation() {
       } else {
         setWeatherLoading(true)
       }
+      setWeatherError(false)
 
       // Get user location
       const coords = await getLocation()
@@ -124,22 +126,21 @@ export function TopNavigation() {
       })
 
       if (!response.ok) {
-        throw new Error("Weather API request failed")
+        throw new Error(`Weather API request failed: ${response.status}`)
       }
 
-      const weatherData: WeatherData = await response.json()
-      setWeather(weatherData)
+      const result = await response.json()
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      setWeather(result)
+      setWeatherError(false)
     } catch (error) {
       console.error("Failed to load weather:", error)
-      // Fallback weather data
-      setWeather({
-        temperature: 22,
-        condition: "sunny",
-        description: "Солнечно",
-        location: "Москва",
-        humidity: 60,
-        windSpeed: 5,
-      })
+      setWeatherError(true)
+      setWeather(null)
     } finally {
       setWeatherLoading(false)
       setWeatherRefreshing(false)
@@ -210,6 +211,11 @@ export function TopNavigation() {
               <div className="flex items-center space-x-2">
                 <div className="w-4 h-4 sm:w-5 sm:h-5 bg-gray-200 rounded animate-pulse" />
                 <div className="w-8 h-4 bg-gray-200 rounded animate-pulse" />
+              </div>
+            ) : weatherError ? (
+              <div className="flex items-center space-x-1 sm:space-x-2 text-gray-400">
+                <Cloud className="w-4 h-4 sm:w-5 sm:h-5" />
+                <span className="text-xs sm:text-sm">Погода недоступна</span>
               </div>
             ) : weather ? (
               <div className="flex items-center space-x-1 sm:space-x-2">
