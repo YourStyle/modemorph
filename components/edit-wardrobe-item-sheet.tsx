@@ -213,237 +213,270 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
   return (
     <CommonSheet isOpen={isOpen} onClose={onClose} title="Редактировать вещь" backgroundColor="dark">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Мобильная версия - фото сверху */}
-        <div className="block md:hidden">
-          <div className="flex flex-col items-center mb-6">
-            <div className="w-40 h-40 bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
-              {item.image_url ? (
-                <img src={item.image_url || "/placeholder.svg"} alt="Preview" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-4xl">👕</span>
-              )}
+      <div className="flex flex-col h-full">
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Мобильная версия - фото сверху */}
+            <div className="block md:hidden">
+              <div className="flex flex-col items-center mb-6">
+                <div className="w-40 h-40 bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
+                  {item.image_url ? (
+                    <img
+                      src={item.image_url || "/placeholder.svg"}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-4xl">👕</span>
+                  )}
+                </div>
+                <p className="text-white text-sm mt-2 text-center font-medium">{item.item_name}</p>
+              </div>
+
+              {/* Поля формы */}
+              <div className="space-y-4">
+                {/* Размер */}
+                <div className="space-y-2">
+                  <Label className="text-white">Размер</Label>
+                  <Select value={formData.size_type} onValueChange={(value) => handleInputChange("size_type", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите размер" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sizes.map((size) => (
+                        <SelectItem key={size} value={size}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Оттенок */}
+                <div className="space-y-2">
+                  <Label className="text-white">Оттенок</Label>
+                  <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите оттенок" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {shades.map((shade) => (
+                        <SelectItem key={shade} value={shade}>
+                          {shade}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Материал */}
+                <div className="space-y-2">
+                  <Label className="text-white">Материал</Label>
+                  <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите материал" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {materials.map((material) => (
+                        <SelectItem key={material} value={material}>
+                          {material}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Стиль */}
+                <div className="space-y-2">
+                  <Label className="text-white">Стиль</Label>
+                  <Select value={formData.style} onValueChange={(value) => handleInputChange("style", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите стиль" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {styles.map((style) => (
+                        <SelectItem key={style} value={style}>
+                          {style}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-            <p className="text-white text-sm mt-2 text-center font-medium">{item.item_name}</p>
+
+            {/* Планшеты и десктопы - 50/50 */}
+            <div className="hidden md:flex gap-6">
+              {/* Фото слева - 50% */}
+              <div className="flex-1 flex flex-col items-center">
+                <Label className="text-white mb-2">Фото</Label>
+                <div className="w-full max-w-48 aspect-square bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
+                  {item.image_url ? (
+                    <img
+                      src={item.image_url || "/placeholder.svg"}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-4xl">👕</span>
+                  )}
+                </div>
+                <p className="text-white text-sm mt-2 text-center font-medium">{item.item_name}</p>
+              </div>
+
+              {/* Поля справа - 50% */}
+              <div className="flex-1 space-y-4">
+                {/* Размер */}
+                <div className="space-y-2">
+                  <Label className="text-white">Размер</Label>
+                  <Select value={formData.size_type} onValueChange={(value) => handleInputChange("size_type", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите размер" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sizes.map((size) => (
+                        <SelectItem key={size} value={size}>
+                          {size}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Оттенок */}
+                <div className="space-y-2">
+                  <Label className="text-white">Оттенок</Label>
+                  <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите оттенок" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {shades.map((shade) => (
+                        <SelectItem key={shade} value={shade}>
+                          {shade}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Материал */}
+                <div className="space-y-2">
+                  <Label className="text-white">Материал</Label>
+                  <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите материал" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {materials.map((material) => (
+                        <SelectItem key={material} value={material}>
+                          {material}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Стиль */}
+                <div className="space-y-2">
+                  <Label className="text-white">Стиль</Label>
+                  <Select value={formData.style} onValueChange={(value) => handleInputChange("style", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите стиль" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {styles.map((style) => (
+                        <SelectItem key={style} value={style}>
+                          {style}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+
+            {/* Принт */}
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="has_print"
+                checked={formData.has_print}
+                onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
+                className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
+              />
+              <Label htmlFor="has_print" className="text-white">
+                Есть принт
+              </Label>
+            </div>
+
+            {/* Ссылка на товар */}
+            <div className="space-y-2">
+              <Label htmlFor="url" className="text-white">
+                Ссылка на товар в магазине
+              </Label>
+              <Input
+                id="url"
+                type="url"
+                value={formData.url}
+                onChange={(e) => handleInputChange("url", e.target.value)}
+                placeholder="https://shop.com/product/123"
+                className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+              />
+            </div>
+
+            {/* Заметки */}
+            <div className="space-y-2">
+              <Label htmlFor="notes" className="text-white">
+                Заметки
+              </Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => handleInputChange("notes", e.target.value)}
+                placeholder="Дополнительная информация о вещи"
+                rows={3}
+                className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+              />
+            </div>
+
+            {/* Кнопки для десктопа */}
+            <div className="hidden md:flex gap-4 pt-4">
+              <Button type="submit" disabled={isLoading} className="flex-1 bg-gray-900 hover:bg-gray-800 text-white">
+                {isLoading ? "Обновление..." : "Обновить"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                className="border-gray-600 text-white hover:bg-gray-700 bg-transparent"
+              >
+                Отмена
+              </Button>
+            </div>
+          </form>
+        </div>
+
+        {/* Fixed bottom buttons for mobile */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-600 p-4 z-50">
+          <div className="flex gap-4">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="flex-1 border-gray-600 text-white hover:bg-gray-700 bg-transparent"
+            >
+              Отмена
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={isLoading}
+              className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+            >
+              {isLoading ? "Сохранение..." : "Сохранить"}
+            </Button>
           </div>
-
-          {/* Поля формы */}
-          <div className="space-y-4">
-            {/* Размер */}
-            <div className="space-y-2">
-              <Label className="text-white">Размер</Label>
-              <Select value={formData.size_type} onValueChange={(value) => handleInputChange("size_type", value)}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="Выберите размер" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sizes.map((size) => (
-                    <SelectItem key={size} value={size}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Оттенок */}
-            <div className="space-y-2">
-              <Label className="text-white">Оттенок</Label>
-              <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="Выберите оттенок" />
-                </SelectTrigger>
-                <SelectContent>
-                  {shades.map((shade) => (
-                    <SelectItem key={shade} value={shade}>
-                      {shade}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Материал */}
-            <div className="space-y-2">
-              <Label className="text-white">Материал</Label>
-              <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="Выберите материал" />
-                </SelectTrigger>
-                <SelectContent>
-                  {materials.map((material) => (
-                    <SelectItem key={material} value={material}>
-                      {material}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Стиль */}
-            <div className="space-y-2">
-              <Label className="text-white">Стиль</Label>
-              <Select value={formData.style} onValueChange={(value) => handleInputChange("style", value)}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="Выберите стиль" />
-                </SelectTrigger>
-                <SelectContent>
-                  {styles.map((style) => (
-                    <SelectItem key={style} value={style}>
-                      {style}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
         </div>
-
-        {/* Планшеты и десктопы - 50/50 */}
-        <div className="hidden md:flex gap-6">
-          {/* Фото слева - 50% */}
-          <div className="flex-1 flex flex-col items-center">
-            <Label className="text-white mb-2">Фото</Label>
-            <div className="w-full max-w-48 aspect-square bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
-              {item.image_url ? (
-                <img src={item.image_url || "/placeholder.svg"} alt="Preview" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-4xl">👕</span>
-              )}
-            </div>
-            <p className="text-white text-sm mt-2 text-center font-medium">{item.item_name}</p>
-          </div>
-
-          {/* Поля справа - 50% */}
-          <div className="flex-1 space-y-4">
-            {/* Размер */}
-            <div className="space-y-2">
-              <Label className="text-white">Размер</Label>
-              <Select value={formData.size_type} onValueChange={(value) => handleInputChange("size_type", value)}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="Выберите размер" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sizes.map((size) => (
-                    <SelectItem key={size} value={size}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Оттенок */}
-            <div className="space-y-2">
-              <Label className="text-white">Оттенок</Label>
-              <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="Выберите оттенок" />
-                </SelectTrigger>
-                <SelectContent>
-                  {shades.map((shade) => (
-                    <SelectItem key={shade} value={shade}>
-                      {shade}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Материал */}
-            <div className="space-y-2">
-              <Label className="text-white">Материал</Label>
-              <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="Выберите материал" />
-                </SelectTrigger>
-                <SelectContent>
-                  {materials.map((material) => (
-                    <SelectItem key={material} value={material}>
-                      {material}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Стиль */}
-            <div className="space-y-2">
-              <Label className="text-white">Стиль</Label>
-              <Select value={formData.style} onValueChange={(value) => handleInputChange("style", value)}>
-                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="Выберите стиль" />
-                </SelectTrigger>
-                <SelectContent>
-                  {styles.map((style) => (
-                    <SelectItem key={style} value={style}>
-                      {style}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-
-        {/* Принт */}
-        <div className="flex items-center space-x-2">
-          <Checkbox
-            id="has_print"
-            checked={formData.has_print}
-            onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
-            className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
-          />
-          <Label htmlFor="has_print" className="text-white">
-            Есть принт
-          </Label>
-        </div>
-
-        {/* Ссылка на товар */}
-        <div className="space-y-2">
-          <Label htmlFor="url" className="text-white">
-            Ссылка на товар в магазине
-          </Label>
-          <Input
-            id="url"
-            type="url"
-            value={formData.url}
-            onChange={(e) => handleInputChange("url", e.target.value)}
-            placeholder="https://shop.com/product/123"
-            className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-          />
-        </div>
-
-        {/* Заметки */}
-        <div className="space-y-2">
-          <Label htmlFor="notes" className="text-white">
-            Заметки
-          </Label>
-          <Textarea
-            id="notes"
-            value={formData.notes}
-            onChange={(e) => handleInputChange("notes", e.target.value)}
-            placeholder="Дополнительная информация о вещи"
-            rows={3}
-            className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
-          />
-        </div>
-
-        {/* Кнопки */}
-        <div className="flex gap-4 pt-4">
-          <Button type="submit" disabled={isLoading} className="flex-1 bg-gray-900 hover:bg-gray-800 text-white">
-            {isLoading ? "Обновление..." : "Обновить"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onClose}
-            className="border-gray-600 text-white hover:bg-gray-700 bg-transparent"
-          >
-            Отмена
-          </Button>
-        </div>
-      </form>
+      </div>
     </CommonSheet>
   )
 }

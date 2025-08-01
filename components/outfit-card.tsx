@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,50 +38,35 @@ interface OutfitSuggestion {
 
 interface OutfitCardProps {
   suggestion: OutfitSuggestion
+  onSaveOutfit?: (suggestion: OutfitSuggestion) => void
+  userLooks?: any[]
 }
 
-export function OutfitCard({ suggestion }: OutfitCardProps) {
-  const [isSaved, setIsSaved] = useState(false)
+export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [] }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showTryOnModal, setShowTryOnModal] = useState(false)
-  const [userLooks, setUserLooks] = useState<any[]>([])
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
   const [vtonLoading, setVtonLoading] = useState(false)
   const [vtonResult, setVtonResult] = useState<any>(null)
 
+  // Ensure suggestion and items exist
+  if (!suggestion) {
+    return null
+  }
+
   const items = suggestion.items || []
   const title = suggestion.title || "Без названия"
   const suggestedItemsCount = suggestion.suggested_items_count || 0
 
-  useEffect(() => {
-    if (!suggestion) {
-      return
-    }
-    loadUserLooks()
-  }, [suggestion])
-
-  const loadUserLooks = async () => {
-    try {
-      const response = await fetch("/api/user-looks")
-      if (response.ok) {
-        const looks = await response.json()
-        setUserLooks(looks)
-
-        // Check if this outfit is already saved
-        const isAlreadySaved = looks.some(
-          (look: any) =>
-            look.name === title ||
-            (look.items &&
-              look.items.length === items.length &&
-              look.items.every((item: any) => items.some((suggItem) => suggItem.id === item.id.toString()))),
-        )
-        setIsSaved(isAlreadySaved)
-      }
-    } catch (error) {
-      console.error("Error loading user looks:", error)
-    }
-  }
+  // Check if this outfit is saved
+  const isSaved = userLooks.some(
+    (look: any) =>
+      look.name === title ||
+      (look.items &&
+        look.items.length === items.length &&
+        look.items.every((item: any) => items.some((suggItem) => suggItem.id === item.id.toString()))),
+  )
 
   const handleSaveOutfit = async () => {
     if (items.length === 0) {
@@ -91,33 +76,11 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
 
     setSaving(true)
     try {
-      // Transform items to the format expected by the API
-      const transformedItems = items.map((item) => ({
-        type: item.user_id ? "user" : "basic",
-        id: Number.parseInt(item.id),
-      }))
-
-      const response = await fetch("/api/user-looks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          name: title,
-          description: `Рекомендованный образ с ${suggestedItemsCount} предложенными вещами`,
-          items: transformedItems,
-        }),
-      })
-
-      if (response.ok) {
-        setIsSaved(true)
-        toast.success("Образ сохранен в вашу коллекцию!")
-      } else {
-        throw new Error("Failed to save outfit")
+      if (onSaveOutfit) {
+        await onSaveOutfit(suggestion)
       }
     } catch (error) {
       console.error("Error saving outfit:", error)
-      toast.error("Ошибка сохранения образа")
     } finally {
       setSaving(false)
     }
@@ -203,7 +166,7 @@ export function OutfitCard({ suggestion }: OutfitCardProps) {
               size="sm"
               className={`p-2 ${isSaved ? "text-green-600" : "text-gray-400 hover:text-green-600"}`}
               onClick={handleSaveOutfit}
-              disabled={saving || isSaved || items.length === 0}
+              disabled={saving || items.length === 0}
             >
               {isSaved ? <BookmarkCheck className="w-5 h-5" /> : <Bookmark className="w-5 h-5" />}
             </Button>

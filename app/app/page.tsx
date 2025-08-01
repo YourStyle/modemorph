@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { createClient } from "@/lib/supabase/client"
 import { OutfitCard } from "@/components/outfit-card"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
 import { Sparkles, Star, Plus } from "lucide-react"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
-import { createClient } from "@/lib/supabase/client"
 
 interface OutfitItem {
   id: string
@@ -120,6 +120,7 @@ export default function HomePage() {
   const [itemsLoading, setItemsLoading] = useState(true)
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
   const [isFromCache, setIsFromCache] = useState(false)
+  const [userLooks, setUserLooks] = useState<any[]>([])
 
   // Cache management functions
   const getCachedRecommendations = (): CachedRecommendations | null => {
@@ -193,6 +194,87 @@ export default function HomePage() {
     }
   }
 
+  // Load user looks
+  const loadUserLooks = async () => {
+    try {
+      const response = await fetch("/api/user-looks")
+      if (response.ok) {
+        const looks = await response.json()
+        setUserLooks(looks)
+      }
+    } catch (error) {
+      console.error("Error loading user looks:", error)
+    }
+  }
+
+  // Handle save/unsave outfit
+  const handleSaveOutfit = async (suggestion: OutfitSuggestion) => {
+    if (!suggestion || !suggestion.items || suggestion.items.length === 0) {
+      return
+    }
+
+    // Check if already saved
+    const isAlreadySaved = userLooks.some(
+      (look: any) =>
+        look.name === suggestion.title ||
+        (look.items &&
+          look.items.length === suggestion.items.length &&
+          look.items.every((item: any) => suggestion.items.some((suggItem) => suggItem.id === item.id.toString()))),
+    )
+
+    try {
+      if (isAlreadySaved) {
+        // Find and remove the saved look
+        const lookToRemove = userLooks.find(
+          (look: any) =>
+            look.name === suggestion.title ||
+            (look.items &&
+              look.items.length === suggestion.items.length &&
+              look.items.every((item: any) => suggestion.items.some((suggItem) => suggItem.id === item.id.toString()))),
+        )
+
+        if (lookToRemove) {
+          const response = await fetch(`/api/user-looks/${lookToRemove.id}`, {
+            method: "DELETE",
+          })
+
+          if (response.ok) {
+            setUserLooks((prev) => prev.filter((look) => look.id !== lookToRemove.id))
+          } else {
+            throw new Error("Failed to remove outfit")
+          }
+        }
+      } else {
+        // Add to saved looks
+        const transformedItems = suggestion.items.map((item: any) => ({
+          type: item.user_id ? "user" : "basic",
+          id: Number.parseInt(item.id),
+        }))
+
+        const response = await fetch("/api/user-looks", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            name: suggestion.title,
+            description: `Рекомендованный образ с ${suggestion.suggested_items_count} предложенными вещами`,
+            items: transformedItems,
+          }),
+        })
+
+        if (response.ok) {
+          const newLook = await response.json()
+          setUserLooks((prev) => [...prev, newLook])
+        } else {
+          throw new Error("Failed to save outfit")
+        }
+      }
+    } catch (error) {
+      console.error("Error managing outfit:", error)
+    }
+  }
+
   // Load user items count
   useEffect(() => {
     const loadUserItemsCount = async () => {
@@ -210,6 +292,7 @@ export default function HomePage() {
     }
 
     loadUserItemsCount()
+    loadUserLooks()
   }, [])
 
   // Load outfit suggestions from cache or API
@@ -409,8 +492,11 @@ export default function HomePage() {
                     controls={false}
                     preload="auto"
                   >
-                    <source src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/2025-07-14%204.03.22%E2%80%AFPM%20%281%29-5C9s38mSex1FKGeV9b9oiB6UjE3ENH.mp4" type="video/mp4" />
-                    {/* Fallback для браузеров без поддержки видео */}
+                    <source
+                      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/2025-07-14%204.03.22%E2%80%AFPM%20%281%29-5C9s38mSex1FKGeV9b9oiB6UjE3ENH.mp4"
+                      type="video/mp4"
+                    />
+                    {/* Fallback for browsers without video support */}
                     <div className="relative w-64 h-64">
                       <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl shadow-inner">
                         <div className="absolute top-4 left-4 right-4 h-2 bg-gray-300 rounded-full"></div>
@@ -552,7 +638,11 @@ export default function HomePage() {
                                 key={suggestion.id || `suggestion-${suggestionIndex}`}
                                 className="flex-shrink-0 snap-start"
                               >
-                                <OutfitCard suggestion={suggestion} />
+                                <OutfitCard
+                                  suggestion={suggestion}
+                                  onSaveOutfit={handleSaveOutfit}
+                                  userLooks={userLooks}
+                                />
                               </div>
                             )
                           })}
