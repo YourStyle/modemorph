@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Home, Shirt, Sparkles, BookOpen, Eye, User, Settings, LogOut, Menu, MapPin, Thermometer } from "lucide-react"
+import { Home, Shirt, Heart, Sparkles, BookOpen, User, Settings, LogOut, Menu, MapPin, Thermometer } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 
@@ -31,12 +31,32 @@ interface UserProfile {
   avatar_url: string | null
 }
 
-const navigation = [
-  { name: "Главная", href: "/app", icon: Home },
-  { name: "Гардероб", href: "/app/wardrobe", icon: Shirt },
-  { name: "ИИ", href: "/app/ai-assistant", icon: Sparkles },
-  { name: "Идеи", href: "/app/inspiration", icon: Eye },
-  { name: "Образы", href: "/app/looks", icon: BookOpen },
+const navigationItems = [
+  {
+    name: "Главная",
+    href: "/app",
+    icon: Home,
+  },
+  {
+    name: "Гардероб",
+    href: "/app/wardrobe",
+    icon: Shirt,
+  },
+  {
+    name: "ИИ",
+    href: "/app/ai-assistant",
+    icon: Sparkles,
+  },
+  {
+    name: "Идеи",
+    href: "/app/inspiration",
+    icon: Heart,
+  },
+  {
+    name: "Образы",
+    href: "/app/lookbook",
+    icon: BookOpen,
+  },
 ]
 
 export function Navigation() {
@@ -159,7 +179,7 @@ export function Navigation() {
 
   const NavigationContent = () => (
     <nav className="space-y-1">
-      {navigation.map((item) => {
+      {navigationItems.map((item) => {
         const isActive = pathname === item.href
         return (
           <Link
@@ -220,7 +240,7 @@ export function Navigation() {
 
           {/* Center - Navigation */}
           <div className="flex items-center space-x-1">
-            {navigation.map((item) => {
+            {navigationItems.map((item) => {
               const isActive = pathname === item.href
               return (
                 <Link
@@ -356,6 +376,31 @@ export function Navigation() {
           )}
         </div>
       </header>
+
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-2 z-50">
+        <div className="flex justify-around items-center max-w-md mx-auto">
+          {navigationItems.map((item) => {
+            const isActive = pathname === item.href
+            const Icon = item.icon
+
+            return (
+              <Button
+                key={item.name}
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push(item.href)}
+                className={`flex flex-col items-center space-y-1 h-auto py-2 px-3 ${
+                  isActive ? "text-blue-600 bg-blue-50" : "text-gray-600 hover:text-gray-900"
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${isActive ? "text-blue-600" : ""}`} />
+                <span className="text-xs font-medium">{item.name}</span>
+              </Button>
+            )
+          })}
+        </div>
+      </nav>
     </>
   )
 }

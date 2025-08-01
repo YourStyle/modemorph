@@ -5,7 +5,6 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
 
 interface AuthRedirectProps {
   children: React.ReactNode
@@ -14,69 +13,67 @@ interface AuthRedirectProps {
 }
 
 export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth/login" }: AuthRedirectProps) {
-  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authenticated, setAuthenticated] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
     checkAuth()
 
-    // Подписываемся на изменения авторизации
+    // Подписываемся на изменения состояния аутентификации
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        setUser(session.user)
-        setLoading(false)
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN") {
+        setAuthenticated(true)
       } else if (event === "SIGNED_OUT") {
-        setUser(null)
-        setLoading(false)
+        setAuthenticated(false)
         if (requireAuth) {
           router.push(redirectTo)
         }
       }
     })
 
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [requireAuth, redirectTo, router, supabase.auth])
+    return () => subscription.unsubscribe()
+  }, [supabase.auth, router, requireAuth, redirectTo])
 
   const checkAuth = async () => {
     try {
       const {
-        data: { user: currentUser },
+        data: { user },
         error,
       } = await supabase.auth.getUser()
 
       if (error) {
         console.error("Auth error:", error)
-        setUser(null)
-      } else {
-        setUser(currentUser)
+        setAuthenticated(false)
+        if (requireAuth) {
+          router.push(redirectTo)
+        }
+        return
       }
 
-      // Если требуется авторизация, но пользователя нет
-      if (requireAuth && !currentUser) {
+      const isAuthenticated = !!user
+      setAuthenticated(isAuthenticated)
+
+      if (requireAuth && !isAuthenticated) {
         router.push(redirectTo)
-        return
-      }
-
-      // Если не требуется авторизация, но пользователь есть
-      if (!requireAuth && currentUser) {
+      } else if (!requireAuth && isAuthenticated) {
+        // Если пользователь уже авторизован и находится на странице входа/регистрации
         router.push("/app")
-        return
       }
     } catch (error) {
       console.error("Error checking auth:", error)
-      setUser(null)
+      setAuthenticated(false)
+      if (requireAuth) {
+        router.push(redirectTo)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  // Показываем загрузку
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -85,14 +82,12 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
     )
   }
 
-  // Если требуется авторизация, но пользователя нет
-  if (requireAuth && !user) {
-    return null // Редирект уже произошел
+  if (requireAuth && !authenticated) {
+    return null // Компонент перенаправит пользователя
   }
 
-  // Если не требуется авторизация, но пользователь есть
-  if (!requireAuth && user) {
-    return null // Редирект уже произошел
+  if (!requireAuth && authenticated) {
+    return null // Компонент перенаправит пользователя
   }
 
   return <>{children}</>

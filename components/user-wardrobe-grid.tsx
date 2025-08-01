@@ -2,53 +2,52 @@
 
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { WardrobeItemCard } from "./wardrobe-item-card"
+import { WardrobeFilters } from "./wardrobe-filters"
 import { Button } from "@/components/ui/button"
-import { Plus, Search, Filter, Package } from "lucide-react"
-import { Input } from "@/components/ui/input"
+import { Plus, Grid, List } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import Image from "next/image"
 
-interface WardrobeUserItem {
-  id: number
-  user_id: string
-  item_name: string
-  material: string
+interface WardrobeItem {
+  id: string
+  name: string
+  category: string
   color: string
-  style: string
-  has_print: string
-  image_url: string | null
-  basic_item_id: number | null
-  is_hidden: boolean
-  size_type: string
-  shade: string
-  has_details: string
-  url: string
-  notes: string
+  brand?: string
+  image_url: string
   created_at: string
   updated_at: string
+  user_id: string
+  visibility: string
+  tags?: string[]
+  season?: string
+  material?: string
+  size?: string
+  purchase_date?: string
+  price?: number
+  notes?: string
 }
 
 interface FilterState {
   category: string
   color: string
-  material: string
-  style: string
+  season: string
+  search: string
+  sortBy: string
 }
 
 export function UserWardrobeGrid() {
-  const [items, setItems] = useState<WardrobeUserItem[]>([])
-  const [filteredItems, setFilteredItems] = useState<WardrobeUserItem[]>([])
+  const [items, setItems] = useState<WardrobeItem[]>([])
+  const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [showFilters, setShowFilters] = useState(false)
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
   const [filters, setFilters] = useState<FilterState>({
     category: "",
     color: "",
-    material: "",
-    style: "",
+    season: "",
+    search: "",
+    sortBy: "created_at",
   })
 
   const router = useRouter()
@@ -60,7 +59,7 @@ export function UserWardrobeGrid() {
 
   useEffect(() => {
     applyFilters()
-  }, [items, searchQuery, filters])
+  }, [items, filters])
 
   const loadWardrobeItems = async () => {
     try {
@@ -69,19 +68,18 @@ export function UserWardrobeGrid() {
 
       const {
         data: { user },
+        error: authError,
       } = await supabase.auth.getUser()
 
-      if (!user) {
-        setError("Пользователь не авторизован")
+      if (authError || !user) {
+        setError("Необходимо войти в систему")
         return
       }
 
-      // Получаем данные из правильной таблицы wardrobe_user_items
       const { data, error: fetchError } = await supabase
         .from("wardrobe_user_items")
         .select("*")
         .eq("user_id", user.id)
-        .eq("is_hidden", false)
         .order("created_at", { ascending: false })
 
       if (fetchError) {
@@ -90,12 +88,11 @@ export function UserWardrobeGrid() {
         return
       }
 
-      // Убеждаемся, что data это массив
       const wardrobeItems = Array.isArray(data) ? data : []
       setItems(wardrobeItems)
     } catch (err) {
-      console.error("Error in loadWardrobeItems:", err)
-      setError("Произошла ошибка при загрузке")
+      console.error("Error loading wardrobe:", err)
+      setError("Ошибка загрузки гардероба")
     } finally {
       setLoading(false)
     }
@@ -109,48 +106,52 @@ export function UserWardrobeGrid() {
 
     let filtered = [...items]
 
-    // Поиск по названию
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim()
-      filtered = filtered.filter(
-        (item) =>
-          item.item_name?.toLowerCase().includes(query) ||
-          item.color?.toLowerCase().includes(query) ||
-          item.material?.toLowerCase().includes(query) ||
-          item.style?.toLowerCase().includes(query),
-      )
+    // Фильтр по категории
+    if (filters.category) {
+      filtered = filtered.filter((item) => item.category?.toLowerCase().includes(filters.category.toLowerCase()))
     }
 
     // Фильтр по цвету
     if (filters.color) {
-      filtered = filtered.filter((item) => item.color === filters.color)
+      filtered = filtered.filter((item) => item.color?.toLowerCase().includes(filters.color.toLowerCase()))
     }
 
-    // Фильтр по материалу
-    if (filters.material) {
-      filtered = filtered.filter((item) => item.material === filters.material)
+    // Фильтр по сезону
+    if (filters.season) {
+      filtered = filtered.filter((item) => item.season?.toLowerCase().includes(filters.season.toLowerCase()))
     }
 
-    // Фильтр по стилю
-    if (filters.style) {
-      filtered = filtered.filter((item) => item.style === filters.style)
+    // Поиск по названию
+    if (filters.search) {
+      filtered = filtered.filter(
+        (item) =>
+          item.name?.toLowerCase().includes(filters.search.toLowerCase()) ||
+          item.brand?.toLowerCase().includes(filters.search.toLowerCase()) ||
+          (Array.isArray(item.tags) &&
+            item.tags.some((tag) => tag.toLowerCase().includes(filters.search.toLowerCase()))),
+      )
     }
+
+    // Сортировка
+    filtered.sort((a, b) => {
+      switch (filters.sortBy) {
+        case "name":
+          return (a.name || "").localeCompare(b.name || "")
+        case "category":
+          return (a.category || "").localeCompare(b.category || "")
+        case "color":
+          return (a.color || "").localeCompare(b.color || "")
+        case "created_at":
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+    })
 
     setFilteredItems(filtered)
   }
 
   const handleFilterChange = (newFilters: Partial<FilterState>) => {
     setFilters((prev) => ({ ...prev, ...newFilters }))
-  }
-
-  const clearFilters = () => {
-    setFilters({
-      category: "",
-      color: "",
-      material: "",
-      style: "",
-    })
-    setSearchQuery("")
   }
 
   const handleAddItem = () => {
@@ -160,21 +161,12 @@ export function UserWardrobeGrid() {
   if (loading) {
     return (
       <div className="space-y-6">
-        {/* Header skeleton */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex justify-between items-center">
           <div className="h-8 w-48 bg-gray-200 rounded animate-pulse"></div>
           <div className="h-10 w-32 bg-gray-200 rounded animate-pulse"></div>
         </div>
-
-        {/* Search and filters skeleton */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 h-10 bg-gray-200 rounded animate-pulse"></div>
-          <div className="h-10 w-24 bg-gray-200 rounded animate-pulse"></div>
-        </div>
-
-        {/* Grid skeleton */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {Array.from({ length: 10 }).map((_, i) => (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="aspect-square bg-gray-200 rounded-lg animate-pulse"></div>
           ))}
         </div>
@@ -184,11 +176,8 @@ export function UserWardrobeGrid() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 space-y-4">
-        <div className="text-red-500 text-center">
-          <p className="text-lg font-medium">Ошибка загрузки</p>
-          <p className="text-sm">{error}</p>
-        </div>
+      <div className="text-center py-12">
+        <p className="text-red-600 mb-4">{error}</p>
         <Button onClick={loadWardrobeItems} variant="outline">
           Попробовать снова
         </Button>
@@ -196,111 +185,65 @@ export function UserWardrobeGrid() {
     )
   }
 
-  const itemsToShow = Array.isArray(filteredItems) ? filteredItems : []
-
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Мой гардероб</h1>
-          <p className="text-sm text-gray-600 mt-1">{Array.isArray(items) ? items.length : 0} предметов в коллекции</p>
+          <p className="text-gray-600">
+            {Array.isArray(filteredItems) ? filteredItems.length : 0} из {Array.isArray(items) ? items.length : 0} вещей
+          </p>
         </div>
-        <Button onClick={handleAddItem} className="flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          Добавить вещь
-        </Button>
-      </div>
 
-      {/* Search and Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-          <Input
-            placeholder="Поиск по названию, цвету, материалу..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
-        <Button variant="outline" onClick={() => setShowFilters(!showFilters)} className="flex items-center gap-2">
-          <Filter className="h-4 w-4" />
-          Фильтры
-        </Button>
-      </div>
-
-      {/* Results Info */}
-      {(searchQuery || filters.color || filters.material || filters.style) && (
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <span>
-            Показано {itemsToShow.length} из {Array.isArray(items) ? items.length : 0} предметов
-          </span>
-          {(searchQuery || filters.color || filters.material || filters.style) && (
-            <Button variant="ghost" size="sm" onClick={clearFilters}>
-              Сбросить фильтры
+        <div className="flex items-center gap-2">
+          <div className="flex items-center border rounded-lg">
+            <Button variant={viewMode === "grid" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("grid")}>
+              <Grid className="h-4 w-4" />
             </Button>
-          )}
+            <Button variant={viewMode === "list" ? "default" : "ghost"} size="sm" onClick={() => setViewMode("list")}>
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <Button onClick={handleAddItem}>
+            <Plus className="h-4 w-4 mr-2" />
+            Добавить вещь
+          </Button>
         </div>
-      )}
+      </div>
+
+      {/* Filters */}
+      <WardrobeFilters
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        itemsCount={Array.isArray(filteredItems) ? filteredItems.length : 0}
+      />
 
       {/* Items Grid */}
-      {itemsToShow.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 space-y-4">
-          <Package className="w-16 h-16 text-gray-300" />
-          <div className="text-gray-500 text-center">
-            <p className="text-lg font-medium">
-              {Array.isArray(items) && items.length === 0 ? "Ваш гардероб пуст" : "Ничего не найдено"}
-            </p>
-            <p className="text-sm">
-              {Array.isArray(items) && items.length === 0
-                ? "Добавьте первую вещь в свой гардероб"
-                : "Попробуйте изменить параметры поиска"}
-            </p>
-          </div>
+      {Array.isArray(filteredItems) && filteredItems.length > 0 ? (
+        <div
+          className={
+            viewMode === "grid" ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" : "space-y-4"
+          }
+        >
+          {filteredItems.map((item) => (
+            <WardrobeItemCard key={item.id} item={item} viewMode={viewMode} onUpdate={loadWardrobeItems} />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <p className="text-gray-500 mb-4">
+            {Array.isArray(items) && items.length === 0
+              ? "В вашем гардеробе пока нет вещей"
+              : "Не найдено вещей по заданным фильтрам"}
+          </p>
           {Array.isArray(items) && items.length === 0 && (
-            <Button onClick={handleAddItem} className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
+            <Button onClick={handleAddItem}>
+              <Plus className="h-4 w-4 mr-2" />
               Добавить первую вещь
             </Button>
           )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {itemsToShow.map((item) => (
-            <Card key={item.id} className="overflow-hidden hover:shadow-md transition-shadow">
-              <div className="aspect-square relative">
-                {item.image_url ? (
-                  <Image
-                    src={item.image_url || "/placeholder.svg"}
-                    alt={item.item_name}
-                    fill
-                    className="object-cover"
-                    sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                    <Package className="h-8 w-8 text-gray-400" />
-                  </div>
-                )}
-              </div>
-              <CardContent className="p-3">
-                <h3 className="font-medium text-sm truncate mb-1">{item.item_name}</h3>
-                <div className="flex flex-wrap gap-1 mb-2">
-                  {item.color && (
-                    <Badge variant="secondary" className="text-xs">
-                      {item.color}
-                    </Badge>
-                  )}
-                  {item.material && (
-                    <Badge variant="outline" className="text-xs">
-                      {item.material}
-                    </Badge>
-                  )}
-                </div>
-                {item.style && <p className="text-xs text-gray-500 truncate">{item.style}</p>}
-              </CardContent>
-            </Card>
-          ))}
         </div>
       )}
     </div>

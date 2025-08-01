@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { User, Settings, LogOut, MapPin, Thermometer } from "lucide-react"
+import { User, Settings, LogOut } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
@@ -26,6 +26,7 @@ interface UserProfile {
   email: string
   full_name: string
   avatar_url: string | null
+  is_admin?: boolean
 }
 
 export function TopNavigation() {
@@ -51,11 +52,26 @@ export function TopNavigation() {
         try {
           const profileResponse = await fetch("/api/user-profile")
           if (profileResponse.ok) {
-            const profile = await profileResponse.json()
+            const { profile } = await profileResponse.json()
             setUser(profile)
+          } else {
+            // Fallback к данным из auth
+            setUser({
+              id: authUser.id,
+              email: authUser.email || "",
+              full_name: authUser.user_metadata?.full_name || "",
+              avatar_url: authUser.user_metadata?.avatar_url || null,
+            })
           }
         } catch (error) {
           console.error("Error loading profile:", error)
+          // Fallback к данным из auth
+          setUser({
+            id: authUser.id,
+            email: authUser.email || "",
+            full_name: authUser.user_metadata?.full_name || "",
+            avatar_url: authUser.user_metadata?.avatar_url || null,
+          })
         }
       }
 
@@ -112,7 +128,7 @@ export function TopNavigation() {
         location: "Москва",
         temperature: 20,
         description: "Ясно",
-        icon: "01d",
+        icon: "☀️",
       })
     }
   }
@@ -162,34 +178,38 @@ export function TopNavigation() {
     <header className="bg-white border-b border-gray-200 px-4 py-3">
       <div className="flex items-center justify-between">
         {/* Left side - Date, Time, Weather */}
-        <div className="flex items-center space-x-6">
+        <div className="flex items-center space-x-3">
           <div className="text-sm text-gray-600">
             <div className="font-medium">{formatDate()}</div>
-            <div className="text-xs">{formatTime()}</div>
-          </div>
-
-          {weather && (
-            <div className="flex items-center space-x-2 text-sm text-gray-600">
-              <MapPin className="h-3 w-3" />
-              <span>{weather.location}</span>
-              <div className="flex items-center space-x-1">
-                <Thermometer className="h-3 w-3" />
-                <span>{weather.temperature}°C</span>
-              </div>
-              <span className="text-xs">{weather.description}</span>
+            <div className="flex items-center space-x-2 text-xs">
+              <span>{formatTime()}</span>
+              {weather && (
+                <>
+                  {/* На мобильных показываем только иконку и температуру */}
+                  <div className="flex items-center space-x-1">
+                    <span>{weather.icon}</span>
+                    <span>{weather.temperature}°C</span>
+                  </div>
+                  {/* На больших экранах показываем полную информацию */}
+                  <div className="hidden sm:flex items-center space-x-2">
+                    <span>{weather.description}</span>
+                    <span className="text-gray-500">{weather.location}</span>
+                  </div>
+                </>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
         {/* Right side - User menu */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center">
           {user ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={user.avatar_url || undefined} alt={user.full_name || user.email} />
-                    <AvatarFallback>
+                    <AvatarFallback className="text-xs">
                       {user.full_name ? user.full_name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
@@ -211,6 +231,15 @@ export function TopNavigation() {
                   <Settings className="mr-2 h-4 w-4" />
                   <span>Настройки</span>
                 </DropdownMenuItem>
+                {user.is_admin && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => router.push("/admin")}>
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Админ панель</span>
+                    </DropdownMenuItem>
+                  </>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
