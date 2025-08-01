@@ -27,7 +27,6 @@ interface BasicWardrobeItem {
   description?: string
   clothing_type: string
   image_url?: string
-  colors?: string[]
   material?: string
   style?: string
   color?: string
@@ -106,8 +105,9 @@ export default function WardrobePage() {
       const response = await fetch("/api/basic-wardrobe-items")
       if (response.ok) {
         const data = await response.json()
+        console.log("Loaded basic items:", data)
         // Ensure data is an array
-        const itemsArray = Array.isArray(data) ? data : data.items || []
+        const itemsArray = Array.isArray(data) ? data : []
         setBasicItems(itemsArray)
       } else {
         console.error("Failed to fetch basic items:", response.statusText)
@@ -188,9 +188,10 @@ export default function WardrobePage() {
   const handleAddBaseItem = async (item: BasicWardrobeItem) => {
     try {
       setAddingItemId(item.id)
+      console.log("Adding base item:", item)
 
       const payload = {
-        item_name: item.item_name,
+        item_name: item.item_name, // Убедимся что передается правильное название
         basic_item_id: item.id,
         material: item.material || "",
         style: item.style || "",
@@ -202,6 +203,8 @@ export default function WardrobePage() {
         notes: "",
         image_url: item.image_url,
       }
+
+      console.log("Sending payload:", payload)
 
       const response = await fetch("/api/wardrobe-user-items", {
         method: "POST",
@@ -216,15 +219,18 @@ export default function WardrobePage() {
         throw new Error(errorData.error || "Failed to add item")
       }
 
+      const result = await response.json()
+      console.log("Item added successfully:", result)
+
       toast({
         title: "Вещь добавлена",
         description: `${item.item_name} добавлена в ваш гардероб`,
       })
 
-      // Обновляем список базовых вещей и количество пользовательских вещей
+      // Обновляем список базовых вещей (чтобы скрыть добавленную)
       fetchBasicItems()
+      // Обновляем количество пользовательских вещей
       fetchUserItems()
-
       // Принудительно обновляем UserWardrobeGrid
       setRefreshUserItems((prev) => prev + 1)
     } catch (error) {

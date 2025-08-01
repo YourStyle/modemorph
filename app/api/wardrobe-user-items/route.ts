@@ -49,14 +49,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     console.log("Received item data:", body)
 
-    // Маппим данные на правильные колонки таблицы wardrobe_user_items
+    // Правильно маппим данные на колонки таблицы wardrobe_user_items
     const itemData = {
       user_id: user.id,
-      item_name: body.name || body.item_name || "Без названия",
+      item_name: body.item_name || body.name || "Без названия", // Исправлен порядок проверки
       material: body.material || "",
       color: body.color || "",
       style: body.style || "",
-      has_print: body.print || body.has_print || "нет",
+      has_print: body.has_print || body.print || "нет",
       image_url: body.image_url || null,
       basic_item_id: body.basic_item_id ? Number.parseInt(body.basic_item_id) : null,
       is_hidden: false,
