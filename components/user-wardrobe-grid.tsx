@@ -6,22 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Trash2, Edit } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-
-interface WardrobeItem {
-  id: number
-  item_name: string
-  material?: string
-  style?: string
-  color?: string
-  shade?: string
-  has_print?: string
-  has_details?: string
-  size_type?: string
-  notes?: string
-  image_url?: string
-  clothing_type?: string
-  created_at?: string
-}
+import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
+import type { WardrobeItem as ItemDetailsModalWardrobeItem } from "./item-details-modal"
 
 interface UserWardrobeGridProps {
   onItemsChange?: (count: number) => void
@@ -54,10 +40,12 @@ export function UserWardrobeGrid({
   searchQuery = "",
   sortBy = "newest",
 }: UserWardrobeGridProps) {
-  const [allItems, setAllItems] = useState<WardrobeItem[]>([])
-  const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([])
+  const [allItems, setAllItems] = useState<ItemDetailsModalWardrobeItem[]>([])
+  const [filteredItems, setFilteredItems] = useState<ItemDetailsModalWardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [editingItem, setEditingItem] = useState<ItemDetailsModalWardrobeItem | null>(null)
+  const [showEditSheet, setShowEditSheet] = useState(false)
   const { toast } = useToast()
 
   const fetchItems = async () => {
@@ -140,6 +128,17 @@ export function UserWardrobeGrid({
     }
   }
 
+  const handleEdit = (item: ItemDetailsModalWardrobeItem) => {
+    setEditingItem(item)
+    setShowEditSheet(true)
+  }
+
+  const handleEditSuccess = () => {
+    fetchItems()
+    setShowEditSheet(false)
+    setEditingItem(null)
+  }
+
   if (loading) {
     return <UserWardrobeSkeleton />
   }
@@ -162,95 +161,101 @@ export function UserWardrobeGrid({
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-      {filteredItems.map((item) => (
-        <Card key={item.id} className="bg-white border-0 shadow-sm overflow-hidden relative group">
-          <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
-            {item.image_url ? (
-              <img
-                src={item.image_url || "/placeholder.svg"}
-                alt={item.item_name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement
-                  target.style.display = "none"
-                  target.nextElementSibling?.classList.remove("hidden")
-                }}
-              />
-            ) : null}
-            <span className={`text-2xl ${item.image_url ? "hidden" : ""}`}>👕</span>
+    <>
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+        {filteredItems.map((item) => (
+          <Card key={item.id} className="bg-white border-0 shadow-sm overflow-hidden relative group">
+            <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
+              {item.image_url ? (
+                <img
+                  src={item.image_url || "/placeholder.svg"}
+                  alt={item.item_name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement
+                    target.style.display = "none"
+                    target.nextElementSibling?.classList.remove("hidden")
+                  }}
+                />
+              ) : null}
+              <span className={`text-2xl ${item.image_url ? "hidden" : ""}`}>👕</span>
 
-            {/* Action buttons - показываются при наведении на десктопе, всегда видны на мобильных */}
-            <div className="absolute top-2 right-2 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-              <Button
-                size="sm"
-                variant="secondary"
-                className="h-7 w-7 p-0 bg-white/90 hover:bg-white shadow-sm"
-                onClick={() => {
-                  // TODO: Implement edit functionality
-                  toast({
-                    title: "Функция в разработке",
-                    description: "Редактирование вещей будет доступно в следующем обновлении",
-                  })
-                }}
-              >
-                <Edit className="h-3 w-3" />
-              </Button>
-              <Button
-                size="sm"
-                variant="destructive"
-                className="h-7 w-7 p-0 bg-red-500/90 hover:bg-red-500 shadow-sm"
-                onClick={() => handleDelete(item.id)}
-                disabled={deletingId === item.id}
-              >
-                {deletingId === item.id ? (
-                  <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Trash2 className="h-3 w-3" />
+              {/* Action buttons - показываются при наведении на десктопе, всегда видны на мобильных */}
+              <div className="absolute top-2 right-2 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-7 w-7 p-0 bg-white/90 hover:bg-white shadow-sm"
+                  onClick={() => handleEdit(item)}
+                >
+                  <Edit className="h-3 w-3" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="h-7 w-7 p-0 bg-red-500/90 hover:bg-red-500 shadow-sm"
+                  onClick={() => handleDelete(item.id)}
+                  disabled={deletingId === item.id}
+                >
+                  {deletingId === item.id ? (
+                    <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3 w-3" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-3">
+              <h3 className="font-medium text-gray-900 text-xs mb-1 line-clamp-2 leading-tight">{item.item_name}</h3>
+
+              {/* Item details */}
+              <div className="space-y-1 mb-2">
+                {item.color && (
+                  <p className="text-xs text-gray-600">
+                    <span className="font-medium">Цвет:</span> {item.color}
+                    {item.shade && ` (${item.shade})`}
+                  </p>
                 )}
-              </Button>
-            </div>
-          </div>
+                {item.material && (
+                  <p className="text-xs text-gray-600">
+                    <span className="font-medium">Материал:</span> {item.material}
+                  </p>
+                )}
+              </div>
 
-          <div className="p-3">
-            <h3 className="font-medium text-gray-900 text-xs mb-1 line-clamp-2 leading-tight">{item.item_name}</h3>
-
-            {/* Item details */}
-            <div className="space-y-1 mb-2">
-              {item.color && (
-                <p className="text-xs text-gray-600">
-                  <span className="font-medium">Цвет:</span> {item.color}
-                  {item.shade && ` (${item.shade})`}
-                </p>
-              )}
-              {item.material && (
-                <p className="text-xs text-gray-600">
-                  <span className="font-medium">Материал:</span> {item.material}
-                </p>
-              )}
+              {/* Tags */}
+              <div className="flex flex-wrap gap-1">
+                {item.style && (
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600">
+                    {item.style}
+                  </Badge>
+                )}
+                {item.has_print && item.has_print !== "нет" && (
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600">
+                    {item.has_print}
+                  </Badge>
+                )}
+                {item.size_type && (
+                  <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-green-100 text-green-600">
+                    {item.size_type}
+                  </Badge>
+                )}
+              </div>
             </div>
+          </Card>
+        ))}
+      </div>
 
-            {/* Tags */}
-            <div className="flex flex-wrap gap-1">
-              {item.style && (
-                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600">
-                  {item.style}
-                </Badge>
-              )}
-              {item.has_print && item.has_print !== "нет" && (
-                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600">
-                  {item.has_print}
-                </Badge>
-              )}
-              {item.size_type && (
-                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-green-100 text-green-600">
-                  {item.size_type}
-                </Badge>
-              )}
-            </div>
-          </div>
-        </Card>
-      ))}
-    </div>
+      <EditWardrobeItemSheet
+        item={editingItem}
+        isOpen={showEditSheet}
+        onClose={() => {
+          setShowEditSheet(false)
+          setEditingItem(null)
+        }}
+        onSuccess={handleEditSuccess}
+      />
+    </>
   )
 }
