@@ -1,150 +1,256 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
-import { WardrobeItemCard } from "./wardrobe-item-card"
-import { WardrobeFilters } from "./wardrobe-filters"
-import { Skeleton } from "@/components/ui/skeleton"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Trash2, Edit } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
 
 interface WardrobeItem {
-  id: string
-  name: string
-  type: string
-  color: string
-  material: string
-  image_url: string
-  created_at: string
-  updated_at: string
-  user_id: string
+  id: number
+  item_name: string
+  material?: string
+  style?: string
+  color?: string
+  shade?: string
+  has_print?: string
+  has_details?: string
+  size_type?: string
+  notes?: string
+  image_url?: string
+  clothing_type?: string
+  created_at?: string
 }
 
-export function UserWardrobeGrid() {
-  const [items, setItems] = useState<WardrobeItem[]>([])
+interface UserWardrobeGridProps {
+  onItemsChange?: (count: number) => void
+  refreshTrigger?: number
+  searchQuery?: string
+  sortBy?: string
+}
+
+// Skeleton component for loading state
+const UserWardrobeSkeleton = () => {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+        <Card key={i} className="bg-white border-0 shadow-sm overflow-hidden">
+          <div className="aspect-square bg-gray-200 animate-pulse"></div>
+          <div className="p-3 space-y-2">
+            <div className="h-3 bg-gray-200 rounded w-3/4 animate-pulse"></div>
+            <div className="h-2 bg-gray-200 rounded w-1/2 animate-pulse"></div>
+            <div className="h-2 bg-gray-200 rounded w-1/3 animate-pulse"></div>
+          </div>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+export function UserWardrobeGrid({
+  onItemsChange,
+  refreshTrigger,
+  searchQuery = "",
+  sortBy = "newest",
+}: UserWardrobeGridProps) {
+  const [allItems, setAllItems] = useState<WardrobeItem[]>([])
   const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const { toast } = useToast()
 
-  const supabase = createClientComponentClient()
-
-  useEffect(() => {
-    fetchWardrobeItems()
-  }, [])
-
-  const fetchWardrobeItems = async () => {
+  const fetchItems = async () => {
     try {
       setLoading(true)
-      setError(null)
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        setError("Пользователь не авторизован")
-        return
+      const response = await fetch("/api/wardrobe-user-items")
+      if (response.ok) {
+        const data = await response.json()
+        const items = Array.isArray(data) ? data : []
+        setAllItems(items)
+        onItemsChange?.(items.length)
+      } else {
+        console.error("Failed to fetch user items")
+        setAllItems([])
+        onItemsChange?.(0)
       }
-
-      // Простой запрос без связей с другими таблицами
-      const { data, error: fetchError } = await supabase
-        .from("wardrobe_user_items")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-
-      if (fetchError) {
-        console.error("Error fetching wardrobe items:", fetchError)
-        setError(`Ошибка загрузки: ${fetchError.message}`)
-        return
-      }
-
-      const wardrobeItems = Array.isArray(data) ? data : []
-      setItems(wardrobeItems)
-      setFilteredItems(wardrobeItems)
-    } catch (err) {
-      console.error("Error fetching wardrobe items:", err)
-      setError("Произошла ошибка при загрузке гардероба")
+    } catch (error) {
+      console.error("Error fetching user items:", error)
+      setAllItems([])
+      onItemsChange?.(0)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleFilterChange = (filters: { search: string; types: string[] }) => {
-    if (!Array.isArray(items)) {
-      setFilteredItems([])
-      return
+  // Фильтрация и сортировка на клиенте
+  useEffect(() => {
+    let filtered = [...allItems]
+
+    // Поиск по названию
+    if (searchQuery.trim()) {
+      filtered = filtered.filter((item) => item.item_name.toLowerCase().includes(searchQuery.toLowerCase()))
     }
 
-    let filtered = [...items]
-
-    // Фильтр по поиску
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase()
-      filtered = filtered.filter(
-        (item) =>
-          (item.name || "").toLowerCase().includes(searchLower) ||
-          (item.color || "").toLowerCase().includes(searchLower) ||
-          (item.material || "").toLowerCase().includes(searchLower) ||
-          (item.type || "").toLowerCase().includes(searchLower),
-      )
-    }
-
-    // Фильтр по типам
-    if (Array.isArray(filters.types) && filters.types.length > 0) {
-      filtered = filtered.filter((item) => filters.types.includes(item.type || ""))
-    }
+    // Сортировка
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "oldest":
+          return new Date(a.created_at || "").getTime() - new Date(b.created_at || "").getTime()
+        case "name":
+          return a.item_name.localeCompare(b.item_name)
+        case "newest":
+        default:
+          return new Date(b.created_at || "").getTime() - new Date(a.created_at || "").getTime()
+      }
+    })
 
     setFilteredItems(filtered)
-    setSelectedTypes(Array.isArray(filters.types) ? filters.types : [])
+  }, [allItems, searchQuery, sortBy])
+
+  useEffect(() => {
+    fetchItems()
+  }, [refreshTrigger])
+
+  const handleDelete = async (id: number) => {
+    try {
+      setDeletingId(id)
+      const response = await fetch(`/api/wardrobe-user-items/${id}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        toast({
+          title: "Вещь удалена",
+          description: "Вещь успешно удалена из гардероба",
+        })
+        fetchItems() // Refresh the list
+      } else {
+        throw new Error("Failed to delete item")
+      }
+    } catch (error) {
+      console.error("Error deleting item:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось удалить вещь",
+        variant: "destructive",
+      })
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   if (loading) {
+    return <UserWardrobeSkeleton />
+  }
+
+  if (filteredItems.length === 0 && searchQuery.trim()) {
     return (
-      <div className="space-y-6">
-        <div className="space-y-4">
-          <Skeleton className="h-10 w-full" />
-          <div className="space-y-2">
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-6 w-32" />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-square rounded-lg" />
-          ))}
-        </div>
+      <div className="text-center py-8">
+        <p className="text-gray-500">Ничего не найдено по запросу "{searchQuery}"</p>
+        <p className="text-gray-400 text-sm mt-1">Попробуйте изменить поисковый запрос</p>
       </div>
     )
   }
 
-  if (error) {
+  if (allItems.length === 0) {
     return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
+      <div className="text-center py-8">
+        <p className="text-gray-500">У вас пока нет вещей в гардеробе</p>
+      </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      <WardrobeFilters onFilterChange={handleFilterChange} selectedTypes={selectedTypes} />
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+      {filteredItems.map((item) => (
+        <Card key={item.id} className="bg-white border-0 shadow-sm overflow-hidden relative group">
+          <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
+            {item.image_url ? (
+              <img
+                src={item.image_url || "/placeholder.svg"}
+                alt={item.item_name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement
+                  target.style.display = "none"
+                  target.nextElementSibling?.classList.remove("hidden")
+                }}
+              />
+            ) : null}
+            <span className={`text-2xl ${item.image_url ? "hidden" : ""}`}>👕</span>
 
-      {Array.isArray(filteredItems) && filteredItems.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500">
-            {Array.isArray(items) && items.length === 0
-              ? "Ваш гардероб пуст. Добавьте первую вещь!"
-              : "Ничего не найдено по заданным фильтрам"}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {Array.isArray(filteredItems) && filteredItems.map((item) => <WardrobeItemCard key={item.id} item={item} />)}
-        </div>
-      )}
+            {/* Action buttons - показываются при наведении на десктопе, всегда видны на мобильных */}
+            <div className="absolute top-2 right-2 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+              <Button
+                size="sm"
+                variant="secondary"
+                className="h-7 w-7 p-0 bg-white/90 hover:bg-white shadow-sm"
+                onClick={() => {
+                  // TODO: Implement edit functionality
+                  toast({
+                    title: "Функция в разработке",
+                    description: "Редактирование вещей будет доступно в следующем обновлении",
+                  })
+                }}
+              >
+                <Edit className="h-3 w-3" />
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-7 w-7 p-0 bg-red-500/90 hover:bg-red-500 shadow-sm"
+                onClick={() => handleDelete(item.id)}
+                disabled={deletingId === item.id}
+              >
+                {deletingId === item.id ? (
+                  <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Trash2 className="h-3 w-3" />
+                )}
+              </Button>
+            </div>
+          </div>
+
+          <div className="p-3">
+            <h3 className="font-medium text-gray-900 text-xs mb-1 line-clamp-2 leading-tight">{item.item_name}</h3>
+
+            {/* Item details */}
+            <div className="space-y-1 mb-2">
+              {item.color && (
+                <p className="text-xs text-gray-600">
+                  <span className="font-medium">Цвет:</span> {item.color}
+                  {item.shade && ` (${item.shade})`}
+                </p>
+              )}
+              {item.material && (
+                <p className="text-xs text-gray-600">
+                  <span className="font-medium">Материал:</span> {item.material}
+                </p>
+              )}
+            </div>
+
+            {/* Tags */}
+            <div className="flex flex-wrap gap-1">
+              {item.style && (
+                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600">
+                  {item.style}
+                </Badge>
+              )}
+              {item.has_print && item.has_print !== "нет" && (
+                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-600">
+                  {item.has_print}
+                </Badge>
+              )}
+              {item.size_type && (
+                <Badge variant="secondary" className="text-xs px-1.5 py-0.5 bg-green-100 text-green-600">
+                  {item.size_type}
+                </Badge>
+              )}
+            </div>
+          </div>
+        </Card>
+      ))}
     </div>
   )
 }
