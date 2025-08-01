@@ -1,9 +1,10 @@
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
+import { cookies } from "next/headers"
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = createRouteHandlerClient({ cookies })
 
     const {
       data: { user },
@@ -14,28 +15,48 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { data, error } = await supabase
-      .from("wardrobe_user_items")
-      .select("*")
-      .eq("user_id", user.id)
-      .eq("is_hidden", false)
-      .order("created_at", { ascending: false })
+    const { searchParams } = new URL(request.url)
+    const search = searchParams.get("search")
+    const sort = searchParams.get("sort") || "newest"
+
+    let query = supabase.from("wardrobe_user_items").select("*").eq("user_id", user.id)
+
+    // Поиск
+    if (search) {
+      query = query.ilike("item_name", `%${search}%`)
+    }
+
+    // Сортировка
+    switch (sort) {
+      case "oldest":
+        query = query.order("created_at", { ascending: true })
+        break
+      case "name":
+        query = query.order("item_name", { ascending: true })
+        break
+      case "newest":
+      default:
+        query = query.order("created_at", { ascending: false })
+        break
+    }
+
+    const { data, error } = await query
 
     if (error) {
-      console.error("Error fetching wardrobe items:", error)
+      console.error("Error fetching user wardrobe items:", error)
       return NextResponse.json({ error: "Failed to fetch items" }, { status: 500 })
     }
 
     return NextResponse.json(data || [])
   } catch (error) {
-    console.error("Error in GET /api/wardrobe-user-items:", error)
+    console.error("Error in wardrobe-user-items GET:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = createRouteHandlerClient({ cookies })
 
     const {
       data: { user },
@@ -47,38 +68,38 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    console.log("Received item data:", body)
+    console.log("Received POST body:", body)
 
-    // Правильно маппим данные на колонки таблицы wardrobe_user_items
     const itemData = {
       user_id: user.id,
       item_name: body.item_name || body.name || "Без названия", // Исправлен порядок проверки
-      material: body.material || "",
-      color: body.color || "",
-      style: body.style || "",
-      has_print: body.has_print || body.print || "нет",
-      image_url: body.image_url || null,
-      basic_item_id: body.basic_item_id ? Number.parseInt(body.basic_item_id) : null,
-      is_hidden: false,
-      size_type: body.size_type || "",
-      shade: body.shade || "",
+      material: body.material || null,
+      style: body.style || null,
+      color: body.color || null,
+      shade: body.shade || null,
+      has_print: body.has_print || "нет",
       has_details: body.has_details || "нет",
-      url: body.url || "",
-      notes: body.notes || "",
+      size_type: body.size_type || null,
+      notes: body.notes || null,
+      image_url: body.image_url || null,
+      basic_item_id: body.basic_item_id || null,
+      clothing_type: body.clothing_type || null,
+      is_visible: true,
     }
 
-    console.log("Saving item data:", itemData)
+    console.log("Inserting item data:", itemData)
 
     const { data, error } = await supabase.from("wardrobe_user_items").insert([itemData]).select().single()
 
     if (error) {
-      console.error("Error creating wardrobe item:", error)
-      return NextResponse.json({ error: "Failed to create item", details: error.message }, { status: 500 })
+      console.error("Error inserting wardrobe item:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    console.log("Item inserted successfully:", data)
     return NextResponse.json(data)
   } catch (error) {
-    console.error("Error in POST /api/wardrobe-user-items:", error)
+    console.error("Error in wardrobe-user-items POST:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
