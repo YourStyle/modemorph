@@ -2,33 +2,17 @@
 
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, X, Camera } from "lucide-react"
+import { Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
-
-interface WardrobeItem {
-  id: number
-  item_name: string
-  material?: string
-  style?: string
-  color?: string
-  shade?: string
-  has_print?: string
-  has_details?: string
-  size_type?: string
-  notes?: string
-  image_url?: string
-  clothing_type?: string
-  created_at?: string
-  basic_item_id?: number
-}
+import { CommonSheet } from "./common-sheet"
+import type { WardrobeItem } from "./item-details-modal"
 
 interface BasicItem {
   id: number
@@ -55,8 +39,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
     color: "",
     shade: "",
     has_details: false,
+    url: "",
     notes: "",
-    basic_item_id: "",
+    basic_item_id: "0",
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -73,12 +58,13 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
         size_type: item.size_type || "",
         material: item.material || "",
         style: item.style || "",
-        has_print: item.has_print === "true" || item.has_print === true,
+        has_print: item.has_print === true || item.has_print === "true",
         color: item.color || "",
         shade: item.shade || "",
-        has_details: item.has_details === "true" || item.has_details === true,
+        has_details: item.has_details === true || item.has_details === "true",
+        url: item.url || "",
         notes: item.notes || "",
-        basic_item_id: item.basic_item_id?.toString() || "",
+        basic_item_id: item.basic_item_id?.toString() || "0",
       })
       setImagePreview(item.image_url || null)
       loadBasicItems()
@@ -168,12 +154,13 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
         color: formData.color || null,
         shade: formData.shade || null,
         has_details: formData.has_details ? "true" : "false",
+        url: formData.url || null,
         notes: formData.notes || null,
         basic_item_id: formData.basic_item_id ? Number.parseInt(formData.basic_item_id) : null,
         image_url: imageUrl || null,
       }
 
-      const response = await fetch(`/api/wardrobe-user-items/${item.id}`, {
+      const response = await fetch(`/api/wardrobe/${item.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -198,180 +185,182 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
   }
 
   return (
-    <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Редактировать вещь</SheetTitle>
-        </SheetHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-6 mt-6">
-          {/* Фото */}
-          <div className="space-y-2">
-            <Label>Фото</Label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-              {imagePreview ? (
-                <div className="relative">
-                  <img
-                    src={imagePreview || "/placeholder.svg"}
-                    alt="Preview"
-                    className="w-full h-48 object-cover rounded-lg"
-                  />
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    className="absolute top-2 right-2"
-                    onClick={removeImage}
-                  >
-                    <X className="h-4 w-4" />
+    <CommonSheet isOpen={isOpen} onClose={onClose} title="Редактировать вещь" backgroundColor="dark">
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Фото */}
+        <div className="space-y-2">
+          <Label>Фото</Label>
+          <div className="border-2 border-dashed border-gray-600 rounded-lg p-6">
+            {imagePreview ? (
+              <div className="relative">
+                <img
+                  src={imagePreview || "/placeholder.svg"}
+                  alt="Preview"
+                  className="w-full h-48 object-cover rounded-lg"
+                />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  className="absolute top-2 right-2"
+                  onClick={removeImage}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <div className="text-center">
+                <Upload className="mx-auto h-12 w-12 text-gray-300" />
+                <div className="mt-4">
+                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    Выбрать фото
                   </Button>
                 </div>
-              ) : (
-                <div className="text-center">
-                  <Camera className="mx-auto h-12 w-12 text-gray-400" />
-                  <div className="mt-4">
-                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Выбрать фото
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-            </div>
+              </div>
+            )}
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
           </div>
+        </div>
 
-          {/* Название */}
-          <div className="space-y-2">
-            <Label htmlFor="item_name">Название вещи *</Label>
-            <Input
-              id="item_name"
-              value={formData.item_name}
-              onChange={(e) => handleInputChange("item_name", e.target.value)}
-              placeholder="Например: Белая рубашка"
-              required
+        {/* Название */}
+        <div className="space-y-2">
+          <Label htmlFor="item_name">Название вещи *</Label>
+          <Input
+            id="item_name"
+            value={formData.item_name}
+            onChange={(e) => handleInputChange("item_name", e.target.value)}
+            placeholder="Например: Белая рубашка"
+            required
+          />
+        </div>
+
+        {/* Размер */}
+        <div className="space-y-2">
+          <Label htmlFor="size_type">Размер</Label>
+          <Input
+            id="size_type"
+            value={formData.size_type}
+            onChange={(e) => handleInputChange("size_type", e.target.value)}
+            placeholder="Например: M, 42, L"
+          />
+        </div>
+
+        {/* Цвет */}
+        <div className="space-y-2">
+          <Label>Цвет</Label>
+          <ColorPicker
+            value={formData.color}
+            onChange={(color) => handleInputChange("color", color)}
+            imagePreview={imagePreview}
+          />
+        </div>
+
+        {/* Оттенок */}
+        <div className="space-y-2">
+          <Label htmlFor="shade">Оттенок</Label>
+          <Input
+            id="shade"
+            value={formData.shade}
+            onChange={(e) => handleInputChange("shade", e.target.value)}
+            placeholder="Например: светлый, темный, яркий"
+          />
+        </div>
+
+        {/* Материал */}
+        <div className="space-y-2">
+          <Label htmlFor="material">Материал</Label>
+          <Input
+            id="material"
+            value={formData.material}
+            onChange={(e) => handleInputChange("material", e.target.value)}
+            placeholder="Например: хлопок, шерсть, полиэстер"
+          />
+        </div>
+
+        {/* Стиль */}
+        <div className="space-y-2">
+          <Label htmlFor="style">Стиль</Label>
+          <Input
+            id="style"
+            value={formData.style}
+            onChange={(e) => handleInputChange("style", e.target.value)}
+            placeholder="Например: классический, спортивный, casual"
+          />
+        </div>
+
+        {/* Характеристики */}
+        <div className="space-y-4">
+          <Label>Характеристики</Label>
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="has_print"
+              checked={formData.has_print}
+              onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
             />
+            <Label htmlFor="has_print">Есть принт</Label>
           </div>
-
-          {/* Размер */}
-          <div className="space-y-2">
-            <Label htmlFor="size_type">Размер</Label>
-            <Input
-              id="size_type"
-              value={formData.size_type}
-              onChange={(e) => handleInputChange("size_type", e.target.value)}
-              placeholder="Например: M, 42, L"
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="has_details"
+              checked={formData.has_details}
+              onCheckedChange={(checked) => handleInputChange("has_details", checked as boolean)}
             />
+            <Label htmlFor="has_details">Есть детали</Label>
           </div>
+        </div>
 
-          {/* Цвет */}
-          <div className="space-y-2">
-            <Label>Цвет</Label>
-            <ColorPicker
-              value={formData.color}
-              onChange={(color) => handleInputChange("color", color)}
-              imagePreview={imagePreview}
-            />
-          </div>
+        {/* Базовая вещь */}
+        <div className="space-y-2">
+          <Label>Базовая вещь</Label>
+          <Select value={formData.basic_item_id} onValueChange={(value) => handleInputChange("basic_item_id", value)}>
+            <SelectTrigger className="bg-gray-700">
+              <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="0">Не выбрано</SelectItem>
+              {basicItems.map((item) => (
+                <SelectItem key={item.id} value={item.id.toString()}>
+                  {item.name_ru}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-          {/* Оттенок */}
-          <div className="space-y-2">
-            <Label htmlFor="shade">Оттенок</Label>
-            <Input
-              id="shade"
-              value={formData.shade}
-              onChange={(e) => handleInputChange("shade", e.target.value)}
-              placeholder="Например: светлый, темный, яркий"
-            />
-          </div>
+        {/* Ссылка на товар */}
+        <div className="space-y-2">
+          <Label htmlFor="url">Ссылка на товар в магазине</Label>
+          <Input
+            id="url"
+            type="url"
+            value={formData.url}
+            onChange={(e) => handleInputChange("url", e.target.value)}
+            placeholder="https://shop.com/product/123"
+          />
+        </div>
 
-          {/* Материал */}
-          <div className="space-y-2">
-            <Label htmlFor="material">Материал</Label>
-            <Input
-              id="material"
-              value={formData.material}
-              onChange={(e) => handleInputChange("material", e.target.value)}
-              placeholder="Например: хлопок, шерсть, полиэстер"
-            />
-          </div>
+        {/* Заметки */}
+        <div className="space-y-2">
+          <Label htmlFor="notes">Заметки</Label>
+          <Textarea
+            id="notes"
+            value={formData.notes}
+            onChange={(e) => handleInputChange("notes", e.target.value)}
+            placeholder="Дополнительная информация о вещи"
+            rows={3}
+          />
+        </div>
 
-          {/* Стиль */}
-          <div className="space-y-2">
-            <Label htmlFor="style">Стиль</Label>
-            <Input
-              id="style"
-              value={formData.style}
-              onChange={(e) => handleInputChange("style", e.target.value)}
-              placeholder="Например: классический, спортивный, casual"
-            />
-          </div>
-
-          {/* Характеристики */}
-          <div className="space-y-4">
-            <Label>Характеристики</Label>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="has_print"
-                checked={formData.has_print}
-                onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
-              />
-              <Label htmlFor="has_print">Есть принт</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="has_details"
-                checked={formData.has_details}
-                onCheckedChange={(checked) => handleInputChange("has_details", checked as boolean)}
-              />
-              <Label htmlFor="has_details">Есть детали</Label>
-            </div>
-          </div>
-
-          {/* Базовая вещь */}
-          <div className="space-y-2">
-            <Label>Базовая вещь</Label>
-            <Select
-              value={formData.basic_item_id || "0"}
-              onValueChange={(value) => handleInputChange("basic_item_id", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">Не выбрано</SelectItem>
-                {basicItems.map((item) => (
-                  <SelectItem key={item.id} value={item.id.toString()}>
-                    {item.name_ru}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Заметки */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Заметки</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => handleInputChange("notes", e.target.value)}
-              placeholder="Дополнительная информация о вещи"
-              rows={3}
-            />
-          </div>
-
-          {/* Кнопки */}
-          <div className="flex gap-4 pt-4">
-            <Button type="submit" disabled={isLoading} className="flex-1">
-              {isLoading ? "Сохранение..." : "Сохранить"}
-            </Button>
-            <Button type="button" variant="outline" onClick={onClose}>
-              Отмена
-            </Button>
-          </div>
-        </form>
-      </SheetContent>
-    </Sheet>
+        {/* Кнопки */}
+        <div className="flex gap-4 pt-4">
+          <Button type="submit" disabled={isLoading} className="flex-1">
+            {isLoading ? "Обновление..." : "Обновить"}
+          </Button>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Отмена
+          </Button>
+        </div>
+      </form>
+    </CommonSheet>
   )
 }

@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,6 +9,7 @@ import { MoreVertical, Eye, EyeOff, Trash2, Edit } from "lucide-react"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Image from "next/image"
 import { ItemDetailsModal, type WardrobeItem } from "./item-details-modal"
+import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
 import { useToast } from "@/hooks/use-toast"
 
 interface WardrobeItemCardProps {
@@ -19,6 +19,7 @@ interface WardrobeItemCardProps {
 
 export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
   const [showDetails, setShowDetails] = useState(false)
+  const [showEditSheet, setShowEditSheet] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
   const { toast } = useToast()
 
@@ -92,6 +93,11 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
     }
   }
 
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowEditSheet(true)
+  }
+
   return (
     <>
       <Card className="group cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowDetails(true)}>
@@ -129,7 +135,7 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => setShowDetails(true)}>
+                  <DropdownMenuItem onClick={handleEdit}>
                     <Edit className="h-4 w-4 mr-2" />
                     Редактировать
                   </DropdownMenuItem>
@@ -188,6 +194,12 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
       </Card>
 
       <ItemDetailsModal item={item} isOpen={showDetails} onClose={() => setShowDetails(false)} onRefresh={onRefresh} />
+      <EditWardrobeItemSheet
+        item={item}
+        isOpen={showEditSheet}
+        onClose={() => setShowEditSheet(false)}
+        onSuccess={onRefresh}
+      />
     </>
   )
 }

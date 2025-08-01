@@ -1,11 +1,11 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
 
 export async function GET() {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = createClient()
 
+    // Получаем текущего пользователя
     const {
       data: { user },
       error: userError,
@@ -19,14 +19,14 @@ export async function GET() {
     const { data: basicItems, error: basicError } = await supabase
       .from("basic_wardrobe_items")
       .select("*")
-      .order("id", { ascending: true })
+      .order("name_ru")
 
     if (basicError) {
       console.error("Error fetching basic items:", basicError)
       return NextResponse.json({ error: "Failed to fetch basic items" }, { status: 500 })
     }
 
-    // Получаем уже добавленные пользователем базовые вещи
+    // Получаем уже добавленные пользователем вещи
     const { data: userItems, error: userError2 } = await supabase
       .from("wardrobe_user_items")
       .select("basic_item_id")
@@ -38,13 +38,29 @@ export async function GET() {
       return NextResponse.json({ error: "Failed to fetch user items" }, { status: 500 })
     }
 
-    // Фильтруем базовые вещи, исключая уже добавленные
+    // Создаем Set из ID уже добавленных базовых вещей
     const addedBasicItemIds = new Set(userItems?.map((item) => item.basic_item_id) || [])
-    const availableBasicItems = basicItems?.filter((item) => !addedBasicItemIds.has(item.id)) || []
+
+    // Фильтруем базовые вещи, исключая уже добавленные
+    const availableBasicItems = (basicItems || [])
+      .filter((item) => !addedBasicItemIds.has(item.id))
+      .map((item) => ({
+        id: item.id,
+        item_name: item.name_ru || item.name_en || "Без названия",
+        description: item.description,
+        clothing_type: item.clothing_type || "Одежда",
+        image_url: item.image_url,
+        material: "",
+        style: "",
+        color: "",
+        shade: "",
+        has_print: "нет",
+        has_details: "нет",
+      }))
 
     return NextResponse.json(availableBasicItems)
   } catch (error) {
-    console.error("Error in basic-wardrobe-items GET:", error)
+    console.error("Error in basic wardrobe items API:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

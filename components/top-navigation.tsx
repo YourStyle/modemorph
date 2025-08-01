@@ -4,8 +4,8 @@ import { useState, useEffect } from "react"
 import { MapPin, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { createClient } from "@/lib/supabase/client"
+import { UserProfileSheet } from "./user-profile-sheet"
 
 interface WeatherData {
   temperature: number
@@ -26,8 +26,8 @@ export function TopNavigation() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [currentTime, setCurrentTime] = useState("")
   const [currentDate, setCurrentDate] = useState("")
-  const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [weatherLoading, setWeatherLoading] = useState(true)
+  const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
 
   const supabase = createClient()
 
@@ -178,6 +178,10 @@ export function TopNavigation() {
     }
   }
 
+  const handleProfileClick = () => {
+    setIsProfileSheetOpen(true)
+  }
+
   return (
     <div className="bg-white border-b border-gray-200 px-4 py-3">
       <div className="flex items-center justify-between">
@@ -226,76 +230,38 @@ export function TopNavigation() {
                   <div className="text-sm font-medium text-gray-900">{profile.full_name || "Пользователь"}</div>
                   {profile.is_admin && <div className="text-xs text-blue-600">Администратор</div>}
                 </div>
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={profile.avatar_url || ""} />
-                  <AvatarFallback>{profile.full_name ? profile.full_name[0].toUpperCase() : "U"}</AvatarFallback>
-                </Avatar>
+                <Button variant="ghost" size="sm" className="p-1" onClick={handleProfileClick}>
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={profile.avatar_url || ""} />
+                    <AvatarFallback>{profile.full_name ? profile.full_name[0].toUpperCase() : "U"}</AvatarFallback>
+                  </Avatar>
+                </Button>
               </>
             )}
           </div>
 
           {/* Мобильная версия */}
           <div className="sm:hidden">
-            <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="sm" className="p-2">
-                  {profile ? (
-                    <Avatar className="h-6 w-6">
-                      <AvatarImage src={profile.avatar_url || ""} />
-                      <AvatarFallback className="text-xs">
-                        {profile.full_name ? profile.full_name[0].toUpperCase() : "U"}
-                      </AvatarFallback>
-                    </Avatar>
-                  ) : (
-                    <User className="h-5 w-5" />
-                  )}
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-80">
-                <div className="flex flex-col space-y-6 pt-6">
-                  {/* Профиль пользователя */}
-                  {profile && (
-                    <div className="flex items-center space-x-3">
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src={profile.avatar_url || ""} />
-                        <AvatarFallback>{profile.full_name ? profile.full_name[0].toUpperCase() : "U"}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium text-gray-900">{profile.full_name || "Пользователь"}</div>
-                        {profile.is_admin && <div className="text-sm text-blue-600">Администратор</div>}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Полная информация о погоде */}
-                  {weather && !weatherLoading && (
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <MapPin className="h-4 w-4 text-gray-500" />
-                            <span className="text-sm text-gray-600">{weather.location}</span>
-                          </div>
-                          <div className="text-lg font-semibold text-gray-900 mt-1">{weather.temperature}°C</div>
-                          <div className="text-sm text-gray-600 capitalize">{weather.description}</div>
-                        </div>
-                        <div className="text-3xl">{weather.icon}</div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Кнопка выхода */}
-                  <div className="pt-4 border-t">
-                    <Button variant="outline" onClick={handleSignOut} className="w-full bg-transparent">
-                      Выйти
-                    </Button>
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
+            <Button variant="ghost" size="sm" className="p-2" onClick={handleProfileClick}>
+              {profile ? (
+                <Avatar className="h-6 w-6">
+                  <AvatarImage src={profile.avatar_url || ""} />
+                  <AvatarFallback className="text-xs">
+                    {profile.full_name ? profile.full_name[0].toUpperCase() : "U"}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <User className="h-5 w-5" />
+              )}
+            </Button>
           </div>
         </div>
       </div>
+      <UserProfileSheet
+        isOpen={isProfileSheetOpen}
+        onClose={() => setIsProfileSheetOpen(false)}
+        onSignOut={handleSignOut}
+      />
     </div>
   )
 }

@@ -1,83 +1,111 @@
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs"
-import { cookies } from "next/headers"
+import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = createClient()
+    const itemId = params.id
 
+    console.log("Attempting to delete user wardrobe item:", itemId)
+
+    // Получаем текущего пользователя
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
+      console.error("Authentication error:", authError)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await request.json()
-    const itemId = params.id
+    console.log("User authenticated:", user.id)
 
-    const updateData = {
-      item_name: body.item_name,
-      material: body.material,
-      style: body.style,
-      color: body.color,
-      shade: body.shade,
-      has_print: body.has_print,
-      has_details: body.has_details,
-      size_type: body.size_type,
-      notes: body.notes,
-      basic_item_id: body.basic_item_id,
-      image_url: body.image_url,
-      updated_at: new Date().toISOString(),
-    }
-
-    const { data, error } = await supabase
+    // Проверяем, что вещь принадлежит пользователю
+    const { data: existingItem, error: checkError } = await supabase
       .from("wardrobe_user_items")
-      .update(updateData)
+      .select("id, user_id")
       .eq("id", itemId)
       .eq("user_id", user.id)
-      .select()
       .single()
 
-    if (error) {
-      console.error("Error updating wardrobe item:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (checkError || !existingItem) {
+      console.error("Item not found or access denied:", checkError)
+      return NextResponse.json({ error: "Item not found or access denied" }, { status: 404 })
     }
 
-    return NextResponse.json(data)
+    console.log("Item found and belongs to user:", existingItem)
+
+    // Удаляем вещь
+    const { error: deleteError } = await supabase
+      .from("wardrobe_user_items")
+      .delete()
+      .eq("id", itemId)
+      .eq("user_id", user.id) // Дополнительная проверка безопасности
+
+    if (deleteError) {
+      console.error("Error deleting item:", deleteError)
+      return NextResponse.json({ error: "Failed to delete item" }, { status: 500 })
+    }
+
+    console.log("Item deleted successfully")
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error in wardrobe-user-items PUT:", error)
+    console.error("Unexpected error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createRouteHandlerClient({ cookies })
+    const supabase = createClient()
+    const itemId = params.id
+    const body = await request.json()
 
+    console.log("Attempting to update user wardrobe item:", itemId, body)
+
+    // Получаем текущего пользователя
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
+      console.error("Authentication error:", authError)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const itemId = params.id
+    // Проверяем, что вещь принадлежит пользователю
+    const { data: existingItem, error: checkError } = await supabase
+      .from("wardrobe_user_items")
+      .select("id, user_id")
+      .eq("id", itemId)
+      .eq("user_id", user.id)
+      .single()
 
-    const { error } = await supabase.from("wardrobe_user_items").delete().eq("id", itemId).eq("user_id", user.id)
-
-    if (error) {
-      console.error("Error deleting wardrobe item:", error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+    if (checkError || !existingItem) {
+      console.error("Item not found or access denied:", checkError)
+      return NextResponse.json({ error: "Item not found or access denied" }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true })
+    // Обновляем вещь
+    const { data, error: updateError } = await supabase
+      .from("wardrobe_user_items")
+      .update(body)
+      .eq("id", itemId)
+      .eq("user_id", user.id) // Дополнительная проверка безопасности
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error("Error updating item:", updateError)
+      return NextResponse.json({ error: "Failed to update item" }, { status: 500 })
+    }
+
+    console.log("Item updated successfully:", data)
+    return NextResponse.json(data)
   } catch (error) {
-    console.error("Error in wardrobe-user-items DELETE:", error)
+    console.error("Unexpected error:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
