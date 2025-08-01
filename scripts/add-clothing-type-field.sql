@@ -1,23 +1,16 @@
--- Добавляем поле clothing_type в таблицы wardrobe_items, wardrobe_user_items и basic_wardrobe_items
-
--- Добавляем поле в wardrobe_items
+-- Add clothing_type field to wardrobe_items table
 ALTER TABLE wardrobe_items 
-ADD COLUMN IF NOT EXISTS clothing_type VARCHAR(50) DEFAULT 'верхняя';
+ADD COLUMN IF NOT EXISTS clothing_type TEXT CHECK (clothing_type IN ('верхняя', 'нижняя', 'обувь', 'аксессуары'));
 
--- Добавляем поле в wardrobe_user_items
+-- Add clothing_type field to wardrobe_user_items table
 ALTER TABLE wardrobe_user_items 
-ADD COLUMN IF NOT EXISTS clothing_type VARCHAR(50) DEFAULT 'верхняя';
+ADD COLUMN IF NOT EXISTS clothing_type TEXT CHECK (clothing_type IN ('верхняя', 'нижняя', 'обувь', 'аксессуары'));
 
--- Добавляем поле в basic_wardrobe_items
+-- Add clothing_type field to basic_wardrobe_items table
 ALTER TABLE basic_wardrobe_items 
-ADD COLUMN IF NOT EXISTS clothing_type VARCHAR(50) DEFAULT 'верхняя';
+ADD COLUMN IF NOT EXISTS clothing_type TEXT CHECK (clothing_type IN ('верхняя', 'нижняя', 'обувь', 'аксессуары'));
 
--- Создаем индексы для быстрого поиска по типу одежды
+-- Create index for better performance
 CREATE INDEX IF NOT EXISTS idx_wardrobe_items_clothing_type ON wardrobe_items(clothing_type);
 CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_clothing_type ON wardrobe_user_items(clothing_type);
 CREATE INDEX IF NOT EXISTS idx_basic_wardrobe_items_clothing_type ON basic_wardrobe_items(clothing_type);
-
--- Обновляем существующие записи с базовыми значениями (можно настроить по необходимости)
-UPDATE wardrobe_items SET clothing_type = 'верхняя' WHERE clothing_type IS NULL;
-UPDATE wardrobe_user_items SET clothing_type = 'верхняя' WHERE clothing_type IS NULL;
-UPDATE basic_wardrobe_items SET clothing_type = 'верхняя' WHERE clothing_type IS NULL;

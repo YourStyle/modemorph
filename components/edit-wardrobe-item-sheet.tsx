@@ -1,13 +1,15 @@
 "use client"
+
+import type React from "react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { CommonSheet } from "./common-sheet"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
+import { CommonSheet } from "./common-sheet"
 
 interface WardrobeItem {
   id: number
@@ -16,318 +18,432 @@ interface WardrobeItem {
   style?: string
   color?: string
   shade?: string
-  has_print?: string
+  has_print?: string | boolean
+  has_details?: string
   size_type?: string
   notes?: string
   image_url?: string
   clothing_type?: string
-  shop_url?: string
+  created_at?: string
+  basic_item_id?: number
+  url?: string
 }
 
 interface EditWardrobeItemSheetProps {
-  item: WardrobeItem
+  item: WardrobeItem | null
   isOpen: boolean
   onClose: () => void
-  onSuccess: () => void
+  onSuccess?: () => void
 }
 
-const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60"]
-
-const SHADES = [
-  "светлый",
-  "тёмный",
-  "яркий",
-  "приглушённый",
-  "насыщенный",
-  "бледный",
-  "глубокий",
-  "мягкий",
-  "интенсивный",
-  "пастельный",
+const BASE_SIZES = [
+  "XXS",
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "XXXL",
+  "40",
+  "42",
+  "44",
+  "46",
+  "48",
+  "50",
+  "52",
+  "54",
+  "56",
+  "58",
+  "60",
+  "25",
+  "26",
+  "27",
+  "28",
+  "29",
+  "30",
+  "31",
+  "32",
+  "33",
+  "34",
+  "36",
+  "38",
 ]
 
-const MATERIALS = [
-  "хлопок",
-  "лён",
-  "шерсть",
-  "кашемир",
-  "шёлк",
-  "полиэстер",
-  "нейлон",
-  "спандекс",
-  "эластан",
-  "вискоза",
-  "акрил",
-  "джинса",
-  "кожа",
-  "замша",
-  "мех",
-  "флис",
-  "трикотаж",
+const BASE_SHADES = ["Светлый", "Темный", "Яркий", "Приглушенный", "Насыщенный", "Бледный", "Глубокий", "Мягкий"]
+
+const BASE_MATERIALS = [
+  "Хлопок",
+  "Лен",
+  "Шерсть",
+  "Кашемир",
+  "Шелк",
+  "Полиэстер",
+  "Нейлон",
+  "Спандекс",
+  "Эластан",
+  "Вискоза",
+  "Акрил",
+  "Джинса",
+  "Кожа",
+  "Замша",
+  "Мех",
+  "Трикотаж",
 ]
 
-const STYLES = [
-  "классический",
-  "casual",
-  "спортивный",
-  "деловой",
-  "вечерний",
-  "повседневный",
-  "винтажный",
-  "современный",
-  "минималистичный",
-  "романтичный",
-  "гранж",
-  "бохо",
-  "этнический",
-  "авангардный",
-  "ретро",
+const BASE_STYLES = [
+  "Классический",
+  "Спортивный",
+  "Casual",
+  "Деловой",
+  "Вечерний",
+  "Романтический",
+  "Минималистичный",
+  "Бохо",
+  "Винтаж",
+  "Гранж",
+  "Preppy",
+  "Уличный",
 ]
 
 export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: EditWardrobeItemSheetProps) {
   const [formData, setFormData] = useState({
     size_type: "",
-    shade: "",
     material: "",
     style: "",
     has_print: false,
+    shade: "",
+    url: "",
     notes: "",
-    shop_url: "",
   })
-  const [isSaving, setIsSaving] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [sizes, setSizes] = useState<string[]>(BASE_SIZES)
+  const [shades, setShades] = useState<string[]>(BASE_SHADES)
+  const [materials, setMaterials] = useState<string[]>(BASE_MATERIALS)
+  const [styles, setStyles] = useState<string[]>(BASE_STYLES)
 
-  // Создаем расширенные списки с текущими значениями
-  const [availableSizes, setAvailableSizes] = useState(SIZES)
-  const [availableShades, setAvailableShades] = useState(SHADES)
-  const [availableMaterials, setAvailableMaterials] = useState(MATERIALS)
-  const [availableStyles, setAvailableStyles] = useState(STYLES)
+  // Функция для добавления значения в список, если его там нет
+  const addToListIfNotExists = (list: string[], value: string | undefined): string[] => {
+    if (!value || value.trim() === "") return list
+    const trimmedValue = value.trim()
+    if (!list.includes(trimmedValue)) {
+      return [...list, trimmedValue].sort()
+    }
+    return list
+  }
 
+  // Загрузка данных при открытии шторки
   useEffect(() => {
     if (isOpen && item) {
-      // Добавляем текущие значения в списки, если их там нет
-      const currentSizes = [...SIZES]
-      if (item.size_type && !currentSizes.includes(item.size_type)) {
-        currentSizes.push(item.size_type)
-      }
-      setAvailableSizes(currentSizes)
-
-      const currentShades = [...SHADES]
-      if (item.shade && !currentShades.includes(item.shade)) {
-        currentShades.push(item.shade)
-      }
-      setAvailableShades(currentShades)
-
-      const currentMaterials = [...MATERIALS]
-      if (item.material && !currentMaterials.includes(item.material)) {
-        currentMaterials.push(item.material)
-      }
-      setAvailableMaterials(currentMaterials)
-
-      const currentStyles = [...STYLES]
-      if (item.style && !currentStyles.includes(item.style)) {
-        currentStyles.push(item.style)
-      }
-      setAvailableStyles(currentStyles)
+      // Обновляем списки, добавляя текущие значения если их нет
+      setSizes(addToListIfNotExists(BASE_SIZES, item.size_type))
+      setShades(addToListIfNotExists(BASE_SHADES, item.shade))
+      setMaterials(addToListIfNotExists(BASE_MATERIALS, item.material))
+      setStyles(addToListIfNotExists(BASE_STYLES, item.style))
 
       setFormData({
         size_type: item.size_type || "",
-        shade: item.shade || "",
         material: item.material || "",
         style: item.style || "",
-        has_print: item.has_print === "да" || item.has_print === "есть",
+        has_print: item.has_print === true || item.has_print === "true",
+        shade: item.shade || "",
+        url: item.url || "",
         notes: item.notes || "",
-        shop_url: item.shop_url || "",
       })
     }
   }, [isOpen, item])
 
-  const handleSave = async () => {
-    setIsSaving(true)
+  const handleInputChange = (field: string, value: string | boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!item) {
+      toast.error("Ошибка: вещь не найдена")
+      return
+    }
+
+    setIsLoading(true)
+
     try {
-      const response = await fetch(`/api/wardrobe-user-items/${item.id}`, {
-        method: "PATCH",
+      // Подготовка данных для отправки
+      const submitData = {
+        size_type: formData.size_type || null,
+        material: formData.material || null,
+        style: formData.style || null,
+        has_print: formData.has_print ? "true" : "false",
+        shade: formData.shade || null,
+        url: formData.url || null,
+        notes: formData.notes || null,
+      }
+
+      const response = await fetch(`/api/wardrobe/${item.id}`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          size_type: formData.size_type || null,
-          shade: formData.shade || null,
-          material: formData.material || null,
-          style: formData.style || null,
-          has_print: formData.has_print ? "да" : "нет",
-          notes: formData.notes || null,
-          shop_url: formData.shop_url || null,
-        }),
+        body: JSON.stringify(submitData),
       })
 
       if (response.ok) {
-        toast.success("Вещь успешно обновлена")
-        onSuccess()
+        toast.success("Вещь успешно обновлена!")
+        onSuccess?.()
         onClose()
       } else {
-        throw new Error("Failed to update item")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to update item")
       }
     } catch (error) {
       console.error("Error updating item:", error)
       toast.error("Ошибка при обновлении вещи")
     } finally {
-      setIsSaving(false)
+      setIsLoading(false)
     }
+  }
+
+  // Если item равен null, не рендерим компонент
+  if (!item) {
+    return null
   }
 
   return (
     <CommonSheet isOpen={isOpen} onClose={onClose} title="Редактировать вещь" backgroundColor="dark">
-      <div className="flex gap-6">
-        {/* Фото слева */}
-        <div className="flex-shrink-0">
-          <div className="w-32 h-32 bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
-            {item.image_url ? (
-              <img
-                src={item.image_url || "/placeholder.svg"}
-                alt={item.item_name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement
-                  target.style.display = "none"
-                  target.nextElementSibling?.classList.remove("hidden")
-                }}
-              />
-            ) : null}
-            <span className={`text-4xl ${item.image_url ? "hidden" : ""}`}>👕</span>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Мобильная версия - фото сверху */}
+        <div className="block md:hidden">
+          <div className="flex flex-col items-center mb-6">
+            <div className="w-40 h-40 bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
+              {item.image_url ? (
+                <img src={item.image_url || "/placeholder.svg"} alt="Preview" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-4xl">👕</span>
+              )}
+            </div>
+            <p className="text-white text-sm mt-2 text-center font-medium">{item.item_name}</p>
           </div>
-          <p className="text-white text-sm mt-2 text-center font-medium">{item.item_name}</p>
+
+          {/* Поля формы */}
+          <div className="space-y-4">
+            {/* Размер */}
+            <div className="space-y-2">
+              <Label className="text-white">Размер</Label>
+              <Select value={formData.size_type} onValueChange={(value) => handleInputChange("size_type", value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите размер" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sizes.map((size) => (
+                    <SelectItem key={size} value={size}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Оттенок */}
+            <div className="space-y-2">
+              <Label className="text-white">Оттенок</Label>
+              <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите оттенок" />
+                </SelectTrigger>
+                <SelectContent>
+                  {shades.map((shade) => (
+                    <SelectItem key={shade} value={shade}>
+                      {shade}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Материал */}
+            <div className="space-y-2">
+              <Label className="text-white">Материал</Label>
+              <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите материал" />
+                </SelectTrigger>
+                <SelectContent>
+                  {materials.map((material) => (
+                    <SelectItem key={material} value={material}>
+                      {material}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Стиль */}
+            <div className="space-y-2">
+              <Label className="text-white">Стиль</Label>
+              <Select value={formData.style} onValueChange={(value) => handleInputChange("style", value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите стиль" />
+                </SelectTrigger>
+                <SelectContent>
+                  {styles.map((style) => (
+                    <SelectItem key={style} value={style}>
+                      {style}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
 
-        {/* Форма справа */}
-        <div className="flex-1 space-y-4">
-          <div className="space-y-2">
-            <Label className="text-white">Размер</Label>
-            <Select
-              value={formData.size_type}
-              onValueChange={(value) => setFormData((prev) => ({ ...prev, size_type: value }))}
-            >
-              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                <SelectValue placeholder="Выберите размер" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableSizes.map((size) => (
-                  <SelectItem key={size} value={size}>
-                    {size}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        {/* Планшеты и десктопы - 50/50 */}
+        <div className="hidden md:flex gap-6">
+          {/* Фото слева - 50% */}
+          <div className="flex-1 flex flex-col items-center">
+            <Label className="text-white mb-2">Фото</Label>
+            <div className="w-full max-w-48 aspect-square bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
+              {item.image_url ? (
+                <img src={item.image_url || "/placeholder.svg"} alt="Preview" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-4xl">👕</span>
+              )}
+            </div>
+            <p className="text-white text-sm mt-2 text-center font-medium">{item.item_name}</p>
           </div>
 
-          <div className="space-y-2">
-            <Label className="text-white">Оттенок</Label>
-            <Select
-              value={formData.shade}
-              onValueChange={(value) => setFormData((prev) => ({ ...prev, shade: value }))}
-            >
-              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                <SelectValue placeholder="Выберите оттенок" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableShades.map((shade) => (
-                  <SelectItem key={shade} value={shade}>
-                    {shade}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Поля справа - 50% */}
+          <div className="flex-1 space-y-4">
+            {/* Размер */}
+            <div className="space-y-2">
+              <Label className="text-white">Размер</Label>
+              <Select value={formData.size_type} onValueChange={(value) => handleInputChange("size_type", value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите размер" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sizes.map((size) => (
+                    <SelectItem key={size} value={size}>
+                      {size}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="space-y-2">
-            <Label className="text-white">Материал</Label>
-            <Select
-              value={formData.material}
-              onValueChange={(value) => setFormData((prev) => ({ ...prev, material: value }))}
-            >
-              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                <SelectValue placeholder="Выберите материал" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableMaterials.map((material) => (
-                  <SelectItem key={material} value={material}>
-                    {material}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            {/* Оттенок */}
+            <div className="space-y-2">
+              <Label className="text-white">Оттенок</Label>
+              <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите оттенок" />
+                </SelectTrigger>
+                <SelectContent>
+                  {shades.map((shade) => (
+                    <SelectItem key={shade} value={shade}>
+                      {shade}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="space-y-2">
-            <Label className="text-white">Стиль</Label>
-            <Select
-              value={formData.style}
-              onValueChange={(value) => setFormData((prev) => ({ ...prev, style: value }))}
-            >
-              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                <SelectValue placeholder="Выберите стиль" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableStyles.map((style) => (
-                  <SelectItem key={style} value={style}>
-                    {style}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            {/* Материал */}
+            <div className="space-y-2">
+              <Label className="text-white">Материал</Label>
+              <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите материал" />
+                </SelectTrigger>
+                <SelectContent>
+                  {materials.map((material) => (
+                    <SelectItem key={material} value={material}>
+                      {material}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="has_print"
-              checked={formData.has_print}
-              onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, has_print: !!checked }))}
-              className="border-gray-400"
-            />
-            <Label htmlFor="has_print" className="text-white">
-              Есть принт
-            </Label>
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-white">Заметки</Label>
-            <Textarea
-              value={formData.notes}
-              onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
-              placeholder="Дополнительные заметки о вещи..."
-              className="bg-white border-gray-300 text-gray-900"
-              rows={3}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-white">Ссылка на товар</Label>
-            <Input
-              type="url"
-              value={formData.shop_url}
-              onChange={(e) => setFormData((prev) => ({ ...prev, shop_url: e.target.value }))}
-              placeholder="https://example.com/product"
-              className="bg-white border-gray-300 text-gray-900"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-4">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
-            >
-              Отмена
-            </Button>
-            <Button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex-1 bg-gray-900 hover:bg-gray-800 text-white border-0"
-            >
-              {isSaving ? "Сохранение..." : "Сохранить"}
-            </Button>
+            {/* Стиль */}
+            <div className="space-y-2">
+              <Label className="text-white">Стиль</Label>
+              <Select value={formData.style} onValueChange={(value) => handleInputChange("style", value)}>
+                <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="Выберите стиль" />
+                </SelectTrigger>
+                <SelectContent>
+                  {styles.map((style) => (
+                    <SelectItem key={style} value={style}>
+                      {style}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
-      </div>
+
+        {/* Принт */}
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="has_print"
+            checked={formData.has_print}
+            onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
+            className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
+          />
+          <Label htmlFor="has_print" className="text-white">
+            Есть принт
+          </Label>
+        </div>
+
+        {/* Ссылка на товар */}
+        <div className="space-y-2">
+          <Label htmlFor="url" className="text-white">
+            Ссылка на товар в магазине
+          </Label>
+          <Input
+            id="url"
+            type="url"
+            value={formData.url}
+            onChange={(e) => handleInputChange("url", e.target.value)}
+            placeholder="https://shop.com/product/123"
+            className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+          />
+        </div>
+
+        {/* Заметки */}
+        <div className="space-y-2">
+          <Label htmlFor="notes" className="text-white">
+            Заметки
+          </Label>
+          <Textarea
+            id="notes"
+            value={formData.notes}
+            onChange={(e) => handleInputChange("notes", e.target.value)}
+            placeholder="Дополнительная информация о вещи"
+            rows={3}
+            className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+          />
+        </div>
+
+        {/* Кнопки */}
+        <div className="flex gap-4 pt-4">
+          <Button type="submit" disabled={isLoading} className="flex-1 bg-gray-900 hover:bg-gray-800 text-white">
+            {isLoading ? "Обновление..." : "Обновить"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onClose}
+            className="border-gray-600 text-white hover:bg-gray-700 bg-transparent"
+          >
+            Отмена
+          </Button>
+        </div>
+      </form>
     </CommonSheet>
   )
 }

@@ -1,4 +1,5 @@
 "use client"
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -187,10 +188,10 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                   <div className="flex gap-2">
                     <Button
                       type="button"
-                      variant={formData.gender === "male" ? "default" : "outline"}
-                      onClick={() => handleInputChange("gender", "male")}
+                      variant={formData.gender === "мужской" ? "default" : "outline"}
+                      onClick={() => handleInputChange("gender", "мужской")}
                       className={`flex-1 ${
-                        formData.gender === "male"
+                        formData.gender === "мужской"
                           ? "bg-blue-600 hover:bg-blue-700 text-white"
                           : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
                       }`}
@@ -199,10 +200,10 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </Button>
                     <Button
                       type="button"
-                      variant={formData.gender === "female" ? "default" : "outline"}
-                      onClick={() => handleInputChange("gender", "female")}
+                      variant={formData.gender === "женский" ? "default" : "outline"}
+                      onClick={() => handleInputChange("gender", "женский")}
                       className={`flex-1 ${
-                        formData.gender === "female"
+                        formData.gender === "женский"
                           ? "bg-pink-600 hover:bg-pink-700 text-white"
                           : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
                       }`}
