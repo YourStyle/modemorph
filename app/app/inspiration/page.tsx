@@ -30,15 +30,18 @@ interface OutfitSuggestion {
   tags: string[]
   likes: number
   isLiked: boolean
+  isSaved: boolean
 }
 
 export default function InspirationPage() {
   const [outfits, setOutfits] = useState<OutfitSuggestion[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [savedOutfitIds, setSavedOutfitIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetchOutfits()
+    fetchSavedOutfits()
   }, [])
 
   const fetchOutfits = async () => {
@@ -60,6 +63,19 @@ export default function InspirationPage() {
     }
   }
 
+  const fetchSavedOutfits = async () => {
+    try {
+      const response = await fetch("/api/user-looks")
+      if (response.ok) {
+        const savedLooks = await response.json()
+        const savedIds = new Set(savedLooks.map((look: any) => look.original_outfit_id).filter(Boolean))
+        setSavedOutfitIds(savedIds)
+      }
+    } catch (error) {
+      console.error("Error fetching saved outfits:", error)
+    }
+  }
+
   const handleLike = (outfitId: string, action: "like" | "unlike") => {
     setOutfits((prev) =>
       prev.map((outfit) =>
@@ -75,8 +91,8 @@ export default function InspirationPage() {
   }
 
   const handleSave = (outfitId: string) => {
-    // Optionally update UI to show saved state
-    console.log("Outfit saved:", outfitId)
+    setSavedOutfitIds((prev) => new Set([...prev, outfitId]))
+    setOutfits((prev) => prev.map((outfit) => (outfit.id === outfitId ? { ...outfit, isSaved: true } : outfit)))
   }
 
   if (loading) {
@@ -154,6 +170,7 @@ export default function InspirationPage() {
                 tags={outfit.tags}
                 likes={outfit.likes}
                 isLiked={outfit.isLiked}
+                isSaved={savedOutfitIds.has(outfit.id)}
                 onLike={handleLike}
                 onSave={handleSave}
               />

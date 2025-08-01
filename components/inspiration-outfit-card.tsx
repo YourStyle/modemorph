@@ -38,6 +38,7 @@ interface InspirationOutfitCardProps {
   tags: string[]
   likes: number
   isLiked: boolean
+  isSaved?: boolean
   onLike?: (outfitId: string, action: "like" | "unlike") => void
   onSave?: (outfitId: string) => void
 }
@@ -50,6 +51,7 @@ export function InspirationOutfitCard({
   tags,
   likes: initialLikes,
   isLiked: initialIsLiked,
+  isSaved: initialIsSaved = false,
   onLike,
   onSave,
 }: InspirationOutfitCardProps) {
@@ -60,7 +62,7 @@ export function InspirationOutfitCard({
   const [isLiked, setIsLiked] = useState(initialIsLiked || false)
   const [isLiking, setIsLiking] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [isSaved, setIsSaved] = useState(false)
+  const [isSaved, setIsSaved] = useState(initialIsSaved)
 
   const handleImageError = (itemId: string) => {
     setImageErrors((prev) => ({ ...prev, [itemId]: true }))

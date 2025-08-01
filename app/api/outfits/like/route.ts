@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
     const { data: outfit, error: updateError } = await supabase
       .from("outfits")
       .update({
-        likes: supabase.raw(`GREATEST(likes + ${increment}, 0)`),
+        likes: supabase.raw(`GREATEST(COALESCE(likes, 0) + ${increment}, 0)`),
       })
       .eq("id", outfitId)
       .select("likes")

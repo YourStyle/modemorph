@@ -1,29 +1,31 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Camera, Loader2 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CommonSheet } from "./common-sheet"
 import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 interface UserProfile {
   id: string
+  user_id: string
   email: string
   full_name?: string
+  gender?: string
   avatar_url?: string
   height?: number
   weight?: number
   top_size?: string
   bottom_size?: string
   shoe_size?: number
-  gender?: string
+  is_admin?: boolean
 }
 
 interface UserProfileSheetProps {
@@ -31,16 +33,8 @@ interface UserProfileSheetProps {
   onClose: () => void
 }
 
-const GENDER_OPTIONS = [
-  { value: "female", label: "Женский", emoji: "👩" },
-  { value: "male", label: "Мужской", emoji: "👨" },
-  { value: "non-binary", label: "Небинарный", emoji: "🧑" },
-  { value: "prefer-not-to-say", label: "Предпочитаю не указывать", emoji: "❓" },
-]
-
-const TOP_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "40", "42", "44", "46", "48", "50", "52", "54", "56", "58"]
-
-const BOTTOM_SIZES = [
+const CLOTHING_SIZES = [
+  "XXS",
   "XS",
   "S",
   "M",
@@ -58,14 +52,27 @@ const BOTTOM_SIZES = [
   "54",
   "56",
   "58",
+  "60",
 ]
 
 export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const router = useRouter()
   const supabase = createClient()
+
+  const [formData, setFormData] = useState({
+    full_name: "",
+    gender: "",
+    height: "",
+    weight: "",
+    top_size: "",
+    bottom_size: "",
+    shoe_size: "",
+  })
 
   useEffect(() => {
     if (isOpen) {
@@ -74,334 +81,488 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   }, [isOpen])
 
   const loadProfile = async () => {
-    setLoading(true)
+    setIsLoading(true)
     try {
+      console.log("Loading user profile...")
+
       const {
         data: { user },
       } = await supabase.auth.getUser()
 
-      if (!user) {
-        toast.error("Пользователь не найден")
-        return
+      if (user) {
+        console.log("User found:", user.id)
+
+        // Пытаемся получить профиль из user_profiles
+        const { data: profileData, error: profileError } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single()
+
+        console.log("Profile data:", profileData)
+        console.log("Profile error:", profileError)
+
+        let userProfile: UserProfile = {
+          id: profileData?.id || "",
+          user_id: user.id,
+          email: user.email || "",
+          full_name: "",
+          gender: "",
+          avatar_url: "",
+          height: undefined,
+          weight: undefined,
+          top_size: "",
+          bottom_size: "",
+          shoe_size: undefined,
+          is_admin: false,
+        }
+
+        if (profileData) {
+          userProfile = {
+            ...userProfile,
+            id: profileData.id,
+            full_name: profileData.full_name || "",
+            gender: profileData.gender || "",
+            avatar_url: profileData.avatar_url || "",
+            height: profileData.height || undefined,
+            weight: profileData.weight || undefined,
+            top_size: profileData.top_size || "",
+            bottom_size: profileData.bottom_size || "",
+            shoe_size: profileData.shoe_size || undefined,
+            is_admin: profileData.is_admin || false,
+          }
+        } else {
+          // Если профиль не найден, попробуем получить данные из user_metadata
+          const metadata = user.user_metadata || {}
+          userProfile.full_name = metadata.full_name || ""
+        }
+
+        setProfile(userProfile)
+        setFormData({
+          full_name: userProfile.full_name || "",
+          gender: userProfile.gender || "",
+          height: userProfile.height?.toString() || "",
+          weight: userProfile.weight?.toString() || "",
+          top_size: userProfile.top_size || "",
+          bottom_size: userProfile.bottom_size || "",
+          shoe_size: userProfile.shoe_size?.toString() || "",
+        })
       }
-
-      // Try to get profile from user_profiles table
-      const { data: profileData, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single()
-
-      if (profileError && profileError.code !== "PGRST116") {
-        console.error("Error loading profile:", profileError)
-      }
-
-      // Set profile data
-      setProfile({
-        id: user.id,
-        email: user.email || "",
-        full_name: profileData?.full_name || user.user_metadata?.full_name || "",
-        avatar_url: profileData?.avatar_url || user.user_metadata?.avatar_url || "",
-        height: profileData?.height || undefined,
-        weight: profileData?.weight || undefined,
-        top_size: profileData?.top_size || undefined,
-        bottom_size: profileData?.bottom_size || undefined,
-        shoe_size: profileData?.shoe_size || undefined,
-        gender: profileData?.gender || undefined,
-      })
     } catch (error) {
       console.error("Error loading profile:", error)
       toast.error("Ошибка загрузки профиля")
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
-  const handleInputChange = (field: keyof UserProfile, value: string | number) => {
-    if (!profile) return
+  const handleInputChange = (field: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
 
-    // For numeric fields, filter out non-numeric characters
-    if (field === "height" || field === "weight" || field === "shoe_size") {
-      const numericValue = value.toString().replace(/[^0-9]/g, "")
-      setProfile({ ...profile, [field]: numericValue ? Number(numericValue) : undefined })
-    } else {
-      setProfile({ ...profile, [field]: value })
-    }
+  const handleNumberInput = (field: string, value: string) => {
+    // Разрешаем только цифры
+    const numericValue = value.replace(/[^0-9]/g, "")
+    handleInputChange(field, numericValue)
   }
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file || !profile) return
 
-    // Validate file type
+    // Проверяем тип файла
     if (!file.type.startsWith("image/")) {
       toast.error("Пожалуйста, выберите изображение")
       return
     }
 
-    // Validate file size (5MB max)
+    // Проверяем размер файла (максимум 5MB)
     if (file.size > 5 * 1024 * 1024) {
       toast.error("Размер файла не должен превышать 5MB")
       return
     }
 
-    setUploadingAvatar(true)
+    setIsUploadingAvatar(true)
     try {
+      console.log("Starting avatar upload...")
+
+      // Создаем FormData для отправки файла
       const formData = new FormData()
       formData.append("file", file)
-      formData.append("folder", "users-avatars")
+      formData.append("folder", "avatars")
 
+      // Отправляем файл на API
       const response = await fetch("/api/upload-to-yandex", {
         method: "POST",
         body: formData,
       })
 
-      if (!response.ok) {
-        throw new Error("Failed to upload avatar")
-      }
-
       const result = await response.json()
+      console.log("Upload response:", result)
 
-      if (result.url) {
-        setProfile({ ...profile, avatar_url: result.url })
-        toast.success("Аватар загружен успешно")
-      } else {
-        throw new Error("No URL returned from upload")
+      if (!response.ok) {
+        throw new Error(result.error || `HTTP error! status: ${response.status}`)
       }
+
+      if (!result.success) {
+        throw new Error(result.error || "Upload failed")
+      }
+
+      // Обновляем профиль с новым URL аватара
+      if (profile.id) {
+        // Если у нас есть ID профиля, обновляем существующую запись
+        const { error: updateError } = await supabase
+          .from("user_profiles")
+          .update({
+            avatar_url: result.url,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", profile.id)
+
+        if (updateError) {
+          console.error("Profile update error:", updateError)
+          throw updateError
+        }
+      } else {
+        // Если ID нет, создаем новую запись
+        const { error: insertError } = await supabase.from("user_profiles").insert({
+          user_id: profile.user_id,
+          avatar_url: result.url,
+          is_admin: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+
+        if (insertError) {
+          console.error("Profile insert error:", insertError)
+          throw insertError
+        }
+      }
+
+      // Обновляем локальное состояние
+      setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
+      toast.success("Аватар успешно обновлен")
     } catch (error) {
       console.error("Error uploading avatar:", error)
-      toast.error("Ошибка загрузки аватара")
+      toast.error(`Ошибка загрузки аватара: ${error instanceof Error ? error.message : "Неизвестная ошибка"}`)
     } finally {
-      setUploadingAvatar(false)
+      setIsUploadingAvatar(false)
+      // Очищаем input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
     }
   }
 
   const handleSave = async () => {
     if (!profile) return
 
-    setSaving(true)
+    setIsSaving(true)
     try {
-      const { error } = await supabase.from("user_profiles").upsert({
-        id: profile.id,
-        full_name: profile.full_name,
-        avatar_url: profile.avatar_url,
-        height: profile.height,
-        weight: profile.weight,
-        top_size: profile.top_size,
-        bottom_size: profile.bottom_size,
-        shoe_size: profile.shoe_size,
-        gender: profile.gender,
+      console.log("Saving profile...", formData)
+
+      const updateData = {
+        full_name: formData.full_name || null,
+        gender: formData.gender || null,
+        height: formData.height ? Number.parseInt(formData.height) : null,
+        weight: formData.weight ? Number.parseInt(formData.weight) : null,
+        top_size: formData.top_size || null,
+        bottom_size: formData.bottom_size || null,
+        shoe_size: formData.shoe_size ? Number.parseInt(formData.shoe_size) : null,
         updated_at: new Date().toISOString(),
-      })
+      }
 
-      if (error) throw error
+      console.log("Update data:", updateData)
 
-      toast.success("Профиль сохранен")
-      onClose()
+      if (profile.id) {
+        // Если у нас есть ID профиля, обновляем существующую запись
+        const { error } = await supabase.from("user_profiles").update(updateData).eq("id", profile.id)
+
+        if (error) {
+          console.error("Update error:", error)
+          throw error
+        }
+      } else {
+        // Если ID нет, создаем новую запись
+        const { error } = await supabase.from("user_profiles").insert({
+          user_id: profile.user_id,
+          ...updateData,
+          is_admin: false,
+          created_at: new Date().toISOString(),
+        })
+
+        if (error) {
+          console.error("Insert error:", error)
+          throw error
+        }
+      }
+
+      toast.success("Профиль успешно обновлен")
+      loadProfile() // Перезагружаем данные
     } catch (error) {
       console.error("Error saving profile:", error)
-      toast.error("Ошибка сохранения профиля")
+      toast.error(`Ошибка сохранения профиля: ${error instanceof Error ? error.message : "Неизвестная ошибка"}`)
     } finally {
-      setSaving(false)
+      setIsSaving(false)
     }
   }
 
-  if (loading) {
-    return (
-      <Sheet open={isOpen} onOpenChange={onClose}>
-        <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-          <div className="flex items-center justify-center h-full">
-            <Loader2 className="h-8 w-8 animate-spin" />
-          </div>
-        </SheetContent>
-      </Sheet>
-    )
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut()
+      router.push("/auth/login")
+      onClose()
+    } catch (error) {
+      console.error("Error signing out:", error)
+      toast.error("Ошибка при выходе")
+    }
   }
 
   return (
-    <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>Профиль пользователя</SheetTitle>
-        </SheetHeader>
+    <CommonSheet isOpen={isOpen} onClose={onClose} title="Профиль" backgroundColor="dark">
+      <div className="flex flex-col h-full">
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+          <div className="space-y-6">
+            <Tabs defaultValue="about" className="w-full">
+              <TabsList className="grid w-full grid-cols-2 bg-white">
+                <TabsTrigger value="about" className="text-gray-900">
+                  Обо мне
+                </TabsTrigger>
+                <TabsTrigger value="avatars" className="text-gray-600">
+                  Аватары
+                </TabsTrigger>
+              </TabsList>
 
-        <div className="py-6 space-y-6 pb-24 md:pb-6">
-          {/* Avatar Section */}
-          <div className="flex flex-col items-center space-y-4">
-            <Avatar className="w-24 h-24">
-              <AvatarImage src={profile?.avatar_url || "/placeholder.svg"} alt="Avatar" />
-              <AvatarFallback>
-                {profile?.full_name
-                  ? profile.full_name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")
-                      .toUpperCase()
-                  : profile?.email?.[0]?.toUpperCase() || "U"}
-              </AvatarFallback>
-            </Avatar>
-            <div className="relative">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarUpload}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                disabled={uploadingAvatar}
-              />
-              <Button variant="outline" size="sm" disabled={uploadingAvatar}>
-                {uploadingAvatar ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Загружаем...
-                  </>
+              <TabsContent value="about" className="space-y-6 mt-6">
+                {isLoading ? (
+                  <div className="space-y-4">
+                    <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
+                    <div className="h-10 bg-gray-600 rounded animate-pulse"></div>
+                    <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
+                    <div className="h-10 bg-gray-600 rounded animate-pulse"></div>
+                  </div>
                 ) : (
                   <>
-                    <Camera className="w-4 h-4 mr-2" />
-                    Изменить аватар
+                    <div className="space-y-2">
+                      <Label className="text-white">Email</Label>
+                      <Input value={profile?.email || ""} disabled className="bg-gray-700 border-gray-600 text-white" />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-white">Имя</Label>
+                      <Input
+                        value={formData.full_name}
+                        onChange={(e) => handleInputChange("full_name", e.target.value)}
+                        placeholder="Введите ваше имя"
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-white">Пол</Label>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant={formData.gender === "male" ? "default" : "outline"}
+                          onClick={() => handleInputChange("gender", "male")}
+                          className={`flex-1 ${
+                            formData.gender === "male"
+                              ? "bg-blue-600 hover:bg-blue-700 text-white"
+                              : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
+                          }`}
+                        >
+                          👨 Мужской
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={formData.gender === "female" ? "default" : "outline"}
+                          onClick={() => handleInputChange("gender", "female")}
+                          className={`flex-1 ${
+                            formData.gender === "female"
+                              ? "bg-pink-600 hover:bg-pink-700 text-white"
+                              : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
+                          }`}
+                        >
+                          👩 Женский
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-white">Рост (см)</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formData.height}
+                        onChange={(e) => handleNumberInput("height", e.target.value)}
+                        placeholder="170"
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-white">Вес (кг)</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formData.weight}
+                        onChange={(e) => handleNumberInput("weight", e.target.value)}
+                        placeholder="70"
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-white">Размер верхней одежды</Label>
+                      <Select value={formData.top_size} onValueChange={(value) => handleInputChange("top_size", value)}>
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                          <SelectValue placeholder="Выберите размер" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CLOTHING_SIZES.map((size) => (
+                            <SelectItem key={size} value={size}>
+                              {size}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-white">Размер нижней одежды</Label>
+                      <Select
+                        value={formData.bottom_size}
+                        onValueChange={(value) => handleInputChange("bottom_size", value)}
+                      >
+                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                          <SelectValue placeholder="Выберите размер" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CLOTHING_SIZES.map((size) => (
+                            <SelectItem key={size} value={size}>
+                              {size}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-white">Размер обуви</Label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        value={formData.shoe_size}
+                        onChange={(e) => handleNumberInput("shoe_size", e.target.value)}
+                        placeholder="40"
+                        className="bg-white border-gray-300 text-gray-900"
+                      />
+                    </div>
+
+                    {/* Desktop save button */}
+                    <div className="hidden md:block">
+                      <Button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
+                      >
+                        {isSaving ? "Сохранение..." : "Сохранить изменения"}
+                      </Button>
+                    </div>
                   </>
                 )}
+              </TabsContent>
+
+              <TabsContent value="avatars" className="space-y-6 mt-6">
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-white mb-3 block">Текущий аватар</Label>
+                    <div className="flex items-center space-x-4">
+                      <Avatar className="h-16 w-16">
+                        <AvatarImage src={profile?.avatar_url || "/placeholder-user.jpg"} />
+                        <AvatarFallback className="bg-gray-600 text-white">
+                          {profile?.full_name?.charAt(0) || profile?.email?.charAt(0) || "U"}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex flex-col gap-2">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAvatarUpload}
+                          className="hidden"
+                        />
+                        <Button
+                          variant="outline"
+                          className="bg-white text-gray-900 border-gray-300 hover:bg-gray-100"
+                          onClick={() => fileInputRef.current?.click()}
+                          disabled={isUploadingAvatar}
+                        >
+                          {isUploadingAvatar ? "Загрузка..." : "Изменить аватар"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-white mb-3 block">Прошлые аватары</Label>
+                    <div className="grid grid-cols-4 gap-3">
+                      {/* Placeholder for previous avatars */}
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="aspect-square bg-gray-600 rounded-lg flex items-center justify-center">
+                          <span className="text-gray-400 text-xs">Нет фото</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            {/* Desktop bottom buttons */}
+            <div className="hidden md:flex gap-4 pt-4 border-t border-gray-600">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
+              >
+                Закрыть
+              </Button>
+              <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
+                Выйти
               </Button>
             </div>
           </div>
-
-          {/* Basic Info */}
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" value={profile?.email || ""} disabled className="bg-gray-50" />
-            </div>
-
-            <div>
-              <Label htmlFor="full_name">Полное имя</Label>
-              <Input
-                id="full_name"
-                value={profile?.full_name || ""}
-                onChange={(e) => handleInputChange("full_name", e.target.value)}
-                placeholder="Введите ваше имя"
-              />
-            </div>
-          </div>
-
-          {/* Physical Characteristics */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Физические характеристики</h3>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="height">Рост (см)</Label>
-                <Input
-                  id="height"
-                  value={profile?.height || ""}
-                  onChange={(e) => handleInputChange("height", e.target.value)}
-                  placeholder="170"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="weight">Вес (кг)</Label>
-                <Input
-                  id="weight"
-                  value={profile?.weight || ""}
-                  onChange={(e) => handleInputChange("weight", e.target.value)}
-                  placeholder="65"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="shoe_size">Размер обуви</Label>
-              <Input
-                id="shoe_size"
-                value={profile?.shoe_size || ""}
-                onChange={(e) => handleInputChange("shoe_size", e.target.value)}
-                placeholder="38"
-              />
-            </div>
-          </div>
-
-          {/* Clothing Sizes */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Размеры одежды</h3>
-
-            <div>
-              <Label htmlFor="top_size">Размер верхней одежды</Label>
-              <Select value={profile?.top_size || ""} onValueChange={(value) => handleInputChange("top_size", value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите размер" />
-                </SelectTrigger>
-                <SelectContent>
-                  {TOP_SIZES.map((size) => (
-                    <SelectItem key={size} value={size}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="bottom_size">Размер нижней одежды</Label>
-              <Select
-                value={profile?.bottom_size || ""}
-                onValueChange={(value) => handleInputChange("bottom_size", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите размер" />
-                </SelectTrigger>
-                <SelectContent>
-                  {BOTTOM_SIZES.map((size) => (
-                    <SelectItem key={size} value={size}>
-                      {size}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Gender */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Пол</h3>
-            <div className="grid grid-cols-2 gap-3">
-              {GENDER_OPTIONS.map((option) => (
-                <div
-                  key={option.value}
-                  className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
-                    profile?.gender === option.value
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-gray-200 hover:border-gray-300"
-                  }`}
-                  onClick={() => handleInputChange("gender", option.value)}
-                >
-                  <div className="text-center">
-                    <div className="text-2xl mb-2">{option.emoji}</div>
-                    <div className="text-sm font-medium">{option.label}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
-        {/* Fixed bottom buttons on mobile */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t md:relative md:border-t-0 md:bg-transparent md:p-0">
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={onClose} className="flex-1 bg-transparent">
-              Отмена
+        {/* Fixed bottom buttons for mobile */}
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-600 p-4 z-50">
+          <div className="flex gap-2 mb-3">
+            <Button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
+            >
+              {isSaving ? "Сохранение..." : "Сохранить изменения"}
             </Button>
-            <Button onClick={handleSave} disabled={saving} className="flex-1">
-              {saving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Сохранение...
-                </>
-              ) : (
-                "Сохранить"
-              )}
+          </div>
+          <div className="flex gap-4">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
+            >
+              Закрыть
+            </Button>
+            <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
+              Выйти
             </Button>
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </div>
+    </CommonSheet>
   )
 }

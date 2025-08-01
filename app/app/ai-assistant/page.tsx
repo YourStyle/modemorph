@@ -433,8 +433,7 @@ export default function AIAssistantPage() {
       {/* Header */}
       <div className="px-6 py-4">
         <div className="text-center">
-          <h1 className="text-xl font-serif font-bold text-gray-900">ИИ-Ассистент</h1>
-          <p className="text-sm text-gray-600">Ваш персональный стилист</p>
+          <h1 className="text-xl font-serif font-bold text-gray-900">Ассистент</h1>
         </div>
       </div>
 

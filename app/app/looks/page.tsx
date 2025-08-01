@@ -3,11 +3,12 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Plus, ExternalLink, Trash2 } from "lucide-react"
+import { Plus, ExternalLink, Trash2, Search } from "lucide-react"
 import { PastelLoader } from "@/components/pastel-loader"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
 import { CreateLookSheet } from "@/components/create-look-sheet"
 import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collection-sheet"
+import { CollectionFilterModal } from "@/components/collection-filter-modal"
 import { toast } from "sonner"
 
 interface ExpandedItem {
@@ -57,6 +58,17 @@ export default function LooksPage() {
     sectionId: 0,
     sectionName: "",
     existingLookIds: [],
+  })
+  const [filterModal, setFilterModal] = useState<{
+    isOpen: boolean
+    sectionId: number
+    sectionName: string
+    looks: SavedLook[]
+  }>({
+    isOpen: false,
+    sectionId: 0,
+    sectionName: "",
+    looks: [],
   })
 
   useEffect(() => {
@@ -180,6 +192,16 @@ export default function LooksPage() {
       sectionId: section.id,
       sectionName: section.name,
       existingLookIds,
+    })
+  }
+
+  const handleOpenFilter = (section: LooksSection) => {
+    const sectionLooks = section.section_looks?.map((sl) => sl.user_looks) || []
+    setFilterModal({
+      isOpen: true,
+      sectionId: section.id,
+      sectionName: section.name,
+      looks: sectionLooks,
     })
   }
 
@@ -326,15 +348,26 @@ export default function LooksPage() {
           </div>
           <div className="flex items-center gap-2">
             {hasLooks && (
-              <Button
-                onClick={() => handleOpenAddOutfits(section)}
-                variant="outline"
-                size="sm"
-                className="text-gray-700 border-gray-200 hover:bg-gray-50"
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Добавить образы
-              </Button>
+              <>
+                <Button
+                  onClick={() => handleOpenFilter(section)}
+                  variant="outline"
+                  size="sm"
+                  className="text-gray-700 border-gray-200 hover:bg-gray-50"
+                >
+                  <Search className="w-4 h-4 mr-1" />
+                  Поиск и фильтры
+                </Button>
+                <Button
+                  onClick={() => handleOpenAddOutfits(section)}
+                  variant="outline"
+                  size="sm"
+                  className="text-gray-700 border-gray-200 hover:bg-gray-50"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Добавить образы
+                </Button>
+              </>
             )}
             <Button variant="ghost" size="sm" className="p-2">
               <ExternalLink className="w-4 h-4" />
@@ -460,6 +493,13 @@ export default function LooksPage() {
         sectionName={addOutfitsSheet.sectionName}
         existingLookIds={addOutfitsSheet.existingLookIds}
         onAdd={handleAddOutfitsToCollection}
+      />
+
+      <CollectionFilterModal
+        isOpen={filterModal.isOpen}
+        onClose={() => setFilterModal((prev) => ({ ...prev, isOpen: false }))}
+        sectionName={filterModal.sectionName}
+        looks={filterModal.looks}
       />
     </div>
   )

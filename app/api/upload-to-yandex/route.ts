@@ -1,69 +1,91 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { uploadToYandexS3 } from "@/lib/yandex-s3"
-import { nanoid } from "nanoid"
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
+
+const s3Client = new S3Client({
+  region: "ru-central1",
+  endpoint: "https://storage.yandexcloud.net",
+  credentials: {
+    accessKeyId: process.env.YANDEX_ACCESS_KEY_ID || "",
+    secretAccessKey: process.env.YANDEX_SECRET_ACCESS_KEY || "",
+  },
+})
+
+const BUCKET_NAME = process.env.YANDEX_BUCKET_NAME || ""
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("POST /api/upload-to-yandex called")
+    console.log("Upload to Yandex API called")
 
     const formData = await request.formData()
-    console.log("FormData received")
-
     const file = formData.get("file") as File
-    const prefix = (formData.get("prefix") as string) || ""
-
-    console.log("Extracted data:", {
-      file: file ? { name: file.name, size: file.size, type: file.type } : null,
-      prefix,
-    })
+    const folder = formData.get("folder") as string
 
     if (!file) {
-      console.error("No file provided in FormData")
-      return NextResponse.json({ error: "No file provided" }, { status: 400 })
+      console.error("No file provided")
+      return NextResponse.json({ success: false, error: "No file provided" }, { status: 400 })
     }
 
-    if (!(file instanceof File)) {
-      console.error("Invalid file object:", typeof file)
-      return NextResponse.json({ error: "Invalid file object" }, { status: 400 })
+    if (!folder) {
+      console.error("No folder provided")
+      return NextResponse.json({ success: false, error: "No folder provided" }, { status: 400 })
     }
 
-    // Проверяем размер файла (максимум 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      console.error("File too large:", file.size)
-      return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 })
+    console.log("File details:", {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      folder: folder,
+    })
+
+    // Проверяем переменные окружения
+    if (!process.env.YANDEX_ACCESS_KEY_ID || !process.env.YANDEX_SECRET_ACCESS_KEY || !BUCKET_NAME) {
+      console.error("Missing Yandex S3 credentials")
+      return NextResponse.json({ success: false, error: "Missing Yandex S3 credentials" }, { status: 500 })
     }
 
-    // Генерируем уникальное имя файла
-    const fileExtension = file.name.split(".").pop()?.toLowerCase() || "jpg"
-    const fileName = `${prefix ? prefix + "/" : ""}${nanoid()}.${fileExtension}`
+    // Создаем уникальное имя файла
+    const timestamp = Date.now()
+    const randomString = Math.random().toString(36).substring(2, 15)
+    const fileExtension = file.name.split(".").pop()
+    const fileName = `${timestamp}-${randomString}.${fileExtension}`
+    const key = `${folder}/${fileName}`
 
-    console.log("Generated filename:", fileName)
+    console.log("Generated key:", key)
 
-    // Конвертируем File в ArrayBuffer
-    const arrayBuffer = await file.arrayBuffer()
-    console.log("File converted to ArrayBuffer, size:", arrayBuffer.byteLength)
+    // Конвертируем файл в Buffer
+    const bytes = await file.arrayBuffer()
+    const buffer = Buffer.from(bytes)
+
+    console.log("Buffer size:", buffer.length)
 
     // Загружаем файл в Yandex S3
-    const result = await uploadToYandexS3(arrayBuffer, fileName, file.type)
+    const command = new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: file.type,
+      ACL: "public-read",
+    })
 
-    console.log("Upload result:", result)
+    console.log("Uploading to S3...")
+    await s3Client.send(command)
 
-    if (result.success) {
-      return NextResponse.json({
-        success: true,
-        url: result.url,
-        fileName: fileName,
-      })
-    } else {
-      console.error("Upload failed:", result.error)
-      return NextResponse.json({ error: result.error || "Upload failed" }, { status: 500 })
-    }
+    // Формируем публичный URL
+    const url = `https://storage.yandexcloud.net/${BUCKET_NAME}/${key}`
+
+    console.log("Upload successful, URL:", url)
+
+    return NextResponse.json({
+      success: true,
+      url: url,
+      key: key,
+    })
   } catch (error) {
     console.error("Error uploading to Yandex S3:", error)
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unknown error",
-        stack: error instanceof Error ? error.stack : undefined,
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error occurred",
       },
       { status: 500 },
     )
