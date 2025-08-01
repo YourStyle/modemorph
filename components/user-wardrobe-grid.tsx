@@ -7,7 +7,24 @@ import { Badge } from "@/components/ui/badge"
 import { Trash2, Edit } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
-import type { WardrobeItem as ItemDetailsModalWardrobeItem } from "./item-details-modal"
+
+interface WardrobeItem {
+  id: number
+  item_name: string
+  material?: string
+  style?: string
+  color?: string
+  shade?: string
+  has_print?: string
+  has_details?: string
+  size_type?: string
+  notes?: string
+  image_url?: string
+  clothing_type?: string
+  created_at?: string
+  basic_item_id?: number
+  url?: string
+}
 
 interface UserWardrobeGridProps {
   onItemsChange?: (count: number) => void
@@ -40,11 +57,11 @@ export function UserWardrobeGrid({
   searchQuery = "",
   sortBy = "newest",
 }: UserWardrobeGridProps) {
-  const [allItems, setAllItems] = useState<ItemDetailsModalWardrobeItem[]>([])
-  const [filteredItems, setFilteredItems] = useState<ItemDetailsModalWardrobeItem[]>([])
+  const [allItems, setAllItems] = useState<WardrobeItem[]>([])
+  const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<number | null>(null)
-  const [editingItem, setEditingItem] = useState<ItemDetailsModalWardrobeItem | null>(null)
+  const [editingItem, setEditingItem] = useState<WardrobeItem | null>(null)
   const [showEditSheet, setShowEditSheet] = useState(false)
   const { toast } = useToast()
 
@@ -128,13 +145,13 @@ export function UserWardrobeGrid({
     }
   }
 
-  const handleEdit = (item: ItemDetailsModalWardrobeItem) => {
+  const handleEdit = (item: WardrobeItem) => {
     setEditingItem(item)
     setShowEditSheet(true)
   }
 
   const handleEditSuccess = () => {
-    fetchItems()
+    fetchItems() // Refresh the list
     setShowEditSheet(false)
     setEditingItem(null)
   }

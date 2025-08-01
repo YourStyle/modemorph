@@ -1,366 +1,333 @@
 "use client"
-
-import type React from "react"
-import { useState, useRef, useEffect } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, X } from "lucide-react"
-import { toast } from "sonner"
-import { ColorPicker } from "./color-picker"
 import { CommonSheet } from "./common-sheet"
-import type { WardrobeItem } from "./item-details-modal"
+import { toast } from "sonner"
 
-interface BasicItem {
+interface WardrobeItem {
   id: number
-  name_ru: string
-  name_en: string
-  description: string | null
-  image_url: string | null
+  item_name: string
+  material?: string
+  style?: string
+  color?: string
+  shade?: string
+  has_print?: string
+  size_type?: string
+  notes?: string
+  image_url?: string
+  clothing_type?: string
+  shop_url?: string
 }
 
 interface EditWardrobeItemSheetProps {
-  item: WardrobeItem | null
+  item: WardrobeItem
   isOpen: boolean
   onClose: () => void
-  onSuccess?: () => void
+  onSuccess: () => void
 }
+
+const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "XXXL", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60"]
+
+const SHADES = [
+  "светлый",
+  "тёмный",
+  "яркий",
+  "приглушённый",
+  "насыщенный",
+  "бледный",
+  "глубокий",
+  "мягкий",
+  "интенсивный",
+  "пастельный",
+]
+
+const MATERIALS = [
+  "хлопок",
+  "лён",
+  "шерсть",
+  "кашемир",
+  "шёлк",
+  "полиэстер",
+  "нейлон",
+  "спандекс",
+  "эластан",
+  "вискоза",
+  "акрил",
+  "джинса",
+  "кожа",
+  "замша",
+  "мех",
+  "флис",
+  "трикотаж",
+]
+
+const STYLES = [
+  "классический",
+  "casual",
+  "спортивный",
+  "деловой",
+  "вечерний",
+  "повседневный",
+  "винтажный",
+  "современный",
+  "минималистичный",
+  "романтичный",
+  "гранж",
+  "бохо",
+  "этнический",
+  "авангардный",
+  "ретро",
+]
 
 export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: EditWardrobeItemSheetProps) {
   const [formData, setFormData] = useState({
-    item_name: "",
     size_type: "",
+    shade: "",
     material: "",
     style: "",
     has_print: false,
-    color: "",
-    shade: "",
-    has_details: false,
-    url: "",
     notes: "",
-    basic_item_id: "0",
+    shop_url: "",
   })
-  const [imageFile, setImageFile] = useState<File | null>(null)
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [basicItems, setBasicItems] = useState<BasicItem[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
-  // Загрузка данных при открытии шторки
+  // Создаем расширенные списки с текущими значениями
+  const [availableSizes, setAvailableSizes] = useState(SIZES)
+  const [availableShades, setAvailableShades] = useState(SHADES)
+  const [availableMaterials, setAvailableMaterials] = useState(MATERIALS)
+  const [availableStyles, setAvailableStyles] = useState(STYLES)
+
   useEffect(() => {
     if (isOpen && item) {
+      // Добавляем текущие значения в списки, если их там нет
+      const currentSizes = [...SIZES]
+      if (item.size_type && !currentSizes.includes(item.size_type)) {
+        currentSizes.push(item.size_type)
+      }
+      setAvailableSizes(currentSizes)
+
+      const currentShades = [...SHADES]
+      if (item.shade && !currentShades.includes(item.shade)) {
+        currentShades.push(item.shade)
+      }
+      setAvailableShades(currentShades)
+
+      const currentMaterials = [...MATERIALS]
+      if (item.material && !currentMaterials.includes(item.material)) {
+        currentMaterials.push(item.material)
+      }
+      setAvailableMaterials(currentMaterials)
+
+      const currentStyles = [...STYLES]
+      if (item.style && !currentStyles.includes(item.style)) {
+        currentStyles.push(item.style)
+      }
+      setAvailableStyles(currentStyles)
+
       setFormData({
-        item_name: item.item_name || "",
         size_type: item.size_type || "",
+        shade: item.shade || "",
         material: item.material || "",
         style: item.style || "",
-        has_print: item.has_print === true || item.has_print === "true",
-        color: item.color || "",
-        shade: item.shade || "",
-        has_details: item.has_details === true || item.has_details === "true",
-        url: item.url || "",
+        has_print: item.has_print === "да" || item.has_print === "есть",
         notes: item.notes || "",
-        basic_item_id: item.basic_item_id?.toString() || "0",
+        shop_url: item.shop_url || "",
       })
-      setImagePreview(item.image_url || null)
-      loadBasicItems()
     }
   }, [isOpen, item])
 
-  const loadBasicItems = async () => {
-    setIsLoadingBasicItems(true)
+  const handleSave = async () => {
+    setIsSaving(true)
     try {
-      const response = await fetch("/api/basic-wardrobe-items")
-      if (response.ok) {
-        const items = await response.json()
-        setBasicItems(items)
-      }
-    } catch (error) {
-      console.error("Error loading basic items:", error)
-    } finally {
-      setIsLoadingBasicItems(false)
-    }
-  }
-
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
-  }
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setImageFile(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
-  const removeImage = () => {
-    setImageFile(null)
-    setImagePreview(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!item || !formData.item_name.trim()) {
-      toast.error("Название вещи обязательно для заполнения")
-      return
-    }
-
-    setIsLoading(true)
-
-    try {
-      let imageUrl = imagePreview
-
-      // Загрузка нового изображения если есть
-      if (imageFile) {
-        const imageFormData = new FormData()
-        imageFormData.append("file", imageFile)
-
-        const uploadResponse = await fetch("/api/upload-image", {
-          method: "POST",
-          body: imageFormData,
-        })
-
-        if (uploadResponse.ok) {
-          const uploadResult = await uploadResponse.json()
-          imageUrl = uploadResult.url
-        } else {
-          throw new Error("Failed to upload image")
-        }
-      }
-
-      // Подготовка данных для отправки
-      const submitData = {
-        item_name: formData.item_name,
-        size_type: formData.size_type || null,
-        material: formData.material || null,
-        style: formData.style || null,
-        has_print: formData.has_print ? "true" : "false",
-        color: formData.color || null,
-        shade: formData.shade || null,
-        has_details: formData.has_details ? "true" : "false",
-        url: formData.url || null,
-        notes: formData.notes || null,
-        basic_item_id: formData.basic_item_id ? Number.parseInt(formData.basic_item_id) : null,
-        image_url: imageUrl || null,
-      }
-
-      const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "PUT",
+      const response = await fetch(`/api/wardrobe-user-items/${item.id}`, {
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(submitData),
+        body: JSON.stringify({
+          size_type: formData.size_type || null,
+          shade: formData.shade || null,
+          material: formData.material || null,
+          style: formData.style || null,
+          has_print: formData.has_print ? "да" : "нет",
+          notes: formData.notes || null,
+          shop_url: formData.shop_url || null,
+        }),
       })
 
       if (response.ok) {
-        toast.success("Вещь успешно обновлена!")
-        onSuccess?.()
+        toast.success("Вещь успешно обновлена")
+        onSuccess()
         onClose()
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to update item")
+        throw new Error("Failed to update item")
       }
     } catch (error) {
       console.error("Error updating item:", error)
       toast.error("Ошибка при обновлении вещи")
     } finally {
-      setIsLoading(false)
+      setIsSaving(false)
     }
   }
 
   return (
     <CommonSheet isOpen={isOpen} onClose={onClose} title="Редактировать вещь" backgroundColor="dark">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Фото */}
-        <div className="space-y-2">
-          <Label>Фото</Label>
-          <div className="border-2 border-dashed border-gray-600 rounded-lg p-6">
-            {imagePreview ? (
-              <div className="relative">
-                <img
-                  src={imagePreview || "/placeholder.svg"}
-                  alt="Preview"
-                  className="w-full h-48 object-cover rounded-lg"
-                />
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={removeImage}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <div className="text-center">
-                <Upload className="mx-auto h-12 w-12 text-gray-300" />
-                <div className="mt-4">
-                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                    Выбрать фото
-                  </Button>
-                </div>
-              </div>
-            )}
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+      <div className="flex gap-6">
+        {/* Фото слева */}
+        <div className="flex-shrink-0">
+          <div className="w-32 h-32 bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
+            {item.image_url ? (
+              <img
+                src={item.image_url || "/placeholder.svg"}
+                alt={item.item_name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement
+                  target.style.display = "none"
+                  target.nextElementSibling?.classList.remove("hidden")
+                }}
+              />
+            ) : null}
+            <span className={`text-4xl ${item.image_url ? "hidden" : ""}`}>👕</span>
           </div>
+          <p className="text-white text-sm mt-2 text-center font-medium">{item.item_name}</p>
         </div>
 
-        {/* Название */}
-        <div className="space-y-2">
-          <Label htmlFor="item_name">Название вещи *</Label>
-          <Input
-            id="item_name"
-            value={formData.item_name}
-            onChange={(e) => handleInputChange("item_name", e.target.value)}
-            placeholder="Например: Белая рубашка"
-            required
-          />
-        </div>
+        {/* Форма справа */}
+        <div className="flex-1 space-y-4">
+          <div className="space-y-2">
+            <Label className="text-white">Размер</Label>
+            <Select
+              value={formData.size_type}
+              onValueChange={(value) => setFormData((prev) => ({ ...prev, size_type: value }))}
+            >
+              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                <SelectValue placeholder="Выберите размер" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableSizes.map((size) => (
+                  <SelectItem key={size} value={size}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Размер */}
-        <div className="space-y-2">
-          <Label htmlFor="size_type">Размер</Label>
-          <Input
-            id="size_type"
-            value={formData.size_type}
-            onChange={(e) => handleInputChange("size_type", e.target.value)}
-            placeholder="Например: M, 42, L"
-          />
-        </div>
+          <div className="space-y-2">
+            <Label className="text-white">Оттенок</Label>
+            <Select
+              value={formData.shade}
+              onValueChange={(value) => setFormData((prev) => ({ ...prev, shade: value }))}
+            >
+              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                <SelectValue placeholder="Выберите оттенок" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableShades.map((shade) => (
+                  <SelectItem key={shade} value={shade}>
+                    {shade}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Цвет */}
-        <div className="space-y-2">
-          <Label>Цвет</Label>
-          <ColorPicker
-            value={formData.color}
-            onChange={(color) => handleInputChange("color", color)}
-            imagePreview={imagePreview}
-          />
-        </div>
+          <div className="space-y-2">
+            <Label className="text-white">Материал</Label>
+            <Select
+              value={formData.material}
+              onValueChange={(value) => setFormData((prev) => ({ ...prev, material: value }))}
+            >
+              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                <SelectValue placeholder="Выберите материал" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableMaterials.map((material) => (
+                  <SelectItem key={material} value={material}>
+                    {material}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Оттенок */}
-        <div className="space-y-2">
-          <Label htmlFor="shade">Оттенок</Label>
-          <Input
-            id="shade"
-            value={formData.shade}
-            onChange={(e) => handleInputChange("shade", e.target.value)}
-            placeholder="Например: светлый, темный, яркий"
-          />
-        </div>
+          <div className="space-y-2">
+            <Label className="text-white">Стиль</Label>
+            <Select
+              value={formData.style}
+              onValueChange={(value) => setFormData((prev) => ({ ...prev, style: value }))}
+            >
+              <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                <SelectValue placeholder="Выберите стиль" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableStyles.map((style) => (
+                  <SelectItem key={style} value={style}>
+                    {style}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-        {/* Материал */}
-        <div className="space-y-2">
-          <Label htmlFor="material">Материал</Label>
-          <Input
-            id="material"
-            value={formData.material}
-            onChange={(e) => handleInputChange("material", e.target.value)}
-            placeholder="Например: хлопок, шерсть, полиэстер"
-          />
-        </div>
-
-        {/* Стиль */}
-        <div className="space-y-2">
-          <Label htmlFor="style">Стиль</Label>
-          <Input
-            id="style"
-            value={formData.style}
-            onChange={(e) => handleInputChange("style", e.target.value)}
-            placeholder="Например: классический, спортивный, casual"
-          />
-        </div>
-
-        {/* Характеристики */}
-        <div className="space-y-4">
-          <Label>Характеристики</Label>
           <div className="flex items-center space-x-2">
             <Checkbox
               id="has_print"
               checked={formData.has_print}
-              onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
+              onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, has_print: !!checked }))}
+              className="border-gray-400"
             />
-            <Label htmlFor="has_print">Есть принт</Label>
+            <Label htmlFor="has_print" className="text-white">
+              Есть принт
+            </Label>
           </div>
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="has_details"
-              checked={formData.has_details}
-              onCheckedChange={(checked) => handleInputChange("has_details", checked as boolean)}
+
+          <div className="space-y-2">
+            <Label className="text-white">Заметки</Label>
+            <Textarea
+              value={formData.notes}
+              onChange={(e) => setFormData((prev) => ({ ...prev, notes: e.target.value }))}
+              placeholder="Дополнительные заметки о вещи..."
+              className="bg-white border-gray-300 text-gray-900"
+              rows={3}
             />
-            <Label htmlFor="has_details">Есть детали</Label>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-white">Ссылка на товар</Label>
+            <Input
+              type="url"
+              value={formData.shop_url}
+              onChange={(e) => setFormData((prev) => ({ ...prev, shop_url: e.target.value }))}
+              placeholder="https://example.com/product"
+              className="bg-white border-gray-300 text-gray-900"
+            />
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
+            >
+              Отмена
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="flex-1 bg-gray-900 hover:bg-gray-800 text-white border-0"
+            >
+              {isSaving ? "Сохранение..." : "Сохранить"}
+            </Button>
           </div>
         </div>
-
-        {/* Базовая вещь */}
-        <div className="space-y-2">
-          <Label>Базовая вещь</Label>
-          <Select value={formData.basic_item_id} onValueChange={(value) => handleInputChange("basic_item_id", value)}>
-            <SelectTrigger className="bg-gray-700">
-              <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="0">Не выбрано</SelectItem>
-              {basicItems.map((item) => (
-                <SelectItem key={item.id} value={item.id.toString()}>
-                  {item.name_ru}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Ссылка на товар */}
-        <div className="space-y-2">
-          <Label htmlFor="url">Ссылка на товар в магазине</Label>
-          <Input
-            id="url"
-            type="url"
-            value={formData.url}
-            onChange={(e) => handleInputChange("url", e.target.value)}
-            placeholder="https://shop.com/product/123"
-          />
-        </div>
-
-        {/* Заметки */}
-        <div className="space-y-2">
-          <Label htmlFor="notes">Заметки</Label>
-          <Textarea
-            id="notes"
-            value={formData.notes}
-            onChange={(e) => handleInputChange("notes", e.target.value)}
-            placeholder="Дополнительная информация о вещи"
-            rows={3}
-          />
-        </div>
-
-        {/* Кнопки */}
-        <div className="flex gap-4 pt-4">
-          <Button type="submit" disabled={isLoading} className="flex-1">
-            {isLoading ? "Обновление..." : "Обновить"}
-          </Button>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Отмена
-          </Button>
-        </div>
-      </form>
+      </div>
     </CommonSheet>
   )
 }

@@ -3,7 +3,6 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { CommonSheet } from "./common-sheet"
@@ -18,6 +17,11 @@ interface UserProfile {
   gender?: string
   telegram?: string
   avatar_url?: string
+  height?: string
+  weight?: string
+  top_size?: string
+  bottom_size?: string
+  shoe_size?: string
 }
 
 interface UserProfileSheetProps {
@@ -36,6 +40,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
     full_name: "",
     gender: "",
     telegram: "",
+    height: "",
+    weight: "",
+    top_size: "",
+    bottom_size: "",
+    shoe_size: "",
   })
 
   useEffect(() => {
@@ -60,6 +69,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
           gender: profileData?.gender || "",
           telegram: profileData?.telegram || "",
           avatar_url: profileData?.avatar_url || "",
+          height: profileData?.height || "",
+          weight: profileData?.weight || "",
+          top_size: profileData?.top_size || "",
+          bottom_size: profileData?.bottom_size || "",
+          shoe_size: profileData?.shoe_size || "",
         }
 
         setProfile(userProfile)
@@ -67,6 +81,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
           full_name: userProfile.full_name || "",
           gender: userProfile.gender || "",
           telegram: userProfile.telegram || "",
+          height: profileData?.height || "",
+          weight: profileData?.weight || "",
+          top_size: profileData?.top_size || "",
+          bottom_size: profileData?.bottom_size || "",
+          shoe_size: profileData?.shoe_size || "",
         })
       }
     } catch (error) {
@@ -94,6 +113,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         full_name: formData.full_name || null,
         gender: formData.gender || null,
         telegram: formData.telegram || null,
+        height: formData.height || null,
+        weight: formData.weight || null,
+        top_size: formData.top_size || null,
+        bottom_size: formData.bottom_size || null,
+        shoe_size: formData.shoe_size || null,
         updated_at: new Date().toISOString(),
       })
 
@@ -160,16 +184,32 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
                 <div className="space-y-2">
                   <Label className="text-white">Пол</Label>
-                  <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
-                    <SelectTrigger className="bg-white border-gray-300 text-gray-900">
-                      <SelectValue placeholder="Выберите пол" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="male">Мужской</SelectItem>
-                      <SelectItem value="female">Женский</SelectItem>
-                      <SelectItem value="other">Другой</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={formData.gender === "male" ? "default" : "outline"}
+                      onClick={() => handleInputChange("gender", "male")}
+                      className={`flex-1 ${
+                        formData.gender === "male"
+                          ? "bg-blue-600 hover:bg-blue-700 text-white"
+                          : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
+                      }`}
+                    >
+                      👨 Мужской
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={formData.gender === "female" ? "default" : "outline"}
+                      onClick={() => handleInputChange("gender", "female")}
+                      className={`flex-1 ${
+                        formData.gender === "female"
+                          ? "bg-pink-600 hover:bg-pink-700 text-white"
+                          : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
+                      }`}
+                    >
+                      👩 Женский
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -178,6 +218,59 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     value={formData.telegram}
                     onChange={(e) => handleInputChange("telegram", e.target.value)}
                     placeholder="@username"
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white">Рост (см)</Label>
+                  <Input
+                    type="number"
+                    value={formData.height}
+                    onChange={(e) => handleInputChange("height", e.target.value)}
+                    placeholder="170"
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white">Вес (кг)</Label>
+                  <Input
+                    type="number"
+                    value={formData.weight}
+                    onChange={(e) => handleInputChange("weight", e.target.value)}
+                    placeholder="70"
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white">Размер верхней одежды</Label>
+                  <Input
+                    value={formData.top_size}
+                    onChange={(e) => handleInputChange("top_size", e.target.value)}
+                    placeholder="M, L, 48, 50..."
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white">Размер нижней одежды</Label>
+                  <Input
+                    value={formData.bottom_size}
+                    onChange={(e) => handleInputChange("bottom_size", e.target.value)}
+                    placeholder="M, L, 48, 50..."
+                    className="bg-white border-gray-300 text-gray-900"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-white">Размер обуви</Label>
+                  <Input
+                    type="number"
+                    value={formData.shoe_size}
+                    onChange={(e) => handleInputChange("shoe_size", e.target.value)}
+                    placeholder="40"
                     className="bg-white border-gray-300 text-gray-900"
                   />
                 </div>
