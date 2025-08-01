@@ -1,91 +1,114 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { MapPin, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu"
-import { User, Settings, LogOut } from "lucide-react"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
 
 interface WeatherData {
-  location: string
   temperature: number
   description: string
+  location: string
   icon: string
 }
 
 interface UserProfile {
   id: string
-  email: string
-  full_name: string
+  full_name: string | null
   avatar_url: string | null
-  is_admin?: boolean
+  is_admin: boolean
 }
 
 export function TopNavigation() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
-  const [user, setUser] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const router = useRouter()
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [currentTime, setCurrentTime] = useState("")
+  const [currentDate, setCurrentDate] = useState("")
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [weatherLoading, setWeatherLoading] = useState(true)
+
   const supabase = createClient()
 
   useEffect(() => {
-    loadUserAndWeather()
+    updateDateTime()
+    const interval = setInterval(updateDateTime, 1000)
+    return () => clearInterval(interval)
   }, [])
 
-  const loadUserAndWeather = async () => {
+  useEffect(() => {
+    loadUserProfile()
+    loadWeather()
+  }, [])
+
+  const updateDateTime = () => {
+    const now = new Date()
+    const timeOptions: Intl.DateTimeFormatOptions = {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Moscow",
+    }
+    const dateOptions: Intl.DateTimeFormatOptions = {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      timeZone: "Europe/Moscow",
+    }
+
+    setCurrentTime(now.toLocaleTimeString("ru-RU", timeOptions))
+    setCurrentDate(now.toLocaleDateString("ru-RU", dateOptions))
+  }
+
+  const loadUserProfile = async () => {
     try {
-      // Загружаем пользователя
       const {
-        data: { user: authUser },
+        data: { user },
+        error: userError,
       } = await supabase.auth.getUser()
 
-      if (authUser) {
-        // Загружаем профиль пользователя
-        try {
-          const profileResponse = await fetch("/api/user-profile")
-          if (profileResponse.ok) {
-            const { profile } = await profileResponse.json()
-            setUser(profile)
-          } else {
-            // Fallback к данным из auth
-            setUser({
-              id: authUser.id,
-              email: authUser.email || "",
-              full_name: authUser.user_metadata?.full_name || "",
-              avatar_url: authUser.user_metadata?.avatar_url || null,
-            })
-          }
-        } catch (error) {
-          console.error("Error loading profile:", error)
-          // Fallback к данным из auth
-          setUser({
-            id: authUser.id,
-            email: authUser.email || "",
-            full_name: authUser.user_metadata?.full_name || "",
-            avatar_url: authUser.user_metadata?.avatar_url || null,
-          })
-        }
+      if (userError || !user) {
+        console.error("User not authenticated:", userError)
+        return
       }
 
-      // Загружаем погоду
-      loadWeather()
+      // Получаем профиль пользователя
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single()
+
+      if (profileError) {
+        console.error("Profile fetch error:", profileError)
+        // Создаем профиль если его нет
+        const { data: newProfile, error: createError } = await supabase
+          .from("profiles")
+          .insert({
+            id: user.id,
+            full_name: user.user_metadata?.full_name || "",
+            avatar_url: user.user_metadata?.avatar_url || "",
+          })
+          .select()
+          .single()
+
+        if (createError) {
+          console.error("Profile creation error:", createError)
+        } else {
+          setProfile(newProfile)
+        }
+      } else {
+        setProfile(profileData)
+      }
     } catch (error) {
-      console.error("Error loading user and weather:", error)
-    } finally {
-      setLoading(false)
+      console.error("Error loading user profile:", error)
     }
   }
 
   const loadWeather = async () => {
     try {
+      setWeatherLoading(true)
+
       // Пытаемся получить геолокацию
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -93,18 +116,20 @@ export function TopNavigation() {
             const { latitude, longitude } = position.coords
             await fetchWeather(latitude, longitude)
           },
-          async () => {
-            // Если геолокация недоступна, используем Москву по умолчанию
+          async (error) => {
+            console.log("Geolocation error:", error)
+            // Fallback на Москву
             await fetchWeather()
           },
-          { timeout: 5000 },
+          { timeout: 5000, maximumAge: 300000 }, // 5 секунд таймаут, кэш 5 минут
         )
       } else {
+        // Fallback на Москву
         await fetchWeather()
       }
     } catch (error) {
       console.error("Error loading weather:", error)
-      await fetchWeather()
+      setWeatherLoading(false)
     }
   }
 
@@ -116,144 +141,161 @@ export function TopNavigation() {
         params.append("lon", lon.toString())
       }
 
-      const response = await fetch(`/api/weather?${params.toString()}`)
+      const response = await fetch(`/api/weather?${params}`)
       if (response.ok) {
         const weatherData = await response.json()
         setWeather(weatherData)
+      } else {
+        console.error("Weather API error:", response.status)
+        // Fallback данные
+        setWeather({
+          temperature: 20,
+          description: "ясно",
+          location: "Москва",
+          icon: "☀️",
+        })
       }
     } catch (error) {
-      console.error("Error fetching weather:", error)
-      // Устанавливаем fallback данные
+      console.error("Weather fetch error:", error)
+      // Fallback данные
       setWeather({
-        location: "Москва",
         temperature: 20,
-        description: "Ясно",
+        description: "ясно",
+        location: "Москва",
         icon: "☀️",
       })
+    } finally {
+      setWeatherLoading(false)
     }
   }
 
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut()
-      router.push("/auth/login")
+      window.location.href = "/"
     } catch (error) {
-      console.error("Error signing out:", error)
+      console.error("Sign out error:", error)
     }
-  }
-
-  const formatDate = () => {
-    const now = new Date()
-    const options: Intl.DateTimeFormatOptions = {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    }
-    return now.toLocaleDateString("ru-RU", options)
-  }
-
-  const formatTime = () => {
-    const now = new Date()
-    return now.toLocaleTimeString("ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
-  if (loading) {
-    return (
-      <header className="bg-white border-b border-gray-200 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="h-4 w-32 bg-gray-200 rounded animate-pulse"></div>
-            <div className="h-4 w-16 bg-gray-200 rounded animate-pulse"></div>
-          </div>
-          <div className="h-8 w-8 bg-gray-200 rounded-full animate-pulse"></div>
-        </div>
-      </header>
-    )
   }
 
   return (
-    <header className="bg-white border-b border-gray-200 px-4 py-3">
+    <div className="bg-white border-b border-gray-200 px-4 py-3">
       <div className="flex items-center justify-between">
-        {/* Left side - Date, Time, Weather */}
-        <div className="flex items-center space-x-3">
-          <div className="text-sm text-gray-600">
-            <div className="font-medium">{formatDate()}</div>
-            <div className="flex items-center space-x-2 text-xs">
-              <span>{formatTime()}</span>
-              {weather && (
-                <>
-                  {/* На мобильных показываем только иконку и температуру */}
-                  <div className="flex items-center space-x-1">
-                    <span>{weather.icon}</span>
-                    <span>{weather.temperature}°C</span>
-                  </div>
-                  {/* На больших экранах показываем полную информацию */}
-                  <div className="hidden sm:flex items-center space-x-2">
-                    <span>{weather.description}</span>
-                    <span className="text-gray-500">{weather.location}</span>
-                  </div>
-                </>
+        {/* Левая часть - Время и дата */}
+        <div className="flex items-center space-x-4">
+          <div className="text-left">
+            <div className="flex items-center space-x-2">
+              <div className="text-sm font-medium text-gray-900">{currentDate}</div>
+              {/* Компактная погода на мобильных */}
+              {weather && !weatherLoading && (
+                <div className="flex items-center space-x-1 sm:hidden">
+                  <span className="text-sm">{weather.icon}</span>
+                  <span className="text-sm font-medium text-gray-700">{weather.temperature}°C</span>
+                </div>
               )}
             </div>
+            <div className="text-xs text-gray-500">{currentTime}</div>
           </div>
-        </div>
 
-        {/* Right side - User menu */}
-        <div className="flex items-center">
-          {user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.avatar_url || undefined} alt={user.full_name || user.email} />
-                    <AvatarFallback className="text-xs">
-                      {user.full_name ? user.full_name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
-                <div className="flex items-center justify-start gap-2 p-2">
-                  <div className="flex flex-col space-y-1 leading-none">
-                    {user.full_name && <p className="font-medium">{user.full_name}</p>}
-                    <p className="w-[200px] truncate text-sm text-muted-foreground">{user.email}</p>
-                  </div>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => router.push("/app/profile")}>
-                  <User className="mr-2 h-4 w-4" />
-                  <span>Профиль</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push("/app/settings")}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  <span>Настройки</span>
-                </DropdownMenuItem>
-                {user.is_admin && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => router.push("/admin")}>
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Админ панель</span>
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Выйти</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <Button variant="outline" size="sm" onClick={() => router.push("/auth/login")}>
-              Войти
-            </Button>
+          {/* Полная погода на десктопе */}
+          {weather && !weatherLoading && (
+            <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-600">
+              <MapPin className="h-4 w-4" />
+              <span>{weather.location}</span>
+              <span className="text-lg">{weather.icon}</span>
+              <span className="font-medium">{weather.temperature}°C</span>
+              <span className="capitalize">{weather.description}</span>
+            </div>
+          )}
+
+          {/* Загрузка погоды */}
+          {weatherLoading && (
+            <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-400">
+              <div className="animate-pulse">Загрузка погоды...</div>
+            </div>
           )}
         </div>
+
+        {/* Правая часть - Профиль пользователя */}
+        <div className="flex items-center space-x-3">
+          {/* Десктопная версия */}
+          <div className="hidden sm:flex items-center space-x-3">
+            {profile && (
+              <>
+                <div className="text-right">
+                  <div className="text-sm font-medium text-gray-900">{profile.full_name || "Пользователь"}</div>
+                  {profile.is_admin && <div className="text-xs text-blue-600">Администратор</div>}
+                </div>
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={profile.avatar_url || ""} />
+                  <AvatarFallback>{profile.full_name ? profile.full_name[0].toUpperCase() : "U"}</AvatarFallback>
+                </Avatar>
+              </>
+            )}
+          </div>
+
+          {/* Мобильная версия */}
+          <div className="sm:hidden">
+            <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="sm" className="p-2">
+                  {profile ? (
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={profile.avatar_url || ""} />
+                      <AvatarFallback className="text-xs">
+                        {profile.full_name ? profile.full_name[0].toUpperCase() : "U"}
+                      </AvatarFallback>
+                    </Avatar>
+                  ) : (
+                    <User className="h-5 w-5" />
+                  )}
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-80">
+                <div className="flex flex-col space-y-6 pt-6">
+                  {/* Профиль пользователя */}
+                  {profile && (
+                    <div className="flex items-center space-x-3">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src={profile.avatar_url || ""} />
+                        <AvatarFallback>{profile.full_name ? profile.full_name[0].toUpperCase() : "U"}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="font-medium text-gray-900">{profile.full_name || "Пользователь"}</div>
+                        {profile.is_admin && <div className="text-sm text-blue-600">Администратор</div>}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Полная информация о погоде */}
+                  {weather && !weatherLoading && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <MapPin className="h-4 w-4 text-gray-500" />
+                            <span className="text-sm text-gray-600">{weather.location}</span>
+                          </div>
+                          <div className="text-lg font-semibold text-gray-900 mt-1">{weather.temperature}°C</div>
+                          <div className="text-sm text-gray-600 capitalize">{weather.description}</div>
+                        </div>
+                        <div className="text-3xl">{weather.icon}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Кнопка выхода */}
+                  <div className="pt-4 border-t">
+                    <Button variant="outline" onClick={handleSignOut} className="w-full bg-transparent">
+                      Выйти
+                    </Button>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
       </div>
-    </header>
+    </div>
   )
 }

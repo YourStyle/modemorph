@@ -1,29 +1,35 @@
-import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { createBrowserClient } from "@supabase/ssr"
+import type { Database } from "@/types/supabase"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-let supabaseInstance: ReturnType<typeof createSupabaseClient> | null = null
+let supabaseInstance: ReturnType<typeof createBrowserClient<Database>> | null = null
 
 export function createClient() {
   if (!supabaseInstance) {
-    supabaseInstance = createSupabaseClient(supabaseUrl, supabaseAnonKey)
+    supabaseInstance = createBrowserClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    )
   }
   return supabaseInstance
 }
 
+// Экспорт для совместимости
 export const supabase = createClient()
 
+// Функция для проверки подключения к Supabase
 export async function checkSupabaseConnection() {
   try {
-    const { data, error } = await supabase.from("profiles").select("count").limit(1)
+    const client = createClient()
+    const { data, error } = await client.from("profiles").select("count").limit(1)
+
     if (error) {
       console.error("Supabase connection error:", error)
       return false
     }
+
     return true
   } catch (error) {
-    console.error("Supabase connection failed:", error)
+    console.error("Failed to check Supabase connection:", error)
     return false
   }
 }
