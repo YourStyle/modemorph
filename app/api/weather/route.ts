@@ -1,84 +1,132 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { WeatherCache } from "@/lib/weather-cache"
 import { createClient } from "@/lib/supabase/server"
 
-interface WeatherAPIResponse {
-  location: {
-    name: string
-    region: string
-    country: string
+interface WeatherData {
+  temperature: number
+  condition: string
+  description: string
+  humidity: number
+  wind_speed: number
+}
+
+function getWeatherIcon(condition: string): string {
+  const conditionLower = condition.toLowerCase()
+
+  if (conditionLower.includes("clear") || conditionLower.includes("sunny")) {
+    return "☀️"
+  } else if (conditionLower.includes("cloud")) {
+    return "☁️"
+  } else if (conditionLower.includes("rain") || conditionLower.includes("drizzle")) {
+    return "🌧️"
+  } else if (conditionLower.includes("snow")) {
+    return "❄️"
+  } else if (conditionLower.includes("thunder") || conditionLower.includes("storm")) {
+    return "⛈️"
+  } else if (conditionLower.includes("fog") || conditionLower.includes("mist")) {
+    return "🌫️"
+  } else if (conditionLower.includes("wind")) {
+    return "💨"
   }
-  current: {
-    temp_c: number
-    condition: {
-      text: string
-      code: number
-    }
-    humidity: number
-    wind_kph: number
+
+  return "🌤️" // Default
+}
+
+async function fetchWeatherData(lat: number, lon: number): Promise<WeatherData> {
+  const API_KEY = process.env.OPENWEATHER_API_KEY
+
+  if (!API_KEY) {
+    throw new Error("OpenWeather API key not configured")
+  }
+
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&lang=ru`
+
+  const response = await fetch(url)
+
+  if (!response.ok) {
+    throw new Error(`Weather API error: ${response.status}`)
+  }
+
+  const data = await response.json()
+
+  return {
+    temperature: Math.round(data.main.temp),
+    condition: data.weather[0].main,
+    description: data.weather[0].description,
+    humidity: data.main.humidity,
+    wind_speed: Math.round(data.wind.speed),
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = createClient()
 
-    // Получаем текущего пользователя
+    // Get current user
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
 
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { latitude, longitude } = await request.json()
+    const { searchParams } = new URL(request.url)
+    const lat = searchParams.get("lat")
+    const lon = searchParams.get("lon")
 
-    if (!latitude || !longitude) {
-      return NextResponse.json({ error: "Latitude and longitude are required" }, { status: 400 })
+    if (!lat || !lon) {
+      return NextResponse.json({ error: "Coordinates required" }, { status: 400 })
     }
 
-    const weatherCache = new WeatherCache()
+    const latitude = Number.parseFloat(lat)
+    const longitude = Number.parseFloat(lon)
 
-    // Сначала проверяем кэш
-    const cachedWeather = await weatherCache.getCachedWeather(latitude, longitude)
-    if (cachedWeather) {
-      console.log("Returning cached weather data")
-      return NextResponse.json(cachedWeather)
+    if (isNaN(latitude) || isNaN(longitude)) {
+      return NextResponse.json({ error: "Invalid coordinates" }, { status: 400 })
     }
 
-    // Если кэша нет, запрашиваем у OpenWeatherMap
-    const apiKey = process.env.OPENWEATHER_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: "Weather API key not configured" }, { status: 500 })
+    console.log(`Fetching weather for user ${user.id} at coordinates: ${latitude}, ${longitude}`)
+
+    // Fetch weather data
+    const weatherData = await fetchWeatherData(latitude, longitude)
+
+    // Get city name from reverse geocoding
+    let cityName = "Unknown"
+    try {
+      const geoResponse = await fetch(
+        `https://api.openweathermap.org/geo/1.0/reverse?lat=${latitude}&lon=${longitude}&limit=1&appid=${process.env.OPENWEATHER_API_KEY}`,
+      )
+      if (geoResponse.ok) {
+        const geoData = await geoResponse.json()
+        cityName = geoData[0]?.local_names?.ru || geoData[0]?.name || "Unknown"
+      }
+    } catch (error) {
+      console.error("Error getting city name:", error)
     }
 
-    const weatherUrl = `http://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${latitude},${longitude}&aqi=no`
-
-    const response = await fetch(weatherUrl)
-    if (!response.ok) {
-      throw new Error(`Weather API error: ${response.status}`)
-    }
-
-    const data: WeatherAPIResponse = await response.json()
-
-    const weatherData = {
-      temperature: Math.round(data.current.temp_c),
-      condition: data.current.condition.text.toLowerCase(),
-      description: data.current.condition.text,
-      location: `${data.location.name}, ${data.location.region}`,
-      humidity: data.current.humidity,
-      windSpeed: Math.round(data.current.wind_kph),
-    }
-
-    // Сохраняем в кэш с user_id
-    await weatherCache.saveWeatherData(weatherData, latitude, longitude, user.id)
-
-    console.log("Returning fresh weather data")
-    return NextResponse.json(weatherData)
+    // Return weather data with icon and location
+    return NextResponse.json({
+      temperature: weatherData.temperature,
+      condition: weatherData.condition,
+      description: weatherData.description,
+      humidity: weatherData.humidity,
+      wind_speed: weatherData.wind_speed,
+      icon: getWeatherIcon(weatherData.condition),
+      location: cityName,
+    })
   } catch (error) {
-    console.error("Error fetching weather:", error)
-    return NextResponse.json({ error: "Failed to fetch weather data" }, { status: 500 })
+    console.error("Weather API error:", error)
+
+    // Return fallback weather only on error
+    return NextResponse.json({
+      temperature: 20,
+      condition: "Clear",
+      description: "ясно",
+      humidity: 50,
+      wind_speed: 5,
+      icon: "☀️",
+      location: "Москва",
+    })
   }
 }
