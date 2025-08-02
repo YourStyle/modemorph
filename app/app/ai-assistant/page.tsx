@@ -9,7 +9,28 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Send, Mic, Camera, Sparkles, Upload, Loader2, Check } from "lucide-react"
 import { AIAssistantLoader } from "@/components/ai-assistant-loader"
+import { createClient } from "@/lib/supabase/client"
 import Image from "next/image"
+
+interface AIRecommendationItem {
+  id: string
+  name: string
+  user_id: string
+  image_url: string
+  color: string | null
+  shade: string | null
+  has_print: string
+  notes: string | null
+  url: string | null
+}
+
+interface AIRecommendationResponse {
+  id: string
+  title: string
+  description: string
+  items: AIRecommendationItem[]
+  suggested_items_count: number
+}
 
 interface UserRecommendation {
   id: string
@@ -56,14 +77,25 @@ interface ChatMessage {
   uploadedPhoto?: string
 }
 
+interface WeatherData {
+  temperature: number
+  condition: string
+  description: string
+  location: string
+  humidity: number
+  windSpeed: number
+}
+
 export default function AIAssistantPage() {
   const [message, setMessage] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isWaitingForPhoto, setIsWaitingForPhoto] = useState(false)
   const [isAnalyzingPhoto, setIsAnalyzingPhoto] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const supabase = createClient()
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -72,6 +104,197 @@ export default function AIAssistantPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  useEffect(() => {
+    // Получаем user_id при загрузке компонента
+    const getUserId = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (user) {
+          setUserId(user.id)
+        }
+      } catch (error) {
+        console.error("Error getting user:", error)
+      }
+    }
+
+    getUserId()
+  }, [])
+
+  const getWardrobeItemsCount = async (): Promise<number> => {
+    try {
+      const response = await fetch("/api/wardrobe/count", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.count || 0
+      }
+
+      throw new Error(`Failed to get wardrobe count: ${response.status}`)
+    } catch (error) {
+      console.error("Error getting wardrobe items count:", error)
+      return 0
+    }
+  }
+
+  const getCachedWeatherForUser = async (): Promise<WeatherData | null> => {
+    try {
+      if (!userId) {
+        console.log("No user ID available for weather cache")
+        return null
+      }
+
+      // Используем API endpoint для получения кэшированной погоды
+      const response = await fetch("/api/weather/cached", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (response.ok) {
+        const cachedWeather = await response.json()
+        console.log("Using cached weather for user:", cachedWeather)
+        return cachedWeather
+      }
+
+      if (response.status === 404) {
+        console.log("No cached weather found for user")
+        return null
+      }
+
+      throw new Error(`Failed to get cached weather: ${response.status}`)
+    } catch (error) {
+      console.error("Error getting cached weather for user:", error)
+      return null
+    }
+  }
+
+  const getCurrentWeather = async (): Promise<WeatherData | null> => {
+    try {
+      // Сначала пытаемся получить кэшированную погоду
+      const cachedWeather = await getCachedWeatherForUser()
+      if (cachedWeather) {
+        return cachedWeather
+      }
+
+      // Если кэша нет, пытаемся получить геолокацию пользователя
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) {
+          reject(new Error("Geolocation is not supported"))
+          return
+        }
+
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          timeout: 10000,
+          enableHighAccuracy: false,
+        })
+      })
+
+      const { latitude, longitude } = position.coords
+
+      // Делаем запрос к нашему API погоды
+      const response = await fetch("/api/weather", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          latitude,
+          longitude,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch weather")
+      }
+
+      const weatherData = await response.json()
+      return weatherData
+    } catch (error) {
+      console.error("Error getting weather:", error)
+      // Возвращаем дефолтную погоду если не удалось получить
+      return {
+        temperature: 20,
+        condition: "clear",
+        description: "Ясно",
+        location: "Неизвестно",
+        humidity: 50,
+        windSpeed: 5,
+      }
+    }
+  }
+
+  const fetchAIRecommendation = async (): Promise<UserRecommendation | null> => {
+    if (!userId) {
+      console.error("User ID not available")
+      return null
+    }
+
+    try {
+      // Получаем погоду (сначала из кэша, потом свежую)
+      const weather = await getCurrentWeather()
+      if (!weather) {
+        throw new Error("Failed to get weather data")
+      }
+
+      console.log("Sending request to AI API:", {
+        user_id: userId,
+        weather: weather,
+      })
+
+      // Делаем POST запрос к внешнему AI API
+      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app"
+      const response = await fetch(`${aiApiUrl}/user-recommendations`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          weather: weather,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("AI API Error Response:", errorText)
+        throw new Error(`AI API error: ${response.status} ${response.statusText}`)
+      }
+
+      const data: AIRecommendationResponse[] = await response.json()
+      console.log("AI API Response:", data)
+
+      // Преобразуем ответ в формат UserRecommendation
+      if (data && Array.isArray(data) && data.length > 0) {
+        const recommendation = data[0] // Берем первую рекомендацию
+        return {
+          id: recommendation.id,
+          title: recommendation.title,
+          description: recommendation.description,
+          items: recommendation.items.map((item) => ({
+            type: "clothing",
+            id: Number.parseInt(item.id),
+            name: item.name,
+            image_url: item.image_url,
+            color: item.color || "unknown",
+          })),
+        }
+      }
+
+      return null
+    } catch (error) {
+      console.error("Error fetching AI recommendation:", error)
+      return null
+    }
+  }
 
   const fetchRandomRecommendation = async (): Promise<UserRecommendation | null> => {
     try {
@@ -164,7 +387,7 @@ export default function AIAssistantPage() {
     formData.append("image", file)
 
     // Используем переменную окружения для AI API
-    const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
+    const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app"
 
     // Увеличиваем таймаут и добавляем обработку ошибок
     const controller = new AbortController()
@@ -339,28 +562,64 @@ export default function AIAssistantPage() {
 
     if (actionText === "Подобрать образ на сегодня") {
       try {
-        const recommendation = await fetchRandomRecommendation()
+        // Сначала проверяем количество вещей в гардеробе
+        const wardrobeCount = await getWardrobeItemsCount()
 
-        if (recommendation) {
+        if (wardrobeCount < 5) {
+          const needMore = 5 - wardrobeCount
           setMessages((prev) => [
             ...prev,
             {
               role: "assistant",
-              content: `Отличный выбор! Вот образ "${recommendation.title}" из ваших вещей:`,
-              outfit: recommendation,
+              content: `Для подбора образа нужно минимум 5 вещей в гардеробе. У вас сейчас ${wardrobeCount} ${
+                wardrobeCount === 1 ? "вещь" : wardrobeCount < 5 ? "вещи" : "вещей"
+              }. Добавьте еще ${needMore} ${
+                needMore === 1 ? "вещь" : needMore < 5 ? "вещи" : "вещей"
+              }, и я смогу подобрать для вас стильные образы! 👗✨`,
+            },
+          ])
+          setIsLoading(false)
+          return
+        }
+
+        // Если вещей достаточно, пытаемся получить рекомендацию от AI API
+        const aiRecommendation = await fetchAIRecommendation()
+
+        if (aiRecommendation) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `Отличный выбор! Вот образ "${aiRecommendation.title}" подобранный с учетом погоды:`,
+              outfit: aiRecommendation,
             },
           ])
         } else {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content:
-                "К сожалению, у вас пока нет сохраненных образов. Добавьте вещи в гардероб, и я смогу подобрать для вас стильные сочетания!",
-            },
-          ])
+          // Если AI API не сработал, пытаемся получить случайную рекомендацию из локальной базы
+          const recommendation = await fetchRandomRecommendation()
+
+          if (recommendation) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: `Отличный выбор! Вот образ "${recommendation.title}" из ваших вещей:`,
+                outfit: recommendation,
+              },
+            ])
+          } else {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content:
+                  "К сожалению, не удалось подобрать образ. Попробуйте добавить больше разнообразных вещей в гардероб!",
+              },
+            ])
+          }
         }
       } catch (error) {
+        console.error("Error in handleQuickAction:", error)
         setMessages((prev) => [
           ...prev,
           {

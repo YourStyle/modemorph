@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Progress } from "@/components/ui/progress"
 import { Upload, X, Loader2, Check, Plus, AlertCircle } from "lucide-react"
 import { AIAssistantLoader } from "@/components/ai-assistant-loader"
 import Image from "next/image"
@@ -68,6 +68,8 @@ interface PhotoAnalysisFormProps {
 export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: PhotoAnalysisFormProps) {
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
   const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [progressText, setProgressText] = useState("")
   const [results, setResults] = useState<ItemWithImage[]>([])
   const [analysisResults, setAnalysisResults] = useState<PhotoAnalysisResult[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -135,6 +137,8 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         setNeedsReanalysis(false)
         setError(null)
         setLoading(false) // Важно: останавливаем загрузку
+        setProgress(0)
+        setProgressText("")
       } else if (results.length > 0) {
         // Если есть результаты и остались фото, нужен повторный анализ
         setNeedsReanalysis(true)
@@ -305,32 +309,73 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     setNeedsReanalysis(false)
     setResults([]) // Очищаем предыдущие результаты
     setAnalysisResults([]) // Очищаем результаты анализа
+    setProgress(0)
+    setProgressText("Подготовка к анализу...")
 
-    const analysisPromises = photos.map((photo) => analyzePhoto(photo.file))
-    const analysisResults = await Promise.all(analysisPromises)
+    // Начальный прогресс
+    setProgress(10)
+    setProgressText("Загружаем фото...")
 
-    // Собираем все успешные результаты
-    const allSuccessfulItems: ItemWithImage[] = []
-    const failedAnalyses: PhotoAnalysisResult[] = []
+    try {
+      // Анализируем каждое фото с обновлением прогресса
+      const analysisResults: PhotoAnalysisResult[] = []
+      const progressStep = 60 / photos.length // 60% делим на количество фото
 
-    analysisResults.forEach((result) => {
-      if (result.success) {
-        allSuccessfulItems.push(...result.items)
-      } else {
-        failedAnalyses.push(result)
+      for (let i = 0; i < photos.length; i++) {
+        const photo = photos[i]
+        setProgressText(`Анализируем фото ${i + 1} из ${photos.length}...`)
+
+        const result = await analyzePhoto(photo.file)
+        analysisResults.push(result)
+
+        // Обновляем прогресс после каждого фото
+        const currentProgress = 10 + (i + 1) * progressStep
+        setProgress(currentProgress)
       }
-    })
 
-    // Устанавливаем результаты
-    setResults(allSuccessfulItems)
-    setAnalysisResults(analysisResults)
+      setProgress(70)
+      setProgressText("Загружаем изображения базовых вещей...")
 
-    // Если есть хотя бы один успешный результат, не показываем общую ошибку
-    if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {
-      setError("Не удалось проанализировать ни одно изображение")
+      // Собираем все успешные результаты
+      const allSuccessfulItems: ItemWithImage[] = []
+      const failedAnalyses: PhotoAnalysisResult[] = []
+
+      analysisResults.forEach((result) => {
+        if (result.success) {
+          allSuccessfulItems.push(...result.items)
+        } else {
+          failedAnalyses.push(result)
+        }
+      })
+
+      setProgress(90)
+      setProgressText("Завершаем обработку...")
+
+      // Устанавливаем результаты
+      setResults(allSuccessfulItems)
+      setAnalysisResults(analysisResults)
+
+      // Если есть хотя бы один успешный результат, не показываем общую ошибку
+      if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {
+        setError("Не удалось проанализировать ни одно изображение")
+      }
+
+      setProgress(100)
+      setProgressText("Анализ завершен!")
+
+      // Через секунду скрываем прогресс бар
+      setTimeout(() => {
+        setLoading(false)
+        setProgress(0)
+        setProgressText("")
+      }, 1000)
+    } catch (error) {
+      console.error("Analysis error:", error)
+      setError("Произошла ошибка при анализе фото")
+      setLoading(false)
+      setProgress(0)
+      setProgressText("")
     }
-
-    setLoading(false)
   }
 
   const handleSaveItem = async (item: ItemWithImage, index: number) => {
@@ -385,6 +430,8 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     setHasAnalyzed(false)
     setLoading(false) // Важно: останавливаем загрузку
     setNeedsReanalysis(false)
+    setProgress(0)
+    setProgressText("")
 
     // Очищаем input
     if (fileInputRef.current) {
@@ -395,34 +442,36 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     onReset?.()
   }
 
-  const ResultsSkeleton = () => (
-    <div className="space-y-4">
+  const ProgressLoader = () => (
+    <div className="space-y-6">
       <div className="text-center py-6">
         <div className="flex justify-center mb-4">
           <AIAssistantLoader size={48} />
         </div>
         <h3 className="text-lg font-semibold text-white mb-2">ИИ анализирует ваши фото</h3>
-        <p className="text-gray-400 text-sm">
+        <p className="text-gray-400 text-sm mb-4">
           Наш искусственный интеллект распознает одежду на изображениях
           <br />и подберет подходящие вещи для вашего гардероба
         </p>
-      </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {[...Array(6)].map((_, index) => (
-          <Card key={index} className="overflow-hidden">
-            <CardContent className="p-3">
-              <Skeleton className="aspect-square mb-3 rounded-lg" />
-              <Skeleton className="h-4 w-full mb-2" />
-              <Skeleton className="h-4 w-3/4 mb-2" />
-              <div className="flex gap-1 mb-2">
-                <Skeleton className="h-5 w-12" />
-                <Skeleton className="h-5 w-16" />
-              </div>
-              <Skeleton className="h-8 w-full" />
-            </CardContent>
-          </Card>
-        ))}
+        {/* Прогресс бар с градиентом */}
+        <div className="w-full max-w-md mx-auto space-y-3">
+          <div className="relative">
+            <Progress value={progress} className="h-3 bg-gray-700" />
+            <div
+              className="absolute top-0 left-0 h-3 rounded-full transition-all duration-500 ease-out"
+              style={{
+                width: `${progress}%`,
+                background: "linear-gradient(90deg, #8B5CF6 0%, #A855F7 25%, #C084FC 50%, #E879F9 75%, #F0ABFC 100%)",
+              }}
+            />
+          </div>
+
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-gray-400">{progressText}</span>
+            <span className="text-white font-medium">{Math.round(progress)}%</span>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -552,7 +601,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         )}
 
         {/* Loading Section - показываем только когда идет загрузка */}
-        {loading && <ResultsSkeleton />}
+        {loading && <ProgressLoader />}
 
         {/* Analysis Results Section - показываем ошибки и отклонения */}
         {!loading && hasAnalyzed && analysisResults.length > 0 && (

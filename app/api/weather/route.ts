@@ -1,133 +1,84 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { WeatherCache } from "@/lib/weather-cache"
+import { createClient } from "@/lib/supabase/server"
 
-// Кэш в памяти для погодных данных
-const weatherCache = new Map<string, { data: any; timestamp: number }>()
-const CACHE_DURATION = 10 * 60 * 1000 // 10 минут
-
-// Маппинг иконок OpenWeatherMap на эмодзи
-const weatherIcons: Record<string, string> = {
-  "01d": "☀️", // clear sky day
-  "01n": "🌙", // clear sky night
-  "02d": "⛅", // few clouds day
-  "02n": "☁️", // few clouds night
-  "03d": "☁️", // scattered clouds
-  "03n": "☁️", // scattered clouds
-  "04d": "☁️", // broken clouds
-  "04n": "☁️", // broken clouds
-  "09d": "🌧️", // shower rain
-  "09n": "🌧️", // shower rain
-  "10d": "🌦️", // rain day
-  "10n": "🌧️", // rain night
-  "11d": "⛈️", // thunderstorm
-  "11n": "⛈️", // thunderstorm
-  "13d": "❄️", // snow
-  "13n": "❄️", // snow
-  "50d": "🌫️", // mist
-  "50n": "🌫️", // mist
+interface WeatherAPIResponse {
+  location: {
+    name: string
+    region: string
+    country: string
+  }
+  current: {
+    temp_c: number
+    condition: {
+      text: string
+      code: number
+    }
+    humidity: number
+    wind_kph: number
+  }
 }
 
-// Маппинг описаний на русский
-const weatherDescriptions: Record<string, string> = {
-  "clear sky": "ясно",
-  "few clouds": "малооблачно",
-  "scattered clouds": "переменная облачность",
-  "broken clouds": "облачно",
-  "shower rain": "ливень",
-  rain: "дождь",
-  thunderstorm: "гроза",
-  snow: "снег",
-  mist: "туман",
-  "overcast clouds": "пасмурно",
-  "light rain": "небольшой дождь",
-  "moderate rain": "умеренный дождь",
-  "heavy intensity rain": "сильный дождь",
-}
-
-export async function GET(request: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
-    const lat = searchParams.get("lat")
-    const lon = searchParams.get("lon")
+    const supabase = await createClient()
 
-    // Проверяем наличие API ключа
+    // Получаем текущего пользователя
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { latitude, longitude } = await request.json()
+
+    if (!latitude || !longitude) {
+      return NextResponse.json({ error: "Latitude and longitude are required" }, { status: 400 })
+    }
+
+    const weatherCache = new WeatherCache()
+
+    // Сначала проверяем кэш
+    const cachedWeather = await weatherCache.getCachedWeather(latitude, longitude)
+    if (cachedWeather) {
+      console.log("Returning cached weather data")
+      return NextResponse.json(cachedWeather)
+    }
+
+    // Если кэша нет, запрашиваем у OpenWeatherMap
     const apiKey = process.env.OPENWEATHER_API_KEY
     if (!apiKey) {
-      console.error("OpenWeather API key not found")
-      return NextResponse.json(
-        {
-          error: "Weather service configuration error",
-          temperature: 20,
-          description: "ясно",
-          location: "Москва",
-          icon: "☀️",
-        },
-        { status: 200 },
-      )
+      return NextResponse.json({ error: "Weather API key not configured" }, { status: 500 })
     }
 
-    // Используем Москву по умолчанию, если координаты не предоставлены
-    const latitude = lat || "55.7558"
-    const longitude = lon || "37.6176"
+    const weatherUrl = `http://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${latitude},${longitude}&aqi=no`
 
-    // Проверяем кэш
-    const cacheKey = `${latitude},${longitude}`
-    const cached = weatherCache.get(cacheKey)
-
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      return NextResponse.json(cached.data)
-    }
-
-    // Запрос к OpenWeatherMap API
-    const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=${apiKey}&units=metric&lang=ru`
-
-    console.log("Fetching weather from:", weatherUrl.replace(apiKey, "***"))
-
-    const response = await fetch(weatherUrl, {
-      headers: {
-        "User-Agent": "ModeMorph/1.0",
-      },
-    })
-
+    const response = await fetch(weatherUrl)
     if (!response.ok) {
-      console.error("OpenWeather API error:", response.status, response.statusText)
-      throw new Error(`Weather API returned ${response.status}`)
+      throw new Error(`Weather API error: ${response.status}`)
     }
 
-    const data = await response.json()
+    const data: WeatherAPIResponse = await response.json()
 
-    // Обрабатываем данные
     const weatherData = {
-      temperature: Math.round(data.main.temp),
-      description: weatherDescriptions[data.weather[0].description] || data.weather[0].description,
-      location: data.name || "Москва",
-      icon: weatherIcons[data.weather[0].icon] || "☀️",
-      humidity: data.main.humidity,
-      windSpeed: data.wind.speed,
-      pressure: data.main.pressure,
+      temperature: Math.round(data.current.temp_c),
+      condition: data.current.condition.text.toLowerCase(),
+      description: data.current.condition.text,
+      location: `${data.location.name}, ${data.location.region}`,
+      humidity: data.current.humidity,
+      windSpeed: Math.round(data.current.wind_kph),
     }
 
-    // Сохраняем в кэш
-    weatherCache.set(cacheKey, {
-      data: weatherData,
-      timestamp: Date.now(),
-    })
+    // Сохраняем в кэш с user_id
+    await weatherCache.saveWeatherData(weatherData, latitude, longitude, user.id)
 
+    console.log("Returning fresh weather data")
     return NextResponse.json(weatherData)
   } catch (error) {
-    console.error("Weather fetch error:", error)
-
-    // Возвращаем fallback данные
-    return NextResponse.json(
-      {
-        temperature: 20,
-        description: "ясно",
-        location: "Москва",
-        icon: "☀️",
-        humidity: 50,
-        windSpeed: 2,
-        pressure: 1013,
-      },
-      { status: 200 },
-    )
+    console.error("Error fetching weather:", error)
+    return NextResponse.json({ error: "Failed to fetch weather data" }, { status: 500 })
   }
 }
