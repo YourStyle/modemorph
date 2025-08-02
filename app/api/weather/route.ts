@@ -1,84 +1,133 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { WeatherCache } from "@/lib/weather-cache"
 import { createClient } from "@/lib/supabase/server"
 
-interface WeatherAPIResponse {
-  location: {
-    name: string
-    region: string
-    country: string
+const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY
+
+function getWeatherIcon(condition: string): string {
+  const conditionLower = condition.toLowerCase()
+
+  if (conditionLower.includes("clear") || conditionLower.includes("sunny")) {
+    return "☀️"
+  } else if (conditionLower.includes("cloud")) {
+    return "☁️"
+  } else if (conditionLower.includes("rain") || conditionLower.includes("drizzle")) {
+    return "🌧️"
+  } else if (conditionLower.includes("snow")) {
+    return "❄️"
+  } else if (conditionLower.includes("thunder") || conditionLower.includes("storm")) {
+    return "⛈️"
+  } else if (conditionLower.includes("mist") || conditionLower.includes("fog")) {
+    return "🌫️"
+  } else if (conditionLower.includes("wind")) {
+    return "💨"
   }
-  current: {
-    temp_c: number
-    condition: {
-      text: string
-      code: number
-    }
-    humidity: number
-    wind_kph: number
-  }
+
+  return "🌤️" // Default icon
 }
 
-export async function POST(request: NextRequest) {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
 
-    // Получаем текущего пользователя
+    // Get current user
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabase.auth.getUser()
-
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { latitude, longitude } = await request.json()
+    const { searchParams } = new URL(request.url)
+    const lat = searchParams.get("lat")
+    const lon = searchParams.get("lon")
 
-    if (!latitude || !longitude) {
-      return NextResponse.json({ error: "Latitude and longitude are required" }, { status: 400 })
+    if (!lat || !lon) {
+      return NextResponse.json({ error: "Coordinates are required" }, { status: 400 })
     }
 
-    const weatherCache = new WeatherCache()
-
-    // Сначала проверяем кэш
-    const cachedWeather = await weatherCache.getCachedWeather(latitude, longitude)
-    if (cachedWeather) {
-      console.log("Returning cached weather data")
-      return NextResponse.json(cachedWeather)
+    if (!OPENWEATHER_API_KEY) {
+      console.error("OpenWeather API key not configured")
+      return NextResponse.json({ error: "Weather service not configured" }, { status: 500 })
     }
 
-    // Если кэша нет, запрашиваем у OpenWeatherMap
-    const apiKey = process.env.OPENWEATHER_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: "Weather API key not configured" }, { status: 500 })
+    // Get weather from OpenWeather API
+    const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${OPENWEATHER_API_KEY}&units=metric&lang=ru`
+
+    console.log("Fetching weather from:", weatherUrl.replace(OPENWEATHER_API_KEY, "API_KEY"))
+
+    const weatherResponse = await fetch(weatherUrl)
+
+    if (!weatherResponse.ok) {
+      console.error("OpenWeather API error:", weatherResponse.status, weatherResponse.statusText)
+      throw new Error(`Weather API error: ${weatherResponse.status}`)
     }
 
-    const weatherUrl = `http://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${latitude},${longitude}&aqi=no`
+    const weatherData = await weatherResponse.json()
+    console.log("Weather data received:", weatherData)
 
-    const response = await fetch(weatherUrl)
-    if (!response.ok) {
-      throw new Error(`Weather API error: ${response.status}`)
+    const weather = {
+      city_name: weatherData.name || "Unknown",
+      latitude: Number.parseFloat(lat),
+      longitude: Number.parseFloat(lon),
+      temperature: Math.round(weatherData.main.temp),
+      condition: weatherData.weather[0].main,
+      description: weatherData.weather[0].description,
+      humidity: weatherData.main.humidity,
+      wind_speed: Math.round(weatherData.wind.speed),
     }
 
-    const data: WeatherAPIResponse = await response.json()
+    // Save to cache with user_id
+    try {
+      const { error: insertError } = await supabase.from("weather_cache").upsert(
+        {
+          user_id: user.id,
+          city_name: weather.city_name,
+          latitude: weather.latitude,
+          longitude: weather.longitude,
+          temperature: weather.temperature,
+          condition: weather.condition,
+          description: weather.description,
+          humidity: weather.humidity,
+          wind_speed: weather.wind_speed,
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "user_id,city_name",
+        },
+      )
 
-    const weatherData = {
-      temperature: Math.round(data.current.temp_c),
-      condition: data.current.condition.text.toLowerCase(),
-      description: data.current.condition.text,
-      location: `${data.location.name}, ${data.location.region}`,
-      humidity: data.current.humidity,
-      windSpeed: Math.round(data.current.wind_kph),
+      if (insertError) {
+        console.error("Error saving weather to cache:", insertError)
+      } else {
+        console.log("Weather saved to cache successfully")
+      }
+    } catch (cacheError) {
+      console.error("Cache error:", cacheError)
+      // Continue even if cache fails
     }
 
-    // Сохраняем в кэш с user_id
-    await weatherCache.saveWeatherData(weatherData, latitude, longitude, user.id)
+    // Add weather icon
+    const weatherWithIcon = {
+      ...weather,
+      icon: getWeatherIcon(weather.condition),
+    }
 
-    console.log("Returning fresh weather data")
-    return NextResponse.json(weatherData)
+    return NextResponse.json(weatherWithIcon)
   } catch (error) {
-    console.error("Error fetching weather:", error)
-    return NextResponse.json({ error: "Failed to fetch weather data" }, { status: 500 })
+    console.error("Weather API error:", error)
+
+    // Return fallback weather only on error
+    const fallbackWeather = {
+      city_name: "Москва",
+      temperature: 20,
+      condition: "Clear",
+      description: "ясно",
+      humidity: 50,
+      wind_speed: 5,
+      icon: "☀️",
+    }
+
+    return NextResponse.json(fallbackWeather)
   }
 }
