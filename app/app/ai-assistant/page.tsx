@@ -696,24 +696,42 @@ export default function AIAssistantPage() {
     setIsLoading(true)
 
     try {
+      console.log("Starting handleSend with message:", userMessage)
+
       // Получаем user_id для запроса
       if (!userId) {
+        console.error("User ID not available")
         throw new Error("User ID not available")
       }
 
+      console.log("User ID:", userId)
+
+      // Получаем погоду для контекста
+      const weather = await getCurrentWeather()
+      console.log("Weather data:", weather)
+
       // Делаем запрос к AI API
       const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app"
+      console.log("AI API URL:", aiApiUrl)
+
+      const requestBody = {
+        user_id: userId,
+        prompt: userMessage,
+        weather: weather,
+      }
+
+      console.log("Request body:", requestBody)
+
       const response = await fetch(`${aiApiUrl}/user-prompt-rec`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          user_id: userId,
-          prompt: userMessage,
-          weather: weather,
-        }),
+        body: JSON.stringify(requestBody),
       })
+
+      console.log("Response status:", response.status)
+      console.log("Response headers:", response.headers)
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -735,6 +753,8 @@ export default function AIAssistantPage() {
         assistantMessage = aiResponse.message
       }
 
+      console.log("Final assistant message:", assistantMessage)
+
       setMessages((prev) => [
         ...prev,
         {
@@ -744,6 +764,7 @@ export default function AIAssistantPage() {
       ])
     } catch (error) {
       console.error("Error in handleSend:", error)
+      console.error("Error stack:", error.stack)
       setMessages((prev) => [
         ...prev,
         {
