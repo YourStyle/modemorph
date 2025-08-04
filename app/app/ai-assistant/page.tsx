@@ -659,22 +659,100 @@ export default function AIAssistantPage() {
   const handleSend = async () => {
     if (!message.trim()) return
 
+    // Валидация длины сообщения
+    const messageLength = message.trim().length
+    if (messageLength < 20) {
+      // Показываем ошибку валидации
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: message },
+        {
+          role: "assistant",
+          content:
+            "Пожалуйста, напишите более подробное сообщение (минимум 20 символов), чтобы я мог лучше вас понять! 💭",
+        },
+      ])
+      setMessage("")
+      return
+    }
+
+    if (messageLength > 2000) {
+      // Показываем ошибку валидации
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: message },
+        {
+          role: "assistant",
+          content: "Сообщение слишком длинное (максимум 2000 символов). Попробуйте сократить ваш запрос! ✂️",
+        },
+      ])
+      setMessage("")
+      return
+    }
+
     const userMessage = message
     setMessage("")
     setMessages((prev) => [...prev, { role: "user", content: userMessage }])
     setIsLoading(true)
 
-    // Simulate AI response with cute message
-    setTimeout(() => {
+    try {
+      // Получаем user_id для запроса
+      if (!userId) {
+        throw new Error("User ID not available")
+      }
+
+      // Делаем запрос к AI API
+      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app"
+      const response = await fetch(`${aiApiUrl}/user-prompt-rec`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          prompt: userMessage,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("AI API Error Response:", errorText)
+        throw new Error(`AI API error: ${response.status} ${response.statusText}`)
+      }
+
+      const aiResponse = await response.json()
+      console.log("AI Response:", aiResponse)
+
+      // Обрабатываем ответ от AI
+      let assistantMessage = "Извините, не удалось получить ответ от ИИ-стилиста."
+
+      if (typeof aiResponse === "string") {
+        assistantMessage = aiResponse
+      } else if (aiResponse && aiResponse.response) {
+        assistantMessage = aiResponse.response
+      } else if (aiResponse && aiResponse.message) {
+        assistantMessage = aiResponse.message
+      }
+
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: "Ещё чуть-чуть и мы сможем поболтать! 💫 А пока попробуйте кнопки выше для быстрых действий.",
+          content: assistantMessage,
         },
       ])
+    } catch (error) {
+      console.error("Error in handleSend:", error)
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Произошла ошибка при обработке вашего запроса. Попробуйте еще раз! 🔄",
+        },
+      ])
+    } finally {
       setIsLoading(false)
-    }, 2000)
+    }
   }
 
   return (
