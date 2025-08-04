@@ -711,6 +711,7 @@ export default function AIAssistantPage() {
         body: JSON.stringify({
           user_id: userId,
           prompt: userMessage,
+          weather: weather,
         }),
       })
 

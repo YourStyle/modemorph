@@ -327,7 +327,7 @@ export default function LooksPage() {
             <Plus className="w-6 h-6 text-gray-500" />
           </div>
           <p className="text-gray-600 font-medium">Добавить образы</p>
-          <p className="text-sm text-gray-400 mt-1">Выберите образы для подборки</p>
+          <p className="text-sm text-gray-400 mt-1">Выберите образы дл�� подборки</p>
         </div>
       </Card>
     )
