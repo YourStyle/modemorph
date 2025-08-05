@@ -86,6 +86,25 @@ interface WeatherData {
   windSpeed: number
 }
 
+// Типы для ответов от AI API
+interface TrashResponse {
+  type: "trash"
+}
+
+interface OutfitResponse {
+  id: string
+  title: string
+  description: string
+  items: AIRecommendationItem[]
+  suggested_items_count: number
+}
+
+interface ContentResponse {
+  content: string
+}
+
+type AIPromptResponse = TrashResponse | OutfitResponse | ContentResponse
+
 export default function AIAssistantPage() {
   const [message, setMessage] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -739,29 +758,76 @@ export default function AIAssistantPage() {
         throw new Error(`AI API error: ${response.status} ${response.statusText}`)
       }
 
-      const aiResponse = await response.json()
+      const aiResponse: AIPromptResponse[] = await response.json()
       console.log("AI Response:", aiResponse)
 
       // Обрабатываем ответ от AI
-      let assistantMessage = "Извините, не удалось получить ответ от ИИ-стилиста."
+      if (Array.isArray(aiResponse) && aiResponse.length > 0) {
+        const firstResponse = aiResponse[0]
 
-      if (typeof aiResponse === "string") {
-        assistantMessage = aiResponse
-      } else if (aiResponse && aiResponse.response) {
-        assistantMessage = aiResponse.response
-      } else if (aiResponse && aiResponse.message) {
-        assistantMessage = aiResponse.message
+        // Проверяем тип ответа
+        if ("type" in firstResponse && firstResponse.type === "trash") {
+          // Ответ типа "trash" - показываем сообщение о неподходящем запросе
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content:
+                "Извините, но я не могу помочь с этим запросом. Попробуйте задать вопрос о стиле, моде или гардеробе! 👗✨",
+            },
+          ])
+        } else if ("content" in firstResponse) {
+          // Ответ с текстовым контентом
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: firstResponse.content,
+            },
+          ])
+        } else if ("id" in firstResponse && "title" in firstResponse && "items" in firstResponse) {
+          // Ответ с образом
+          const outfitRecommendation: UserRecommendation = {
+            id: firstResponse.id,
+            title: firstResponse.title,
+            description: firstResponse.description,
+            items: firstResponse.items.map((item) => ({
+              type: "clothing",
+              id: Number.parseInt(item.id),
+              name: item.name,
+              image_url: item.image_url,
+              color: item.color || "unknown",
+            })),
+          }
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `Отличный выбор! Вот образ "${firstResponse.title}":`,
+              outfit: outfitRecommendation,
+            },
+          ])
+        } else {
+          // Неизвестный формат ответа
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "Получен неожиданный ответ от ИИ-стилиста. Попробуйте переформулировать ваш вопрос! 🤔",
+            },
+          ])
+        }
+      } else {
+        // Пустой или неправильный ответ
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Извините, не удалось получить ответ от ИИ-стилиста. Попробуйте еще раз! 🔄",
+          },
+        ])
       }
-
-      console.log("Final assistant message:", assistantMessage)
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: assistantMessage,
-        },
-      ])
     } catch (error) {
       console.error("Error in handleSend:", error)
       console.error("Error stack:", error.stack)
