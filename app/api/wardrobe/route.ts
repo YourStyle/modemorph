@@ -1,27 +1,53 @@
-import { createRouter } from 'next-connect';
-import { supabase } from '@/lib/supabase';
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 
-const router = createRouter();
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = createClient()
+    
+    const { data: items, error } = await supabase
+      .from('wardrobe_items')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-router.get(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  let query = supabase
-    .from('wardrobe_items')
-    .select('*')
-    .order('created_at', { ascending: false });
+    if (error) {
+      console.error('Error fetching wardrobe items:', error)
+      return NextResponse.json({ error: 'Failed to fetch items' }, { status: 500 })
+    }
 
-  const showHidden = url.searchParams.get('show_hidden');
-  if (!showHidden || showHidden !== 'true') {
-    query = query.eq('is_hidden', false);
+    return NextResponse.json(items || [])
+  } catch (error) {
+    console.error('Error in GET /api/wardrobe:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
+}
 
-  const { data: items, error } = await query;
+export async function POST(request: NextRequest) {
+  try {
+    const supabase = createClient()
+    const body = await request.json()
+    
+    const { data: item, error } = await supabase
+      .from('wardrobe_items')
+      .insert({
+        name: body.name,
+        image_url: body.image_url,
+        color: body.color,
+        clothing_type: body.clothing_type,
+        is_basic: body.is_basic || false,
+        is_hidden: body.is_hidden || false
+      })
+      .select()
+      .single()
 
-  if (error) {
-    res.status(500).json({ error: error.message });
-  } else {
-    res.status(200).json(items);
+    if (error) {
+      console.error('Error creating wardrobe item:', error)
+      return NextResponse.json({ error: 'Failed to create item' }, { status: 500 })
+    }
+
+    return NextResponse.json(item)
+  } catch (error) {
+    console.error('Error in POST /api/wardrobe:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
-});
-
-export default router;
+}

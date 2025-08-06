@@ -7,19 +7,15 @@ import { Badge } from '@/components/ui/badge'
 import { Plus, Eye, Edit, Trash2 } from 'lucide-react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { toast } from '@/hooks/use-toast'
 
 interface Outfit {
   id: string
   name: string
   description?: string
-  preview_image_url?: string
   created_at: string
-  views_count: number
-  likes_count: number
+  views: number
+  likes: number
   outfit_items: Array<{
-    id: string
-    wardrobe_item_id: string
     wardrobe_items: {
       id: string
       name: string
@@ -48,11 +44,6 @@ export default function OutfitsPage() {
       }
     } catch (error) {
       console.error('Error fetching outfits:', error)
-      toast({
-        title: 'Ошибка',
-        description: 'Не удалось загрузить образы',
-        variant: 'destructive'
-      })
     } finally {
       setLoading(false)
     }
@@ -68,20 +59,9 @@ export default function OutfitsPage() {
 
       if (response.ok) {
         setOutfits(outfits.filter(outfit => outfit.id !== id))
-        toast({
-          title: 'Успех',
-          description: 'Образ удален'
-        })
-      } else {
-        throw new Error('Failed to delete outfit')
       }
     } catch (error) {
       console.error('Error deleting outfit:', error)
-      toast({
-        title: 'Ошибка',
-        description: 'Не удалось удалить образ',
-        variant: 'destructive'
-      })
     }
   }
 
@@ -123,10 +103,10 @@ export default function OutfitsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {outfits.map((outfit) => (
             <Card key={outfit.id} className="overflow-hidden">
-              <CardHeader className="pb-3">
-                <div className="flex justify-between items-start">
-                  <CardTitle className="text-lg">{outfit.name}</CardTitle>
-                  <div className="flex gap-1">
+              <CardHeader>
+                <CardTitle className="flex justify-between items-start">
+                  <span className="truncate">{outfit.name}</span>
+                  <div className="flex gap-1 ml-2">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -151,15 +131,17 @@ export default function OutfitsPage() {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                </div>
+                </CardTitle>
                 {outfit.description && (
-                  <p className="text-sm text-muted-foreground">{outfit.description}</p>
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {outfit.description}
+                  </p>
                 )}
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {outfit.outfit_items.slice(0, 3).map((item) => (
-                    <Badge key={item.id} variant="secondary" className="text-xs">
+                <div className="flex flex-wrap gap-2 mb-4">
+                  {outfit.outfit_items.slice(0, 3).map((item, index) => (
+                    <Badge key={index} variant="secondary" className="text-xs">
                       {item.wardrobe_items.name}
                     </Badge>
                   ))}
@@ -170,11 +152,11 @@ export default function OutfitsPage() {
                   )}
                 </div>
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Просмотры: {outfit.views_count}</span>
-                  <span>Лайки: {outfit.likes_count}</span>
+                  <span>Просмотры: {outfit.views}</span>
+                  <span>Лайки: {outfit.likes}</span>
                 </div>
                 <div className="text-xs text-muted-foreground mt-2">
-                  Создан: {new Date(outfit.created_at).toLocaleDateString()}
+                  Создан: {new Date(outfit.created_at).toLocaleDateString('ru-RU')}
                 </div>
               </CardContent>
             </Card>

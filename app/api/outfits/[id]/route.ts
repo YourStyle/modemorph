@@ -50,7 +50,11 @@ export async function PUT(
     
     const { data: outfit, error } = await supabase
       .from('outfits')
-      .update(body)
+      .update({
+        name: body.name,
+        description: body.description,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', params.id)
       .select()
       .single()
@@ -74,12 +78,12 @@ export async function DELETE(
   try {
     const supabase = createClient()
     
-    // Сначала удаляем связанные элементы образа
+    // Сначала удаляем связанные элементы
     await supabase
       .from('outfit_items')
       .delete()
       .eq('outfit_id', params.id)
-    
+
     // Затем удаляем сам образ
     const { error } = await supabase
       .from('outfits')
