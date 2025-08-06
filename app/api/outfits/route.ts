@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     if (!name || !preview_image_url || !item_ids || item_ids.length === 0) {
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { error: 'Missing required fields: name, preview_image_url, and item_ids are required' },
         { status: 400 }
       )
     }

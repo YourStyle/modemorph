@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Проверяем, что тип одежды указан
+    // Прове��яем, что тип одежды указан
     if (!finalItemType) {
       return NextResponse.json({ error: "Missing required field: item_type" }, { status: 400 })
     }

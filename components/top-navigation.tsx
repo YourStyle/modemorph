@@ -190,7 +190,7 @@ export function TopNavigation() {
         const errorData = await response.text()
         console.error("Weather API error:", response.status, errorData)
 
-        // Fallback данные при ошибке API
+        // Fallback данн��е при ошибке API
         setWeather({
           temperature: 20,
           description: "ясно",

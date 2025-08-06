@@ -28,7 +28,7 @@ export const clothingTypes = {
 
   // Комплекты
   classic: "Классический костюм",
-  "knitted-suit": "Вязаный костюм",
+  "knitted-suit": "Вязаный кост��м",
   tracksuit: "Спортивный костюм",
 
   // Верхняя одежда (зимняя)

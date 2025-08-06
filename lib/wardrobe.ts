@@ -43,7 +43,7 @@ export async function getWardrobeItems(includeHidden = false): Promise<WardrobeI
       )
     `)
 
-  // Если не включаем скрытые, фильтруем их
+  // Если не включа��м скрытые, фильтруем их
   if (!includeHidden) {
     query = query.eq("is_hidden", false)
   }

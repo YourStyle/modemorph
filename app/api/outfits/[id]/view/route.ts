@@ -16,41 +16,23 @@ export async function POST(
       )
     }
 
-    // Получаем текущее количество просмотров
-    const { data: currentOutfit, error: fetchError } = await supabase
-      .from('outfits')
-      .select('views_count')
-      .eq('id', outfitId)
-      .single()
-
-    if (fetchError) {
-      console.error('Error fetching current views:', fetchError)
-      return NextResponse.json(
-        { error: 'Failed to fetch outfit' },
-        { status: 500 }
-      )
-    }
-
     // Увеличиваем счетчик просмотров
-    const newViewsCount = (currentOutfit.views_count || 0) + 1
-
-    const { error: updateError } = await supabase
+    const { error } = await supabase
       .from('outfits')
-      .update({ views_count: newViewsCount })
+      .update({ 
+        views_count: supabase.sql`views_count + 1` 
+      })
       .eq('id', outfitId)
 
-    if (updateError) {
-      console.error('Error updating views count:', updateError)
+    if (error) {
+      console.error('Error incrementing view count:', error)
       return NextResponse.json(
-        { error: 'Failed to update views count' },
+        { error: 'Failed to increment view count' },
         { status: 500 }
       )
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      views_count: newViewsCount 
-    })
+    return NextResponse.json({ success: true })
 
   } catch (error) {
     console.error('Error in POST /api/outfits/[id]/view:', error)

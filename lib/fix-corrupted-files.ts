@@ -74,7 +74,7 @@ export class CorruptedFilesFixer {
         token: process.env.BLOB_READ_WRITE_TOKEN,
       })
 
-      // Фильтруем только изображения
+      // Фильтруем только изобра��ения
       const imageBlobs = blobs.filter((blob) => blob.pathname.match(/\.(jpg|jpeg|png|webp|gif)$/i))
 
       console.log(`📊 Найдено ${imageBlobs.length} изображений в Vercel Blob`)

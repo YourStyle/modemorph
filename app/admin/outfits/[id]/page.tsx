@@ -3,90 +3,138 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import { ArrowLeft, Edit, Trash2, Eye, Heart, Star, TrendingUp } from 'lucide-react'
-import { getOutfitById, deleteOutfit, incrementViewCount } from '@/api/outfits'
-import { Outfit } from '@/types'
-import { useToast } from '@/hooks/use-toast'
-import Image from 'next/image'
-import Link from 'next/link'
+import { ArrowLeft, Save, Eye, Heart, Trash2 } from 'lucide-react'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
+import { getOutfitById, updateOutfit, deleteOutfit } from '@/lib/api/outfits'
+
+interface OutfitData {
+  id: number
+  name: string
+  description?: string
+  season?: string
+  occasion?: string
+  preview_image_url: string
+  likes: number
+  views_count: number
+  favorites_count: number
+  created_at: string
+  updated_at: string
+  outfit_items?: Array<{
+    id: number
+    position?: number
+    wardrobe_items: {
+      id: number
+      item_name: string
+      image_url?: string
+      clothing_type?: string
+      color?: string
+      basic_wardrobe_items?: {
+        name_ru: string
+        name_en: string
+      }
+    }
+  }>
+}
 
 export default function OutfitDetailPage() {
   const params = useParams()
   const router = useRouter()
-  const { toast } = useToast()
-  const [outfit, setOutfit] = useState<Outfit | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [deleting, setDeleting] = useState(false)
-
   const outfitId = params.id as string
+
+  const [outfit, setOutfit] = useState<OutfitData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    season: '',
+    occasion: ''
+  })
+
+  const loadOutfit = async () => {
+    try {
+      setIsLoading(true)
+      const data = await getOutfitById(outfitId)
+      setOutfit(data)
+      setFormData({
+        name: data.name,
+        description: data.description || '',
+        season: data.season || '',
+        occasion: data.occasion || ''
+      })
+    } catch (error) {
+      console.error('Error loading outfit:', error)
+      toast.error('Ошибка при загрузке образа')
+      router.push('/admin/outfits')
+    } finally {
+      setIsLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (outfitId) {
       loadOutfit()
-      // Увеличиваем счетчик просмотров
-      incrementViewCount(outfitId)
     }
   }, [outfitId])
 
-  const loadOutfit = async () => {
+  const handleSave = async () => {
+    if (!outfit) return
+
     try {
-      setLoading(true)
-      const data = await getOutfitById(outfitId)
-      setOutfit(data)
+      setIsSaving(true)
+      const updatedOutfit = await updateOutfit(outfit.id, formData)
+      setOutfit(updatedOutfit)
+      setIsEditing(false)
+      toast.success('Образ успешно обновлен')
     } catch (error) {
-      console.error('Error fetching outfit:', error)
-      toast({
-        title: 'Ошибка',
-        description: 'Не удалось загрузить образ',
-        variant: 'destructive'
-      })
+      console.error('Error updating outfit:', error)
+      toast.error('Ошибка при обновлении образа')
     } finally {
-      setLoading(false)
+      setIsSaving(false)
     }
   }
 
   const handleDelete = async () => {
     if (!outfit) return
 
-    if (!confirm(`Вы уверены, что хотите удалить образ "${outfit.name}"?`)) {
-      return
-    }
-
     try {
-      setDeleting(true)
+      setIsDeleting(true)
       await deleteOutfit(outfit.id)
-      toast({
-        title: 'Успешно',
-        description: 'Образ удален'
-      })
+      toast.success('Образ удален')
       router.push('/admin/outfits')
     } catch (error) {
       console.error('Error deleting outfit:', error)
-      toast({
-        title: 'Ошибка',
-        description: 'Не удалось удалить образ',
-        variant: 'destructive'
-      })
+      toast.error('Ошибка при удалении образа')
     } finally {
-      setDeleting(false)
+      setIsDeleting(false)
     }
   }
 
-  const handleEdit = () => {
-    if (outfit) {
-      router.push(`/admin/wardrobe?mode=edit-outfit&outfitId=${outfit.id}`)
-    }
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('ru-RU', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p>Загрузка образа...</p>
+      <div className="container mx-auto p-6">
+        <div className="flex justify-center items-center h-64">
+          <div className="text-lg">Загрузка образа...</div>
         </div>
       </div>
     )
@@ -94,234 +142,249 @@ export default function OutfitDetailPage() {
 
   if (!outfit) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="container mx-auto p-6">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Образ не найден</h1>
-          <p className="text-gray-600 mb-4">Образ с указанным ID не существует</p>
-          <Link href="/admin/outfits">
-            <Button>
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Вернуться к образам
-            </Button>
-          </Link>
+          <h1 className="text-2xl font-bold mb-4">Образ не найден</h1>
+          <Button onClick={() => router.push('/admin/outfits')}>
+            Вернуться к образам
+          </Button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Заголовок */}
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex items-center gap-4">
-              <Link href="/admin/outfits">
-                <Button variant="outline" size="sm">
-                  <ArrowLeft className="w-4 h-4 mr-2" />
-                  Назад
-                </Button>
-              </Link>
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">{outfit.name}</h1>
-                <p className="text-gray-600">
-                  Создан {new Date(outfit.created_at).toLocaleDateString('ru-RU')}
-                </p>
-              </div>
-            </div>
+    <div className="container mx-auto p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" onClick={() => router.push('/admin/outfits')}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Назад к образам
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold">{outfit.name}</h1>
+            <p className="text-muted-foreground">
+              Создан {formatDate(outfit.created_at)}
+              {outfit.updated_at !== outfit.created_at && (
+                <span> • Обновлен {formatDate(outfit.updated_at)}</span>
+              )}
+            </p>
+          </div>
+        </div>
 
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={handleEdit}>
-                <Edit className="w-4 h-4 mr-2" />
+        <div className="flex gap-2">
+          {isEditing ? (
+            <>
+              <Button variant="outline" onClick={() => setIsEditing(false)}>
+                Отмена
+              </Button>
+              <Button onClick={handleSave} disabled={isSaving}>
+                <Save className="mr-2 h-4 w-4" />
+                {isSaving ? 'Сохранение...' : 'Сохранить'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="outline" onClick={() => setIsEditing(true)}>
                 Редактировать
               </Button>
-              <Button 
-                variant="destructive" 
-                onClick={handleDelete}
-                disabled={deleting}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                {deleting ? 'Удаление...' : 'Удалить'}
-              </Button>
-            </div>
-          </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Удалить
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Удалить образ?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Это действие нельзя отменить. Образ "{outfit.name}" будет удален навсегда.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Отмена</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      {isDeleting ? 'Удаление...' : 'Удалить'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
+          )}
+        </div>
+      </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Основная информация */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Превью изображение */}
-              <Card>
-                <CardContent className="p-6">
-                  <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden mb-4">
-                    <Image
-                      src={outfit.preview_image_url || '/placeholder.svg'}
-                      alt={outfit.name}
-                      width={800}
-                      height={450}
-                      className="w-full h-full object-cover"
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Preview Image */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Предварительный просмотр</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <img
+              src={outfit.preview_image_url || "/placeholder.svg"}
+              alt={outfit.name}
+              className="w-full h-96 object-cover rounded-lg"
+            />
+            
+            {/* Stats */}
+            <div className="flex gap-4 mt-4">
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Eye className="h-3 w-3" />
+                {outfit.views_count} просмотров
+              </Badge>
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Heart className="h-3 w-3" />
+                {outfit.likes} лайков
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Outfit Details */}
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Информация об образе</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isEditing ? (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Название</Label>
+                    <Input
+                      id="name"
+                      value={formData.name}
+                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                     />
                   </div>
-                  
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Описание</Label>
+                    <Textarea
+                      id="description"
+                      value={formData.description}
+                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Сезон</Label>
+                      <Select
+                        value={formData.season}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, season: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите сезон" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Не указан</SelectItem>
+                          <SelectItem value="spring">Весна</SelectItem>
+                          <SelectItem value="summer">Лето</SelectItem>
+                          <SelectItem value="autumn">Осень</SelectItem>
+                          <SelectItem value="winter">Зима</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Повод</Label>
+                      <Select
+                        value={formData.occasion}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, occasion: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите повод" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Не указан</SelectItem>
+                          <SelectItem value="casual">Повседневный</SelectItem>
+                          <SelectItem value="work">Работа</SelectItem>
+                          <SelectItem value="party">Вечеринка</SelectItem>
+                          <SelectItem value="sport">Спорт</SelectItem>
+                          <SelectItem value="formal">Официальный</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <Label className="text-sm font-medium">Название</Label>
+                    <p className="text-lg">{outfit.name}</p>
+                  </div>
+
                   {outfit.description && (
                     <div>
-                      <h3 className="font-semibold text-gray-900 mb-2">Описание</h3>
-                      <p className="text-gray-600">{outfit.description}</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Элементы образа */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Элементы образа</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {outfit.outfit_items && outfit.outfit_items.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      {outfit.outfit_items
-                        .sort((a, b) => (a.position || 0) - (b.position || 0))
-                        .map((item) => (
-                          <div key={item.id} className="text-center">
-                            <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden mb-2">
-                              <Image
-                                src={item.wardrobe_items.image_url || '/placeholder.svg'}
-                                alt={item.wardrobe_items.item_name || 'Вещь'}
-                                width={150}
-                                height={150}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                            <p className="text-sm font-medium text-gray-900 truncate">
-                              {item.wardrobe_items.item_name || 
-                               item.wardrobe_items.basic_wardrobe_items?.name_ru || 
-                               'Без названия'}
-                            </p>
-                            {item.wardrobe_items.color && (
-                              <div className="flex items-center justify-center gap-1 mt-1">
-                                <div
-                                  className="w-3 h-3 rounded-full border border-gray-300"
-                                  style={{ backgroundColor: item.wardrobe_items.color }}
-                                />
-                                <span className="text-xs text-gray-500">
-                                  {item.wardrobe_items.color}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-center py-4">
-                      Нет элементов в образе
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Боковая панель */}
-            <div className="space-y-6">
-              {/* Метаданные */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Информация</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {outfit.season && (
-                    <div>
-                      <h4 className="font-medium text-gray-900">Сезон</h4>
-                      <Badge variant="secondary" className="mt-1">
-                        {outfit.season === 'spring' && 'Весна'}
-                        {outfit.season === 'summer' && 'Лето'}
-                        {outfit.season === 'autumn' && 'Осень'}
-                        {outfit.season === 'winter' && 'Зима'}
-                        {outfit.season === 'all-season' && 'Всесезонный'}
-                      </Badge>
+                      <Label className="text-sm font-medium">Описание</Label>
+                      <p className="text-muted-foreground">{outfit.description}</p>
                     </div>
                   )}
 
-                  {outfit.occasion && (
-                    <div>
-                      <h4 className="font-medium text-gray-900">Повод</h4>
-                      <Badge variant="outline" className="mt-1">
-                        {outfit.occasion === 'casual' && 'Повседневный'}
-                        {outfit.occasion === 'work' && 'Работа'}
-                        {outfit.occasion === 'party' && 'Вечеринка'}
-                        {outfit.occasion === 'formal' && 'Официальный'}
-                        {outfit.occasion === 'sport' && 'Спорт'}
-                        {outfit.occasion === 'vacation' && 'Отпуск'}
-                      </Badge>
-                    </div>
-                  )}
-
-                  <div>
-                    <h4 className="font-medium text-gray-900">Элементов</h4>
-                    <p className="text-gray-600">
-                      {outfit.outfit_items?.length || 0} {
-                        (outfit.outfit_items?.length || 0) === 1 ? 'вещь' : 
-                        (outfit.outfit_items?.length || 0) < 5 ? 'вещи' : 'вещей'
-                      }
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Аналитика */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5" />
-                    Аналитика
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Eye className="w-4 h-4 text-blue-500" />
-                      <span className="text-sm text-gray-600">Просмотры</span>
-                    </div>
-                    <span className="font-semibold text-gray-900">
-                      {outfit.views_count || 0}
-                    </span>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Heart className="w-4 h-4 text-red-500" />
-                      <span className="text-sm text-gray-600">Лайки</span>
-                    </div>
-                    <span className="font-semibold text-gray-900">
-                      {outfit.likes || 0}
-                    </span>
-                  </div>
-
-                  <Separator />
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Star className="w-4 h-4 text-yellow-500" />
-                      <span className="text-sm text-gray-600">В избранном</span>
-                    </div>
-                    <span className="font-semibold text-gray-900">
-                      {outfit.favorites_count || 0}
-                    </span>
-                  </div>
-
-                  {(outfit.views_count || 0) > 0 && (
-                    <>
-                      <Separator />
-                      <div className="text-xs text-gray-500 text-center">
-                        Последнее обновление: {new Date(outfit.updated_at).toLocaleDateString('ru-RU')}
+                  <div className="flex gap-4">
+                    {outfit.season && (
+                      <div>
+                        <Label className="text-sm font-medium">Сезон</Label>
+                        <Badge variant="outline" className="ml-2">
+                          {outfit.season}
+                        </Badge>
                       </div>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
+                    )}
+                    {outfit.occasion && (
+                      <div>
+                        <Label className="text-sm font-medium">Повод</Label>
+                        <Badge variant="outline" className="ml-2">
+                          {outfit.occasion}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Outfit Items */}
+          {outfit.outfit_items && outfit.outfit_items.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Вещи в образе ({outfit.outfit_items.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-4">
+                  {outfit.outfit_items.map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 p-3 border rounded-lg">
+                      {item.wardrobe_items.image_url && (
+                        <img
+                          src={item.wardrobe_items.image_url || "/placeholder.svg"}
+                          alt={item.wardrobe_items.item_name}
+                          className="w-12 h-12 object-cover rounded"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">
+                          {item.wardrobe_items.item_name}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.wardrobe_items.clothing_type}
+                          {item.wardrobe_items.color && ` • ${item.wardrobe_items.color}`}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
     </div>
