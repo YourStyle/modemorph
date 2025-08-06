@@ -17,10 +17,11 @@ export async function POST(request: NextRequest) {
 
     const { hideAll } = await request.json()
 
-    // Обновляем все элементы гардероба (убираем user_id так как его нет в схеме)
+    // Обновляем все элементы гардероба пользователя
     const { error: updateError } = await supabase
       .from("wardrobe_items")
       .update({ is_hidden: hideAll })
+      .eq("user_id", user.id)
 
     if (updateError) {
       console.error("Database error:", updateError)

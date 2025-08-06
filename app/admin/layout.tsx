@@ -28,7 +28,7 @@ export default async function AdminLayout({
   }
 
   const navigationItems = [
-    { href: "/admin", label: "Главная", icon: LayoutDashboard },
+    { href: "/admin", label: "Панель управления", icon: LayoutDashboard },
     { href: "/admin/wardrobe", label: "Гардероб", icon: Shirt },
     { href: "/admin/outfits", label: "Образы", icon: Users },
     { href: "/admin/combinations", label: "Комбинации", icon: Shuffle },

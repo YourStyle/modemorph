@@ -204,7 +204,7 @@ export function BasicMaterialsManager() {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
         <h3 className="font-medium text-red-800">Supabase не настроен</h3>
-        <p className="text-red-700 mt-1">Для работы с базовыми материалами н��обходимо настроить Supabase.</p>
+        <p className="text-red-700 mt-1">Для работы с базовыми материалами необходимо настроить Supabase.</p>
       </div>
     )
   }

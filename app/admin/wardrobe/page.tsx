@@ -1,338 +1,431 @@
-'use client'
+"use client"
 
-import { useState, useEffect, Suspense } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Search, Plus, Eye, EyeOff, Edit, Trash2, ArrowLeft, Save } from 'lucide-react'
-import Link from 'next/link'
-import { WardrobeItemCard } from '@/components/wardrobe-item-card'
-import { SelectedItemsPanel } from './SelectedItemsPanel'
-import { SaveOutfitDialog } from '@/components/save-outfit-dialog'
-import { useSelectedItems } from '@/contexts/selected-items-context'
+import { useState, useEffect, useCallback } from "react"
+import { WardrobeItemCard } from "@/components/wardrobe-item-card"
+import { WardrobeFilters } from "@/components/wardrobe-filters"
+import { Button } from "@/components/ui/button"
+import { Loader2, Shirt, Plus, Settings, EyeOff, Eye, X, Upload } from "lucide-react"
+import type { WardrobeItem } from "@/lib/wardrobe"
+import { SelectedItemsBar } from "@/components/selected-items-bar"
+import { useSelectedItems } from "@/contexts/selected-items-context"
+import { useToast } from "@/hooks/use-toast"
+import Link from "next/link"
 
-interface WardrobeItem {
-  id: string
-  name: string
-  image_url: string
-  color: string
-  clothing_type: string
-  is_basic: boolean
-  is_hidden: boolean
-  created_at: string
-}
-
-interface Outfit {
-  id: string
-  name: string
-  description?: string
-  outfit_items: Array<{
-    wardrobe_items: WardrobeItem
-  }>
-}
-
-function WardrobePageContent() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const { selectedItems, addItem, removeItem, clearSelection } = useSelectedItems()
-  
+export default function WardrobePage() {
   const [items, setItems] = useState<WardrobeItem[]>([])
-  const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [showHidden, setShowHidden] = useState(false)
-  const [selectedType, setSelectedType] = useState('all')
-  const [showSaveDialog, setShowSaveDialog] = useState(false)
-  
-  // Режимы работы
-  const mode = searchParams.get('mode') // 'create' или 'edit'
-  const outfitId = searchParams.get('outfitId')
-  const isEditMode = mode === 'create' || mode === 'edit'
-  
-  const [currentOutfit, setCurrentOutfit] = useState<Outfit | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [isUpdatingAll, setIsUpdatingAll] = useState(false)
+  const {
+    selectedItems,
+    setItems: setSelectedItems,
+    setEditingOutfitId,
+    addItem,
+    removeItem,
+    isSelected,
+    clearItems,
+  } = useSelectedItems()
+  const [editingOutfit, setEditingOutfit] = useState<any>(null)
+  const { toast } = useToast()
+  const [isCreatingOutfit, setIsCreatingOutfit] = useState(false)
 
+  // Проверяем URL параметры для редактирования
   useEffect(() => {
-    fetchItems()
-    
-    // Если режим редактирования, загружаем образ
-    if (mode === 'edit' && outfitId) {
-      loadOutfitForEdit(outfitId)
+    const urlParams = new URLSearchParams(window.location.search)
+    const editId = urlParams.get("edit")
+
+    if (editId) {
+      loadOutfitForEditing(Number(editId))
     }
-  }, [mode, outfitId])
+  }, [])
 
-  useEffect(() => {
-    filterItems()
-  }, [items, searchTerm, showHidden, selectedType])
-
-  const fetchItems = async () => {
+  const loadOutfitForEditing = async (outfitId: number) => {
     try {
-      const response = await fetch('/api/wardrobe')
-      if (response.ok) {
-        const data = await response.json()
-        setItems(data)
+      const response = await fetch(`/api/outfits/${outfitId}`)
+      if (!response.ok) {
+        throw new Error("Failed to load outfit")
       }
+
+      const data = await response.json()
+      const outfit = data.outfit
+
+      // Загружаем элементы образа в контекст
+      const outfitItems = outfit.outfit_items
+        .sort((a: any, b: any) => a.position - b.position)
+        .map((item: any) => ({
+          ...item.wardrobe_items,
+          image_url: item.wardrobe_items.image_url,
+          type: "user",
+        }))
+
+      setSelectedItems(outfitItems)
+      setEditingOutfitId(outfitId)
+      setEditingOutfit(outfit)
+
+      toast({
+        title: "Режим редактирования",
+        description: `Загружен образ "${outfit.name}" для редактирования`,
+      })
     } catch (error) {
-      console.error('Error fetching items:', error)
+      console.error("Error loading outfit for editing:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось загрузить образ для редактирования",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const fetchItems = useCallback(async (filters: { search: string; types: string[] }) => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const params = new URLSearchParams()
+      if (filters.search) params.append("search", filters.search)
+      if (filters.types.length > 0) params.append("types", filters.types.join(","))
+
+      const response = await fetch(`/api/wardrobe?${params.toString()}`)
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch wardrobe items")
+      }
+
+      const data = await response.json()
+      setItems(data.items || [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "An error occurred")
+      console.error("Error fetching wardrobe items:", err)
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    fetchItems({ search: "", types: [] })
+  }, [fetchItems])
+
+  const handleFilterChange = useCallback(
+    (filters: { search: string; types: string[] }) => {
+      setSelectedTypes(filters.types)
+      fetchItems(filters)
+    },
+    [fetchItems],
+  )
+
+  const handleRetry = () => {
+    fetchItems({ search: "", types: selectedTypes })
   }
 
-  const loadOutfitForEdit = async (id: string) => {
+  const handleHideAll = async () => {
+    setIsUpdatingAll(true)
+
     try {
-      const response = await fetch(`/api/outfits/${id}`)
-      if (response.ok) {
-        const outfit = await response.json()
-        setCurrentOutfit(outfit)
-        
-        // Добавляем вещи образа в выбранные
-        outfit.outfit_items.forEach((item: any) => {
-          addItem(item.wardrobe_items)
-        })
-      }
-    } catch (error) {
-      console.error('Error fetching outfit:', error)
-    }
-  }
-
-  const filterItems = () => {
-    let filtered = items
-
-    // Фильтр по поисковому запросу
-    if (searchTerm) {
-      filtered = filtered.filter(item =>
-        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.clothing_type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.color.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-
-    // Фильтр по типу
-    if (selectedType !== 'all') {
-      if (selectedType === 'basic') {
-        filtered = filtered.filter(item => item.is_basic)
-      } else {
-        filtered = filtered.filter(item => item.clothing_type === selectedType)
-      }
-    }
-
-    // Фильтр скрытых вещей
-    if (!showHidden) {
-      filtered = filtered.filter(item => !item.is_hidden)
-    }
-
-    setFilteredItems(filtered)
-  }
-
-  const toggleItemVisibility = async (id: string, isHidden: boolean) => {
-    try {
-      const response = await fetch('/api/wardrobe/visibility', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, is_hidden: !isHidden })
+      const response = await fetch("/api/wardrobe/visibility", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ hideAll: true }),
       })
 
-      if (response.ok) {
-        setItems(items.map(item =>
-          item.id === id ? { ...item, is_hidden: !isHidden } : item
-        ))
+      if (!response.ok) {
+        throw new Error("Failed to hide all items")
       }
-    } catch (error) {
-      console.error('Error toggling visibility:', error)
-    }
-  }
 
-  const deleteItem = async (id: string) => {
-    if (!confirm('Вы уверены, что хотите удалить эту вещь?')) return
-
-    try {
-      const response = await fetch(`/api/wardrobe/${id}`, {
-        method: 'DELETE'
+      toast({
+        title: "Все вещи скрыты",
+        description: "Все элементы гардероба скрыты из публичного просмотра",
       })
 
-      if (response.ok) {
-        setItems(items.filter(item => item.id !== id))
-        removeItem(id)
-      }
+      // Обновляем локальное состояние
+      setItems((prevItems) => prevItems.map((item) => ({ ...item, is_hidden: true })))
     } catch (error) {
-      console.error('Error deleting item:', error)
+      console.error("Error hiding all items:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось скрыть все вещи",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdatingAll(false)
     }
   }
 
-  const handleItemClick = (item: WardrobeItem) => {
-    if (isEditMode) {
-      const isSelected = selectedItems.some(selected => selected.id === item.id)
-      if (isSelected) {
-        removeItem(item.id)
-      } else {
-        addItem(item)
+  const handleShowAll = async () => {
+    setIsUpdatingAll(true)
+
+    try {
+      const response = await fetch("/api/wardrobe/visibility", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ hideAll: false }),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to show all items")
       }
+
+      toast({
+        title: "Все вещи показаны",
+        description: "Все элементы гардероба теперь видны",
+      })
+
+      // Обновляем локальное состояние
+      setItems((prevItems) => prevItems.map((item) => ({ ...item, is_hidden: false })))
+    } catch (error) {
+      console.error("Error showing all items:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось показать все вещи",
+        variant: "destructive",
+      })
+    } finally {
+      setIsUpdatingAll(false)
     }
   }
 
-  const handleExitEditMode = () => {
-    clearSelection()
-    router.push('/admin/wardrobe')
+  const handleVisibilityChange = (itemId: number, isHidden: boolean) => {
+    // Обновляем локальное состояние для конкретной вещи
+    setItems((prevItems) => prevItems.map((item) => (item.id === itemId ? { ...item, is_hidden: isHidden } : item)))
   }
 
-  const handleSaveOutfit = () => {
-    if (selectedItems.length === 0) {
-      alert('Выберите хотя бы одну вещь для образа')
-      return
+  const handleDelete = (itemId: number) => {
+    console.log("handleDelete called with itemId:", itemId)
+    // Удаляем элемент из локального состояния
+    setItems((prevItems) => {
+      const newItems = prevItems.filter((item) => item.id !== itemId)
+      console.log("Items before filter:", prevItems.length)
+      console.log("Items after filter:", newItems.length)
+      return newItems
+    })
+  }
+
+  const handleRefresh = () => {
+    fetchItems({ search: "", types: selectedTypes })
+  }
+
+  const handleItemSelect = (item: WardrobeItem) => {
+    const itemWithType = { ...item, type: "user" as const }
+    if (isSelected("user", item.id)) {
+      removeItem("user", item.id)
+    } else {
+      addItem(itemWithType)
     }
-    setShowSaveDialog(true)
   }
 
-  const clothingTypes = [...new Set(items.map(item => item.clothing_type))]
+  const handleCreateOutfitToggle = () => {
+    if (isCreatingOutfit) {
+      clearItems()
+    }
+    setIsCreatingOutfit(!isCreatingOutfit)
+  }
 
-  if (loading) {
+  if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="flex justify-center items-center h-64">
-          <div className="text-lg">Загрузка гардероба...</div>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-red-600 text-lg font-semibold">Ошибка загрузки данных</div>
+          <p className="text-gray-600">{error}</p>
+          <Button onClick={handleRetry}>Попробовать снова</Button>
         </div>
       </div>
     )
   }
 
-  return (
-    <div className="container mx-auto p-6">
-      {/* Заголовок */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
-          {isEditMode && (
-            <Button variant="ghost" onClick={handleExitEditMode}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Назад
-            </Button>
-          )}
-          <h1 className="text-3xl font-bold">
-            {mode === 'create' ? 'Создание образа' : 
-             mode === 'edit' ? `Редактирование: ${currentOutfit?.name || 'Образ'}` : 
-             'Управление гардеробом'}
-          </h1>
-        </div>
-        
-        {!isEditMode && (
-          <Button asChild>
-            <Link href="/admin/wardrobe/add">
-              <Plus className="h-4 w-4 mr-2" />
-              Добавить вещь
-            </Link>
-          </Button>
-        )}
-        
-        {isEditMode && (
-          <Button onClick={handleSaveOutfit} disabled={selectedItems.length === 0}>
-            <Save className="h-4 w-4 mr-2" />
-            Сохранить образ
-          </Button>
-        )}
-      </div>
+  const hiddenCount = items.filter((item) => item.is_hidden).length
+  const visibleCount = items.length - hiddenCount
 
-      {/* Фильтры */}
-      <Card className="mb-6">
-        <CardHeader>
-          <CardTitle>Фильтры</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                <Input
-                  placeholder="Поиск по названию, типу или цвету..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
+  return (
+    <div className="min-h-screen bg-gray-50 pb-32">
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-6xl mx-auto">
+          {/* Заголовок */}
+          <div className="mb-8">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
+              <div className="flex items-center gap-3">
+                <Shirt className="h-8 w-8 text-gray-700" />
+                <h1 className="text-3xl font-bold text-gray-900">Мой гардероб</h1>
+              </div>
+
+              {/* Адаптивные кнопки */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={handleShowAll}
+                    disabled={isUpdatingAll || hiddenCount === 0}
+                    className="flex items-center justify-center gap-2 bg-transparent min-w-0"
+                  >
+                    {isUpdatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+                    <span className="whitespace-nowrap">Показать все</span>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleHideAll}
+                    disabled={isUpdatingAll || visibleCount === 0}
+                    className="flex items-center justify-center gap-2 bg-transparent min-w-0"
+                  >
+                    {isUpdatingAll ? <Loader2 className="h-4 w-4 animate-spin" /> : <EyeOff className="h-4 w-4" />}
+                    <span className="whitespace-nowrap">Скрыть все</span>
+                  </Button>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Link href="/admin/wardrobe/basics" className="flex-1">
+                    <Button
+                      variant="outline"
+                      className="flex items-center justify-center gap-2 bg-transparent w-full min-w-0"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span className="whitespace-nowrap">Базовые элементы</span>
+                    </Button>
+                  </Link>
+                  <Link href="/admin/wardrobe/add" className="flex-1">
+                    <Button className="flex items-center justify-center gap-2 w-full min-w-0">
+                      <Plus className="h-4 w-4" />
+                      <span className="whitespace-nowrap">Добавить вещь</span>
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="show-hidden"
-                checked={showHidden}
-                onCheckedChange={setShowHidden}
-              />
-              <Label htmlFor="show-hidden">Показать скрытые</Label>
+
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4 text-sm text-gray-600">
+              <p className="flex-1">
+                Коллекция одежды с фотографиями и подробной информацией.
+                <span className="font-medium ml-1">
+                  {isCreatingOutfit
+                    ? "Нажмите на карточки, чтобы выбрать вещи для образа."
+                    : "Нажмите на карточку, чтобы посмотреть детали."}
+                </span>
+              </p>
+              {hiddenCount > 0 && (
+                <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap">
+                  {hiddenCount} скрыто
+                </div>
+              )}
             </div>
           </div>
 
-          <Tabs value={selectedType} onValueChange={setSelectedType}>
-            <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6">
-              <TabsTrigger value="all">Все</TabsTrigger>
-              <TabsTrigger value="basic">Базовые</TabsTrigger>
-              {clothingTypes.slice(0, 4).map(type => (
-                <TabsTrigger key={type} value={type}>
-                  {type}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-        </CardContent>
-      </Card>
+          {/* Фильтры */}
+          <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
+            <WardrobeFilters onFilterChange={handleFilterChange} selectedTypes={selectedTypes} />
+          </div>
 
-      {/* Сетка вещей */}
-      {filteredItems.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <p className="text-lg text-muted-foreground mb-4">
-              {searchTerm || selectedType !== 'all' ? 'Вещи не найдены' : 'Гардероб пуст'}
-            </p>
-            {!searchTerm && selectedType === 'all' && (
-              <Button asChild>
-                <Link href="/admin/wardrobe/add">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Добавить первую вещь
+          {/* Результаты */}
+          <div className="bg-white rounded-lg shadow-sm">
+            {loading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-600">Загрузка...</span>
+              </div>
+            ) : items.length === 0 ? (
+              <div className="text-center py-12">
+                <Shirt className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Ничего не найдено</h3>
+                <p className="text-gray-600">Попробуйте изменить параметры поиска или фильтры</p>
+                <Link href="/admin/wardrobe/add" className="mt-4 inline-block">
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Добавить первую вещь
+                  </Button>
                 </Link>
-              </Button>
+              </div>
+            ) : (
+              <>
+                {/* Sticky заголовок с кнопками */}
+                <div className="sticky top-16 z-40 bg-white border-b border-gray-200 p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold text-gray-900">
+                      Найдено: {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
+                      {selectedTypes.length > 0 && (
+                        <span className="text-sm text-gray-500 ml-2">
+                          (фильтр: {selectedTypes.length}{" "}
+                          {selectedTypes.length === 1 ? "тип" : selectedTypes.length < 5 ? "типа" : "типов"})
+                        </span>
+                      )}
+                    </h2>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="flex items-center gap-2 bg-white border-gray-300 hover:bg-gray-50"
+                      >
+                        <Upload className="h-4 w-4" />
+                        Загрузить фото
+                      </Button>
+                      <Button
+                        onClick={handleCreateOutfitToggle}
+                        variant={isCreatingOutfit ? "destructive" : "default"}
+                        className="flex items-center gap-2 shadow-sm"
+                      >
+                        {isCreatingOutfit ? (
+                          <>
+                            <X className="h-4 w-4" />
+                            Отменить
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-4 w-4" />
+                            Создать образ
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Индикатор режима создания образа */}
+                  {isCreatingOutfit && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-blue-800">
+                          <Plus className="h-5 w-5" />
+                          <span className="font-medium">Режим создания образа</span>
+                        </div>
+                        <Button
+                          onClick={handleCreateOutfitToggle}
+                          variant="ghost"
+                          size="sm"
+                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-sm text-blue-600 mt-1">
+                        Выберите вещи для создания образа. Выбрано: {selectedItems.length}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Сетка вещей */}
+                <div className="p-6 pt-0">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {items.map((item) => (
+                      <WardrobeItemCard
+                        key={item.id}
+                        item={item}
+                        isAdmin={!isCreatingOutfit}
+                        onVisibilityChange={handleVisibilityChange}
+                        onDelete={handleDelete}
+                        isSelected={isCreatingOutfit && isSelected("user", item.id)}
+                        onSelect={isCreatingOutfit ? handleItemSelect : undefined}
+                        onRefresh={handleRefresh}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </>
             )}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {filteredItems.map((item) => (
-            <WardrobeItemCard
-              key={item.id}
-              item={item}
-              isSelected={selectedItems.some(selected => selected.id === item.id)}
-              isEditMode={isEditMode}
-              onItemClick={() => handleItemClick(item)}
-              onToggleVisibility={() => toggleItemVisibility(item.id, item.is_hidden)}
-              onDelete={() => deleteItem(item.id)}
-            />
-          ))}
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* Панель выбранных вещей */}
-      {isEditMode && <SelectedItemsPanel />}
-
-      {/* Диалог сохранения образа */}
-      <SaveOutfitDialog
-        open={showSaveDialog}
-        onOpenChange={setShowSaveDialog}
-        selectedItems={selectedItems}
-        existingOutfit={currentOutfit}
-        onSave={() => {
-          setShowSaveDialog(false)
-          clearSelection()
-          router.push('/admin/outfits')
-        }}
-      />
+      {/* Панель выбранных элементов */}
+      {isCreatingOutfit && <SelectedItemsBar />}
     </div>
-  )
-}
-
-export default function WardrobePage() {
-  return (
-    <Suspense fallback={<div>Загрузка...</div>}>
-      <WardrobePageContent />
-    </Suspense>
   )
 }
