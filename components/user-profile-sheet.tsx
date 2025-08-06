@@ -539,28 +539,18 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         </div>
 
         {/* Fixed bottom buttons for mobile */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-600 p-4 z-50">
-          <div className="flex gap-2 mb-3">
-            <Button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
-            >
-              {isSaving ? "Сохранение..." : "Сохранить изменения"}
-            </Button>
-          </div>
-          <div className="flex gap-4">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
-            >
-              Закрыть
-            </Button>
-            <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
-              Выйти
-            </Button>
-          </div>
+        <div className="flex gap-4 pt-4 border-t border-gray-600">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
+          >
+            Закрыть
+          </Button>
+          <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
+            Выйти
+          </Button>
+
         </div>
       </div>
     </CommonSheet>
