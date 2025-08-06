@@ -29,7 +29,7 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
 
     try {
       const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "PUT",
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
         },

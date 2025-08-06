@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { WardrobeItemCard } from "@/components/wardrobe-item-card"
 import { WardrobeFilters } from "@/components/wardrobe-filters"
 import { Button } from "@/components/ui/button"
@@ -29,6 +30,8 @@ export default function WardrobePage() {
   const [editingOutfit, setEditingOutfit] = useState<any>(null)
   const { toast } = useToast()
   const [isCreatingOutfit, setIsCreatingOutfit] = useState(false)
+  const router = useRouter()
+const searchParams = useSearchParams()
 
   // Проверяем URL параметры для редактирования
   useEffect(() => {
@@ -39,6 +42,7 @@ export default function WardrobePage() {
       loadOutfitForEditing(Number(editId))
     }
   }, [])
+
 
   const loadOutfitForEditing = async (outfitId: number) => {
     try {
@@ -62,6 +66,8 @@ export default function WardrobePage() {
       setSelectedItems(outfitItems)
       setEditingOutfitId(outfitId)
       setEditingOutfit(outfit)
+
+      setIsCreatingOutfit(true)
 
       toast({
         title: "Режим редактирования",
@@ -218,11 +224,22 @@ export default function WardrobePage() {
   }
 
   const handleCreateOutfitToggle = () => {
-    if (isCreatingOutfit) {
-      clearItems()
-    }
-    setIsCreatingOutfit(!isCreatingOutfit)
+  if (isCreatingOutfit) {
+    clearItems()
+    setEditingOutfit(null)
+    setEditingOutfitId(null)
   }
+  setIsCreatingOutfit(!isCreatingOutfit)
+
+  // Удаляем edit/editId из query-параметров
+  const params = new URLSearchParams(searchParams.toString())
+  params.delete("edit")
+
+  router.replace(
+    window.location.pathname + (params.toString() ? "?" + params.toString() : ""),
+    { scroll: false }
+  )
+}
 
   if (error) {
     return (

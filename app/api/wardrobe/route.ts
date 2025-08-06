@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     // Проверяем, является ли пользователь админом
     const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
 
-    const isAdmin = profile?.isAdmin || false
+    const isAdmin = profile?.is_admin || false
 
     let query = supabase.from("wardrobe_items").select(`
         *,
