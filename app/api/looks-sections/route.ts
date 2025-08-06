@@ -71,7 +71,7 @@ export async function GET() {
                 } else if (item.type === "basic") {
                   const { data: basicItem } = await supabase
                     .from("wardrobe_items")
-                    .select("id, name_ru, image_url")
+                    .select("id, item_name, image_url")
                     .eq("id", item.id)
                     .single()
 
