@@ -327,7 +327,7 @@ export default function LooksPage() {
             <Plus className="w-6 h-6 text-gray-500" />
           </div>
           <p className="text-gray-600 font-medium">Добавить образы</p>
-          <p className="text-sm text-gray-400 mt-1">Выберите образы дл�� подборки</p>
+          <p className="text-sm text-gray-400 mt-1">Выберите образы для подборки</p>
         </div>
       </Card>
     )
@@ -348,27 +348,28 @@ export default function LooksPage() {
           </div>
           <div className="flex items-center gap-2">
             {hasLooks && (
-              <>
-                <Button
-                  onClick={() => handleOpenFilter(section)}
-                  variant="outline"
-                  size="sm"
-                  className="text-gray-700 border-gray-200 hover:bg-gray-50"
-                >
-                  <Search className="w-4 h-4 mr-1" />
-                  Поиск и фильтры
-                </Button>
-                <Button
-                  onClick={() => handleOpenAddOutfits(section)}
-                  variant="outline"
-                  size="sm"
-                  className="text-gray-700 border-gray-200 hover:bg-gray-50"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Добавить образы
-                </Button>
-              </>
-            )}
+  <div className="flex flex-col gap-2 w-full md:flex-row md:gap-4">
+    <Button
+      onClick={() => handleOpenFilter(section)}
+      variant="outline"
+      size="sm"
+      className="text-gray-700 border-gray-200 hover:bg-gray-50 w-full md:w-auto"
+    >
+      <Search className="w-4 h-4 mr-1" />
+      Поиск и фильтры
+    </Button>
+    <Button
+      onClick={() => handleOpenAddOutfits(section)}
+      variant="outline"
+      size="sm"
+      className="text-gray-700 border-gray-200 hover:bg-gray-50 w-full md:w-auto"
+    >
+      <Plus className="w-4 h-4 mr-1" />
+      Добавить образы
+    </Button>
+  </div>
+)}
+
             <Button variant="ghost" size="sm" className="p-2">
               <ExternalLink className="w-4 h-4" />
             </Button>

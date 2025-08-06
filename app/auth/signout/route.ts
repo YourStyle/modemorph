@@ -6,3 +6,9 @@ export async function POST() {
   await supabase.auth.signOut()
   redirect("/")
 }
+
+export async function GET() {
+  const supabase = createClient()
+  await supabase.auth.signOut()
+  redirect("/")
+}

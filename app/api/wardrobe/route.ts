@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     }
 
     // Проверяем, является ли пользователь админом
-    const { data: profile } = await supabase.from("user_profiles").select("isAdmin").eq("id", user.id).single()
+    const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
 
     const isAdmin = profile?.isAdmin || false
 

@@ -18,7 +18,12 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Invalid look ID" }, { status: 400 })
     }
 
-    const { error } = await supabase.from("user_looks").delete().eq("id", lookId).eq("user_id", user.id)
+    // Verify the look belongs to the user and delete it
+    const { error } = await supabase
+      .from("user_looks")
+      .delete()
+      .eq("id", lookId)
+      .eq("user_id", user.id)
 
     if (error) {
       console.error("Error deleting look:", error)
@@ -52,25 +57,26 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const body = await request.json()
     const { name, description, items } = body
 
-    const updateData: any = {}
-    if (name !== undefined) updateData.name = name
-    if (description !== undefined) updateData.description = description
-    if (items !== undefined) updateData.items = items
-
-    const { data: updatedLook, error } = await supabase
+    // Update the look
+    const { data: look, error: updateError } = await supabase
       .from("user_looks")
-      .update(updateData)
+      .update({
+        name,
+        description,
+        items,
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", lookId)
       .eq("user_id", user.id)
       .select()
       .single()
 
-    if (error) {
-      console.error("Error updating look:", error)
+    if (updateError) {
+      console.error("Error updating look:", updateError)
       return NextResponse.json({ error: "Failed to update look" }, { status: 500 })
     }
 
-    return NextResponse.json(updatedLook)
+    return NextResponse.json(look)
   } catch (error) {
     console.error("Error in PUT /api/user-looks/[id]:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

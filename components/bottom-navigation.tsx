@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Shirt, Sparkles, BookOpen, Bot } from "lucide-react"
+import { Home, Shirt, Sparkles, Bookmark, Bot } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import { AIAssistantLoader } from "./ai-assistant-loader"
 
@@ -11,7 +11,7 @@ const navItems = [
   { href: "/app/wardrobe", icon: Shirt, label: "Гардероб" },
   { href: "/app/ai-assistant", icon: Bot, label: "ИИ", isAI: true },
   { href: "/app/inspiration", icon: Sparkles, label: "Идеи" },
-  { href: "/app/looks", icon: BookOpen, label: "Образы" },
+  { href: "/app/looks", icon: Bookmark, label: "Образы" },
 ]
 
 export function BottomNavigation() {
@@ -44,15 +44,15 @@ export function BottomNavigation() {
                     <Icon
                       className={cn(
                         "transition-all duration-200",
-                        isActive ? "w-7 h-7 md:w-8 md:h-8" : "w-6 h-6 md:w-7 md:h-7",
-                        isActive && "scale-110",
+                     "w-6 h-6 md:w-7 md:h-7",
+                    
                       )}
                     />
                   )}
                   <span
                     className={cn(
-                      "text-xs font-medium transition-all duration-200 hidden md:block text-center",
-                      isActive && "scale-105",
+                      "text-xs font-medium transition-all duration-20 md:block text-center",
+                  
                     )}
                   >
                     {item.label}
