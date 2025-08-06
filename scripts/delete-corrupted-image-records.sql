@@ -3,7 +3,7 @@
 
 BEGIN;
 
--- Показать количество записей с поврежденными URL перед удалением
+-- Показать количество записей с пов��ежденными URL перед удалением
 SELECT 'BEFORE DELETION - Records with corrupted image_url:' as status;
 
 SELECT 

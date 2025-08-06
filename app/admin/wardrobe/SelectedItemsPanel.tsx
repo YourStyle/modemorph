@@ -3,17 +3,22 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { X, Save, Trash2 } from 'lucide-react'
-import { Item } from '@/types'
 import Image from 'next/image'
 
+interface SelectedItem {
+  id: string
+  name: string
+  image_url?: string
+}
+
 interface SelectedItemsPanelProps {
-  selectedItems: Item[]
+  selectedItems: SelectedItem[]
   onRemoveItem: (itemId: string) => void
   onSaveOutfit: () => void
   onClear: () => void
 }
 
-export default function SelectedItemsPanel({
+export function SelectedItemsPanel({
   selectedItems,
   onRemoveItem,
   onSaveOutfit,

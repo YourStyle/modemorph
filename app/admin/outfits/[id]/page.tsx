@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Save, Eye, Heart, Trash2 } from 'lucide-react'
+import { ArrowLeft, Save, Eye, Heart, Trash2, Edit } from 'lucide-react'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
 import { toast } from 'sonner'
 import { getOutfitById, updateOutfit, deleteOutfit } from '@/lib/api/outfits'
@@ -120,6 +120,12 @@ export default function OutfitDetailPage() {
     }
   }
 
+  const handleEditOutfit = () => {
+    if (outfit) {
+      router.push(`/admin/wardrobe?mode=edit-outfit&outfitId=${outfit.id}`)
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('ru-RU', {
       day: 'numeric',
@@ -174,6 +180,11 @@ export default function OutfitDetailPage() {
         </div>
 
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleEditOutfit}>
+            <Edit className="mr-2 h-4 w-4" />
+            Редактировать состав
+          </Button>
+          
           {isEditing ? (
             <>
               <Button variant="outline" onClick={() => setIsEditing(false)}>
@@ -187,7 +198,7 @@ export default function OutfitDetailPage() {
           ) : (
             <>
               <Button variant="outline" onClick={() => setIsEditing(true)}>
-                Редактировать
+                Редактировать информацию
               </Button>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -279,14 +290,14 @@ export default function OutfitDetailPage() {
                     <div className="space-y-2">
                       <Label>Сезон</Label>
                       <Select
-                        value={formData.season}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, season: value }))}
+                        value={formData.season || 'none'}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, season: value === 'none' ? '' : value }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Выберите сезон" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Не указан</SelectItem>
+                          <SelectItem value="none">Не указан</SelectItem>
                           <SelectItem value="spring">Весна</SelectItem>
                           <SelectItem value="summer">Лето</SelectItem>
                           <SelectItem value="autumn">Осень</SelectItem>
@@ -298,14 +309,14 @@ export default function OutfitDetailPage() {
                     <div className="space-y-2">
                       <Label>Повод</Label>
                       <Select
-                        value={formData.occasion}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, occasion: value }))}
+                        value={formData.occasion || 'none'}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, occasion: value === 'none' ? '' : value }))}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Выберите повод" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Не указан</SelectItem>
+                          <SelectItem value="none">Не указан</SelectItem>
                           <SelectItem value="casual">Повседневный</SelectItem>
                           <SelectItem value="work">Работа</SelectItem>
                           <SelectItem value="party">Вечеринка</SelectItem>
@@ -335,7 +346,10 @@ export default function OutfitDetailPage() {
                       <div>
                         <Label className="text-sm font-medium">Сезон</Label>
                         <Badge variant="outline" className="ml-2">
-                          {outfit.season}
+                          {outfit.season === 'spring' && 'Весна'}
+                          {outfit.season === 'summer' && 'Лето'}
+                          {outfit.season === 'autumn' && 'Осень'}
+                          {outfit.season === 'winter' && 'Зима'}
                         </Badge>
                       </div>
                     )}
@@ -343,7 +357,11 @@ export default function OutfitDetailPage() {
                       <div>
                         <Label className="text-sm font-medium">Повод</Label>
                         <Badge variant="outline" className="ml-2">
-                          {outfit.occasion}
+                          {outfit.occasion === 'casual' && 'Повседневный'}
+                          {outfit.occasion === 'work' && 'Работа'}
+                          {outfit.occasion === 'party' && 'Вечеринка'}
+                          {outfit.occasion === 'sport' && 'Спорт'}
+                          {outfit.occasion === 'formal' && 'Официальный'}
                         </Badge>
                       </div>
                     )}

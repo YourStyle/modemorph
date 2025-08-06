@@ -4,185 +4,194 @@ import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Heart, Eye, Edit, Trash2, MoreVertical } from 'lucide-react'
+import { MoreVertical, Eye, Edit, Trash2 } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog'
-import { toast } from 'sonner'
-import { deleteOutfit, incrementViewCount } from '@/lib/api/outfits'
+import Image from 'next/image'
+import { useToast } from '@/hooks/use-toast'
 
-interface OutfitCardProps {
-  outfit: {
+interface OutfitItem {
+  id: number
+  wardrobe_items: {
     id: number
-    name: string
-    description?: string
-    season?: string
-    occasion?: string
-    preview_image_url: string
-    likes: number
-    views_count: number
-    favorites_count: number
-    created_at: string
-    outfit_items?: Array<{
-      wardrobe_items: {
-        id: number
-        item_name: string
-        image_url?: string
-        clothing_type?: string
-        color?: string
-      }
-    }>
+    item_name: string
+    image_url: string
+    color: string
+    clothing_type: string
   }
-  onEdit?: (outfit: any) => void
-  onDelete?: (outfitId: number) => void
-  onView?: (outfit: any) => void
+  position: number
 }
 
-export function OutfitCard({ outfit, onEdit, onDelete, onView }: OutfitCardProps) {
-  const [isDeleting, setIsDeleting] = useState(false)
+interface Outfit {
+  id: number
+  name: string
+  description?: string
+  preview_image_url?: string
+  created_at: string
+  updated_at: string
+  views_count: number
+  likes: number
+  outfit_items: OutfitItem[]
+  is_public: boolean
+}
+
+interface OutfitCardProps {
+  outfit: Outfit
+  onEdit?: (outfit: Outfit) => void
+  onDelete?: (outfitId: number) => void
+  onView?: (outfit: Outfit) => void
+  onRefresh?: () => void
+  isAdmin?: boolean
+}
+
+export function OutfitCard({ outfit, onEdit, onDelete, onView, onRefresh, isAdmin = false }: OutfitCardProps) {
+  const [isUpdating, setIsUpdating] = useState(false)
+  const { toast } = useToast()
 
   const handleView = async () => {
-    try {
-      await incrementViewCount(outfit.id)
-      onView?.(outfit)
-    } catch (error) {
-      console.error('Error incrementing view count:', error)
-      onView?.(outfit)
-    }
+    onView?.(outfit)
   }
 
-  const handleDelete = async () => {
-    setIsDeleting(true)
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onEdit?.(outfit)
+  }
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    
+    if (!confirm(`Вы уверены, что хотите удалить образ "${outfit.name}"?`)) {
+      return
+    }
+
+    setIsUpdating(true)
+
     try {
-      await deleteOutfit(outfit.id)
-      toast.success('Образ удален')
-      onDelete?.(outfit.id)
+      const response = await fetch(`/api/outfits/${outfit.id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        toast({
+          title: "Образ удален",
+          description: `Образ "${outfit.name}" успешно удален`
+        })
+        onDelete?.(outfit.id)
+        onRefresh?.()
+      } else {
+        throw new Error('Failed to delete outfit')
+      }
     } catch (error) {
       console.error('Error deleting outfit:', error)
-      toast.error('Ошибка при удалении образа')
+      toast({
+        title: "Ошибка",
+        description: "Не удалось удалить образ",
+        variant: "destructive"
+      })
     } finally {
-      setIsDeleting(false)
+      setIsUpdating(false)
     }
-  }
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    })
   }
 
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow">
-      <div className="relative">
-        <img
-          src={outfit.preview_image_url || "/placeholder.svg"}
-          alt={outfit.name}
-          className="w-full h-48 object-cover cursor-pointer"
-          onClick={handleView}
-        />
-        
-        <div className="absolute top-2 right-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="secondary" size="sm" className="h-8 w-8 p-0">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit?.(outfit)}>
-                <Edit className="mr-2 h-4 w-4" />
-                Редактировать
-              </DropdownMenuItem>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                    <Trash2 className="mr-2 h-4 w-4" />
+    <Card className="group cursor-pointer transition-all duration-200 hover:shadow-lg" onClick={handleView}>
+      <CardContent className="p-4">
+        <div className="relative aspect-square mb-3 bg-gray-100 rounded-lg overflow-hidden">
+          {outfit.preview_image_url ? (
+            <Image
+              src={outfit.preview_image_url || "/placeholder.svg"}
+              alt={outfit.name}
+              fill
+              className="object-cover group-hover:scale-105 transition-transform duration-200"
+              sizes="(max-width: 768px) 50vw, 25vw"
+            />
+          ) : outfit.outfit_items && outfit.outfit_items.length > 0 ? (
+            <div className="grid grid-cols-2 gap-1 h-full">
+              {outfit.outfit_items.slice(0, 4).map((item, index) => (
+                <div key={item.id} className="relative">
+                  <Image
+                    src={item.wardrobe_items.image_url || "/placeholder.svg"}
+                    alt={item.wardrobe_items.item_name}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 25vw, 12.5vw"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-gray-400 text-sm">Нет фото</span>
+            </div>
+          )}
+
+          {/* Status badges */}
+          <div className="absolute top-2 left-2 flex gap-1">
+            {!outfit.is_public && (
+              <Badge variant="secondary" className="text-xs">
+                Приватный
+              </Badge>
+            )}
+          </div>
+
+          {/* Actions menu - только в админ режиме */}
+          {isAdmin && (
+            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="secondary" size="sm" className="h-8 w-8 p-0" onClick={(e) => e.stopPropagation()}>
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleEdit}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Редактировать
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleDelete} disabled={isUpdating} className="text-red-600">
+                    <Trash2 className="h-4 w-4 mr-2" />
                     Удалить
                   </DropdownMenuItem>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Удалить образ?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Это действие нельзя отменить. Образ "{outfit.name}" будет удален навсегда.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Отмена</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={handleDelete}
-                      disabled={isDeleting}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    >
-                      {isDeleting ? 'Удаление...' : 'Удалить'}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
 
-        {/* Статистика */}
-        <div className="absolute bottom-2 left-2 flex gap-2">
-          <Badge variant="secondary" className="text-xs">
-            <Eye className="mr-1 h-3 w-3" />
-            {outfit.views_count || 0}
-          </Badge>
-          <Badge variant="secondary" className="text-xs">
-            <Heart className="mr-1 h-3 w-3" />
-            {outfit.likes || 0}
-          </Badge>
-        </div>
-      </div>
-
-      <CardContent className="p-4">
         <div className="space-y-2">
-          <h3 className="font-semibold text-lg line-clamp-1">{outfit.name}</h3>
-          
+          <h3 className="font-medium text-sm line-clamp-2 text-gray-900">
+            {outfit.name}
+          </h3>
+
           {outfit.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2">
+            <p className="text-xs text-gray-500 line-clamp-2">
               {outfit.description}
             </p>
           )}
 
-          <div className="flex flex-wrap gap-1">
-            {outfit.season && (
-              <Badge variant="outline" className="text-xs">
-                {outfit.season}
-              </Badge>
-            )}
-            {outfit.occasion && (
-              <Badge variant="outline" className="text-xs">
-                {outfit.occasion}
-              </Badge>
-            )}
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <Eye className="h-3 w-3" />
+                <span>{outfit.views_count || 0}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span>❤️ {outfit.likes || 0}</span>
+              </div>
+            </div>
+            <span>{outfit.outfit_items?.length || 0} вещей</span>
           </div>
 
-          {outfit.outfit_items && outfit.outfit_items.length > 0 && (
-            <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
-              <span>Вещи: </span>
-              {outfit.outfit_items.slice(0, 3).map((item, index) => (
-                <span key={index}>
-                  {item.wardrobe_items.item_name}
-                  {index < Math.min(outfit.outfit_items!.length, 3) - 1 && ', '}
-                </span>
-              ))}
-              {outfit.outfit_items.length > 3 && (
-                <span>и еще {outfit.outfit_items.length - 3}</span>
-              )}
-            </div>
-          )}
-
-          <div className="flex justify-between items-center pt-2">
-            <span className="text-xs text-muted-foreground">
-              {formatDate(outfit.created_at)}
-            </span>
-            <Button variant="outline" size="sm" onClick={handleView}>
+          {/* View button для админки */}
+          {isAdmin && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full mt-2"
+              onClick={handleView}
+            >
               Просмотр
             </Button>
-          </div>
+          )}
         </div>
       </CardContent>
     </Card>
