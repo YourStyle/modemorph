@@ -108,46 +108,89 @@ export function TopNavigation() {
   const loadWeather = async () => {
     try {
       setWeatherLoading(true)
+      console.log("Starting weather loading...")
 
-      // Пытаемся получить геолокацию
+      // Сначала пробуем загрузить кэшированную погоду
+      try {
+        console.log("Trying to load cached weather...")
+        const cachedResponse = await fetch("/api/weather/cached")
+        if (cachedResponse.ok) {
+          const cachedWeather = await cachedResponse.json()
+          console.log("Cached weather loaded:", cachedWeather)
+          setWeather({
+            temperature: cachedWeather.temperature,
+            description: cachedWeather.description,
+            location: cachedWeather.location,
+            icon: cachedWeather.icon || "🌤️",
+          })
+          setWeatherLoading(false)
+          return
+        } else {
+          console.log("No cached weather available, status:", cachedResponse.status)
+        }
+      } catch (error) {
+        console.log("Error loading cached weather:", error)
+      }
+
+      // Если кэша нет, пытаемся получить геолокацию
       if (navigator.geolocation) {
+        console.log("Requesting geolocation...")
         navigator.geolocation.getCurrentPosition(
           async (position) => {
             const { latitude, longitude } = position.coords
+            console.log("Geolocation obtained:", { latitude, longitude })
             await fetchWeather(latitude, longitude)
           },
           async (error) => {
             console.log("Geolocation error:", error)
             // Fallback на Москву
-            await fetchWeather()
+            await fetchWeather(55.7558, 37.6176)
           },
           { timeout: 5000, maximumAge: 300000 }, // 5 секунд таймаут, кэш 5 минут
         )
       } else {
+        console.log("Geolocation not supported, using Moscow coordinates")
         // Fallback на Москву
-        await fetchWeather()
+        await fetchWeather(55.7558, 37.6176)
       }
     } catch (error) {
       console.error("Error loading weather:", error)
       setWeatherLoading(false)
+      // Устанавливаем fallback данные только при критической ошибке
+      setWeather({
+        temperature: 20,
+        description: "ясно",
+        location: "Москва",
+        icon: "☀️",
+      })
     }
   }
 
-  const fetchWeather = async (lat?: number, lon?: number) => {
+  const fetchWeather = async (lat: number, lon: number) => {
     try {
-      const params = new URLSearchParams()
-      if (lat && lon) {
-        params.append("lat", lat.toString())
-        params.append("lon", lon.toString())
-      }
+      console.log(`Fetching weather for coordinates: ${lat}, ${lon}`)
 
-      const response = await fetch(`/api/weather?${params}`)
+      const url = `/api/weather?lat=${lat}&lon=${lon}`
+      console.log("Weather API URL:", url)
+
+      const response = await fetch(url)
+      console.log("Weather API response status:", response.status)
+
       if (response.ok) {
         const weatherData = await response.json()
-        setWeather(weatherData)
+        console.log("Weather data received:", weatherData)
+
+        setWeather({
+          temperature: weatherData.temperature,
+          description: weatherData.description,
+          location: weatherData.location,
+          icon: weatherData.icon || "🌤️",
+        })
       } else {
-        console.error("Weather API error:", response.status)
-        // Fallback данные
+        const errorData = await response.text()
+        console.error("Weather API error:", response.status, errorData)
+
+        // Fallback данные при ошибке API
         setWeather({
           temperature: 20,
           description: "ясно",
@@ -157,7 +200,7 @@ export function TopNavigation() {
       }
     } catch (error) {
       console.error("Weather fetch error:", error)
-      // Fallback данные
+      // Fallback данные при ошибке сети
       setWeather({
         temperature: 20,
         description: "ясно",

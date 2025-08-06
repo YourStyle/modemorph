@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useSearchParams } from "next/navigation"
 import { WardrobeItemCard } from "@/components/wardrobe-item-card"
 import { WardrobeFilters } from "@/components/wardrobe-filters"
 import { Button } from "@/components/ui/button"
-import { Loader2, Shirt, Plus, Settings, EyeOff, Eye, X, Upload } from "lucide-react"
+import { Loader2, Shirt, Plus, Settings, EyeOff, Eye, X, Upload } from 'lucide-react'
 import type { WardrobeItem } from "@/lib/wardrobe"
 import { SelectedItemsBar } from "@/components/selected-items-bar"
 import { useSelectedItems } from "@/contexts/selected-items-context"
@@ -12,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 
 export default function WardrobePage() {
+  const searchParams = useSearchParams()
   const [items, setItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -30,15 +32,17 @@ export default function WardrobePage() {
   const { toast } = useToast()
   const [isCreatingOutfit, setIsCreatingOutfit] = useState(false)
 
-  // Проверяем URL параметры для редактирования
+  // Проверяем URL параметры только при первой загрузке
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const editId = urlParams.get("edit")
+    const mode = searchParams.get("mode")
+    const outfitId = searchParams.get("outfitId")
 
-    if (editId) {
-      loadOutfitForEditing(Number(editId))
+    if (mode === "edit-outfit" && outfitId) {
+      loadOutfitForEditing(Number(outfitId))
+    } else if (mode === "create-outfit") {
+      setIsCreatingOutfit(true)
     }
-  }, [])
+  }, []) // Убираем searchParams из зависимостей
 
   const loadOutfitForEditing = async (outfitId: number) => {
     try {
@@ -55,13 +59,13 @@ export default function WardrobePage() {
         .sort((a: any, b: any) => a.position - b.position)
         .map((item: any) => ({
           ...item.wardrobe_items,
-          image_url: item.wardrobe_items.image_url,
           type: "user",
         }))
 
       setSelectedItems(outfitItems)
       setEditingOutfitId(outfitId)
       setEditingOutfit(outfit)
+      setIsCreatingOutfit(true)
 
       toast({
         title: "Режим редактирования",
@@ -139,7 +143,6 @@ export default function WardrobePage() {
         description: "Все элементы гардероба скрыты из публичного просмотра",
       })
 
-      // Обновляем локальное состояние
       setItems((prevItems) => prevItems.map((item) => ({ ...item, is_hidden: true })))
     } catch (error) {
       console.error("Error hiding all items:", error)
@@ -174,7 +177,6 @@ export default function WardrobePage() {
         description: "Все элементы гардероба теперь видны",
       })
 
-      // Обновляем локальное состояние
       setItems((prevItems) => prevItems.map((item) => ({ ...item, is_hidden: false })))
     } catch (error) {
       console.error("Error showing all items:", error)
@@ -189,19 +191,11 @@ export default function WardrobePage() {
   }
 
   const handleVisibilityChange = (itemId: number, isHidden: boolean) => {
-    // Обновляем локальное состояние для конкретной вещи
     setItems((prevItems) => prevItems.map((item) => (item.id === itemId ? { ...item, is_hidden: isHidden } : item)))
   }
 
   const handleDelete = (itemId: number) => {
-    console.log("handleDelete called with itemId:", itemId)
-    // Удаляем элемент из локального состояния
-    setItems((prevItems) => {
-      const newItems = prevItems.filter((item) => item.id !== itemId)
-      console.log("Items before filter:", prevItems.length)
-      console.log("Items after filter:", newItems.length)
-      return newItems
-    })
+    setItems((prevItems) => prevItems.filter((item) => item.id !== itemId))
   }
 
   const handleRefresh = () => {
@@ -220,6 +214,8 @@ export default function WardrobePage() {
   const handleCreateOutfitToggle = () => {
     if (isCreatingOutfit) {
       clearItems()
+      setEditingOutfit(null)
+      setEditingOutfitId(null)
     }
     setIsCreatingOutfit(!isCreatingOutfit)
   }
@@ -248,10 +244,12 @@ export default function WardrobePage() {
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
               <div className="flex items-center gap-3">
                 <Shirt className="h-8 w-8 text-gray-700" />
-                <h1 className="text-3xl font-bold text-gray-900">Мой гардероб</h1>
+                <h1 className="text-3xl font-bold text-gray-900">
+                  {isCreatingOutfit ? (editingOutfit ? 'Редактирование образа' : 'Создание образа') : 'Мой гардероб'}
+                </h1>
               </div>
 
-              {/* Адаптивные кнопки */}
+              {/* Кнопки управления */}
               <div className="flex flex-col sm:flex-row gap-2">
                 <div className="flex flex-col sm:flex-row gap-2">
                   <Button
@@ -338,7 +336,7 @@ export default function WardrobePage() {
             ) : (
               <>
                 {/* Sticky заголовок с кнопками */}
-                <div className="sticky top-16 z-40 bg-white border-b border-gray-200 p-6">
+                <div className="sticky top-0 z-40 bg-white border-b border-gray-200 p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-semibold text-gray-900">
                       Найдено: {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
@@ -383,7 +381,9 @@ export default function WardrobePage() {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2 text-blue-800">
                           <Plus className="h-5 w-5" />
-                          <span className="font-medium">Режим создания образа</span>
+                          <span className="font-medium">
+                            {editingOutfit ? `Редактирование образа "${editingOutfit.name}"` : 'Режим создания образа'}
+                          </span>
                         </div>
                         <Button
                           onClick={handleCreateOutfitToggle}
@@ -395,7 +395,7 @@ export default function WardrobePage() {
                         </Button>
                       </div>
                       <p className="text-sm text-blue-600 mt-1">
-                        Выберите вещи для создания образа. Выбрано: {selectedItems.length}
+                        Выберите вещи для {editingOutfit ? 'редактирования' : 'создания'} образа. Выбрано: {selectedItems.length}
                       </p>
                     </div>
                   )}

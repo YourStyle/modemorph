@@ -1,169 +1,60 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from "react"
-import { useRouter, usePathname } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
-import { Button } from "@/components/ui/button"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { User, Settings, LogOut, Shield } from "lucide-react"
+import React from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { cn } from '@/lib/utils'
+import { Home, Shirt, Heart, Sparkles, BookOpen, Settings, User } from 'lucide-react'
 
-interface UserProfile {
-  id: string
-  full_name: string | null
-  avatar_url: string | null
-  is_admin: boolean
-}
+const navigation = [
+  { name: 'Главная', href: '/admin', icon: Home },
+  { name: 'Гардероб', href: '/admin/wardrobe', icon: Shirt },
+  { name: 'Образы', href: '/admin/outfits', icon: Heart },
+  { name: 'Вдохновение', href: '/admin/inspiration', icon: Sparkles },
+  { name: 'Коллекции', href: '/admin/collections', icon: BookOpen },
+  { name: 'Профиль', href: '/admin/profile', icon: User },
+  { name: 'Настройки', href: '/admin/settings', icon: Settings },
+]
 
-export function Navigation() {
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
-  const router = useRouter()
+export default function Navigation() {
   const pathname = usePathname()
-  const supabase = createClient()
-
-  useEffect(() => {
-    loadUserProfile()
-  }, [])
-
-  const loadUserProfile = async () => {
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user) {
-        console.error("User not authenticated:", userError)
-        setLoading(false)
-        return
-      }
-
-      // Получаем профиль пользователя
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single()
-
-      if (profileError) {
-        console.error("Profile fetch error:", profileError)
-
-        // Пытаемся создать профиль если его нет
-        const { data: newProfile, error: createError } = await supabase
-          .from("profiles")
-          .insert({
-            id: user.id,
-            full_name: user.user_metadata?.full_name || "",
-            avatar_url: user.user_metadata?.avatar_url || "",
-          })
-          .select()
-          .single()
-
-        if (createError) {
-          console.error("Profile creation error:", createError)
-        } else {
-          setProfile(newProfile)
-        }
-      } else {
-        setProfile(profileData)
-      }
-    } catch (error) {
-      console.error("Error loading user profile:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut()
-      router.push("/")
-    } catch (error) {
-      console.error("Sign out error:", error)
-    }
-  }
-
-  const navigateToProfile = () => {
-    router.push("/app/profile")
-  }
-
-  const navigateToAdmin = () => {
-    if (profile?.is_admin) {
-      router.push("/admin")
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center space-x-4">
-        <div className="animate-pulse">
-          <div className="h-8 w-8 bg-gray-200 rounded-full"></div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!profile) {
-    return (
-      <div className="flex items-center space-x-4">
-        <Button variant="ghost" onClick={() => router.push("/auth/login")}>
-          Войти
-        </Button>
-        <Button onClick={() => router.push("/auth/sign-up")}>Регистрация</Button>
-      </div>
-    )
-  }
 
   return (
-    <div className="flex items-center space-x-4">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={profile.avatar_url || ""} alt={profile.full_name || ""} />
-              <AvatarFallback>{profile.full_name ? profile.full_name[0].toUpperCase() : "U"}</AvatarFallback>
-            </Avatar>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent className="w-56" align="end" forceMount>
-          <div className="flex items-center justify-start gap-2 p-2">
-            <div className="flex flex-col space-y-1 leading-none">
-              <p className="font-medium">{profile.full_name || "Пользователь"}</p>
-              {profile.is_admin && <p className="text-xs text-blue-600">Администратор</p>}
+    <nav className="bg-white shadow-sm border-b">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-16">
+          <div className="flex">
+            <div className="flex-shrink-0 flex items-center">
+              <Link href="/admin" className="text-xl font-bold text-gray-900">
+                ModeMorph
+              </Link>
+            </div>
+            
+            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+              {navigation.map((item) => {
+                const isActive = pathname === item.href
+                const Icon = item.icon
+                
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={cn(
+                      'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium',
+                      isActive
+                        ? 'border-blue-500 text-gray-900'
+                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    )}
+                  >
+                    <Icon className="h-4 w-4 mr-2" />
+                    {item.name}
+                  </Link>
+                )
+              })}
             </div>
           </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={navigateToProfile}>
-            <User className="mr-2 h-4 w-4" />
-            <span>Профиль</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => router.push("/app/settings")}>
-            <Settings className="mr-2 h-4 w-4" />
-            <span>Настройки</span>
-          </DropdownMenuItem>
-          {profile.is_admin && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={navigateToAdmin}>
-                <Shield className="mr-2 h-4 w-4" />
-                <span>Админ панель</span>
-              </DropdownMenuItem>
-            </>
-          )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={handleSignOut}>
-            <LogOut className="mr-2 h-4 w-4" />
-            <span>Выйти</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+        </div>
+      </div>
+    </nav>
   )
 }

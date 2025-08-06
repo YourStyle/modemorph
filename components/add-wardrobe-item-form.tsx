@@ -1,26 +1,16 @@
-"use client"
+'use client'
 
-import type React from "react"
-
-import { useState, useRef } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, X } from "lucide-react"
-import { toast } from "sonner"
-import { ColorPicker } from "./color-picker"
-
-interface BasicItem {
-  id: number
-  name_ru: string
-  name_en: string
-  description: string | null
-  image_url: string | null
-}
+import { useState, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { X, Upload, Plus } from 'lucide-react'
+import { toast } from 'sonner'
+import { BasicItem, ClothingType } from '@/types'
 
 interface AddWardrobeItemFormProps {
   onSuccess?: () => void
@@ -29,51 +19,53 @@ interface AddWardrobeItemFormProps {
 
 export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemFormProps) {
   const [formData, setFormData] = useState({
-    item_name: "",
-    size_type: "",
-    material: "",
-    style: "",
-    has_print: false,
-    color: "",
-    shade: "",
-    has_details: false,
-    url: "",
-    notes: "",
-    basic_item_id: "",
+    name: '',
+    clothing_type: '',
+    color: '',
+    brand: '',
+    size: '',
+    material: '',
+    season: '',
+    notes: '',
+    tags: [] as string[],
+    is_basic: false
   })
+  
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [basicItems, setBasicItems] = useState<BasicItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Загрузка базовых вещей при первом рендере
-  useState(() => {
-    loadBasicItems()
-  })
+  const [tagInput, setTagInput] = useState('')
+  const [basicItems, setBasicItems] = useState<BasicItem[]>([])
+  const [clothingTypes, setClothingTypes] = useState<ClothingType[]>([])
 
   const loadBasicItems = async () => {
-    setIsLoadingBasicItems(true)
     try {
-      const response = await fetch("/api/basic-wardrobe-items")
+      const response = await fetch('/api/basic-items')
       if (response.ok) {
-        const items = await response.json()
-        setBasicItems(items)
+        const data = await response.json()
+        setBasicItems(data)
       }
     } catch (error) {
-      console.error("Error loading basic items:", error)
-    } finally {
-      setIsLoadingBasicItems(false)
+      console.error('Error loading basic items:', error)
     }
   }
 
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
+  const loadClothingTypes = async () => {
+    try {
+      const response = await fetch('/api/clothing-types')
+      if (response.ok) {
+        const data = await response.json()
+        setClothingTypes(data)
+      }
+    } catch (error) {
+      console.error('Error loading clothing types:', error)
+    }
   }
+
+  useEffect(() => {
+    loadBasicItems()
+    loadClothingTypes()
+  }, [])
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -87,100 +79,67 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     }
   }
 
-  const removeImage = () => {
-    setImageFile(null)
-    setImagePreview(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
+  const handleAddTag = () => {
+    if (tagInput.trim() && !formData.tags.includes(tagInput.trim())) {
+      setFormData(prev => ({
+        ...prev,
+        tags: [...prev.tags, tagInput.trim()]
+      }))
+      setTagInput('')
     }
+  }
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setFormData(prev => ({
+      ...prev,
+      tags: prev.tags.filter(tag => tag !== tagToRemove)
+    }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!formData.item_name.trim()) {
-      toast.error("Название вещи обязательно для заполнения")
-      return
-    }
-
     setIsLoading(true)
 
     try {
-      let imageUrl = ""
-
-      // Загрузка изображения если есть
+      let imageUrl = ''
+      
       if (imageFile) {
-        const imageFormData = new FormData()
-        imageFormData.append("file", imageFile)
-
-        const uploadResponse = await fetch("/api/upload-image", {
-          method: "POST",
-          body: imageFormData,
+        const uploadFormData = new FormData()
+        uploadFormData.append('file', imageFile)
+        
+        const uploadResponse = await fetch('/api/upload-to-yandex', {
+          method: 'POST',
+          body: uploadFormData
         })
-
+        
         if (uploadResponse.ok) {
           const uploadResult = await uploadResponse.json()
           imageUrl = uploadResult.url
         } else {
-          throw new Error("Failed to upload image")
+          throw new Error('Failed to upload image')
         }
       }
 
-      // Подготовка данных для отправки
-      const submitData = {
-        item_name: formData.item_name,
-        size_type: formData.size_type || null,
-        material: formData.material || null,
-        style: formData.style || null,
-        has_print: formData.has_print ? "true" : "false",
-        color: formData.color || null,
-        shade: formData.shade || null,
-        has_details: formData.has_details ? "true" : "false",
-        url: formData.url || null,
-        notes: formData.notes || null,
-        basic_item_id: formData.basic_item_id ? Number.parseInt(formData.basic_item_id) : null,
-        image_url: imageUrl || null,
-      }
-
-      const response = await fetch("/api/wardrobe", {
-        method: "POST",
+      const response = await fetch('/api/wardrobe/add', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(submitData),
+        body: JSON.stringify({
+          ...formData,
+          image_url: imageUrl
+        })
       })
 
       if (response.ok) {
-        toast.success("Вещь успешно добавлена в гардероб!")
-
-        // Сброс формы
-        setFormData({
-          item_name: "",
-          size_type: "",
-          material: "",
-          style: "",
-          has_print: false,
-          color: "",
-          shade: "",
-          has_details: false,
-          url: "",
-          notes: "",
-          basic_item_id: "",
-        })
-        setImageFile(null)
-        setImagePreview(null)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
-        }
-
+        toast.success('Item added to wardrobe successfully!')
         onSuccess?.()
       } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to add item")
+        throw new Error('Failed to add item')
       }
     } catch (error) {
-      console.error("Error adding item:", error)
-      toast.error("Ошибка при добавлении вещи")
+      console.error('Error adding item:', error)
+      toast.error('Failed to add item to wardrobe')
     } finally {
       setIsLoading(false)
     }
@@ -189,182 +148,200 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
-        <CardTitle>Добавить вещь в гар��ероб</CardTitle>
+        <CardTitle>Add New Wardrobe Item</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Фото */}
+          {/* Image Upload */}
           <div className="space-y-2">
-            <Label>Фото</Label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
+            <Label>Item Photo</Label>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
               {imagePreview ? (
                 <div className="relative">
                   <img
                     src={imagePreview || "/placeholder.svg"}
                     alt="Preview"
-                    className="w-full h-48 object-cover rounded-lg"
+                    className="max-w-full h-48 object-cover mx-auto rounded"
                   />
                   <Button
                     type="button"
                     variant="destructive"
                     size="sm"
                     className="absolute top-2 right-2"
-                    onClick={removeImage}
+                    onClick={() => {
+                      setImageFile(null)
+                      setImagePreview(null)
+                    }}
                   >
                     <X className="h-4 w-4" />
                   </Button>
                 </div>
               ) : (
-                <div className="text-center">
+                <div>
                   <Upload className="mx-auto h-12 w-12 text-gray-400" />
                   <div className="mt-4">
-                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                      Выбрать фото
-                    </Button>
+                    <Label htmlFor="image-upload" className="cursor-pointer">
+                      <span className="mt-2 block text-sm font-medium text-gray-900">
+                        Click to upload or drag and drop
+                      </span>
+                    </Label>
+                    <input
+                      id="image-upload"
+                      type="file"
+                      className="hidden"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                    />
                   </div>
                 </div>
               )}
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
             </div>
           </div>
 
-          {/* Название */}
-          <div className="space-y-2">
-            <Label htmlFor="item_name">Название вещи *</Label>
-            <Input
-              id="item_name"
-              value={formData.item_name}
-              onChange={(e) => handleInputChange("item_name", e.target.value)}
-              placeholder="Например: Белая рубашка"
-              required
-            />
-          </div>
-
-          {/* Размер */}
-          <div className="space-y-2">
-            <Label htmlFor="size_type">Размер</Label>
-            <Input
-              id="size_type"
-              value={formData.size_type}
-              onChange={(e) => handleInputChange("size_type", e.target.value)}
-              placeholder="Например: M, 42, L"
-            />
-          </div>
-
-          {/* Цвет */}
-          <div className="space-y-2">
-            <Label>Цвет</Label>
-            <ColorPicker
-              value={formData.color}
-              onChange={(color) => handleInputChange("color", color)}
-              imagePreview={imagePreview}
-            />
-          </div>
-
-          {/* Оттенок */}
-          <div className="space-y-2">
-            <Label htmlFor="shade">Оттенок</Label>
-            <Input
-              id="shade"
-              value={formData.shade}
-              onChange={(e) => handleInputChange("shade", e.target.value)}
-              placeholder="Например: светлый, темный, яркий"
-            />
-          </div>
-
-          {/* Материал */}
-          <div className="space-y-2">
-            <Label htmlFor="material">Материал</Label>
-            <Input
-              id="material"
-              value={formData.material}
-              onChange={(e) => handleInputChange("material", e.target.value)}
-              placeholder="Например: хлопок, шерсть, полиэстер"
-            />
-          </div>
-
-          {/* Стиль */}
-          <div className="space-y-2">
-            <Label htmlFor="style">Стиль</Label>
-            <Input
-              id="style"
-              value={formData.style}
-              onChange={(e) => handleInputChange("style", e.target.value)}
-              placeholder="Например: классический, спортивный, casual"
-            />
-          </div>
-
-          {/* Характеристики */}
-          <div className="space-y-4">
-            <Label>Характеристики</Label>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="has_print"
-                checked={formData.has_print}
-                onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
+          {/* Basic Info */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Item Name *</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                required
               />
-              <Label htmlFor="has_print">Есть принт</Label>
             </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="has_details"
-                checked={formData.has_details}
-                onCheckedChange={(checked) => handleInputChange("has_details", checked as boolean)}
-              />
-              <Label htmlFor="has_details">Есть детали</Label>
+
+            <div className="space-y-2">
+              <Label htmlFor="clothing_type">Clothing Type *</Label>
+              <Select
+                value={formData.clothing_type}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, clothing_type: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clothingTypes.map((type) => (
+                    <SelectItem key={type.id} value={type.name}>
+                      {type.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
-          {/* Базовая вещь */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="color">Color</Label>
+              <Input
+                id="color"
+                value={formData.color}
+                onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="brand">Brand</Label>
+              <Input
+                id="brand"
+                value={formData.brand}
+                onChange={(e) => setFormData(prev => ({ ...prev, brand: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="size">Size</Label>
+              <Input
+                id="size"
+                value={formData.size}
+                onChange={(e) => setFormData(prev => ({ ...prev, size: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="material">Material</Label>
+              <Input
+                id="material"
+                value={formData.material}
+                onChange={(e) => setFormData(prev => ({ ...prev, material: e.target.value }))}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="season">Season</Label>
+              <Select
+                value={formData.season}
+                onValueChange={(value) => setFormData(prev => ({ ...prev, season: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select season" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="spring">Spring</SelectItem>
+                  <SelectItem value="summer">Summer</SelectItem>
+                  <SelectItem value="fall">Fall</SelectItem>
+                  <SelectItem value="winter">Winter</SelectItem>
+                  <SelectItem value="all-season">All Season</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Tags */}
           <div className="space-y-2">
-            <Label>Базовая вещь</Label>
-            <Select value={formData.basic_item_id} onValueChange={(value) => handleInputChange("basic_item_id", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Не выбрано</SelectItem>
-                {basicItems.map((item) => (
-                  <SelectItem key={item.id} value={item.id.toString()}>
-                    {item.name_ru}
-                  </SelectItem>
+            <Label>Tags</Label>
+            <div className="flex gap-2">
+              <Input
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                placeholder="Add a tag"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddTag()
+                  }
+                }}
+              />
+              <Button type="button" onClick={handleAddTag} size="sm">
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            {formData.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {formData.tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="flex items-center gap-1">
+                    {tag}
+                    <X
+                      className="h-3 w-3 cursor-pointer"
+                      onClick={() => handleRemoveTag(tag)}
+                    />
+                  </Badge>
                 ))}
-              </SelectContent>
-            </Select>
+              </div>
+            )}
           </div>
 
-          {/* Ссылка на товар */}
+          {/* Notes */}
           <div className="space-y-2">
-            <Label htmlFor="url">Ссылка на товар в магазине</Label>
-            <Input
-              id="url"
-              type="url"
-              value={formData.url}
-              onChange={(e) => handleInputChange("url", e.target.value)}
-              placeholder="https://shop.com/product/123"
-            />
-          </div>
-
-          {/* Заметки */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Заметки</Label>
+            <Label htmlFor="notes">Notes</Label>
             <Textarea
               id="notes"
               value={formData.notes}
-              onChange={(e) => handleInputChange("notes", e.target.value)}
-              placeholder="Дополнительная информация о вещи"
+              onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
               rows={3}
             />
           </div>
 
-          {/* Кнопки */}
-          <div className="flex gap-4">
+          {/* Actions */}
+          <div className="flex gap-4 pt-4">
             <Button type="submit" disabled={isLoading} className="flex-1">
-              {isLoading ? "Добавление..." : "Добавить вещь"}
+              {isLoading ? 'Adding...' : 'Add to Wardrobe'}
             </Button>
             {onCancel && (
               <Button type="button" variant="outline" onClick={onCancel}>
-                Отмена
+                Cancel
               </Button>
             )}
           </div>

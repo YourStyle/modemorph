@@ -39,14 +39,18 @@ async function fetchWeatherData(lat: number, lon: number): Promise<WeatherData> 
   }
 
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&lang=ru`
+  console.log("Fetching weather from OpenWeather API:", url.replace(API_KEY, "***"))
 
   const response = await fetch(url)
 
   if (!response.ok) {
+    const errorText = await response.text()
+    console.error("OpenWeather API error:", response.status, errorText)
     throw new Error(`Weather API error: ${response.status}`)
   }
 
   const data = await response.json()
+  console.log("OpenWeather API response:", data)
 
   return {
     temperature: Math.round(data.main.temp),
@@ -57,9 +61,82 @@ async function fetchWeatherData(lat: number, lon: number): Promise<WeatherData> 
   }
 }
 
+async function getCityName(lat: number, lon: number): Promise<string> {
+  try {
+    const API_KEY = process.env.OPENWEATHER_API_KEY
+    if (!API_KEY) return "Unknown"
+
+    const geoResponse = await fetch(
+      `https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${API_KEY}`,
+    )
+
+    if (geoResponse.ok) {
+      const geoData = await geoResponse.json()
+      return geoData[0]?.local_names?.ru || geoData[0]?.name || "Unknown"
+    }
+
+    return "Unknown"
+  } catch (error) {
+    console.error("Error getting city name:", error)
+    return "Unknown"
+  }
+}
+
+async function saveWeatherToCache(
+  supabase: any,
+  weatherData: WeatherData,
+  latitude: number,
+  longitude: number,
+  cityName: string,
+  userId: string,
+) {
+  try {
+    console.log("Saving weather to cache for user:", userId)
+
+    // Проверяем, есть ли уже запись для этого пользователя
+    const { data: existingData } = await supabase.from("weather_cache").select("id").eq("user_id", userId).limit(1)
+
+    const weatherEntry = {
+      city_name: cityName,
+      temperature: weatherData.temperature,
+      condition: weatherData.condition,
+      description: weatherData.description,
+      humidity: weatherData.humidity,
+      wind_speed: weatherData.wind_speed,
+      latitude,
+      longitude,
+      updated_at: new Date().toISOString(),
+      user_id: userId,
+    }
+
+    if (existingData && existingData.length > 0) {
+      // Обновляем существующую запись
+      const { error } = await supabase.from("weather_cache").update(weatherEntry).eq("id", existingData[0].id)
+
+      if (error) {
+        console.error("Error updating weather cache:", error)
+      } else {
+        console.log("Weather cache updated successfully")
+      }
+    } else {
+      // Создаем новую запись
+      const { error } = await supabase.from("weather_cache").insert([weatherEntry])
+
+      if (error) {
+        console.error("Error saving weather cache:", error)
+      } else {
+        console.log("Weather cache saved successfully")
+      }
+    }
+  } catch (error) {
+    console.error("Error in saveWeatherToCache:", error)
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    console.log("Weather API called")
+    const supabase = await createClient()
 
     // Get current user
     const {
@@ -68,14 +145,20 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      console.error("User not authenticated:", authError)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    console.log("User authenticated:", user.id)
 
     const { searchParams } = new URL(request.url)
     const lat = searchParams.get("lat")
     const lon = searchParams.get("lon")
 
+    console.log("Received coordinates:", { lat, lon })
+
     if (!lat || !lon) {
+      console.error("Missing coordinates")
       return NextResponse.json({ error: "Coordinates required" }, { status: 400 })
     }
 
@@ -83,6 +166,7 @@ export async function GET(request: NextRequest) {
     const longitude = Number.parseFloat(lon)
 
     if (isNaN(latitude) || isNaN(longitude)) {
+      console.error("Invalid coordinates:", { latitude, longitude })
       return NextResponse.json({ error: "Invalid coordinates" }, { status: 400 })
     }
 
@@ -90,23 +174,17 @@ export async function GET(request: NextRequest) {
 
     // Fetch weather data
     const weatherData = await fetchWeatherData(latitude, longitude)
+    console.log("Weather data fetched:", weatherData)
 
-    // Get city name from reverse geocoding
-    let cityName = "Unknown"
-    try {
-      const geoResponse = await fetch(
-        `https://api.openweathermap.org/geo/1.0/reverse?lat=${latitude}&lon=${longitude}&limit=1&appid=${process.env.OPENWEATHER_API_KEY}`,
-      )
-      if (geoResponse.ok) {
-        const geoData = await geoResponse.json()
-        cityName = geoData[0]?.local_names?.ru || geoData[0]?.name || "Unknown"
-      }
-    } catch (error) {
-      console.error("Error getting city name:", error)
-    }
+    // Get city name
+    const cityName = await getCityName(latitude, longitude)
+    console.log("City name:", cityName)
+
+    // Save to cache
+    await saveWeatherToCache(supabase, weatherData, latitude, longitude, cityName, user.id)
 
     // Return weather data with icon and location
-    return NextResponse.json({
+    const response = {
       temperature: weatherData.temperature,
       condition: weatherData.condition,
       description: weatherData.description,
@@ -114,7 +192,10 @@ export async function GET(request: NextRequest) {
       wind_speed: weatherData.wind_speed,
       icon: getWeatherIcon(weatherData.condition),
       location: cityName,
-    })
+    }
+
+    console.log("Returning weather response:", response)
+    return NextResponse.json(response)
   } catch (error) {
     console.error("Weather API error:", error)
 

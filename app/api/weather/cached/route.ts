@@ -1,9 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
-import { WeatherCache } from "@/lib/weather-cache"
 
 export async function GET(request: NextRequest) {
   try {
+    console.log("Cached weather API called")
     const supabase = await createClient()
 
     // Проверяем авторизацию пользователя
@@ -13,18 +13,62 @@ export async function GET(request: NextRequest) {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
+      console.error("User not authenticated:", authError)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Используем WeatherCache для получения кэшированной погоды
-    const weatherCache = new WeatherCache()
-    const cachedWeather = await weatherCache.getCachedWeatherForUser(user.id)
+    console.log("User authenticated for cached weather:", user.id)
 
-    if (cachedWeather) {
-      return NextResponse.json(cachedWeather)
+    // Ищем кэшированную погоду для пользователя (не старше 1 часа)
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
+    console.log("Looking for weather cache newer than:", oneHourAgo)
+
+    const { data, error } = await supabase
+      .from("weather_cache")
+      .select("*")
+      .eq("user_id", user.id)
+      .gte("updated_at", oneHourAgo)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+
+    if (error) {
+      console.error("Error fetching cached weather:", error)
+      return NextResponse.json({ error: "Database error" }, { status: 500 })
     }
 
-    // Если кэша нет, возвращаем 404
+    console.log("Cached weather query result:", data)
+
+    if (data && data.length > 0) {
+      const cached = data[0]
+
+      // Определяем иконку погоды
+      const getWeatherIcon = (condition: string): string => {
+        const conditionLower = condition.toLowerCase()
+        if (conditionLower.includes("clear") || conditionLower.includes("sunny")) return "☀️"
+        if (conditionLower.includes("cloud")) return "☁️"
+        if (conditionLower.includes("rain") || conditionLower.includes("drizzle")) return "🌧️"
+        if (conditionLower.includes("snow")) return "❄️"
+        if (conditionLower.includes("thunder") || conditionLower.includes("storm")) return "⛈️"
+        if (conditionLower.includes("fog") || conditionLower.includes("mist")) return "🌫️"
+        if (conditionLower.includes("wind")) return "💨"
+        return "🌤️"
+      }
+
+      const response = {
+        temperature: cached.temperature,
+        condition: cached.condition,
+        description: cached.description,
+        location: cached.city_name,
+        humidity: cached.humidity,
+        wind_speed: cached.wind_speed,
+        icon: getWeatherIcon(cached.condition),
+      }
+
+      console.log("Returning cached weather:", response)
+      return NextResponse.json(response)
+    }
+
+    console.log("No cached weather found")
     return NextResponse.json({ error: "No cached weather found" }, { status: 404 })
   } catch (error) {
     console.error("Error getting cached weather:", error)
