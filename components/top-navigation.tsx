@@ -81,7 +81,7 @@ export function TopNavigation() {
 
       if (profileError) {
         console.error("Profile fetch error:", profileError)
-        // Создаем профиль если его нет
+  
         const { data: newProfile, error: createError } = await supabase
           .from("profiles")
           .insert({

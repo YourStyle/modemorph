@@ -1,8 +1,7 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -39,7 +38,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     has_details: false,
     url: "",
     notes: "",
-    basic_item_id: "",
+    basic_item_id: "none",
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -48,10 +47,9 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Загрузка базовых вещей при первом рендере
-  useState(() => {
-    loadBasicItems()
-  })
+  useEffect(() => {
+    void loadBasicItems()
+  }, [])
 
   const loadBasicItems = async () => {
     setIsLoadingBasicItems(true)
@@ -59,20 +57,20 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       const response = await fetch("/api/basic-wardrobe-items")
       if (response.ok) {
         const items = await response.json()
-        setBasicItems(items)
+        setBasicItems(Array.isArray(items) ? items : [])
+      } else {
+        setBasicItems([])
       }
     } catch (error) {
       console.error("Error loading basic items:", error)
+      setBasicItems([])
     } finally {
       setIsLoadingBasicItems(false)
     }
   }
 
   const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
+    setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,9 +78,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     if (file) {
       setImageFile(file)
       const reader = new FileReader()
-      reader.onload = (e) => {
-        setImagePreview(e.target?.result as string)
-      }
+      reader.onload = (ev) => setImagePreview(ev.target?.result as string)
       reader.readAsDataURL(file)
     }
   }
@@ -90,43 +86,28 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   const removeImage = () => {
     setImageFile(null)
     setImagePreview(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
     if (!formData.item_name.trim()) {
       toast.error("Название вещи обязательно для заполнения")
       return
     }
 
     setIsLoading(true)
-
     try {
       let imageUrl = ""
-
-      // Загрузка изображения если есть
       if (imageFile) {
-        const imageFormData = new FormData()
-        imageFormData.append("file", imageFile)
-
-        const uploadResponse = await fetch("/api/upload-image", {
-          method: "POST",
-          body: imageFormData,
-        })
-
-        if (uploadResponse.ok) {
-          const uploadResult = await uploadResponse.json()
-          imageUrl = uploadResult.url
-        } else {
-          throw new Error("Failed to upload image")
-        }
+        const fd = new FormData()
+        fd.append("file", imageFile)
+        const uploadRes = await fetch("/api/upload-image", { method: "POST", body: fd })
+        if (!uploadRes.ok) throw new Error("Failed to upload image")
+        const uploaded = await uploadRes.json()
+        imageUrl = uploaded.url
       }
 
-      // Подготовка данных для отправки
       const submitData = {
         item_name: formData.item_name,
         size_type: formData.size_type || null,
@@ -138,48 +119,43 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         has_details: formData.has_details ? "true" : "false",
         url: formData.url || null,
         notes: formData.notes || null,
-        basic_item_id: formData.basic_item_id ? Number.parseInt(formData.basic_item_id) : null,
+        basic_item_id:
+          formData.basic_item_id && formData.basic_item_id !== "none" ? Number.parseInt(formData.basic_item_id) : null,
         image_url: imageUrl || null,
       }
 
-      const response = await fetch("/api/wardrobe", {
+      const res = await fetch("/api/wardrobe", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(submitData),
       })
 
-      if (response.ok) {
-        toast.success("Вещь успешно добавлена в гардероб!")
-
-        // Сброс формы
-        setFormData({
-          item_name: "",
-          size_type: "",
-          material: "",
-          style: "",
-          has_print: false,
-          color: "",
-          shade: "",
-          has_details: false,
-          url: "",
-          notes: "",
-          basic_item_id: "",
-        })
-        setImageFile(null)
-        setImagePreview(null)
-        if (fileInputRef.current) {
-          fileInputRef.current.value = ""
-        }
-
-        onSuccess?.()
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to add item")
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Failed to add item")
       }
-    } catch (error) {
-      console.error("Error adding item:", error)
+
+      toast.success("Вещь успешно добавлена в гардероб!")
+      // reset
+      setFormData({
+        item_name: "",
+        size_type: "",
+        material: "",
+        style: "",
+        has_print: false,
+        color: "",
+        shade: "",
+        has_details: false,
+        url: "",
+        notes: "",
+        basic_item_id: "none",
+      })
+      setImageFile(null)
+      setImagePreview(null)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      onSuccess?.()
+    } catch (e) {
+      console.error("Error adding item:", e)
       toast.error("Ошибка при добавлении вещи")
     } finally {
       setIsLoading(false)
@@ -189,7 +165,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
-        <CardTitle>Добавить вещь в гар��ероб</CardTitle>
+        <CardTitle>Добавить вещь в гардероб</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -199,6 +175,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
               {imagePreview ? (
                 <div className="relative">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={imagePreview || "/placeholder.svg"}
                     alt="Preview"

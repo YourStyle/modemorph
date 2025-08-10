@@ -5,7 +5,7 @@ import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { MoreVertical, Eye, EyeOff, Trash2, Edit } from "lucide-react"
+import { MoreVertical, Eye, EyeOff, Trash2, Edit } from 'lucide-react'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import Image from "next/image"
 import { ItemDetailsModal, type WardrobeItem } from "./item-details-modal"
@@ -29,12 +29,11 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
 
     try {
       const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "POST",
+        method: "PATCH",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          ...item,
           is_hidden: !item.is_hidden,
         }),
       })

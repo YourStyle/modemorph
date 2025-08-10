@@ -10,7 +10,7 @@ import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { Progress } from "@/components/ui/progress"
-import { Plus, ChevronDown, ChevronUp, Search } from "lucide-react"
+import { Plus, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
 
@@ -73,6 +73,34 @@ const BasicItemsSkeleton = () => {
           </div>
         </Card>
       ))}
+    </div>
+  )
+}
+
+// Компонент для превью выбранных фото
+const SelectedPhotosPreview = ({ photos, onRemove }: { photos: UploadedPhoto[], onRemove: (id: string) => void }) => {
+  if (photos.length === 0) return null
+  
+  return (
+    <div className="mb-4">
+      <h3 className="text-sm font-medium text-gray-700 mb-2">Выбранные фото ({photos.length})</h3>
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        {photos.map((photo) => (
+          <div key={photo.id} className="relative flex-shrink-0">
+            <img
+              src={photo.preview || "/placeholder.svg"}
+              alt="Preview"
+              className="w-16 h-16 object-cover rounded-lg border"
+            />
+            <button
+              onClick={() => onRemove(photo.id)}
+              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
+            >
+              ×
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -249,6 +277,16 @@ export default function WardrobePage() {
   const targetItemsCount = 30
   const progressPercentage = (userItemsCount / targetItemsCount) * 100
 
+  const handleRemovePhoto = (photoId: string) => {
+    setSelectedPhotos(prev => {
+      const photoToRemove = prev.find(p => p.id === photoId)
+      if (photoToRemove) {
+        URL.revokeObjectURL(photoToRemove.preview)
+      }
+      return prev.filter(p => p.id !== photoId)
+    })
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 pb-32">
       <div className="px-4 py-6">
@@ -338,6 +376,7 @@ export default function WardrobePage() {
         {/* User's Wardrobe */}
         <div className="mb-8">
           <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Ваши вещи</h2>
+          <SelectedPhotosPreview photos={selectedPhotos} onRemove={handleRemovePhoto} />
           {isLoadingUserItems ? (
             <UserWardrobeSkeleton />
           ) : (

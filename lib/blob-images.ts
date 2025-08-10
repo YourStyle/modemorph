@@ -43,7 +43,7 @@ export async function getWardrobeItemsWithImages() {
 /**
  * Загружает файл в Vercel Blob Storage
  * @param file Файл для загрузки
- * @param prefix Префикс для имени файла (например, 'basic-items')
+ * @param prefix Префикс для имени файла (напри��ер, 'basic-items')
  * @returns Объект с результатом загрузки
  */
 export async function uploadToBlob(file: File, prefix = "") {

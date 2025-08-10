@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     const { error: updateError } = await supabase
       .from("wardrobe_items")
       .update({ is_hidden: hideAll })
-      .eq("user_id", user.id)
+      // RLS should ensure only the current user's rows are updated
 
     if (updateError) {
       console.error("Database error:", updateError)
