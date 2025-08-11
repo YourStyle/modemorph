@@ -4,15 +4,15 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Loader2, ImageOff } from 'lucide-react'
+import { Loader2 } from "lucide-react"
 
 type OutfitListItem = {
   id: number
   name?: string | null
   description?: string | null
+  preview_image_url?: string | null
   preview_url?: string | null
   created_at?: string
-  // optional counts if API provides them
   likes_count?: number
   saves_count?: number
   views_count?: number
@@ -33,7 +33,7 @@ export default function AdminOutfitsPage() {
         if (!res.ok) throw new Error("Failed to fetch outfits")
         const data = await res.json()
         // Support either { outfits } or plain array
-        const list: OutfitListItem[] = Array.isArray(data) ? data : data.outfits ?? []
+        const list: OutfitListItem[] = Array.isArray(data) ? data : (data.outfits ?? [])
         if (active) setOutfits(list)
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : "Unknown error")
@@ -75,10 +75,9 @@ export default function AdminOutfitsPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-6">
           {outfits.map((o) => {
-            const src =
-              o.preview_url && o.preview_url.trim().length > 0
-                ? o.preview_url
-                : "/placeholder.svg?height=200&width=160"
+            const preview =
+              (o.preview_image_url && o.preview_image_url.trim()) || (o.preview_url && o.preview_url.trim()) || ""
+            const src = preview || "/placeholder.svg?height=200&width=160"
             return (
               <Link key={o.id} href={`/admin/outfits/${o.id}`} className="block">
                 <Card className="hover:shadow-md transition">
@@ -87,8 +86,7 @@ export default function AdminOutfitsPage() {
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="w-full aspect-[4/5] bg-muted rounded-md overflow-hidden flex items-center justify-center">
-                      {o.preview_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
+                      {preview ? (
                         <img
                           src={src || "/placeholder.svg"}
                           alt="Outfit preview"
@@ -97,7 +95,20 @@ export default function AdminOutfitsPage() {
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center text-muted-foreground">
-                          <ImageOff className="h-8 w-8 mb-2" />
+                          <svg className="h-8 w-8 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path
+                              d="M3 3l18 18M21 15V5a2 2 0 00-2-2H9"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                            <path
+                              d="M3 9v10a2 2 0 002 2h10"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
                           <span className="text-xs">Нет превью</span>
                         </div>
                       )}

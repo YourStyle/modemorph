@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, Loader2, ImageOff, Edit, Heart, Eye, Bookmark } from "lucide-react"
+import { ExternalLink, Loader2, Edit, Heart, Eye, Bookmark } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 type WardrobeItem = {
@@ -35,6 +35,7 @@ type Outfit = {
   id: number
   name?: string | null
   description?: string | null
+  preview_image_url?: string | null
   preview_url?: string | null
   outfit_items: OutfitItem[]
   likes_count?: number
@@ -74,7 +75,7 @@ export default function AdminOutfitDetailsPage() {
           setOutfit(o)
           setName(o.name ?? "")
           setDescription(o.description ?? "")
-          setPreviewUrl(o.preview_url ?? "")
+          setPreviewUrl(o.preview_image_url ?? o.preview_url ?? "")
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : "Unknown error")
@@ -93,10 +94,7 @@ export default function AdminOutfitDetailsPage() {
     [outfit?.outfit_items],
   )
 
-  const previewSrc =
-    outfit?.preview_url && outfit.preview_url.trim().length > 0
-      ? outfit.preview_url
-      : "/placeholder.svg?height=300&width=240"
+  const previewSrc = previewUrl?.trim() || "/placeholder.svg?height=300&width=240"
 
   async function handleSaveMeta(e: React.FormEvent) {
     e.preventDefault()
@@ -113,6 +111,7 @@ export default function AdminOutfitDetailsPage() {
         body: JSON.stringify({
           name: name || null,
           description: description || null,
+          preview_image_url: previewUrl || null,
           preview_url: previewUrl || null,
           items: sortedItems.map((oi) => oi.wardrobe_items.id),
         }),
@@ -236,11 +235,19 @@ export default function AdminOutfitDetailsPage() {
             <div className="space-y-4">
               <div className="w-full max-w-xs">
                 <div className="relative aspect-[4/5] bg-muted rounded-md overflow-hidden">
-                  {outfit.preview_url ? (
+                  {previewUrl?.trim() ? (
                     <Image src={previewSrc || "/placeholder.svg"} alt="Outfit preview" fill className="object-cover" />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
-                      <ImageOff className="h-8 w-8 mb-2" />
+                      <svg className="h-8 w-8 mb-2" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path
+                          d="M3 3l18 18M21 15V5a2 2 0 00-2-2H9"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                        <path d="M3 9v10a2 2 0 002 2h10" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
                       <span className="text-xs">Нет превью</span>
                     </div>
                   )}
