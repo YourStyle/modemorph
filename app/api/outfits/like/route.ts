@@ -20,23 +20,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Update likes count
-    const increment = action === "like" ? 1 : -1
-    const { data: outfit, error: updateError } = await supabase
+    // Read current likes
+    const { data: current, error: fetchError } = await supabase
       .from("outfits")
-      .update({
-        likes: supabase.raw(`GREATEST(COALESCE(likes, 0) + ${increment}, 0)`),
-      })
+      .select("likes")
+      .eq("id", outfitId)
+      .single()
+
+    if (fetchError || !current) {
+      console.error("Error reading current likes:", fetchError)
+      return NextResponse.json({ error: "Failed to read likes" }, { status: 500 })
+    }
+
+    const increment = action === "like" ? 1 : -1
+    const newLikes = Math.max(0, (current.likes ?? 0) + increment)
+
+    // Update likes
+    const { data: updated, error: updateError } = await supabase
+      .from("outfits")
+      .update({ likes: newLikes })
       .eq("id", outfitId)
       .select("likes")
       .single()
 
-    if (updateError) {
+    if (updateError || !updated) {
       console.error("Error updating likes:", updateError)
       return NextResponse.json({ error: "Failed to update likes" }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, likes: outfit.likes })
+    return NextResponse.json({ success: true, likes: updated.likes, isLiked: action === "like" })
   } catch (error) {
     console.error("Error in like endpoint:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

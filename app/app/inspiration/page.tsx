@@ -1,13 +1,15 @@
 "use client"
 
 import type React from "react"
+
 import Image from "next/image"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { CommonSheet } from "@/components/common-sheet"
+import { BottomNavigation } from "@/components/bottom-navigation"
 
 type OutfitItem = {
   id: string
@@ -47,7 +49,7 @@ type ApiResponse = {
 
 type TabKey = "popular" | "liked"
 
-// Windowing config to avoid growing memory when swiping a lot
+// Windowing to avoid memory growth on long sessions
 const KEEP_BEHIND = 8
 const KEEP_AHEAD = 8
 const MAX_KEEP = KEEP_BEHIND + KEEP_AHEAD + 1
@@ -60,12 +62,12 @@ export default function InspirationPage() {
   const [fetchingMore, setFetchingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // UI/state
+  // UI state
   const [savedOutfitIds, setSavedOutfitIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
   const [index, setIndex] = useState(0)
 
-  // Hide the layout’s top menu only on this page (restored on unmount)
+  // Hide the layout’s top menu only on this page (restore on unmount)
   useEffect(() => {
     const selectors = [
       "header",
@@ -84,7 +86,7 @@ export default function InspirationPage() {
     return () => prev.forEach(({ el, display }) => (el.style.display = display))
   }, [])
 
-  // Initial fetch
+  // Initial load
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -126,7 +128,7 @@ export default function InspirationPage() {
     })()
   }, [])
 
-  // Reset index on tab change
+  // Reset on tab change
   useEffect(() => {
     setIndex(0)
   }, [activeTab])
@@ -181,13 +183,32 @@ export default function InspirationPage() {
   // Current
   const current = filtered[index]
 
-  // Navigation (vertical)
-  const gotoPrev = useCallback(() => {
-    if (index > 0) setIndex((i) => i - 1)
-  }, [index])
-  const gotoNext = useCallback(() => {
-    if (index < filtered.length - 1) setIndex((i) => i + 1)
-  }, [index, filtered.length])
+  // Navigation (vertical with animation)
+  type Dir = "up" | "down"
+  const [anim, setAnim] = useState<{ from: number; to: number; dir: Dir } | null>(null)
+  const [animPhase, setAnimPhase] = useState<"idle" | "start" | "run">("idle")
+  const ANIM_MS = 280
+
+  const startTransition = useCallback(
+    (dir: Dir) => {
+      const to = dir === "down" ? index + 1 : index - 1
+      if (to < 0 || to >= filtered.length || anim) return
+      setAnim({ from: index, to, dir })
+      setAnimPhase("start")
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setAnimPhase("run"))
+      })
+      window.setTimeout(() => {
+        setIndex(to)
+        setAnim(null)
+        setAnimPhase("idle")
+      }, ANIM_MS)
+    },
+    [index, filtered.length, anim],
+  )
+
+  const gotoPrev = useCallback(() => startTransition("up"), [startTransition])
+  const gotoNext = useCallback(() => startTransition("down"), [startTransition])
 
   // Keyboard up/down
   useEffect(() => {
@@ -266,18 +287,23 @@ export default function InspirationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ outfitId: outfit.id, action }),
       })
-      if (!res.ok) throw new Error("Failed to like")
-      setOutfits((prev) =>
-        prev.map((o) =>
-          o.id === outfit.id
-            ? {
-                ...o,
-                isLiked: !o.isLiked,
-                likes: action === "like" ? (o.likes ?? 0) + 1 : Math.max(0, (o.likes ?? 0) - 1),
-              }
-            : o,
-        ),
-      )
+
+      let newLikes = outfit.likes
+      let newIsLiked = !outfit.isLiked
+      if (res.ok) {
+        try {
+          const payload = await res.json()
+          if (typeof payload?.likes === "number") newLikes = payload.likes
+          if (typeof payload?.isLiked === "boolean") newIsLiked = payload.isLiked
+        } catch {
+          newLikes = action === "like" ? (outfit.likes ?? 0) + 1 : Math.max(0, (outfit.likes ?? 0) - 1)
+          newIsLiked = !outfit.isLiked
+        }
+      } else {
+        throw new Error("Failed to like")
+      }
+
+      setOutfits((prev) => prev.map((o) => (o.id === outfit.id ? { ...o, isLiked: newIsLiked, likes: newLikes } : o)))
     } catch (e) {
       console.error(e)
     } finally {
@@ -288,11 +314,16 @@ export default function InspirationPage() {
   // Helpers
   const visibleItems = current?.items?.slice(0, 5) ?? []
   const remaining = Math.max(0, (current?.items?.length ?? 0) - visibleItems.length)
-  const previewSrc =
-    current?.preview_image_url ||
-    current?.preview_url ||
-    current?.items?.[0]?.image_url ||
-    "/placeholder.svg?height=1200&width=900"
+
+  const currentPreview =
+    current?.preview_image_url || current?.preview_url || current?.items?.[0]?.image_url || "/placeholder.svg"
+
+  const animFrom = anim ? filtered[anim.from] : null
+  const animTo = anim ? filtered[anim.to] : null
+  const animFromPreview =
+    animFrom?.preview_image_url || animFrom?.preview_url || animFrom?.items?.[0]?.image_url || "/placeholder.svg"
+  const animToPreview =
+    animTo?.preview_image_url || animTo?.preview_url || animTo?.items?.[0]?.image_url || "/placeholder.svg"
 
   if (loading) {
     return (
@@ -324,8 +355,11 @@ export default function InspirationPage() {
   }
 
   return (
-    // Fixed full-viewport wrapper to eliminate any bottom white stripe and avoid page scroll
-    <div className="fixed inset-0 bg-black text-white overflow-hidden overscroll-none">
+    // Full-viewport wrapper; ensure black under safe-area as well
+    <div
+      className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
       {/* Tabs */}
       <div className="absolute top-0 left-0 right-0 z-30 bg-black/80 backdrop-blur border-b border-neutral-900">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
@@ -354,98 +388,56 @@ export default function InspirationPage() {
         </div>
       </div>
 
-      {/* Stage area: fits under tabs, stays within one screen */}
+      {/* Stage area: one screen below tabs */}
       <main className="absolute left-0 right-0 bottom-0 top-[45px] mx-auto w-full max-w-[900px] px-4 lg:px-10 pt-3">
-        <section
-          className="relative h-full w-full rounded-2xl overflow-hidden bg-neutral-950 touch-pan-y"
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
-        >
-          {/* Main preview */}
-          <Image
-            src={previewSrc || "/placeholder.svg"}
-            alt={current.title || "Образ"}
-            fill
-            sizes="(max-width: 1024px) 100vw, 900px"
-            className="object-contain bg-neutral-950"
-            priority={false}
-          />
-
-          {/* Title */}
-          {current.title && (
-            <div className="absolute top-3 left-3 right-3 z-20">
-              <Badge variant="secondary" className="bg-white/95 text-black hover:bg-white inline-flex">
-                {current.title}
-              </Badge>
-            </div>
+        <section className="relative h-full w-full rounded-2xl overflow-hidden bg-neutral-950 touch-pan-y">
+          {/* Static (no animation) render when not animating */}
+          {!anim && (
+            <Slide
+              key={`slide-${index}`}
+              title={current.title}
+              previewSrc={currentPreview}
+              items={visibleItems}
+              remaining={remaining}
+            />
           )}
 
-          {/* Left rail: up to 5 items */}
-          <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20">
-            {visibleItems.map((item) => (
-              <div
-                key={item.id}
-                className="relative w-14 h-14 rounded-xl overflow-hidden ring-1 ring-white/15 bg-neutral-800 shadow-lg"
-                title={item.name || "Вещь"}
-              >
-                {item.image_url ? (
-                  <Image
-                    src={item.image_url || "/placeholder.svg?height=200&width=200&query=item%20thumbnail"}
-                    alt={item.name || "Вещь"}
-                    fill
-                    sizes="56px"
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full bg-neutral-700" />
+          {/* Animated transition layer */}
+          {anim && animFrom && animTo && (
+            <>
+              {/* From slide */}
+              <Slide
+                key={`from-${anim.from}`}
+                title={animFrom.title}
+                previewSrc={animFromPreview}
+                items={animFrom.items?.slice(0, 5) ?? []}
+                remaining={Math.max(0, (animFrom.items?.length ?? 0) - 5)}
+                className={cn(
+                  "absolute inset-0",
+                  "transition-transform duration-300 ease-out",
+                  animPhase === "start" ? "translate-y-0" : "",
+                  animPhase === "run" ? (anim.dir === "down" ? "-translate-y-full" : "translate-y-full") : "",
                 )}
-              </div>
-            ))}
-
-            {remaining > 0 && (
-              <Sheet>
-                <SheetTrigger asChild>
-                  {/* Removed the plus icon; show only +N count with strong contrast */}
-                  <button
-                    className="w-14 h-14 rounded-xl bg-white text-black font-semibold flex items-center justify-center ring-1 ring-white/15 shadow-xl"
-                    aria-label="Показать все вещи"
-                    title="Показать все вещи"
-                  >
-                    <span className="text-sm">{`+${remaining}`}</span>
-                  </button>
-                </SheetTrigger>
-                <SheetContent side="bottom" className="h-[72vh] bg-neutral-950 text-white">
-                  <SheetHeader>
-                    <SheetTitle>Все вещи из образа</SheetTitle>
-                  </SheetHeader>
-                  <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                    {(current.items ?? []).map((item) => (
-                      <div key={item.id} className="space-y-2">
-                        <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-neutral-800">
-                          {item.image_url ? (
-                            <Image
-                              src={item.image_url || "/placeholder.svg?height=400&width=400&query=outfit%20item"}
-                              alt={item.name || "Вещь"}
-                              fill
-                              sizes="200px"
-                              className="object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-neutral-700" />
-                          )}
-                        </div>
-                        <div className="text-xs text-neutral-300 line-clamp-2">{item.name}</div>
-                      </div>
-                    ))}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            )}
-          </div>
+              />
+              {/* To slide */}
+              <Slide
+                key={`to-${anim.to}`}
+                title={animTo.title}
+                previewSrc={animToPreview}
+                items={animTo.items?.slice(0, 5) ?? []}
+                remaining={Math.max(0, (animTo.items?.length ?? 0) - 5)}
+                className={cn(
+                  "absolute inset-0",
+                  "transition-transform duration-300 ease-out",
+                  animPhase === "start" ? (anim.dir === "down" ? "translate-y-full" : "-translate-y-full") : "",
+                  animPhase === "run" ? "translate-y-0" : "",
+                )}
+              />
+            </>
+          )}
 
           {/* Save at bottom-left */}
-          <div className="absolute bottom-3 left-3 z-20">
+          <div className="absolute bottom-3 left-3 z-[2000] pointer-events-auto">
             <Button
               onClick={() => current && handleSave(current)}
               disabled={isSaving || savedOutfitIds.has(current.id)}
@@ -462,21 +454,8 @@ export default function InspirationPage() {
             </Button>
           </div>
 
-          {/* Right-side column: Up / Like / Down to avoid overlap with bottom nav */}
-          <div className="absolute right-3 inset-y-0 flex flex-col items-center justify-center gap-3 z-30">
-            <button
-              aria-label="Предыдущий образ"
-              onClick={gotoPrev}
-              disabled={index === 0}
-              className={cn(
-                "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
-                index === 0 && "opacity-60 cursor-not-allowed",
-              )}
-            >
-              <ChevronUp className="w-6 h-6" />
-            </button>
-
-            {/* Like button centered vertically on the right so bottom nav doesn't cover it */}
+          {/* Like at bottom-right */}
+          <div className="absolute bottom-3 right-3 z-[2000] pointer-events-auto">
             <Button
               variant="secondary"
               onClick={() => current && handleLike(current)}
@@ -489,14 +468,31 @@ export default function InspirationPage() {
               {isLiking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Heart className="w-4 h-4 mr-2" />}
               <span>{current.likes ?? 0}</span>
             </Button>
+          </div>
+
+          {/* Vertical navigation arrows on the right (centered) */}
+          <div className="absolute right-3 inset-y-0 flex flex-col items-center justify-center gap-3 z-[150] pointer-events-none">
+            <button
+              aria-label="Предыдущий образ"
+              onClick={gotoPrev}
+              disabled={index === 0 || !!anim}
+              className={cn(
+                "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
+                index === 0 || !!anim ? "opacity-60 cursor-not-allowed" : "",
+                "pointer-events-auto",
+              )}
+            >
+              <ChevronUp className="w-6 h-6" />
+            </button>
 
             <button
               aria-label="Следующий образ"
               onClick={gotoNext}
-              disabled={index >= filtered.length - 1}
+              disabled={index >= filtered.length - 1 || !!anim}
               className={cn(
                 "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
-                index >= filtered.length - 1 && "opacity-60 cursor-not-allowed",
+                index >= filtered.length - 1 || !!anim ? "opacity-60 cursor-not-allowed" : "",
+                "pointer-events-auto",
               )}
             >
               <ChevronDown className="w-6 h-6" />
@@ -514,6 +510,110 @@ export default function InspirationPage() {
           ))}
         </div>
       </main>
+
+      {/* Local bottom navigation, rendered under action buttons */}
+      <div className="fixed inset-x-0 bottom-0 z-[1200]">
+        <BottomNavigation />
+      </div>
+    </div>
+  )
+}
+
+function Slide({
+  title,
+  previewSrc,
+  items,
+  remaining,
+  className,
+}: {
+  title?: string
+  previewSrc: string
+  items: OutfitItem[]
+  remaining: number
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <div className={cn("relative h-full w-full", className)}>
+      {/* Main preview */}
+      <Image
+        src={previewSrc || "/placeholder.svg"}
+        alt={title || "Образ"}
+        fill
+        sizes="(max-width: 1024px) 100vw, 900px"
+        className="object-contain bg-neutral-950"
+        priority={false}
+      />
+
+      {/* Title */}
+      {!!title && (
+        <div className="absolute top-3 left-3 right-3 z-20">
+          <Badge variant="secondary" className="bg-white/95 text-black hover:bg-white inline-flex">
+            {title}
+          </Badge>
+        </div>
+      )}
+
+      {/* Left rail: thumbnails */}
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="relative w-14 h-14 rounded-xl overflow-hidden ring-1 ring-white/15 bg-neutral-800 shadow-lg"
+            title={item.name || "Вещь"}
+          >
+            {item.image_url ? (
+              <Image
+                src={item.image_url || "/placeholder.svg?height=200&width=200&query=item%20thumbnail"}
+                alt={item.name || "Вещь"}
+                fill
+                sizes="56px"
+                className="object-cover"
+              />
+            ) : (
+              <div className="w-full h-full bg-neutral-700" />
+            )}
+          </div>
+        ))}
+
+        {remaining > 0 && (
+          <>
+            <button
+              onClick={() => setOpen(true)}
+              className="w-14 h-14 rounded-xl bg-white text-black font-semibold flex items-center justify-center ring-1 ring-white/15 shadow-xl"
+              aria-label="Показать все вещи"
+              title="Показать все вещи"
+            >
+              <span className="text-sm">{`+${remaining}`}</span>
+            </button>
+
+            {/* Use the common sheet for consistency */}
+            <CommonSheet open={open} onOpenChange={setOpen} title="Все вещи из образа" side="bottom">
+              <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                {items.map((item) => (
+                  <div key={item.id} className="space-y-2">
+                    <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-neutral-800">
+                      {item.image_url ? (
+                        <Image
+                          src={item.image_url || "/placeholder.svg?height=400&width=400&query=outfit%20item"}
+                          alt={item.name || "Вещь"}
+                          fill
+                          sizes="200px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-neutral-700" />
+                      )}
+                    </div>
+                    <div className="text-xs text-neutral-300 line-clamp-2">{item.name}</div>
+                  </div>
+                ))}
+              </div>
+            </CommonSheet>
+          </>
+        )}
+      </div>
     </div>
   )
 }
