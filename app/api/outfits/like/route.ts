@@ -1,56 +1,58 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const { outfitId, action } = await request.json()
-
-    if (!outfitId || !action) {
-      return NextResponse.json({ error: "Outfit ID and action are required" }, { status: 400 })
-    }
-
     const supabase = createClient()
-
-    // Get current user
     const {
       data: { user },
-      error: authError,
     } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { outfitId, action } = await req.json()
+    const outfitIdNum = Number(outfitId)
+    const op: "like" | "unlike" = action === "unlike" ? "unlike" : "like"
+
+    if (!Number.isFinite(outfitIdNum) || outfitIdNum <= 0) {
+      return NextResponse.json({ error: "Invalid outfitId" }, { status: 400 })
     }
 
-    // Read current likes
-    const { data: current, error: fetchError } = await supabase
-      .from("outfits")
-      .select("likes")
-      .eq("id", outfitId)
-      .single()
-
-    if (fetchError || !current) {
-      console.error("Error reading current likes:", fetchError)
-      return NextResponse.json({ error: "Failed to read likes" }, { status: 500 })
+    if (op === "like") {
+      const { error } = await supabase
+        .from("user_likes")
+        .insert([{ user_id: user.id, outfit_id: outfitIdNum }], { ignoreDuplicates: true })
+      if (error) {
+        console.error("Insert like error:", error)
+        return NextResponse.json({ error: "Failed to like" }, { status: 500 })
+      }
+    } else {
+      const { error } = await supabase.from("user_likes").delete().eq("user_id", user.id).eq("outfit_id", outfitIdNum)
+      if (error) {
+        console.error("Delete like error:", error)
+        return NextResponse.json({ error: "Failed to unlike" }, { status: 500 })
+      }
     }
 
-    const increment = action === "like" ? 1 : -1
-    const newLikes = Math.max(0, (current.likes ?? 0) + increment)
-
-    // Update likes
-    const { data: updated, error: updateError } = await supabase
-      .from("outfits")
-      .update({ likes: newLikes })
-      .eq("id", outfitId)
-      .select("likes")
-      .single()
-
-    if (updateError || !updated) {
-      console.error("Error updating likes:", updateError)
-      return NextResponse.json({ error: "Failed to update likes" }, { status: 500 })
+    // Fresh totals
+    const { count: total, error: countErr } = await supabase
+      .from("user_likes")
+      .select("*", { count: "exact", head: true })
+      .eq("outfit_id", outfitIdNum)
+    if (countErr) {
+      console.error("Count likes error:", countErr)
+      return NextResponse.json({ error: "Failed to count likes" }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, likes: updated.likes, isLiked: action === "like" })
-  } catch (error) {
-    console.error("Error in like endpoint:", error)
+    const { count: myCount } = await supabase
+      .from("user_likes")
+      .select("*", { count: "exact", head: true })
+      .eq("outfit_id", outfitIdNum)
+      .eq("user_id", user.id)
+
+    return NextResponse.json({ likes: total ?? 0, isLiked: (myCount ?? 0) > 0 })
+  } catch (e) {
+    console.error("POST /api/outfits/like error:", e)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

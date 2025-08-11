@@ -581,7 +581,7 @@ export default function HomePage() {
                   onClick={() => setIsAddSheetOpen(true)}
                   className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
                 >
-                  + Добавить в гардероб
+                  + ��обавить в гардероб
                 </Button>
               </CardContent>
             </Card>

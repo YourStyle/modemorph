@@ -5,6 +5,12 @@ export async function GET(request: Request, { params }: { params: { id: string }
   try {
     const { id } = params
 
+    // Immediately after parsing params and before any DB calls in GET(), add a numeric guard to prevent non-numeric IDs from hitting the database:
+    const numericId = Number(id)
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 })
+    }
+
     if (!id) {
       return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
     }
@@ -53,7 +59,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
           )
         )
       `)
-      .eq("id", id)
+      .eq("id", numericId) // Replace both occurrences of `.eq("id", id)` in GET and the DELETE path with `.eq("id", numericId)`.
       .eq("user_id", user.id)
       .single()
 
@@ -92,6 +98,12 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json()
     const { name, description, season, occasion, items, preview_image_url } = body
 
+    // Compute `const numericId = Number(id)` and validate it like above:
+    const numericId = Number(id)
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 })
+    }
+
     if (!id || !name || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
     }
@@ -121,10 +133,10 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         season: season || null,
         occasion: occasion || null,
         preview_image_url: preview_image_url || null,
-  
+
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id)
+      .eq("id", numericId) // Replace both occurrences of `.eq("id", id)` in GET and the DELETE path with `.eq("id", numericId)`.
       .eq("user_id", user.id)
 
     if (outfitError) {
@@ -133,7 +145,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     }
 
     // Удаляем старые элементы образа
-    const { error: deleteError } = await supabase.from("outfit_items").delete().eq("outfit_id", id)
+    const { error: deleteError } = await supabase.from("outfit_items").delete().eq("outfit_id", numericId)
 
     if (deleteError) {
       console.error("Error deleting old outfit items:", deleteError)
@@ -142,7 +154,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
     // Добавляем новые элементы к образу
     const outfitItems = items.map((itemId: number, index: number) => ({
-      outfit_id: Number.parseInt(id),
+      outfit_id: numericId, // Use `outfit_id: numericId` instead of parsing again.
       wardrobe_item_id: itemId,
       position: index,
     }))
@@ -168,6 +180,12 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   try {
     const { id } = params
 
+    // Immediately after parsing params and before any DB calls in GET(), add a numeric guard to prevent non-numeric IDs from hitting the database:
+    const numericId = Number(id)
+    if (!Number.isFinite(numericId) || numericId <= 0) {
+      return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 })
+    }
+
     if (!id) {
       return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
     }
@@ -189,7 +207,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     }
 
     // Удаляем образ (элементы удалятся автоматически благодаря CASCADE)
-    const { error } = await supabase.from("outfits").delete().eq("id", id).eq("user_id", user.id)
+    const { error } = await supabase.from("outfits").delete().eq("id", numericId).eq("user_id", user.id) // Replace both occurrences of `.eq("id", id)` in GET and the DELETE path with `.eq("id", numericId)`.
 
     if (error) {
       console.error("Error deleting outfit:", error)

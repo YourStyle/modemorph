@@ -15,15 +15,15 @@ type OutfitItem = {
   id: string
   name: string
   image_url: string
-  color?: string
-  shade?: string
-  style?: string
-  material?: string
-  url?: string
-  size_type?: string
-  has_print?: string
-  has_details?: string
-  notes?: string
+  color?: string | null
+  shade?: string | null
+  style?: string | null
+  material?: string | null
+  url?: string | null
+  size_type?: string | null
+  has_print?: string | null
+  has_details?: string | null
+  notes?: string | null
   is_basic?: boolean
   basic_item_id?: number | null
   user_id?: string | null
@@ -48,7 +48,6 @@ type ApiResponse = {
 
 type TabKey = "popular" | "liked"
 
-// Prefer preview_image_url; fallback to first item's image; then placeholder
 function getPreviewSrc(o?: FeedOutfit | null): string {
   const direct = (o?.preview_image_url || "").trim()
   if (direct) return direct
@@ -56,34 +55,25 @@ function getPreviewSrc(o?: FeedOutfit | null): string {
   return firstItem || "/placeholder.svg?height=1200&width=900"
 }
 
-// Windowing to avoid memory growth on long sessions
 const KEEP_BEHIND = 8
 const KEEP_AHEAD = 8
 const MAX_KEEP = KEEP_BEHIND + KEEP_AHEAD + 1
 
 export default function InspirationPage() {
-  // Data
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [fetchingMore, setFetchingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // UI state
   const [savedOutfitIds, setSavedOutfitIds] = useState<Set<string>>(new Set())
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
   const [index, setIndex] = useState(0)
 
-  // Hide the global top nav only on this page
+  // Hide any global top navigation
   useEffect(() => {
-    const selectors = [
-      "header",
-      "[data-top-navigation]",
-      "#top-navigation",
-      "nav[aria-label='Top']",
-      ".top-navigation",
-      "[data-role='app-header']",
-    ]
+    const selectors = ["header", "[data-top-navigation]", "#top-navigation", "nav[aria-label='Top']", ".top-navigation"]
     const elements = document.querySelectorAll<HTMLElement>(selectors.join(","))
     const prev: Array<{ el: HTMLElement; display: string }> = []
     elements.forEach((el) => {
@@ -93,19 +83,27 @@ export default function InspirationPage() {
     return () => prev.forEach(({ el, display }) => (el.style.display = display))
   }, [])
 
-  // Initial load
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
         setLoading(true)
-        const res = await fetch("/api/outfits/inspiration")
-        if (!res.ok) throw new Error("Failed to fetch outfits")
-        const data: ApiResponse = await res.json()
-        if (cancelled) return
+        setError(null)
+        const [outfitsRes, likesRes] = await Promise.all([
+          fetch("/api/outfits/inspiration", { cache: "no-store" }),
+          fetch("/api/user-likes", { cache: "no-store" }),
+        ])
+        if (!outfitsRes.ok) throw new Error("Failed to fetch outfits")
+        const data: ApiResponse = await outfitsRes.json()
         const normalized = normalizeOutfits(data.outfits)
-        setOutfits(normalized)
-        setNextCursor(data.nextCursor ?? null)
+        if (!cancelled) {
+          setOutfits(normalized)
+          setNextCursor(data.nextCursor ?? null)
+        }
+        if (likesRes.ok) {
+          const likedData = await likesRes.json().catch(() => ({ liked: [] }))
+          if (!cancelled) setLikedIds(new Set((likedData?.liked ?? []).map(String)))
+        }
       } catch (e) {
         console.error(e)
         if (!cancelled) setError("Не удалось загрузить образы")
@@ -118,24 +116,23 @@ export default function InspirationPage() {
     }
   }, [])
 
-  // Reset on tab change
   useEffect(() => {
     setIndex(0)
   }, [activeTab])
 
   const filtered = useMemo(() => {
     if (activeTab === "popular") return outfits
-    // Keep simple: liked tab shows items marked isLiked or saved
-    return outfits.filter((o) => o.isLiked || savedOutfitIds.has(o.id) || o.isSaved)
-  }, [activeTab, outfits, savedOutfitIds])
+    return outfits.filter((o) => likedIds.has(o.id))
+  }, [activeTab, outfits, likedIds])
 
-  // Prefetch more as we approach the end
   useEffect(() => {
+    if (activeTab !== "popular") return
     if (fetchingMore || !nextCursor) return
     if (index >= filtered.length - 2) void loadMore()
-  }, [index, filtered.length, nextCursor, fetchingMore])
+  }, [index, filtered.length, nextCursor, fetchingMore, activeTab])
 
   async function loadMore() {
+    if (activeTab !== "popular") return
     if (!nextCursor || fetchingMore) return
     try {
       setFetchingMore(true)
@@ -156,7 +153,6 @@ export default function InspirationPage() {
     }
   }
 
-  // Windowing to prevent memory growth
   useEffect(() => {
     if (outfits.length <= MAX_KEEP) return
     if (index <= KEEP_BEHIND) return
@@ -167,10 +163,8 @@ export default function InspirationPage() {
     setIndex((i) => i - drop)
   }, [index, outfits.length])
 
-  // Current
   const current = filtered[index]
 
-  // Navigation (vertical with animation)
   type Dir = "up" | "down"
   const [anim, setAnim] = useState<{ from: number; to: number; dir: Dir } | null>(null)
   const [animPhase, setAnimPhase] = useState<"idle" | "start" | "run">("idle")
@@ -197,7 +191,6 @@ export default function InspirationPage() {
   const gotoPrev = useCallback(() => startTransition("up"), [startTransition])
   const gotoNext = useCallback(() => startTransition("down"), [startTransition])
 
-  // Keyboard up/down
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowUp") gotoPrev()
@@ -207,7 +200,6 @@ export default function InspirationPage() {
     return () => window.removeEventListener("keydown", onKey)
   }, [gotoPrev, gotoNext])
 
-  // Touch vertical swipe
   const touchStartY = useRef<number | null>(null)
   const touchDeltaY = useRef(0)
   const onTouchStart = useCallback((e: React.TouchEvent) => {
@@ -226,7 +218,6 @@ export default function InspirationPage() {
     touchDeltaY.current = 0
   }, [gotoPrev, gotoNext])
 
-  // Actions
   const [isSaving, setIsSaving] = useState(false)
   const [isLiking, setIsLiking] = useState(false)
 
@@ -258,19 +249,18 @@ export default function InspirationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ outfitId: outfit.id, action }),
       })
-      let newLikes = outfit.likes
-      let newIsLiked = !outfit.isLiked
-      if (res.ok) {
-        try {
-          const payload = await res.json()
-          if (typeof payload?.likes === "number") newLikes = payload.likes
-          if (typeof payload?.isLiked === "boolean") newIsLiked = payload.isLiked
-        } catch {
-          newLikes = action === "like" ? (outfit.likes ?? 0) + 1 : Math.max(0, (outfit.likes ?? 0) - 1)
-          newIsLiked = !outfit.isLiked
-        }
-      } else throw new Error("Failed to like")
+      if (!res.ok) throw new Error("Failed to like")
+      const payload = await res.json()
+      const newLikes = typeof payload?.likes === "number" ? payload.likes : outfit.likes
+      const newIsLiked = typeof payload?.isLiked === "boolean" ? payload.isLiked : !outfit.isLiked
+
       setOutfits((prev) => prev.map((o) => (o.id === outfit.id ? { ...o, isLiked: newIsLiked, likes: newLikes } : o)))
+      setLikedIds((prev) => {
+        const next = new Set(prev)
+        if (newIsLiked) next.add(outfit.id)
+        else next.delete(outfit.id)
+        return next
+      })
     } catch (e) {
       console.error(e)
     } finally {
@@ -278,7 +268,6 @@ export default function InspirationPage() {
     }
   }
 
-  // Helpers
   const visibleItems = current?.items?.slice(0, 5) ?? []
   const remaining = Math.max(0, (current?.items?.length ?? 0) - visibleItems.length)
 
@@ -310,21 +299,12 @@ export default function InspirationPage() {
     )
   }
 
-  if (!current) {
-    return (
-      <div className="fixed inset-0 bg-black text-white grid place-items-center">
-        <div className="text-neutral-400">Пока нет образов</div>
-      </div>
-    )
-  }
-
   return (
-    // Full-viewport wrapper; ensure tabs are always above via high z-index
     <div
       className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {/* Tabs */}
+      {/* Tabs persist at top */}
       <div className="absolute top-0 left-0 right-0 z-[3000] bg-black/80 backdrop-blur border-b border-neutral-900">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
           <div className="flex justify-center gap-8 py-3">
@@ -352,169 +332,183 @@ export default function InspirationPage() {
         </div>
       </div>
 
-      {/* Stage area: one screen below tabs */}
       <main className="absolute left-0 right-0 bottom-0 top-[45px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
         <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 touch-pan-y">
-          {/* Static (no animation) render when not animating */}
-          {!anim && (
-            <Slide
-              key={`slide-${index}`}
-              title={current.title}
-              previewSrc={currentPreview}
-              items={visibleItems}
-              remaining={remaining}
-              onOpenItems={() => {}}
-            />
-          )}
-
-          {/* Animated transition layer */}
-          {anim && animFrom && animTo && (
+          {filtered.length === 0 ? (
+            <div className="absolute inset-0 grid place-items-center">
+              <div className="text-neutral-400">Пока нет образов</div>
+            </div>
+          ) : (
             <>
-              {/* From slide */}
-              <Slide
-                key={`from-${anim.from}`}
-                title={animFrom.title}
-                previewSrc={animFromPreview}
-                items={animFrom.items?.slice(0, 5) ?? []}
-                remaining={Math.max(0, (animFrom.items?.length ?? 0) - 5)}
-                className={cn(
-                  "absolute inset-0",
-                  "transition-transform duration-300 ease-out",
-                  animPhase === "start" ? "translate-y-0" : "",
-                  animPhase === "run" ? (anim.dir === "down" ? "-translate-y-full" : "translate-y-full") : "",
+              {!anim && (
+                <Slide
+                  key={`slide-${index}`}
+                  title={current?.title}
+                  previewSrc={currentPreview}
+                  items={visibleItems}
+                  remaining={remaining}
+                  likes={current?.likes ?? 0}
+                />
+              )}
+
+              {anim && animFrom && animTo && (
+                <>
+                  <Slide
+                    key={`from-${anim.from}`}
+                    title={animFrom.title}
+                    previewSrc={animFromPreview}
+                    items={animFrom.items?.slice(0, 5) ?? []}
+                    remaining={Math.max(0, (animFrom.items?.length ?? 0) - 5)}
+                    className={cn(
+                      "absolute inset-0 transition-transform duration-300 ease-out",
+                      animPhase === "start" ? "translate-y-0" : "",
+                      animPhase === "run" ? (anim.dir === "down" ? "-translate-y-full" : "translate-y-full") : "",
+                    )}
+                    likes={animFrom.likes ?? 0}
+                  />
+                  <Slide
+                    key={`to-${anim.to}`}
+                    title={animTo.title}
+                    previewSrc={animToPreview}
+                    items={animTo.items?.slice(0, 5) ?? []}
+                    remaining={Math.max(0, (animTo.items?.length ?? 0) - 5)}
+                    className={cn(
+                      "absolute inset-0 transition-transform duration-300 ease-out",
+                      animPhase === "start" ? (anim.dir === "down" ? "translate-y-full" : "-translate-y-full") : "",
+                      animPhase === "run" ? "translate-y-0" : "",
+                    )}
+                    likes={animTo.likes ?? 0}
+                  />
+                </>
+              )}
+
+              {/* Right-side controls */}
+              <div className="absolute right-3 inset-y-0 flex flex-col items-center justify-center gap-3 z-[150] pointer-events-none">
+                <button
+                  aria-label="Предыдущий образ"
+                  onClick={gotoPrev}
+                  disabled={index === 0 || !!anim || filtered.length === 0}
+                  className={cn(
+                    "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
+                    index === 0 || !!anim || filtered.length === 0 ? "opacity-60 cursor-not-allowed" : "",
+                    "pointer-events-auto",
+                  )}
+                >
+                  <ChevronUp className="w-6 h-6" />
+                </button>
+
+                <button
+                  aria-label="Следующий образ"
+                  onClick={gotoNext}
+                  disabled={index >= filtered.length - 1 || !!anim || filtered.length === 0}
+                  className={cn(
+                    "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
+                    index >= filtered.length - 1 || !!anim || filtered.length === 0
+                      ? "opacity-60 cursor-not-allowed"
+                      : "",
+                    "pointer-events-auto",
+                  )}
+                >
+                  <ChevronDown className="w-6 h-6" />
+                </button>
+
+                {/* Mobile: Like then Save, with larger spacing from arrows */}
+                {filtered.length > 0 && (
+                  <div className="mt-9 flex flex-col gap-3 pointer-events-auto sm:hidden">
+                    <button
+                      onClick={() => current && handleLike(current)}
+                      disabled={isLiking}
+                      aria-label="Лайк"
+                      className={cn(
+                        "w-12 h-12 rounded-full flex items-center justify-center shadow-xl",
+                        current?.isLiked
+                          ? "bg-red-500 text-white"
+                          : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30",
+                      )}
+                    >
+                      {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
+  
+                    </button>
+
+                    <button
+                      onClick={() => current && handleSave(current)}
+                      disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
+                      aria-label={
+                        !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"
+                      }
+                      className={cn(
+                        "w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-xl",
+                        !!current && (isSaving || savedOutfitIds.has(current.id) || current.isSaved) && "opacity-80",
+                      )}
+                    >
+                      {isSaving ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? (
+                        <BookmarkCheck className="w-5 h-5" />
+                      ) : (
+                        <Bookmark className="w-5 h-5" />
+                      )}
+                    </button>
+                  </div>
                 )}
-              />
-              {/* To slide */}
-              <Slide
-                key={`to-${anim.to}`}
-                title={animTo.title}
-                previewSrc={animToPreview}
-                items={animTo.items?.slice(0, 5) ?? []}
-                remaining={Math.max(0, (animTo.items?.length ?? 0) - 5)}
-                className={cn(
-                  "absolute inset-0",
-                  "transition-transform duration-300 ease-out",
-                  animPhase === "start" ? (anim.dir === "down" ? "translate-y-full" : "-translate-y-full") : "",
-                  animPhase === "run" ? "translate-y-0" : "",
-                )}
-              />
+              </div>
+
+              {/* Desktop/tablet: corners */}
+              <div className="hidden sm:block">
+                <div className="absolute bottom-3 left-3 z-[2000] pointer-events-auto">
+                  <Button
+                    onClick={() => current && handleSave(current)}
+                    disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
+                    className="bg-white text-black hover:bg-neutral-200 h-11 w-11 p-0 rounded-full shadow-xl"
+                    aria-label={
+                      !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"
+                    }
+                  >
+                    {isSaving ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? (
+                      <BookmarkCheck className="w-5 h-5" />
+                    ) : (
+                      <Bookmark className="w-5 h-5" />
+                    )}
+                  </Button>
+                </div>
+
+                <div className="absolute bottom-3 right-3 z-[2000] pointer-events-auto">
+                  <Button
+                    variant="secondary"
+                    onClick={() => current && handleLike(current)}
+                    disabled={isLiking}
+                    className={cn(
+                      "h-11 w-11 p-0 rounded-full shadow-xl",
+                      current?.isLiked
+                        ? "bg-red-500 text-white hover:bg-red-600"
+                        : "bg-white/15 text-white hover:bg-white/25",
+                    )}
+                    aria-label="Лайк"
+                  >
+                    {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
+      
+                  </Button>
+                </div>
+              </div>
             </>
           )}
-
-          {/* Right-side arrows */}
-          <div className="absolute right-3 inset-y-0 flex flex-col items-center justify-center gap-3 z-[150] pointer-events-none">
-            <button
-              aria-label="Предыдущий образ"
-              onClick={gotoPrev}
-              disabled={index === 0 || !!anim}
-              className={cn(
-                "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
-                index === 0 || !!anim ? "opacity-60 cursor-not-allowed" : "",
-                "pointer-events-auto",
-              )}
-            >
-              <ChevronUp className="w-6 h-6" />
-            </button>
-
-            <button
-              aria-label="Следующий образ"
-              onClick={gotoNext}
-              disabled={index >= filtered.length - 1 || !!anim}
-              className={cn(
-                "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
-                index >= filtered.length - 1 || !!anim ? "opacity-60 cursor-not-allowed" : "",
-                "pointer-events-auto",
-              )}
-            >
-              <ChevronDown className="w-6 h-6" />
-            </button>
-
-            {/* Mobile: icon-only Save and Like directly under arrows */}
-            <div className="mt-2 flex flex-col gap-2 pointer-events-auto sm:hidden">
-              <button
-                onClick={() => current && handleSave(current)}
-                disabled={isSaving || savedOutfitIds.has(current.id)}
-                aria-label={savedOutfitIds.has(current.id) || current.isSaved ? "Сохранено" : "Сохранить"}
-                className={cn(
-                  "w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-xl",
-                  (isSaving || savedOutfitIds.has(current.id) || current.isSaved) && "opacity-80",
-                )}
-              >
-                {isSaving ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : savedOutfitIds.has(current.id) || current.isSaved ? (
-                  <BookmarkCheck className="w-5 h-5" />
-                ) : (
-                  <Bookmark className="w-5 h-5" />
-                )}
-              </button>
-
-              <button
-                onClick={() => current && handleLike(current)}
-                disabled={isLiking}
-                aria-label="Лайк"
-                className={cn(
-                  "w-12 h-12 rounded-full flex items-center justify-center shadow-xl",
-                  current.isLiked
-                    ? "bg-red-500 text-white"
-                    : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30",
-                )}
-              >
-                {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Desktop/tablet: icon-only buttons in corners */}
-          <div className="hidden sm:block">
-            <div className="absolute bottom-3 left-3 z-[2000] pointer-events-auto">
-              <Button
-                onClick={() => current && handleSave(current)}
-                disabled={isSaving || savedOutfitIds.has(current.id)}
-                className="bg-white text-black hover:bg-neutral-200 h-11 w-11 p-0 rounded-full shadow-xl"
-                aria-label={savedOutfitIds.has(current.id) || current.isSaved ? "Сохранено" : "Сохранить"}
-              >
-                {isSaving ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : savedOutfitIds.has(current.id) || current.isSaved ? (
-                  <BookmarkCheck className="w-5 h-5" />
-                ) : (
-                  <Bookmark className="w-5 h-5" />
-                )}
-              </Button>
-            </div>
-
-            <div className="absolute bottom-3 right-3 z-[2000] pointer-events-auto">
-              <Button
-                variant="secondary"
-                onClick={() => current && handleLike(current)}
-                disabled={isLiking}
-                className={cn(
-                  "h-11 w-11 p-0 rounded-full shadow-xl",
-                  current.isLiked
-                    ? "bg-red-500 text-white hover:bg-red-600"
-                    : "bg-white/15 text-white hover:bg-white/25",
-                )}
-                aria-label="Лайк"
-              >
-                {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
-              </Button>
-            </div>
-          </div>
         </section>
 
-        {/* Position dots */}
-        <div className="mt-3 flex justify-center gap-2 px-4">
-          {filtered.map((_, i) => (
-            <div
-              key={i}
-              className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-white" : "w-2 bg-neutral-600")}
-            />
-          ))}
-        </div>
+        {/* Dots */}
+        {filtered.length > 0 && (
+          <div className="mt-3 flex justify-center gap-2 px-4">
+            {filtered.map((_, i) => (
+              <div
+                key={i}
+                className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-white" : "w-2 bg-neutral-600")}
+              />
+            ))}
+          </div>
+        )}
       </main>
 
-      {/* Local bottom navigation, rendered under action buttons */}
       <div className="fixed inset-x-0 bottom-0 z-[1200]">
         <BottomNavigation />
       </div>
@@ -527,20 +521,20 @@ function Slide({
   previewSrc,
   items,
   remaining,
+  likes,
   className,
 }: {
   title?: string
   previewSrc: string
   items: OutfitItem[]
   remaining: number
+  likes: number
   className?: string
-  onOpenItems?: () => void
 }) {
   const [open, setOpen] = useState(false)
 
   return (
     <div className={cn("relative h-full w-full", className)}>
-      {/* Main preview: cover on phones, contain from sm and up */}
       <Image
         src={previewSrc || "/placeholder.svg?height=1200&width=900&query=outfit%20preview"}
         alt={title || "Образ"}
@@ -552,12 +546,13 @@ function Slide({
 
       {/* Title */}
       {!!title && (
-        <div className="absolute top-3 left-3 right-3 z-20">
+        <div className="absolute top-3 left-3 right-24 z-20">
           <Badge variant="secondary" className="bg-white/95 text-black hover:bg-white inline-flex">
             {title}
           </Badge>
         </div>
       )}
+
 
       {/* Left rail: thumbnails */}
       <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20">
@@ -592,7 +587,6 @@ function Slide({
               <span className="text-sm">{`+${remaining}`}</span>
             </button>
 
-            {/* Use shadcn Sheet to ensure it renders in a Portal above overflow-hidden */}
             <Sheet open={open} onOpenChange={setOpen}>
               <SheetContent side="bottom" className="h-[70vh] bg-neutral-950 text-white">
                 <SheetHeader>

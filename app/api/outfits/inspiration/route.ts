@@ -1,25 +1,74 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
-export async function GET(request: NextRequest) {
+// Shapes returned to the client /app/inspiration
+type FeedOutfit = {
+  id: string
+  title: string
+  description?: string
+  items: {
+    id: string
+    name: string
+    image_url: string
+    color?: string | null
+    shade?: string | null
+    style?: string | null
+    material?: string | null
+    size_type?: string | null
+    has_print?: string | null
+    has_details?: string | null
+    notes?: string | null
+    is_basic?: boolean
+  }[]
+  tags: string[]
+  likes: number
+  isLiked: boolean
+  isSaved?: boolean
+  preview_image_url?: string
+}
+
+function shuffleInPlace<T>(arr: T[]) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
+export async function GET(request: Request) {
   try {
     const supabase = createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
 
-    // Fetch outfits with preview_image_url and their items (top 12 by likes)
-    const { data: outfits, error } = await supabase
+    const url = new URL(request.url)
+    const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 50)
+
+    const { data: outfits, error: outfitsErr } = await supabase
       .from("outfits")
-      .select(`
-        id,
-        name,
-        description,
-        season,
-        occasion,
-        likes,
-        preview_image_url,
-        outfit_items (
-          position,
-          wardrobe_item_id,
-          wardrobe_items!wardrobe_item_id (
+      .select("id, name, description, preview_image_url, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit)
+
+    if (outfitsErr) {
+      console.warn("Fetch outfits error:", outfitsErr)
+      return NextResponse.json({ outfits: [], nextCursor: null }, { headers: { "Cache-Control": "no-store" } })
+    }
+
+    const ids = (outfits ?? []).map((o) => Number(o.id)).filter((n) => Number.isFinite(n)) as number[]
+
+    const itemsByOutfit = new Map<number, FeedOutfit["items"]>()
+    const likesByOutfit = new Map<number, number>()
+    const likedByMe = new Set<number>()
+
+    if (ids.length > 0) {
+      const { data: itemsRows, error: itemsErr } = await supabase
+        .from("outfit_items")
+        .select(
+          `
+          outfit_id,
+          wardrobe_items (
             id,
             item_name,
             image_url,
@@ -31,71 +80,84 @@ export async function GET(request: NextRequest) {
             has_print,
             has_details,
             notes,
-            is_basic,
-            basic_item_id,
-            url
+            is_basic
           )
+        `,
         )
-      `)
-      .order("likes", { ascending: false })
-      .limit(12)
+        .in("outfit_id", ids)
 
-    if (error) {
-      console.error("Error fetching outfits:", error)
-      return NextResponse.json({ error: "Failed to fetch outfits" }, { status: 500 })
+      if (!itemsErr && itemsRows) {
+        for (const row of itemsRows as any[]) {
+          const outfitId = Number(row.outfit_id)
+          const w = row.wardrobe_items
+          if (!w) continue
+          const arr = itemsByOutfit.get(outfitId) ?? []
+          arr.push({
+            id: String(w.id),
+            name: w.item_name ?? "",
+            image_url: w.image_url ?? "",
+            color: w.color ?? null,
+            shade: w.shade ?? null,
+            style: w.style ?? null,
+            material: w.material ?? null,
+            size_type: w.size_type ?? null,
+            has_print: w.has_print ?? null,
+            has_details: w.has_details ?? null,
+            notes: w.notes ?? null,
+            is_basic: !!w.is_basic,
+          })
+          itemsByOutfit.set(outfitId, arr)
+        }
+      } else if (itemsErr) {
+        console.warn("Fetch outfit items error:", itemsErr)
+      }
+
+      const { data: likeRows, error: likesErr } = await supabase
+        .from("user_likes")
+        .select("outfit_id")
+        .in("outfit_id", ids)
+
+      if (!likesErr && likeRows) {
+        for (const r of likeRows) {
+          const k = Number(r.outfit_id)
+          likesByOutfit.set(k, (likesByOutfit.get(k) ?? 0) + 1)
+        }
+      } else if (likesErr) {
+        console.warn("Fetch liked rows error:", likesErr)
+      }
+
+      if (user) {
+        const { data: mine } = await supabase
+          .from("user_likes")
+          .select("outfit_id")
+          .eq("user_id", user.id)
+          .in("outfit_id", ids)
+        for (const r of mine ?? []) likedByMe.add(Number(r.outfit_id))
+      }
     }
 
-    // Transform data for frontend
-    const transformedOutfits = (outfits || []).map((outfit: any) => {
-      const items = (outfit.outfit_items || [])
-        .sort((a: any, b: any) => (a.position || 0) - (b.position || 0))
-        .map((item: any) => {
-          const wardrobeItem = item.wardrobe_items
-          if (!wardrobeItem) return null
+    const feed: FeedOutfit[] =
+      outfits?.map((o) => {
+        const idNum = Number(o.id)
+        return {
+          id: String(o.id),
+          title: o.name ?? "",
+          description: o.description ?? "",
+          items: itemsByOutfit.get(idNum) ?? [],
+          tags: [],
+          likes: likesByOutfit.get(idNum) ?? 0,
+          isLiked: likedByMe.has(idNum),
+          isSaved: false,
+          preview_image_url: o.preview_image_url ?? "",
+        }
+      }) ?? []
 
-          return {
-            id: String(wardrobeItem.id),
-            name: wardrobeItem.item_name || "Без названия",
-            image_url: wardrobeItem.image_url || "",
-            color: wardrobeItem.color || "",
-            shade: wardrobeItem.shade || "",
-            style: wardrobeItem.style || "",
-            material: wardrobeItem.material || "",
-            size_type: wardrobeItem.size_type || "",
-            has_print: wardrobeItem.has_print || "",
-            has_details: wardrobeItem.has_details || "",
-            notes: wardrobeItem.notes || "",
-            url: wardrobeItem.url || "",
-            is_basic: wardrobeItem.is_basic || false,
-            basic_item_id: wardrobeItem.basic_item_id || null,
-          }
-        })
-        .filter(Boolean)
+    // Randomize the order on each request
+    shuffleInPlace(feed)
 
-      const tags = [outfit.season, outfit.occasion].filter(Boolean)
-
-      return {
-        id: String(outfit.id),
-        title: outfit.name || "Образ без названия",
-        description: outfit.description || "Описание отсутствует",
-        items,
-        tags,
-        likes: outfit.likes || 0,
-        isLiked: false, // can be wired to user-specific likes later
-        // include DB column directly; page decides display order/fallback
-        preview_image_url: typeof outfit.preview_image_url === "string" ? outfit.preview_image_url : "",
-      }
-    })
-
-    return NextResponse.json({ outfits: transformedOutfits })
-  } catch (error) {
-    console.error("Error in inspiration API:", error)
-    return NextResponse.json(
-      {
-        error: "Internal server error",
-        details: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 },
-    )
+    return NextResponse.json({ outfits: feed, nextCursor: null }, { headers: { "Cache-Control": "no-store" } })
+  } catch (e) {
+    console.error("GET /api/outfits/inspiration error:", e)
+    return NextResponse.json({ outfits: [], nextCursor: null }, { headers: { "Cache-Control": "no-store" } })
   }
 }

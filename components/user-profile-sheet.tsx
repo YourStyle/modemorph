@@ -175,7 +175,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
     // Проверяем тип файла
     if (!file.type.startsWith("image/")) {
-      toast.error("Пожалуйста, выберите изображение")
+      toast.error("Пожалу��ста, выберите изображение")
       return
     }
 
