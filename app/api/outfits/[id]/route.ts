@@ -90,7 +90,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   try {
     const { id } = params
     const body = await request.json()
-    const { name, description, season, occasion, items } = body
+    const { name, description, season, occasion, items, preview_image_url, preview_url } = body
 
     if (!id || !name || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
@@ -120,6 +120,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         description: description || null,
         season: season || null,
         occasion: occasion || null,
+        preview_image_url: preview_image_url || null,
+        preview_url: preview_url || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
