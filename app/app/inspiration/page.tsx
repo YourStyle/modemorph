@@ -39,7 +39,6 @@ type FeedOutfit = {
   isLiked: boolean
   isSaved?: boolean
   preview_image_url?: string
-  preview_url?: string
 }
 
 type ApiResponse = {
@@ -48,6 +47,24 @@ type ApiResponse = {
 }
 
 type TabKey = "popular" | "liked"
+
+function proxify(url?: string | null) {
+  if (!url || typeof url !== "string") return ""
+  try {
+    const u = new URL(url)
+    if (u.protocol === "http:" || u.protocol === "https:") {
+      return `/api/proxy-image?url=${encodeURIComponent(url)}`
+    }
+    return url
+  } catch {
+    return url
+  }
+}
+
+function getPreviewSrc(o?: FeedOutfit | null): string {
+  const src = o?.preview_image_url ? String(o.preview_image_url) : ""
+  return proxify(src) || "/placeholder.svg"
+}
 
 // Windowing to avoid memory growth on long sessions
 const KEEP_BEHIND = 8
@@ -66,6 +83,8 @@ export default function InspirationPage() {
   const [savedOutfitIds, setSavedOutfitIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
   const [index, setIndex] = useState(0)
+  const [animFrom, setAnimFrom] = useState<FeedOutfit | null>(null)
+  const [animTo, setAnimTo] = useState<FeedOutfit | null>(null)
 
   // Hide the layout’s top menu only on this page (restore on unmount)
   useEffect(() => {
@@ -144,8 +163,7 @@ export default function InspirationPage() {
     if (index >= filtered.length - 2) {
       void loadMore()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, filtered.length, nextCursor])
+  }, [index, filtered, nextCursor])
 
   async function loadMore() {
     if (!nextCursor || fetchingMore) return
@@ -177,7 +195,6 @@ export default function InspirationPage() {
     const drop = start
     setOutfits((prev) => prev.slice(start, end))
     setIndex((i) => i - drop)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index])
 
   // Current
@@ -193,6 +210,8 @@ export default function InspirationPage() {
     (dir: Dir) => {
       const to = dir === "down" ? index + 1 : index - 1
       if (to < 0 || to >= filtered.length || anim) return
+      setAnimFrom(filtered[index])
+      setAnimTo(filtered[to])
       setAnim({ from: index, to, dir })
       setAnimPhase("start")
       requestAnimationFrame(() => {
@@ -204,7 +223,7 @@ export default function InspirationPage() {
         setAnimPhase("idle")
       }, ANIM_MS)
     },
-    [index, filtered.length, anim],
+    [index, filtered, anim],
   )
 
   const gotoPrev = useCallback(() => startTransition("up"), [startTransition])
@@ -315,15 +334,10 @@ export default function InspirationPage() {
   const visibleItems = current?.items?.slice(0, 5) ?? []
   const remaining = Math.max(0, (current?.items?.length ?? 0) - visibleItems.length)
 
-  const currentPreview =
-    current?.preview_image_url || current?.preview_url || current?.items?.[0]?.image_url || "/placeholder.svg"
+  const currentPreview = getPreviewSrc(current)
 
-  const animFrom = anim ? filtered[anim.from] : null
-  const animTo = anim ? filtered[anim.to] : null
-  const animFromPreview =
-    animFrom?.preview_image_url || animFrom?.preview_url || animFrom?.items?.[0]?.image_url || "/placeholder.svg"
-  const animToPreview =
-    animTo?.preview_image_url || animTo?.preview_url || animTo?.items?.[0]?.image_url || "/placeholder.svg"
+  const animFromPreview = getPreviewSrc(animFrom)
+  const animToPreview = getPreviewSrc(animTo)
 
   if (loading) {
     return (
@@ -619,16 +633,18 @@ function Slide({
 }
 
 function normalizeOutfits(list: any[]): FeedOutfit[] {
-  return (list || []).map((o: any) => ({
-    id: String(o.id),
-    title: o.title ?? "",
-    description: o.description ?? "",
-    items: Array.isArray(o.items) ? o.items : [],
-    tags: Array.isArray(o.tags) ? o.tags : [],
-    likes: typeof o.likes === "number" ? o.likes : 0,
-    isLiked: !!o.isLiked,
-    isSaved: !!o.isSaved,
-    preview_image_url: o.preview_image_url || o.preview_url || (o.items?.[0]?.image_url ?? ""),
-    preview_url: o.preview_url,
-  }))
+  return (list || []).map((o: any) => {
+    const preview = typeof o?.preview_image_url === "string" ? o.preview_image_url : ""
+    return {
+      id: String(o.id),
+      title: o.title ?? "",
+      description: o.description ?? "",
+      items: Array.isArray(o.items) ? o.items : [],
+      tags: Array.isArray(o.tags) ? o.tags : [],
+      likes: typeof o.likes === "number" ? o.likes : 0,
+      isLiked: !!o.isLiked,
+      isSaved: !!o.isSaved,
+      preview_image_url: proxify(preview),
+    }
+  })
 }
