@@ -1,13 +1,12 @@
 "use client"
 
 import type React from "react"
-
 import Image from "next/image"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2, Plus } from "lucide-react"
+import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type OutfitItem = {
@@ -48,7 +47,7 @@ type ApiResponse = {
 
 type TabKey = "popular" | "liked"
 
-// Tuning for memory windowing
+// Windowing config to avoid growing memory when swiping a lot
 const KEEP_BEHIND = 8
 const KEEP_AHEAD = 8
 const MAX_KEEP = KEEP_BEHIND + KEEP_AHEAD + 1
@@ -66,7 +65,7 @@ export default function InspirationPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
   const [index, setIndex] = useState(0)
 
-  // Hide the top global header from layout only while this page is mounted
+  // Hide the layout’s top menu only on this page (restored on unmount)
   useEffect(() => {
     const selectors = [
       "header",
@@ -77,19 +76,15 @@ export default function InspirationPage() {
       "[data-role='app-header']",
     ]
     const elements = document.querySelectorAll<HTMLElement>(selectors.join(","))
-    const prevDisplay: Array<{ el: HTMLElement; display: string }> = []
+    const prev: Array<{ el: HTMLElement; display: string }> = []
     elements.forEach((el) => {
-      prevDisplay.push({ el, display: el.style.display })
+      prev.push({ el, display: el.style.display })
       el.style.display = "none"
     })
-    return () => {
-      prevDisplay.forEach(({ el, display }) => {
-        el.style.display = display
-      })
-    }
+    return () => prev.forEach(({ el, display }) => (el.style.display = display))
   }, [])
 
-  // Initial load
+  // Initial fetch
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -114,7 +109,7 @@ export default function InspirationPage() {
     }
   }, [])
 
-  // Saved looks (for "liked" tab filtering as well)
+  // Saved looks
   useEffect(() => {
     ;(async () => {
       try {
@@ -126,12 +121,12 @@ export default function InspirationPage() {
         )
         setSavedOutfitIds(ids)
       } catch {
-        // ignore
+        /* ignore */
       }
     })()
   }, [])
 
-  // When switching tabs, reset to first element
+  // Reset index on tab change
   useEffect(() => {
     setIndex(0)
   }, [activeTab])
@@ -141,10 +136,9 @@ export default function InspirationPage() {
     return outfits.filter((o) => o.isLiked || savedOutfitIds.has(o.id) || o.isSaved)
   }, [activeTab, outfits, savedOutfitIds])
 
-  // Load more when close to the end
+  // Prefetch more as we approach the end
   useEffect(() => {
     if (fetchingMore || !nextCursor) return
-    // If we are within 2 items from the end, try to fetch more
     if (index >= filtered.length - 2) {
       void loadMore()
     }
@@ -172,20 +166,19 @@ export default function InspirationPage() {
     }
   }
 
-  // Windowing to avoid retaining too many objects in memory
+  // Windowing to prevent memory growth
   useEffect(() => {
     if (outfits.length <= MAX_KEEP) return
     if (index <= KEEP_BEHIND) return
     const start = Math.max(0, index - KEEP_BEHIND)
     const end = Math.min(outfits.length, index + KEEP_AHEAD + 1)
-    // Adjust index relative to the new sliced array
     const drop = start
     setOutfits((prev) => prev.slice(start, end))
     setIndex((i) => i - drop)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index])
 
-  // Current outfit
+  // Current
   const current = filtered[index]
 
   // Navigation (vertical)
@@ -196,7 +189,7 @@ export default function InspirationPage() {
     if (index < filtered.length - 1) setIndex((i) => i + 1)
   }, [index, filtered.length])
 
-  // Keyboard (up/down)
+  // Keyboard up/down
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "ArrowUp") gotoPrev()
@@ -228,7 +221,7 @@ export default function InspirationPage() {
     touchDeltaY.current = 0
   }, [gotoPrev, gotoNext])
 
-  // Actions: Save / Like
+  // Actions
   const [isSaving, setIsSaving] = useState(false)
   const [isLiking, setIsLiking] = useState(false)
 
@@ -242,7 +235,7 @@ export default function InspirationPage() {
         body: JSON.stringify({ outfitId: outfit.id }),
       })
       if (!res.ok) {
-        // Fallback to direct creation
+        // Fallback direct
         res = await fetch("/api/user-looks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -303,7 +296,7 @@ export default function InspirationPage() {
 
   if (loading) {
     return (
-      <div className="h-dvh w-full bg-black text-white grid place-items-center">
+      <div className="fixed inset-0 bg-black text-white grid place-items-center">
         <div className="flex items-center gap-3 text-neutral-300">
           <Loader2 className="h-5 w-5 animate-spin" />
           <span>Загрузка</span>
@@ -314,7 +307,7 @@ export default function InspirationPage() {
 
   if (error) {
     return (
-      <div className="h-dvh w-full bg-black text-white grid place-items-center p-4">
+      <div className="fixed inset-0 bg-black text-white grid place-items-center p-4">
         <div className="text-center">
           <div className="text-neutral-300">{error}</div>
         </div>
@@ -324,16 +317,17 @@ export default function InspirationPage() {
 
   if (!current) {
     return (
-      <div className="h-dvh w-full bg-black text-white grid place-items-center">
+      <div className="fixed inset-0 bg-black text-white grid place-items-center">
         <div className="text-neutral-400">Пока нет образов</div>
       </div>
     )
   }
 
   return (
-    <div className="h-dvh w-full bg-black text-white overflow-hidden overscroll-none">
+    // Fixed full-viewport wrapper to eliminate any bottom white stripe and avoid page scroll
+    <div className="fixed inset-0 bg-black text-white overflow-hidden overscroll-none">
       {/* Tabs */}
-      <div className="sticky top-0 z-30 bg-black/80 backdrop-blur border-b border-neutral-900">
+      <div className="absolute top-0 left-0 right-0 z-30 bg-black/80 backdrop-blur border-b border-neutral-900">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
           <div className="flex justify-center gap-8 py-3">
             <button
@@ -360,8 +354,8 @@ export default function InspirationPage() {
         </div>
       </div>
 
-      {/* Stage: one screen, centered, with side paddings on large screens */}
-      <main className="mx-auto h-[calc(100dvh-45px)] w-full max-w-[900px] px-4 lg:px-10 pt-3">
+      {/* Stage area: fits under tabs, stays within one screen */}
+      <main className="absolute left-0 right-0 bottom-0 top-[45px] mx-auto w-full max-w-[900px] px-4 lg:px-10 pt-3">
         <section
           className="relative h-full w-full rounded-2xl overflow-hidden bg-neutral-950 touch-pan-y"
           onTouchStart={onTouchStart}
@@ -378,7 +372,7 @@ export default function InspirationPage() {
             priority={false}
           />
 
-          {/* Title badge */}
+          {/* Title */}
           {current.title && (
             <div className="absolute top-3 left-3 right-3 z-20">
               <Badge variant="secondary" className="bg-white/95 text-black hover:bg-white inline-flex">
@@ -397,11 +391,7 @@ export default function InspirationPage() {
               >
                 {item.image_url ? (
                   <Image
-                    src={
-                      item.image_url ||
-                      "/placeholder.svg?height=200&width=200&query=item%20thumbnail%20for%20outfit" ||
-                      "/placeholder.svg"
-                    }
+                    src={item.image_url || "/placeholder.svg?height=200&width=200&query=item%20thumbnail"}
                     alt={item.name || "Вещь"}
                     fill
                     sizes="56px"
@@ -416,15 +406,13 @@ export default function InspirationPage() {
             {remaining > 0 && (
               <Sheet>
                 <SheetTrigger asChild>
+                  {/* Removed the plus icon; show only +N count with strong contrast */}
                   <button
                     className="w-14 h-14 rounded-xl bg-white text-black font-semibold flex items-center justify-center ring-1 ring-white/15 shadow-xl"
                     aria-label="Показать все вещи"
                     title="Показать все вещи"
                   >
-                    <div className="flex items-center gap-1">
-                      <Plus className="w-5 h-5" />
-                      <span className="text-sm">+{remaining}</span>
-                    </div>
+                    <span className="text-sm">{`+${remaining}`}</span>
                   </button>
                 </SheetTrigger>
                 <SheetContent side="bottom" className="h-[72vh] bg-neutral-950 text-white">
@@ -437,11 +425,7 @@ export default function InspirationPage() {
                         <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-neutral-800">
                           {item.image_url ? (
                             <Image
-                              src={
-                                item.image_url ||
-                                "/placeholder.svg?height=400&width=400&query=outfit%20item%20image" ||
-                                "/placeholder.svg"
-                              }
+                              src={item.image_url || "/placeholder.svg?height=400&width=400&query=outfit%20item"}
                               alt={item.name || "Вещь"}
                               fill
                               sizes="200px"
@@ -460,8 +444,8 @@ export default function InspirationPage() {
             )}
           </div>
 
-          {/* Save and Like buttons (bottom-left) */}
-          <div className="absolute bottom-3 left-3 z-20 flex items-center gap-3">
+          {/* Save at bottom-left */}
+          <div className="absolute bottom-3 left-3 z-20">
             <Button
               onClick={() => current && handleSave(current)}
               disabled={isSaving || savedOutfitIds.has(current.id)}
@@ -476,22 +460,9 @@ export default function InspirationPage() {
               )}
               {savedOutfitIds.has(current.id) || current.isSaved ? "Сохранено" : "Сохранить"}
             </Button>
-
-            <Button
-              variant="secondary"
-              onClick={() => current && handleLike(current)}
-              disabled={isLiking}
-              className={cn(
-                "h-11 px-5 rounded-full shadow-xl",
-                current.isLiked ? "bg-red-500 text-white hover:bg-red-600" : "bg-white/15 text-white hover:bg-white/25",
-              )}
-            >
-              {isLiking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Heart className="w-4 h-4 mr-2" />}
-              <span>{current.likes ?? 0}</span>
-            </Button>
           </div>
 
-          {/* Vertical navigation arrows on the right */}
+          {/* Right-side column: Up / Like / Down to avoid overlap with bottom nav */}
           <div className="absolute right-3 inset-y-0 flex flex-col items-center justify-center gap-3 z-30">
             <button
               aria-label="Предыдущий образ"
@@ -504,6 +475,21 @@ export default function InspirationPage() {
             >
               <ChevronUp className="w-6 h-6" />
             </button>
+
+            {/* Like button centered vertically on the right so bottom nav doesn't cover it */}
+            <Button
+              variant="secondary"
+              onClick={() => current && handleLike(current)}
+              disabled={isLiking}
+              className={cn(
+                "h-11 px-5 rounded-full shadow-xl",
+                current.isLiked ? "bg-red-500 text-white hover:bg-red-600" : "bg-white/15 text-white hover:bg-white/25",
+              )}
+            >
+              {isLiking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Heart className="w-4 h-4 mr-2" />}
+              <span>{current.likes ?? 0}</span>
+            </Button>
+
             <button
               aria-label="Следующий образ"
               onClick={gotoNext}
