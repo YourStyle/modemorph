@@ -7,7 +7,7 @@ import { ExternalLink, Package } from "lucide-react"
 import Image from "next/image"
 import { useState } from "react"
 
-interface WardrobeItem {
+export interface WardrobeItem {
   id: number
   item_name: string
   image_url?: string
@@ -17,8 +17,8 @@ interface WardrobeItem {
   material?: string
   url?: string
   size_type?: string
-  has_print?: string
-  has_details?: string
+  has_print?: string | boolean
+  has_details?: string | boolean
   notes?: string
   basic_item_id?: number | null
   created_at: string
@@ -26,12 +26,18 @@ interface WardrobeItem {
   basic_material_id?: number | null
   is_hidden?: boolean
   user_id?: string | null
+  clothing_type?: string
+  item_name_en?: string | null
+  description?: string | null
+  description_en?: string | null
+  is_basic?: boolean | null
 }
 
 interface ItemDetailsModalProps {
   item: WardrobeItem
   isOpen: boolean
   onClose: () => void
+  onRefresh?: () => void
 }
 
 export function ItemDetailsModal({ item, isOpen, onClose }: ItemDetailsModalProps) {
@@ -122,11 +128,20 @@ export function ItemDetailsModal({ item, isOpen, onClose }: ItemDetailsModalProp
               <div>
                 <h3 className="text-lg font-semibold mb-3">Характеристики</h3>
                 <div className="flex flex-wrap gap-2">
-                  {item.has_print && item.has_print !== "нет" && (
-                    <Badge variant="secondary">Принт: {item.has_print}</Badge>
+                  {(item.has_print === true ||
+                    item.has_print === "true" ||
+                    (typeof item.has_print === "string" && item.has_print !== "нет")) && (
+                    <Badge variant="secondary">
+                      Принт: {typeof item.has_print === "boolean" ? (item.has_print ? "да" : "нет") : item.has_print}
+                    </Badge>
                   )}
-                  {item.has_details && item.has_details !== "нет" && (
-                    <Badge variant="secondary">Детали: {item.has_details}</Badge>
+                  {(item.has_details === true ||
+                    item.has_details === "true" ||
+                    (typeof item.has_details === "string" && item.has_details !== "нет")) && (
+                    <Badge variant="secondary">
+                      Детали:{" "}
+                      {typeof item.has_details === "boolean" ? (item.has_details ? "да" : "нет") : item.has_details}
+                    </Badge>
                   )}
                 </div>
               </div>

@@ -19,15 +19,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       return NextResponse.json({ error: "Invalid item ID" }, { status: 400 })
     }
 
-    console.log("Attempting to delete item with ID:", itemId)
-
-    // Сначала проверим, что запись существует
-    const { data: checkData, error: checkError } = await supabase
-      .from("wardrobe_items")
-      .select("*")
-      .eq("id", itemId)
-
-    console.log("Check query result:", { checkData, checkError })
+    // Check existence
+    const { data: checkData, error: checkError } = await supabase.from("wardrobe_items").select("*").eq("id", itemId)
 
     if (checkError) {
       console.error("Error checking item existence:", checkError)
@@ -35,32 +28,20 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     if (!checkData || checkData.length === 0) {
-      console.log("Item not found in database")
       return NextResponse.json({ error: "Item not found in database" }, { status: 404 })
     }
 
-    console.log("Found item to delete:", checkData[0])
-
-    // Теперь удаляем
     const { data: deleteData, error: deleteError } = await supabase
       .from("wardrobe_items")
       .delete()
       .eq("id", itemId)
       .select()
 
-    console.log("Delete operation result:", { deleteData, deleteError })
-
     if (deleteError) {
       console.error("Error deleting wardrobe item:", deleteError)
       return NextResponse.json({ error: `Database delete error: ${deleteError.message}` }, { status: 500 })
     }
 
-    if (!deleteData || deleteData.length === 0) {
-      console.log("No rows were deleted")
-      return NextResponse.json({ error: "Failed to delete - no rows affected" }, { status: 500 })
-    }
-
-    console.log("Successfully deleted item:", deleteData)
     return NextResponse.json({ success: true, deleted: deleteData })
   } catch (error) {
     console.error("Error in DELETE /api/wardrobe/[id]:", error)
@@ -68,6 +49,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   }
 }
 
+// Toggle visibility only
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createClient()
@@ -93,15 +75,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       return NextResponse.json({ error: "Invalid is_hidden value" }, { status: 400 })
     }
 
-    console.log("Attempting to update visibility for item:", itemId, "to:", is_hidden)
-
-    // Сначала проверим, что запись существует
-    const { data: checkData, error: checkError } = await supabase
-      .from("wardrobe_items")
-      .select("*")
-      .eq("id", itemId)
-
-    console.log("Check query result for PATCH:", { checkData, checkError })
+    const { data: checkData, error: checkError } = await supabase.from("wardrobe_items").select("*").eq("id", itemId)
 
     if (checkError) {
       console.error("Error checking item existence:", checkError)
@@ -109,18 +83,14 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 
     if (!checkData || checkData.length === 0) {
-      console.log("Item not found in database for PATCH")
       return NextResponse.json({ error: "Item not found in database" }, { status: 404 })
     }
 
-    // Обновляем видимость вещи
     const { data: updateData, error: updateError } = await supabase
       .from("wardrobe_items")
       .update({ is_hidden })
       .eq("id", itemId)
       .select()
-
-    console.log("Update operation result:", { updateData, updateError })
 
     if (updateError) {
       console.error("Error updating wardrobe item visibility:", updateError)
@@ -128,14 +98,84 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     }
 
     if (!updateData || updateData.length === 0) {
-      console.log("No rows were updated - item not found")
       return NextResponse.json({ error: "Item not found" }, { status: 404 })
     }
 
-    console.log("Successfully updated item:", updateData)
     return NextResponse.json({ success: true, updated: updateData })
   } catch (error) {
     console.error("Error in PATCH /api/wardrobe/[id]:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+// Full update for admin edit page
+export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const supabase = createClient()
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    // Check admin
+    const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
+    if (!profile?.is_admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+
+    const itemId = Number.parseInt(params.id)
+    if (isNaN(itemId)) return NextResponse.json({ error: "Invalid item ID" }, { status: 400 })
+
+    const body = await request.json()
+
+    const normalizeBool = (v: unknown): boolean | null => {
+      if (v === null || typeof v === "undefined") return null
+      if (typeof v === "boolean") return v
+      if (typeof v === "string") {
+        const s = v.trim().toLowerCase()
+        if (["y", "yes", "true", "1", "да"].includes(s)) return true
+        return false
+      }
+      if (typeof v === "number") return v === 1
+      return null
+    }
+
+    const updateData: Record<string, unknown> = {
+      item_name: body.item_name ?? undefined,
+      item_name_en: body.item_name_en ?? undefined,
+      description: body.description ?? undefined,
+      description_en: body.description_en ?? undefined,
+      size_type: body.size_type ?? undefined,
+      material: body.material ?? undefined,
+      style: body.style ?? undefined,
+      color: body.color ?? undefined,
+      shade: body.shade ?? undefined,
+      url: body.url ?? undefined,
+      notes: body.notes ?? undefined,
+      image_url: body.image_url ?? undefined,
+      clothing_type: body.clothing_type ?? undefined,
+      is_basic: typeof body.is_basic === "boolean" ? body.is_basic : undefined,
+    }
+
+    const hp = normalizeBool(body.has_print)
+    if (hp !== null) updateData.has_print = hp
+    const hd = normalizeBool(body.has_details)
+    if (hd !== null) updateData.has_details = hd
+
+    // Remove undefined keys
+    Object.keys(updateData).forEach((k) => updateData[k] === undefined && delete updateData[k])
+
+    const { data, error } = await supabase.from("wardrobe_items").update(updateData).eq("id", itemId).select().single()
+
+    if (error) {
+      console.error("Error updating wardrobe item:", error)
+      return NextResponse.json({ error: "Failed to update item" }, { status: 500 })
+    }
+
+    return NextResponse.json({ item: data })
+  } catch (error) {
+    console.error("Error in PUT /api/wardrobe/[id]:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

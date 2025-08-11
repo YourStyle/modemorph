@@ -1,6 +1,17 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+const normalizeBool = (v: unknown): boolean => {
+  if (typeof v === "boolean") return v
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase()
+    if (["y", "yes", "true", "1", "да"].includes(s)) return true
+    return false
+  }
+  if (typeof v === "number") return v === 1
+  return false
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
@@ -47,27 +58,27 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    console.log("Received item data:", body)
 
-    // Правильно маппим данные на колонки таблицы wardrobe_user_items
     const itemData = {
       user_id: user.id,
-      item_name: body.item_name || body.name || "Без названия", // Исправлен порядок проверки
+      item_name: body.item_name || body.name || "Без названия",
+      item_name_en: body.item_name_en ?? null,
+      description: body.description ?? null,
+      description_en: body.description_en ?? null,
       material: body.material || "",
       color: body.color || "",
       style: body.style || "",
-      has_print: body.has_print || body.print || "нет",
+      has_print: normalizeBool(body.has_print),
+      has_details: normalizeBool(body.has_details),
       image_url: body.image_url || null,
       basic_item_id: body.basic_item_id ? Number.parseInt(body.basic_item_id) : null,
       is_hidden: false,
       size_type: body.size_type || "",
       shade: body.shade || "",
-      has_details: body.has_details || "нет",
       url: body.url || "",
       notes: body.notes || "",
+      clothing_type: body.clothing_type ?? null,
     }
-
-    console.log("Saving item data:", itemData)
 
     const { data, error } = await supabase.from("wardrobe_user_items").insert([itemData]).select().single()
 

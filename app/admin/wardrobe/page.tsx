@@ -15,7 +15,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 
-import { WardrobeFilters } from "@/components/wardrobe-filters"
 import { WardrobeItemCard } from "@/components/wardrobe-item-card"
 import { useSelectedItems } from "@/contexts/selected-items-context"
 import { useToast } from "@/hooks/use-toast"
@@ -27,7 +26,14 @@ export default function WardrobePage() {
   const [items, setItems] = useState<WardrobeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+
+  const [search, setSearch] = useState("")
+  const [filterClothingType, setFilterClothingType] = useState<string>("")
+  const [filterColor, setFilterColor] = useState<string>("")
+  const [filterMaterial, setFilterMaterial] = useState<string>("")
+  const [filterPrint, setFilterPrint] = useState<"any" | "yes" | "no">("any")
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest" | "name">("newest")
+
   const [isUpdatingAll, setIsUpdatingAll] = useState(false)
 
   const {
@@ -95,13 +101,12 @@ export default function WardrobePage() {
     }
   }
 
-  const fetchItems = useCallback(async (filters: { search: string; types: string[] }) => {
+  const fetchItems = useCallback(async (filters: { search: string }) => {
     setLoading(true)
     setError(null)
     try {
       const params = new URLSearchParams()
       if (filters.search) params.append("search", filters.search)
-      if (filters.types.length > 0) params.append("types", filters.types.join(","))
       const response = await fetch(`/api/wardrobe?${params.toString()}`)
       if (!response.ok) throw new Error("Failed to fetch wardrobe items")
       const data = await response.json()
@@ -115,19 +120,11 @@ export default function WardrobePage() {
   }, [])
 
   useEffect(() => {
-    void fetchItems({ search: "", types: [] })
+    void fetchItems({ search: "" })
   }, [fetchItems])
 
-  const handleFilterChange = useCallback(
-    (filters: { search: string; types: string[] }) => {
-      setSelectedTypes(filters.types)
-      void fetchItems(filters)
-    },
-    [fetchItems],
-  )
-
   const handleRetry = () => {
-    void fetchItems({ search: "", types: selectedTypes })
+    void fetchItems({ search })
   }
 
   const handleHideAll = async () => {
@@ -177,7 +174,7 @@ export default function WardrobePage() {
   }
 
   const handleRefresh = () => {
-    void fetchItems({ search: "", types: selectedTypes })
+    void fetchItems({ search })
   }
 
   const handleItemSelect = (item: WardrobeItem) => {
@@ -264,7 +261,7 @@ export default function WardrobePage() {
       setEditingOutfitId(null)
       setIsCreatingOutfit(false)
 
-      // Clear only the query param; same path to avoid page switch perception
+      // Clear only the query param; same path to avoid page switch:
       const params = new URLSearchParams(window.location.search)
       params.delete("edit")
       // This replace updates URL; Next.js will re-render but not change page
@@ -295,6 +292,58 @@ export default function WardrobePage() {
 
   const hiddenCount = items.filter((i) => i.is_hidden).length
   const visibleCount = items.length - hiddenCount
+
+  const itemHasPrint = (val: any): boolean => {
+    if (typeof val === "boolean") return val
+    if (val == null) return false
+    const s = String(val).trim().toLowerCase()
+    return s === "y" || s === "yes" || s === "true" || s === "да" || s === "есть" || s === "1"
+  }
+
+  const filteredAndSortedItems = useMemo(() => {
+    let arr = [...items]
+
+    // Client-side filtering
+    const q = search.trim().toLowerCase()
+    if (q) {
+      arr = arr.filter((it) => {
+        const name = (it.item_name || "").toLowerCase()
+        const color = (it.color || "").toLowerCase()
+        const material = (it.material || "").toLowerCase()
+        const style = (it.style || "").toLowerCase()
+        return name.includes(q) || color.includes(q) || material.includes(q) || style.includes(q)
+      })
+    }
+
+    if (filterClothingType) {
+      arr = arr.filter((it: any) => (it.clothing_type || "").toLowerCase() === filterClothingType.toLowerCase())
+    }
+    if (filterColor.trim()) {
+      const c = filterColor.trim().toLowerCase()
+      arr = arr.filter((it: any) => (it.color || "").toLowerCase().includes(c))
+    }
+    if (filterMaterial.trim()) {
+      const m = filterMaterial.trim().toLowerCase()
+      arr = arr.filter((it: any) => (it.material || "").toLowerCase().includes(m))
+    }
+    if (filterPrint !== "any") {
+      const want = filterPrint === "yes"
+      arr = arr.filter((it: any) => itemHasPrint(it.has_print) === want)
+    }
+
+    // Sorting
+    arr.sort((a: any, b: any) => {
+      if (sortOrder === "name") {
+        return (a.item_name || "").localeCompare(b.item_name || "", "ru")
+      }
+      // Prefer created_at; fallback to id
+      const aT = a.created_at ? new Date(a.created_at).getTime() : a.id || 0
+      const bT = b.created_at ? new Date(b.created_at).getTime() : b.id || 0
+      return sortOrder === "newest" ? bT - aT : aT - bT
+    })
+
+    return arr
+  }, [items, search, filterClothingType, filterColor, filterMaterial, filterPrint, sortOrder])
 
   return (
     <div className="min-h-screen bg-gray-50 pb-40">
@@ -369,8 +418,105 @@ export default function WardrobePage() {
           </div>
 
           {/* Filters */}
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-            <WardrobeFilters onFilterChange={handleFilterChange} selectedTypes={selectedTypes} />
+          <div className="bg-white rounded-lg shadow-sm p-4 md:p-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 md:gap-4">
+              <div className="md:col-span-2">
+                <Label htmlFor="search">Поиск</Label>
+                <Input
+                  id="search"
+                  placeholder="Название, материал, стиль, цвет"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="clothing_type">Тип</Label>
+                <select
+                  id="clothing_type"
+                  className="w-full h-10 border rounded-md px-3 bg-white"
+                  value={filterClothingType}
+                  onChange={(e) => setFilterClothingType(e.target.value)}
+                >
+                  <option value="">Все</option>
+                  <option value="верхняя">верхняя</option>
+                  <option value="нижняя">нижняя</option>
+                  <option value="платье">платье</option>
+                  <option value="комбинезон">комбинезон</option>
+                  <option value="верхняя одежда">верхняя одежда</option>
+                  <option value="обувь">обувь</option>
+                  <option value="аксессуар">аксессуар</option>
+                  <option value="часы">часы</option>
+                  <option value="головной убор">головной убор</option>
+                  <option value="спорт">спорт</option>
+                </select>
+              </div>
+
+              <div>
+                <Label htmlFor="color">Цвет</Label>
+                <Input
+                  id="color"
+                  placeholder="например: белый"
+                  value={filterColor}
+                  onChange={(e) => setFilterColor(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="material">Материал</Label>
+                <Input
+                  id="material"
+                  placeholder="например: хлопок"
+                  value={filterMaterial}
+                  onChange={(e) => setFilterMaterial(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="print">Принт</Label>
+                <select
+                  id="print"
+                  className="w-full h-10 border rounded-md px-3 bg-white"
+                  value={filterPrint}
+                  onChange={(e) => setFilterPrint(e.target.value as any)}
+                >
+                  <option value="any">любой</option>
+                  <option value="yes">есть</option>
+                  <option value="no">нет</option>
+                </select>
+              </div>
+
+              <div>
+                <Label htmlFor="sort">Сортировать</Label>
+                <select
+                  id="sort"
+                  className="w-full h-10 border rounded-md px-3 bg-white"
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value as any)}
+                >
+                  <option value="newest">новизне (новые сначала)</option>
+                  <option value="oldest">старые сначала</option>
+                  <option value="name">по названию</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-2 flex items-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearch("")
+                    setFilterClothingType("")
+                    setFilterColor("")
+                    setFilterMaterial("")
+                    setFilterPrint("any")
+                    setSortOrder("newest")
+                  }}
+                >
+                  Сбросить
+                </Button>
+                <Button onClick={() => void fetchItems({ search })}>Обновить</Button>
+              </div>
+            </div>
           </div>
 
           {/* Results */}
@@ -399,12 +545,6 @@ export default function WardrobePage() {
                   <div className="flex items-center justify-between">
                     <h2 className="text-xl font-semibold text-gray-900">
                       Найдено: {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
-                      {selectedTypes.length > 0 && (
-                        <span className="text-sm text-gray-500 ml-2">
-                          (фильтр: {selectedTypes.length}{" "}
-                          {selectedTypes.length === 1 ? "тип" : selectedTypes.length < 5 ? "типа" : "типов"})
-                        </span>
-                      )}
                     </h2>
                     <div className="flex gap-2">
                       {!isCreatingOutfit && (
@@ -462,7 +602,7 @@ export default function WardrobePage() {
                 {/* Grid */}
                 <div className="p-6 pt-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {items.map((item) =>
+                    {filteredAndSortedItems.map((item) =>
                       isCreatingOutfit ? (
                         <SelectableItemCard
                           key={item.id}

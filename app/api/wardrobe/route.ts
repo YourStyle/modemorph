@@ -5,7 +5,6 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get("search") || ""
-    const types = searchParams.get("types")?.split(",").filter(Boolean) || []
 
     const supabase = createClient()
     const {
@@ -17,35 +16,28 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Проверяем, является ли пользователь админом
     const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
-
     const isAdmin = profile?.is_admin || false
 
-    let query = supabase.from("wardrobe_items").select(`
-        *,
-        basic_wardrobe_items (
-          id,
-          name_ru,
-          name_en,
-          description,
-          image_url
-        )
-      `)
+    let query = supabase.from("wardrobe_items").select(
+      `
+      *,
+      basic_wardrobe_items (
+        id,
+        name_ru,
+        name_en,
+        description,
+        image_url
+      )
+    `,
+    )
 
-    // Для обычных пользователей показываем только видимые элементы
     if (!isAdmin) {
       query = query.eq("is_hidden", false)
     }
 
-    // Поиск
     if (search) {
       query = query.or(`item_name.ilike.%${search}%,color.ilike.%${search}%,material.ilike.%${search}%`)
-    }
-
-    // Фильтр по типам (если нужен)
-    if (types.length > 0) {
-      // Здесь можно добавить фильтрацию по типам через basic_wardrobe_items
     }
 
     query = query.order("item_name")
@@ -77,44 +69,42 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const {
-      item_name,
-      size_type,
-      material,
-      style,
-      has_print,
-      color,
-      shade,
-      has_details,
-      url,
-      image_url,
-      is_basic,
-      basic_item_id,
-      basic_material_id,
-      notes,
-    } = body
 
-    const { data, error } = await supabase
-      .from("wardrobe_items")
-      .insert({
-        item_name,
-        size_type: size_type || "",
-        material: material || "",
-        style: style || "",
-        has_print: has_print || "N",
-        color: color || "",
-        shade: shade || "",
-        has_details: has_details || "N",
-        url: url || "",
-        image_url: image_url || null,
-        is_basic: is_basic || false,
-        basic_item_id: basic_item_id || null,
-        basic_material_id: basic_material_id || null,
-        notes: notes || null,
-        is_hidden: false, // По умолчанию новые элементы видимы
-      })
-      .select()
-      .single()
+    // Normalize booleans and optional fields
+    const normalizeBool = (v: unknown): boolean => {
+      if (typeof v === "boolean") return v
+      if (typeof v === "string") {
+        const s = v.trim().toLowerCase()
+        if (["y", "yes", "true", "1", "да"].includes(s)) return true
+        return false
+      }
+      if (typeof v === "number") return v === 1
+      return false
+    }
+
+    const dataToInsert = {
+      item_name: body.item_name,
+      item_name_en: body.item_name_en ?? null,
+      description: body.description ?? null,
+      description_en: body.description_en ?? null,
+      size_type: body.size_type ?? "",
+      material: body.material ?? "",
+      style: body.style ?? "",
+      has_print: normalizeBool(body.has_print),
+      color: body.color ?? "",
+      shade: body.shade ?? "",
+      has_details: normalizeBool(body.has_details),
+      url: body.url ?? "",
+      image_url: body.image_url ?? null,
+      is_basic: body.is_basic ?? false,
+      basic_item_id: body.basic_item_id ?? null,
+      basic_material_id: body.basic_material_id ?? null,
+      notes: body.notes ?? null,
+      clothing_type: body.clothing_type ?? null,
+      is_hidden: false,
+    }
+
+    const { data, error } = await supabase.from("wardrobe_items").insert(dataToInsert).select().single()
 
     if (error) {
       console.error("Error adding wardrobe item:", error)
