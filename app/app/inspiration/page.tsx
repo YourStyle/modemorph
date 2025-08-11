@@ -6,9 +6,9 @@ import Image from "next/image"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { CommonSheet } from "@/components/common-sheet"
 import { BottomNavigation } from "@/components/bottom-navigation"
 
 type OutfitItem = {
@@ -48,22 +48,12 @@ type ApiResponse = {
 
 type TabKey = "popular" | "liked"
 
-function proxify(url?: string | null) {
-  if (!url || typeof url !== "string") return ""
-  try {
-    const u = new URL(url)
-    if (u.protocol === "http:" || u.protocol === "https:") {
-      return `/api/proxy-image?url=${encodeURIComponent(url)}`
-    }
-    return url
-  } catch {
-    return url
-  }
-}
-
+// Prefer preview_image_url; fallback to first item's image; then placeholder
 function getPreviewSrc(o?: FeedOutfit | null): string {
-  const src = o?.preview_image_url ? String(o.preview_image_url) : ""
-  return proxify(src) || "/placeholder.svg"
+  const direct = (o?.preview_image_url || "").trim()
+  if (direct) return direct
+  const firstItem = Array.isArray(o?.items) ? (o?.items?.[0]?.image_url || "").trim() : ""
+  return firstItem || "/placeholder.svg?height=1200&width=900"
 }
 
 // Windowing to avoid memory growth on long sessions
@@ -83,10 +73,8 @@ export default function InspirationPage() {
   const [savedOutfitIds, setSavedOutfitIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
   const [index, setIndex] = useState(0)
-  const [animFrom, setAnimFrom] = useState<FeedOutfit | null>(null)
-  const [animTo, setAnimTo] = useState<FeedOutfit | null>(null)
 
-  // Hide the layout’s top menu only on this page (restore on unmount)
+  // Hide the global top nav only on this page
   useEffect(() => {
     const selectors = [
       "header",
@@ -130,23 +118,6 @@ export default function InspirationPage() {
     }
   }, [])
 
-  // Saved looks
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const res = await fetch("/api/user-looks")
-        if (!res.ok) return
-        const list = await res.json()
-        const ids = new Set(
-          (Array.isArray(list) ? list : []).map((look: any) => look.original_outfit_id).filter(Boolean),
-        )
-        setSavedOutfitIds(ids)
-      } catch {
-        /* ignore */
-      }
-    })()
-  }, [])
-
   // Reset on tab change
   useEffect(() => {
     setIndex(0)
@@ -154,16 +125,15 @@ export default function InspirationPage() {
 
   const filtered = useMemo(() => {
     if (activeTab === "popular") return outfits
+    // Keep simple: liked tab shows items marked isLiked or saved
     return outfits.filter((o) => o.isLiked || savedOutfitIds.has(o.id) || o.isSaved)
   }, [activeTab, outfits, savedOutfitIds])
 
   // Prefetch more as we approach the end
   useEffect(() => {
     if (fetchingMore || !nextCursor) return
-    if (index >= filtered.length - 2) {
-      void loadMore()
-    }
-  }, [index, filtered, nextCursor])
+    if (index >= filtered.length - 2) void loadMore()
+  }, [index, filtered.length, nextCursor, fetchingMore])
 
   async function loadMore() {
     if (!nextCursor || fetchingMore) return
@@ -195,7 +165,7 @@ export default function InspirationPage() {
     const drop = start
     setOutfits((prev) => prev.slice(start, end))
     setIndex((i) => i - drop)
-  }, [index])
+  }, [index, outfits.length])
 
   // Current
   const current = filtered[index]
@@ -210,8 +180,6 @@ export default function InspirationPage() {
     (dir: Dir) => {
       const to = dir === "down" ? index + 1 : index - 1
       if (to < 0 || to >= filtered.length || anim) return
-      setAnimFrom(filtered[index])
-      setAnimTo(filtered[to])
       setAnim({ from: index, to, dir })
       setAnimPhase("start")
       requestAnimationFrame(() => {
@@ -223,7 +191,7 @@ export default function InspirationPage() {
         setAnimPhase("idle")
       }, ANIM_MS)
     },
-    [index, filtered, anim],
+    [index, filtered.length, anim],
   )
 
   const gotoPrev = useCallback(() => startTransition("up"), [startTransition])
@@ -252,11 +220,8 @@ export default function InspirationPage() {
   }, [])
   const onTouchEnd = useCallback(() => {
     const threshold = 50
-    if (touchDeltaY.current > threshold) {
-      gotoPrev()
-    } else if (touchDeltaY.current < -threshold) {
-      gotoNext()
-    }
+    if (touchDeltaY.current > threshold) gotoPrev()
+    else if (touchDeltaY.current < -threshold) gotoNext()
     touchStartY.current = null
     touchDeltaY.current = 0
   }, [gotoPrev, gotoNext])
@@ -269,26 +234,13 @@ export default function InspirationPage() {
     if (!outfit || isSaving || savedOutfitIds.has(outfit.id)) return
     setIsSaving(true)
     try {
-      let res = await fetch("/api/outfits/save-to-looks", {
+      const res = await fetch("/api/outfits/save-to-looks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ outfitId: outfit.id }),
       })
-      if (!res.ok) {
-        // Fallback direct
-        res = await fetch("/api/user-looks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: outfit.title,
-            original_outfit_id: outfit.id,
-            items: outfit.items,
-          }),
-        })
-        if (!res.ok) throw new Error("Failed to save outfit")
-      }
+      if (!res.ok) throw new Error("Failed to save outfit")
       setSavedOutfitIds((prev) => new Set([...prev, outfit.id]))
-      setOutfits((prev) => prev.map((o) => (o.id === outfit.id ? { ...o, isSaved: true } : o)))
     } catch (e) {
       console.error(e)
     } finally {
@@ -306,7 +258,6 @@ export default function InspirationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ outfitId: outfit.id, action }),
       })
-
       let newLikes = outfit.likes
       let newIsLiked = !outfit.isLiked
       if (res.ok) {
@@ -318,10 +269,7 @@ export default function InspirationPage() {
           newLikes = action === "like" ? (outfit.likes ?? 0) + 1 : Math.max(0, (outfit.likes ?? 0) - 1)
           newIsLiked = !outfit.isLiked
         }
-      } else {
-        throw new Error("Failed to like")
-      }
-
+      } else throw new Error("Failed to like")
       setOutfits((prev) => prev.map((o) => (o.id === outfit.id ? { ...o, isLiked: newIsLiked, likes: newLikes } : o)))
     } catch (e) {
       console.error(e)
@@ -336,8 +284,10 @@ export default function InspirationPage() {
 
   const currentPreview = getPreviewSrc(current)
 
-  const animFromPreview = getPreviewSrc(animFrom)
-  const animToPreview = getPreviewSrc(animTo)
+  const animFrom = anim ? filtered[anim.from] : null
+  const animTo = anim ? filtered[anim.to] : null
+  const animFromPreview = getPreviewSrc(animFrom || undefined)
+  const animToPreview = getPreviewSrc(animTo || undefined)
 
   if (loading) {
     return (
@@ -369,13 +319,13 @@ export default function InspirationPage() {
   }
 
   return (
-    // Full-viewport wrapper; ensure black under safe-area as well
+    // Full-viewport wrapper; ensure tabs are always above via high z-index
     <div
       className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       {/* Tabs */}
-      <div className="absolute top-0 left-0 right-0 z-30 bg-black/80 backdrop-blur border-b border-neutral-900">
+      <div className="absolute top-0 left-0 right-0 z-[3000] bg-black/80 backdrop-blur border-b border-neutral-900">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
           <div className="flex justify-center gap-8 py-3">
             <button
@@ -403,8 +353,8 @@ export default function InspirationPage() {
       </div>
 
       {/* Stage area: one screen below tabs */}
-      <main className="absolute left-0 right-0 bottom-0 top-[45px] mx-auto w-full max-w-[900px] px-4 lg:px-10 pt-3">
-        <section className="relative h-full w-full rounded-2xl overflow-hidden bg-neutral-950 touch-pan-y">
+      <main className="absolute left-0 right-0 bottom-0 top-[45px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
+        <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 touch-pan-y">
           {/* Static (no animation) render when not animating */}
           {!anim && (
             <Slide
@@ -413,6 +363,7 @@ export default function InspirationPage() {
               previewSrc={currentPreview}
               items={visibleItems}
               remaining={remaining}
+              onOpenItems={() => {}}
             />
           )}
 
@@ -450,41 +401,7 @@ export default function InspirationPage() {
             </>
           )}
 
-          {/* Save at bottom-left */}
-          <div className="absolute bottom-3 left-3 z-[2000] pointer-events-auto">
-            <Button
-              onClick={() => current && handleSave(current)}
-              disabled={isSaving || savedOutfitIds.has(current.id)}
-              className="bg-white text-black hover:bg-neutral-200 h-11 px-5 rounded-full shadow-xl"
-            >
-              {isSaving ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              ) : savedOutfitIds.has(current.id) || current.isSaved ? (
-                <BookmarkCheck className="w-4 h-4 mr-2" />
-              ) : (
-                <Bookmark className="w-4 h-4 mr-2" />
-              )}
-              {savedOutfitIds.has(current.id) || current.isSaved ? "Сохранено" : "Сохранить"}
-            </Button>
-          </div>
-
-          {/* Like at bottom-right */}
-          <div className="absolute bottom-3 right-3 z-[2000] pointer-events-auto">
-            <Button
-              variant="secondary"
-              onClick={() => current && handleLike(current)}
-              disabled={isLiking}
-              className={cn(
-                "h-11 px-5 rounded-full shadow-xl",
-                current.isLiked ? "bg-red-500 text-white hover:bg-red-600" : "bg-white/15 text-white hover:bg-white/25",
-              )}
-            >
-              {isLiking ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Heart className="w-4 h-4 mr-2" />}
-              <span>{current.likes ?? 0}</span>
-            </Button>
-          </div>
-
-          {/* Vertical navigation arrows on the right (centered) */}
+          {/* Right-side arrows */}
           <div className="absolute right-3 inset-y-0 flex flex-col items-center justify-center gap-3 z-[150] pointer-events-none">
             <button
               aria-label="Предыдущий образ"
@@ -511,11 +428,83 @@ export default function InspirationPage() {
             >
               <ChevronDown className="w-6 h-6" />
             </button>
+
+            {/* Mobile: icon-only Save and Like directly under arrows */}
+            <div className="mt-2 flex flex-col gap-2 pointer-events-auto sm:hidden">
+              <button
+                onClick={() => current && handleSave(current)}
+                disabled={isSaving || savedOutfitIds.has(current.id)}
+                aria-label={savedOutfitIds.has(current.id) || current.isSaved ? "Сохранено" : "Сохранить"}
+                className={cn(
+                  "w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-xl",
+                  (isSaving || savedOutfitIds.has(current.id) || current.isSaved) && "opacity-80",
+                )}
+              >
+                {isSaving ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : savedOutfitIds.has(current.id) || current.isSaved ? (
+                  <BookmarkCheck className="w-5 h-5" />
+                ) : (
+                  <Bookmark className="w-5 h-5" />
+                )}
+              </button>
+
+              <button
+                onClick={() => current && handleLike(current)}
+                disabled={isLiking}
+                aria-label="Лайк"
+                className={cn(
+                  "w-12 h-12 rounded-full flex items-center justify-center shadow-xl",
+                  current.isLiked
+                    ? "bg-red-500 text-white"
+                    : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30",
+                )}
+              >
+                {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Desktop/tablet: icon-only buttons in corners */}
+          <div className="hidden sm:block">
+            <div className="absolute bottom-3 left-3 z-[2000] pointer-events-auto">
+              <Button
+                onClick={() => current && handleSave(current)}
+                disabled={isSaving || savedOutfitIds.has(current.id)}
+                className="bg-white text-black hover:bg-neutral-200 h-11 w-11 p-0 rounded-full shadow-xl"
+                aria-label={savedOutfitIds.has(current.id) || current.isSaved ? "Сохранено" : "Сохранить"}
+              >
+                {isSaving ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : savedOutfitIds.has(current.id) || current.isSaved ? (
+                  <BookmarkCheck className="w-5 h-5" />
+                ) : (
+                  <Bookmark className="w-5 h-5" />
+                )}
+              </Button>
+            </div>
+
+            <div className="absolute bottom-3 right-3 z-[2000] pointer-events-auto">
+              <Button
+                variant="secondary"
+                onClick={() => current && handleLike(current)}
+                disabled={isLiking}
+                className={cn(
+                  "h-11 w-11 p-0 rounded-full shadow-xl",
+                  current.isLiked
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "bg-white/15 text-white hover:bg-white/25",
+                )}
+                aria-label="Лайк"
+              >
+                {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
+              </Button>
+            </div>
           </div>
         </section>
 
         {/* Position dots */}
-        <div className="mt-3 flex justify-center gap-2">
+        <div className="mt-3 flex justify-center gap-2 px-4">
           {filtered.map((_, i) => (
             <div
               key={i}
@@ -545,18 +534,19 @@ function Slide({
   items: OutfitItem[]
   remaining: number
   className?: string
+  onOpenItems?: () => void
 }) {
   const [open, setOpen] = useState(false)
 
   return (
     <div className={cn("relative h-full w-full", className)}>
-      {/* Main preview */}
+      {/* Main preview: cover on phones, contain from sm and up */}
       <Image
-        src={previewSrc || "/placeholder.svg"}
+        src={previewSrc || "/placeholder.svg?height=1200&width=900&query=outfit%20preview"}
         alt={title || "Образ"}
         fill
-        sizes="(max-width: 1024px) 100vw, 900px"
-        className="object-contain bg-neutral-950"
+        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 100vw, 900px"
+        className="object-cover sm:object-contain bg-neutral-950"
         priority={false}
       />
 
@@ -602,29 +592,34 @@ function Slide({
               <span className="text-sm">{`+${remaining}`}</span>
             </button>
 
-            {/* Use the common sheet for consistency */}
-            <CommonSheet open={open} onOpenChange={setOpen} title="Все вещи из образа" side="bottom">
-              <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                {items.map((item) => (
-                  <div key={item.id} className="space-y-2">
-                    <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-neutral-800">
-                      {item.image_url ? (
-                        <Image
-                          src={item.image_url || "/placeholder.svg?height=400&width=400&query=outfit%20item"}
-                          alt={item.name || "Вещь"}
-                          fill
-                          sizes="200px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-neutral-700" />
-                      )}
+            {/* Use shadcn Sheet to ensure it renders in a Portal above overflow-hidden */}
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetContent side="bottom" className="h-[70vh] bg-neutral-950 text-white">
+                <SheetHeader>
+                  <SheetTitle>Все вещи из образа</SheetTitle>
+                </SheetHeader>
+                <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                  {items.map((item) => (
+                    <div key={item.id} className="space-y-2">
+                      <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-neutral-800">
+                        {item.image_url ? (
+                          <Image
+                            src={item.image_url || "/placeholder.svg?height=400&width=400&query=outfit%20item"}
+                            alt={item.name || "Вещь"}
+                            fill
+                            sizes="200px"
+                            className="object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-neutral-700" />
+                        )}
+                      </div>
+                      <div className="text-xs text-neutral-300 line-clamp-2">{item.name}</div>
                     </div>
-                    <div className="text-xs text-neutral-300 line-clamp-2">{item.name}</div>
-                  </div>
-                ))}
-              </div>
-            </CommonSheet>
+                  ))}
+                </div>
+              </SheetContent>
+            </Sheet>
           </>
         )}
       </div>
@@ -633,18 +628,15 @@ function Slide({
 }
 
 function normalizeOutfits(list: any[]): FeedOutfit[] {
-  return (list || []).map((o: any) => {
-    const preview = typeof o?.preview_image_url === "string" ? o.preview_image_url : ""
-    return {
-      id: String(o.id),
-      title: o.title ?? "",
-      description: o.description ?? "",
-      items: Array.isArray(o.items) ? o.items : [],
-      tags: Array.isArray(o.tags) ? o.tags : [],
-      likes: typeof o.likes === "number" ? o.likes : 0,
-      isLiked: !!o.isLiked,
-      isSaved: !!o.isSaved,
-      preview_image_url: proxify(preview),
-    }
-  })
+  return (list || []).map((o: any) => ({
+    id: String(o.id),
+    title: o.title ?? "",
+    description: o.description ?? "",
+    items: Array.isArray(o.items) ? o.items : [],
+    tags: Array.isArray(o.tags) ? o.tags : [],
+    likes: typeof o.likes === "number" ? o.likes : 0,
+    isLiked: !!o.isLiked,
+    isSaved: !!o.isSaved,
+    preview_image_url: typeof o?.preview_image_url === "string" ? o.preview_image_url : "",
+  }))
 }

@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createClient()
 
-    // Get outfits with their items
+    // Fetch outfits with preview_image_url and their items (top 12 by likes)
     const { data: outfits, error } = await supabase
       .from("outfits")
       .select(`
@@ -15,6 +15,7 @@ export async function GET(request: NextRequest) {
         season,
         occasion,
         likes,
+        preview_image_url,
         outfit_items (
           position,
           wardrobe_item_id,
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
           if (!wardrobeItem) return null
 
           return {
-            id: wardrobeItem.id.toString(),
+            id: String(wardrobeItem.id),
             name: wardrobeItem.item_name || "Без названия",
             image_url: wardrobeItem.image_url || "",
             color: wardrobeItem.color || "",
@@ -67,7 +68,6 @@ export async function GET(request: NextRequest) {
             url: wardrobeItem.url || "",
             is_basic: wardrobeItem.is_basic || false,
             basic_item_id: wardrobeItem.basic_item_id || null,
-            user_id: wardrobeItem.is_basic ? null : wardrobeItem.user_id,
           }
         })
         .filter(Boolean)
@@ -75,13 +75,15 @@ export async function GET(request: NextRequest) {
       const tags = [outfit.season, outfit.occasion].filter(Boolean)
 
       return {
-        id: outfit.id.toString(),
+        id: String(outfit.id),
         title: outfit.name || "Образ без названия",
         description: outfit.description || "Описание отсутствует",
         items,
         tags,
         likes: outfit.likes || 0,
-        isLiked: false, // TODO: implement user likes tracking
+        isLiked: false, // can be wired to user-specific likes later
+        // include DB column directly; page decides display order/fallback
+        preview_image_url: typeof outfit.preview_image_url === "string" ? outfit.preview_image_url : "",
       }
     })
 
