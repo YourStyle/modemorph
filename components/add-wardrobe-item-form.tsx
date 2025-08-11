@@ -275,6 +275,92 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-4">
+            <div className="space-y-4">
+              <div>
+                <Label>Фото вещи</Label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
+                  {imagePreview ? (
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={imagePreview || "/placeholder.svg"}
+                        alt="Preview"
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                      {imageFile && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="absolute bottom-2 left-2"
+                          onClick={handleAIAnalysis}
+                          disabled={isAnalyzing}
+                        >
+                          <Sparkles className="h-4 w-4 mr-1" />
+                          {isAnalyzing ? "Анализ..." : "Сделать ИИ анализ"}
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                      <div className="mt-4">
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                          Выбрать фото
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                  />
+                </div>
+
+                {aiAnalysisItems.length > 0 && (
+                  <div className="mt-4 p-4 border rounded-lg bg-blue-50">
+                    <Label className="text-sm font-medium text-blue-900 mb-3 block">
+                      Найденные вещи ({aiAnalysisItems.length}):
+                    </Label>
+                    <div className="space-y-3">
+                      {aiAnalysisItems.map((item, index) => (
+                        <div
+                          key={index}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                            selectedAiItem === item
+                              ? "border-blue-500 bg-blue-100"
+                              : "border-gray-200 bg-white hover:border-gray-300"
+                          }`}
+                          onClick={() => selectAiItem(item)}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={item.img_url || "/placeholder.svg"}
+                              alt={item.item_name}
+                              className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-sm text-gray-900 truncate">{item.item_name}</h4>
+                              <p className="text-xs text-gray-600 mt-1 line-clamp-2">{item.description}</p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                                  {AI_PART_MAPPING[item.part] || item.part}
+                                </span>
+                                <span className="text-xs text-gray-500">{item.material}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
               <div>
                 <Label htmlFor="item_name">Название вещи *</Label>
                 <Input
@@ -471,93 +557,6 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                   <Button type="button" variant="outline" onClick={onCancel}>
                     Отмена
                   </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <Label>Фото вещи</Label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
-                  {imagePreview ? (
-                    <div className="relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={imagePreview || "/placeholder.svg"}
-                        alt="Preview"
-                        className="w-full h-48 object-cover rounded-lg"
-                      />
-                      {imageFile && (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="absolute bottom-2 left-2"
-                          onClick={handleAIAnalysis}
-                          disabled={isAnalyzing}
-                        >
-                          <Sparkles className="h-4 w-4 mr-1" />
-                          {isAnalyzing ? "Анализ..." : "Сделать ИИ анализ"}
-                        </Button>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="text-center">
-                      <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                      <div className="mt-4">
-                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                          Выбрать фото
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="hidden"
-                  />
-                </div>
-
-                {aiAnalysisItems.length > 0 && (
-                  <div className="mt-4 p-4 border rounded-lg bg-blue-50">
-                    <Label className="text-sm font-medium text-blue-900 mb-3 block">
-                      Найденные вещи ({aiAnalysisItems.length}):
-                    </Label>
-                    <div className="space-y-3">
-                      {aiAnalysisItems.map((item, index) => (
-                        <div
-                          key={index}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
-                            selectedAiItem === item
-                              ? "border-blue-500 bg-blue-100"
-                              : "border-gray-200 bg-white hover:border-gray-300"
-                          }`}
-                          onClick={() => selectAiItem(item)}
-                        >
-                          <div className="flex items-start gap-3">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={item.img_url || "/placeholder.svg"}
-                              alt={item.item_name}
-                              className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
-                            />
-                            <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-sm text-gray-900 truncate">{item.item_name}</h4>
-                              <p className="text-xs text-gray-600 mt-1 line-clamp-2">{item.description}</p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-xs bg-gray-100 px-2 py-1 rounded">
-                                  {AI_PART_MAPPING[item.part] || item.part}
-                                </span>
-                                <span className="text-xs text-gray-500">{item.material}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 )}
               </div>
             </div>
