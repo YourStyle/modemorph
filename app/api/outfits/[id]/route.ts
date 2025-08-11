@@ -121,7 +121,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         season: season || null,
         occasion: occasion || null,
         preview_image_url: preview_image_url || null,
-        preview_url: preview_url || null,
+  
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
