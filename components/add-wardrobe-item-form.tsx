@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Upload, X, Sparkles } from "lucide-react"
+import { Upload, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
 
@@ -48,19 +48,28 @@ interface AddWardrobeItemFormProps {
 }
 
 interface AIAnalysisResponse {
-  image_url: string
+  clothing_item: string
   part: string
-  material: string
+  description: string
+  description_en: string
   item_name: string
+  item_name_en: string
+  material: string
   style: string
-  has_print: boolean
+  has_print: string
   color: string
-  has_details: boolean | string
+  shade: string
+  has_details: string
+  basic_item_id: number | null
+  img_url: string
 }
 
 export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemFormProps) {
   const [formData, setFormData] = useState({
     item_name: "",
+    item_name_en: "",
+    description: "",
+    description_en: "",
     size_type: "",
     material: "",
     style: "",
@@ -75,7 +84,8 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const [aiAnalysisImage, setAiAnalysisImage] = useState<string | null>(null)
+  const [aiAnalysisItems, setAiAnalysisItems] = useState<AIAnalysisResponse[]>([])
+  const [selectedAiItem, setSelectedAiItem] = useState<AIAnalysisResponse | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [basicItems, setBasicItems] = useState<BasicItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -149,24 +159,13 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       })
 
       if (!analysisRes.ok) throw new Error("AI analysis failed")
-      const analysis: AIAnalysisResponse = await analysisRes.json()
+      const analysis: AIAnalysisResponse[] = await analysisRes.json()
 
-      // Set AI analysis image
-      setAiAnalysisImage(analysis.image_url)
+      // Set AI analysis items
+      setAiAnalysisItems(analysis)
+      setSelectedAiItem(null)
 
-      // Map AI response to form fields
-      setFormData((prev) => ({
-        ...prev,
-        item_name: analysis.item_name || prev.item_name,
-        material: analysis.material || prev.material,
-        style: analysis.style || prev.style,
-        color: analysis.color || prev.color,
-        has_print: analysis.has_print || prev.has_print,
-        has_details: analysis.has_details !== false && analysis.has_details !== "false",
-        clothing_type: AI_PART_MAPPING[analysis.part] || prev.clothing_type,
-      }))
-
-      toast.success("ИИ анализ завершен! Поля заполнены автоматически")
+      toast.success("ИИ анализ завершен! Выберите вещь из списка")
     } catch (error) {
       console.error("AI analysis error:", error)
       toast.error("Ошибка при анализе изображения")
@@ -175,15 +174,32 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     }
   }
 
-  const useAIImage = () => {
-    if (aiAnalysisImage) {
-      setImagePreview(aiAnalysisImage)
-      setAiAnalysisImage(null)
-      // Clear the original file since we're using AI processed image
-      setImageFile(null)
-      if (fileInputRef.current) fileInputRef.current.value = ""
-      toast.success("Изображение заменено на обработанное ИИ")
-    }
+  const selectAiItem = (item: AIAnalysisResponse) => {
+    setSelectedAiItem(item)
+
+    // Map AI response to form fields
+    setFormData((prev) => ({
+      ...prev,
+      item_name: item.item_name || prev.item_name,
+      item_name_en: item.item_name_en || prev.item_name_en,
+      description: item.description || prev.description,
+      description_en: item.description_en || prev.description_en,
+      material: item.material || prev.material,
+      style: item.style || prev.style,
+      color: item.color || prev.color,
+      shade: item.shade || prev.shade,
+      has_print: item.has_print === "true",
+      has_details: item.has_details !== "false" && item.has_details !== "",
+      clothing_type: AI_PART_MAPPING[item.part] || prev.clothing_type,
+    }))
+
+    // Set the AI processed image as preview
+    setImagePreview(item.img_url)
+    // Clear the original file since we're using AI processed image
+    setImageFile(null)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+
+    toast.success("Поля заполнены данными выбранной вещи")
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -197,8 +213,8 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     try {
       let imageUrl = ""
 
-      if (aiAnalysisImage && !imageFile) {
-        imageUrl = aiAnalysisImage
+      if (selectedAiItem && !imageFile) {
+        imageUrl = selectedAiItem.img_url
       } else if (imageFile) {
         const fd = new FormData()
         fd.append("file", imageFile)
@@ -213,6 +229,9 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
 
       const submitData = {
         item_name: formData.item_name,
+        item_name_en: formData.item_name_en || null,
+        description: formData.description || null,
+        description_en: formData.description_en || null,
         size_type: formData.size_type || null,
         material: formData.material || null,
         style: formData.style || null,
@@ -220,12 +239,10 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         color: formData.color || null,
         shade: formData.shade || null,
         has_details: formData.has_details,
-        url: formData.url || null,
+        url: imageUrl,
         notes: formData.notes || null,
+        basic_item_id: formData.basic_item_id === "none" ? null : Number.parseInt(formData.basic_item_id),
         clothing_type: formData.clothing_type || null,
-        basic_item_id:
-          formData.basic_item_id && formData.basic_item_id !== "none" ? Number.parseInt(formData.basic_item_id) : null,
-        image_url: imageUrl || null,
       }
 
       const res = await fetch("/api/wardrobe", {
@@ -240,29 +257,10 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       }
 
       toast.success("Вещь успешно сохранена")
-      // reset
-      setFormData({
-        item_name: "",
-        size_type: "",
-        material: "",
-        style: "",
-        has_print: false,
-        color: "",
-        shade: "",
-        has_details: false,
-        url: "",
-        notes: "",
-        basic_item_id: "none",
-        clothing_type: "",
-      })
-      setImageFile(null)
-      setImagePreview(null)
-      setAiAnalysisImage(null)
-      if (fileInputRef.current) fileInputRef.current.value = ""
       onSuccess?.()
-    } catch (e) {
-      console.error("Error adding item:", e)
-      toast.error("Ошибка при добавлении вещи")
+    } catch (error) {
+      console.error("Error saving item:", error)
+      toast.error("Ошибка при сохранении вещи")
     } finally {
       setIsLoading(false)
     }
@@ -275,243 +273,294 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Фото */}
-          <div className="space-y-2">
-            <Label>Фото</Label>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-              {imagePreview ? (
-                <div className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={imagePreview || "/placeholder.svg"}
-                    alt="Preview"
-                    className="w-full h-48 object-cover rounded-lg"
-                  />
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    className="absolute top-2 right-2"
-                    onClick={removeImage}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                  {imageFile && (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="absolute bottom-2 left-2"
-                      onClick={handleAIAnalysis}
-                      disabled={isAnalyzing}
-                    >
-                      <Sparkles className="h-4 w-4 mr-1" />
-                      {isAnalyzing ? "Анализ..." : "Сделать ИИ анализ"}
-                    </Button>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center">
-                  <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                  <div className="mt-4">
-                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                      Выбрать фото
-                    </Button>
-                  </div>
-                </div>
-              )}
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-            </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="item_name">Название вещи *</Label>
+                <Input
+                  id="item_name"
+                  value={formData.item_name}
+                  onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
+                  placeholder="Например: Белая рубашка"
+                  required
+                />
+              </div>
 
-            {aiAnalysisImage && (
-              <div className="mt-4 p-4 border rounded-lg bg-blue-50">
-                <Label className="text-sm font-medium text-blue-900 mb-2 block">Обработанное ИИ изображение:</Label>
-                <div className="relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={aiAnalysisImage || "/placeholder.svg"}
-                    alt="AI Analysis"
-                    className="w-full h-32 object-cover rounded-lg"
+              <div>
+                <Label htmlFor="item_name_en">Название на английском</Label>
+                <Input
+                  id="item_name_en"
+                  value={formData.item_name_en}
+                  onChange={(e) => setFormData({ ...formData, item_name_en: e.target.value })}
+                  placeholder="English name"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="description">Описание</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Описание вещи"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="description_en">Описание на английском</Label>
+                <Textarea
+                  id="description_en"
+                  value={formData.description_en}
+                  onChange={(e) => setFormData({ ...formData, description_en: e.target.value })}
+                  placeholder="English description"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="clothing_type">Тип одежды</Label>
+                <Select
+                  value={formData.clothing_type}
+                  onValueChange={(value) => setFormData({ ...formData, clothing_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите тип одежды" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CLOTHING_TYPES.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="size_type">Размер</Label>
+                <Input
+                  id="size_type"
+                  value={formData.size_type}
+                  onChange={(e) => setFormData({ ...formData, size_type: e.target.value })}
+                  placeholder="Например: M, 42, L"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Цвет</Label>
+                <ColorPicker
+                  value={formData.color}
+                  onChange={(color) => setFormData({ ...formData, color: color })}
+                  imagePreview={imagePreview}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="shade">Оттенок</Label>
+                <Input
+                  id="shade"
+                  value={formData.shade}
+                  onChange={(e) => setFormData({ ...formData, shade: e.target.value })}
+                  placeholder="Например: светлый, темный, яркий"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="material">Материал</Label>
+                <Input
+                  id="material"
+                  value={formData.material}
+                  onChange={(e) => setFormData({ ...formData, material: e.target.value })}
+                  placeholder="Например: хлопок, шерсть, полиэстер"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="style">Стиль</Label>
+                <Input
+                  id="style"
+                  value={formData.style}
+                  onChange={(e) => setFormData({ ...formData, style: e.target.value })}
+                  placeholder="Например: классический, спортивный, casual"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <Label>Характеристики</Label>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="has_print"
+                    checked={formData.has_print}
+                    onCheckedChange={(checked) => setFormData({ ...formData, has_print: checked as boolean })}
                   />
-                  <Button type="button" size="sm" className="absolute bottom-2 right-2" onClick={useAIImage}>
-                    Использовать
-                  </Button>
+                  <Label htmlFor="has_print">Есть принт</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="has_details"
+                    checked={formData.has_details}
+                    onCheckedChange={(checked) => setFormData({ ...formData, has_details: checked as boolean })}
+                  />
+                  <Label htmlFor="has_details">Есть детали</Label>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Название */}
-          <div className="space-y-2">
-            <Label htmlFor="item_name">Название вещи *</Label>
-            <Input
-              id="item_name"
-              value={formData.item_name}
-              onChange={(e) => handleInputChange("item_name", e.target.value)}
-              placeholder="Например: Белая рубашка"
-              required
-            />
-          </div>
+              <div className="space-y-2">
+                <Label>Базовая вещь</Label>
+                <Select
+                  value={formData.basic_item_id}
+                  onValueChange={(value) => setFormData({ ...formData, basic_item_id: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Не выбрано</SelectItem>
+                    {basicItems.map((item) => {
+                      const name = item.item_name || item.name_ru || item.name_en || "Без названия"
+                      return (
+                        <SelectItem key={item.id} value={String(item.id)}>
+                          <div className="flex items-center gap-2">
+                            {item.image_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={item.image_url || "/placeholder.svg"}
+                                alt={name}
+                                className="w-6 h-6 rounded object-cover border"
+                              />
+                            ) : (
+                              <div className="w-6 h-6 rounded bg-gray-100 border" />
+                            )}
+                            <span className="truncate">{name}</span>
+                          </div>
+                        </SelectItem>
+                      )
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Тип одежды */}
-          <div className="space-y-2">
-            <Label htmlFor="clothing_type">Тип одежды</Label>
-            <Select value={formData.clothing_type} onValueChange={(value) => handleInputChange("clothing_type", value)}>
-              <SelectTrigger id="clothing_type">
-                <SelectValue placeholder="Выберите тип" />
-              </SelectTrigger>
-              <SelectContent>
-                {CLOTHING_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>
-                    {t}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="url">Ссылка на товар в магазине</Label>
+                <Input
+                  id="url"
+                  type="url"
+                  value={formData.url}
+                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                  placeholder="https://shop.com/product/123"
+                />
+              </div>
 
-          {/* Размер */}
-          <div className="space-y-2">
-            <Label htmlFor="size_type">Размер</Label>
-            <Input
-              id="size_type"
-              value={formData.size_type}
-              onChange={(e) => handleInputChange("size_type", e.target.value)}
-              placeholder="Например: M, 42, L"
-            />
-          </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Заметки</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Дополнительная информация о вещи"
+                  rows={3}
+                />
+              </div>
 
-          {/* Цвет */}
-          <div className="space-y-2">
-            <Label>Цвет</Label>
-            <ColorPicker
-              value={formData.color}
-              onChange={(color) => handleInputChange("color", color)}
-              imagePreview={imagePreview}
-            />
-          </div>
-
-          {/* Оттенок */}
-          <div className="space-y-2">
-            <Label htmlFor="shade">Оттенок</Label>
-            <Input
-              id="shade"
-              value={formData.shade}
-              onChange={(e) => handleInputChange("shade", e.target.value)}
-              placeholder="Например: светлый, темный, яркий"
-            />
-          </div>
-
-          {/* Материал */}
-          <div className="space-y-2">
-            <Label htmlFor="material">Материал</Label>
-            <Input
-              id="material"
-              value={formData.material}
-              onChange={(e) => handleInputChange("material", e.target.value)}
-              placeholder="Например: хлопок, шерсть, полиэстер"
-            />
-          </div>
-
-          {/* Стиль */}
-          <div className="space-y-2">
-            <Label htmlFor="style">Стиль</Label>
-            <Input
-              id="style"
-              value={formData.style}
-              onChange={(e) => handleInputChange("style", e.target.value)}
-              placeholder="Например: классический, спортивный, casual"
-            />
-          </div>
-
-          {/* Характеристики */}
-          <div className="space-y-4">
-            <Label>Характеристики</Label>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="has_print"
-                checked={formData.has_print}
-                onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
-              />
-              <Label htmlFor="has_print">Есть принт</Label>
+              <div className="flex gap-4">
+                <Button type="submit" disabled={isLoading} className="flex-1">
+                  {isLoading ? "Добавление..." : "Добавить вещь"}
+                </Button>
+                {onCancel && (
+                  <Button type="button" variant="outline" onClick={onCancel}>
+                    Отмена
+                  </Button>
+                )}
+              </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="has_details"
-                checked={formData.has_details}
-                onCheckedChange={(checked) => handleInputChange("has_details", checked as boolean)}
-              />
-              <Label htmlFor="has_details">Есть детали</Label>
-            </div>
-          </div>
 
-          {/* Базовая вещь */}
-          <div className="space-y-2">
-            <Label>Базовая вещь</Label>
-            <Select value={formData.basic_item_id} onValueChange={(value) => handleInputChange("basic_item_id", value)}>
-              <SelectTrigger>
-                <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Не выбрано</SelectItem>
-                {basicItems.map((item) => {
-                  const name = item.item_name || item.name_ru || item.name_en || "Без названия"
-                  return (
-                    <SelectItem key={item.id} value={String(item.id)}>
-                      <div className="flex items-center gap-2">
-                        {item.image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.image_url || "/placeholder.svg"}
-                            alt={name}
-                            className="w-6 h-6 rounded object-cover border"
-                          />
-                        ) : (
-                          <div className="w-6 h-6 rounded bg-gray-100 border" />
-                        )}
-                        <span className="truncate">{name}</span>
+            <div className="space-y-4">
+              <div>
+                <Label>Фото вещи</Label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-gray-400 transition-colors">
+                  {imagePreview ? (
+                    <div className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={imagePreview || "/placeholder.svg"}
+                        alt="Preview"
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                      {imageFile && (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="absolute bottom-2 left-2"
+                          onClick={handleAIAnalysis}
+                          disabled={isAnalyzing}
+                        >
+                          <Sparkles className="h-4 w-4 mr-1" />
+                          {isAnalyzing ? "Анализ..." : "Сделать ИИ анализ"}
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center">
+                      <Upload className="mx-auto h-12 w-12 text-gray-400" />
+                      <div className="mt-4">
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                          Выбрать фото
+                        </Button>
                       </div>
-                    </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
-          </div>
+                    </div>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                  />
+                </div>
 
-          {/* Ссылка на товар */}
-          <div className="space-y-2">
-            <Label htmlFor="url">Ссылка на товар в магазине</Label>
-            <Input
-              id="url"
-              type="url"
-              value={formData.url}
-              onChange={(e) => handleInputChange("url", e.target.value)}
-              placeholder="https://shop.com/product/123"
-            />
-          </div>
-
-          {/* Заметки */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Заметки</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => handleInputChange("notes", e.target.value)}
-              placeholder="Дополнительная информация о вещи"
-              rows={3}
-            />
-          </div>
-
-          {/* Кнопки */}
-          <div className="flex gap-4">
-            <Button type="submit" disabled={isLoading} className="flex-1">
-              {isLoading ? "Добавление..." : "Добавить вещь"}
-            </Button>
-            {onCancel && (
-              <Button type="button" variant="outline" onClick={onCancel}>
-                Отмена
-              </Button>
-            )}
+                {aiAnalysisItems.length > 0 && (
+                  <div className="mt-4 p-4 border rounded-lg bg-blue-50">
+                    <Label className="text-sm font-medium text-blue-900 mb-3 block">
+                      Найденные вещи ({aiAnalysisItems.length}):
+                    </Label>
+                    <div className="space-y-3">
+                      {aiAnalysisItems.map((item, index) => (
+                        <div
+                          key={index}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                            selectedAiItem === item
+                              ? "border-blue-500 bg-blue-100"
+                              : "border-gray-200 bg-white hover:border-gray-300"
+                          }`}
+                          onClick={() => selectAiItem(item)}
+                        >
+                          <div className="flex items-start gap-3">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={item.img_url || "/placeholder.svg"}
+                              alt={item.item_name}
+                              className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-sm text-gray-900 truncate">{item.item_name}</h4>
+                              <p className="text-xs text-gray-600 mt-1 line-clamp-2">{item.description}</p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                                  {AI_PART_MAPPING[item.part] || item.part}
+                                </span>
+                                <span className="text-xs text-gray-500">{item.material}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </form>
       </CardContent>
