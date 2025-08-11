@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 const onboardingSlides = [
   {
     title: "Умный гардероб",
-    subtitle: "Организуйте свою одежду в цифровом виде и никогда не забывайте, что у вас есть",
+    subtitle: "Организуйте свою одежду в цифровом ��иде и никогда не забывайте, что у вас есть",
     image: "/placeholder.svg?height=300&width=300&text=Smart+Wardrobe",
     icon: "👗",
   },

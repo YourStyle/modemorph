@@ -83,7 +83,7 @@ WHERE image_url LIKE '%"success":false%'
    OR image_url LIKE '%e.getAll is not a function%'
    OR image_url LIKE '%Failed to fetch%';
 
--- Удаление записей с поврежденными image_url из wardrobe_user_items
+-- У��аление записей с поврежденными image_url из wardrobe_user_items
 DELETE FROM wardrobe_user_items 
 WHERE image_url LIKE '%"success":false%' 
    OR image_url LIKE '%"error":%'

@@ -4,7 +4,7 @@ export async function isUserAdmin(userId?: string): Promise<boolean> {
   try {
     const supabase = createClient()
 
-    // Если userId не передан, получаем текущего пользователя
+    // Если userId не передан, получае�� текущего пользователя
     if (!userId) {
       const {
         data: { user },

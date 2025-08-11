@@ -90,7 +90,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   try {
     const { id } = params
     const body = await request.json()
-    const { name, description, season, occasion, items, preview_image_url, preview_url } = body
+    const { name, description, season, occasion, items, preview_image_url } = body
 
     if (!id || !name || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
