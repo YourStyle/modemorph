@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
@@ -17,15 +17,17 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
   const [authenticated, setAuthenticated] = useState(false)
   const router = useRouter()
   const supabase = createClient()
+  const authCheckInProgress = useRef(false)
 
   useEffect(() => {
     checkAuth()
 
-    // Подписываемся на изменения состояния аутентификации
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("Auth state changed:", event, !!session)
+      if (process.env.NODE_ENV === "development") {
+        console.log("Auth state changed:", event, !!session)
+      }
 
       if (event === "SIGNED_IN" && session) {
         setAuthenticated(true)
@@ -35,7 +37,6 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
         setLoading(false)
 
         if (requireAuth) {
-          console.log("User signed out, redirecting to:", redirectTo)
           router.push(redirectTo)
         }
       }
@@ -45,19 +46,26 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
   }, [supabase.auth, router, requireAuth, redirectTo])
 
   const checkAuth = async () => {
+    if (authCheckInProgress.current) {
+      return
+    }
+
+    authCheckInProgress.current = true
+
     try {
       const {
         data: { user },
         error,
       } = await supabase.auth.getUser()
 
-      console.log("Auth check result:", { user: !!user, error })
+      if (process.env.NODE_ENV === "development") {
+        console.log("Auth check result:", { user: !!user, error })
+      }
 
       if (error) {
         console.error("Auth error:", error)
         setAuthenticated(false)
         if (requireAuth) {
-          console.log("Auth error, redirecting to:", redirectTo)
           router.push(redirectTo)
         }
         return
@@ -67,22 +75,19 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
       setAuthenticated(isAuthenticated)
 
       if (requireAuth && !isAuthenticated) {
-        console.log("User not authenticated, redirecting to:", redirectTo)
         router.push(redirectTo)
       } else if (!requireAuth && isAuthenticated) {
-        // Если пользователь уже авторизован и находится на странице входа/регистрации
-        console.log("User already authenticated, redirecting to /app")
         router.push("/app")
       }
     } catch (error) {
       console.error("Error checking auth:", error)
       setAuthenticated(false)
       if (requireAuth) {
-        console.log("Auth check error, redirecting to:", redirectTo)
         router.push(redirectTo)
       }
     } finally {
       setLoading(false)
+      authCheckInProgress.current = false
     }
   }
 

@@ -77,7 +77,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     color: "",
     shade: "",
     has_details: false,
-    url: "",
+    store_url: "",
     notes: "",
     basic_item_id: "none",
     clothing_type: "",
@@ -239,7 +239,8 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         color: formData.color || null,
         shade: formData.shade || null,
         has_details: formData.has_details,
-        url: imageUrl,
+        image_url: imageUrl,
+        url: formData.store_url || null,
         notes: formData.notes || null,
         basic_item_id: formData.basic_item_id === "none" ? null : Number.parseInt(formData.basic_item_id),
         clothing_type: formData.clothing_type || null,
@@ -274,7 +275,6 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-1 gap-6">
-            <div className="space-y-4">
             <div className="space-y-4">
               <div>
                 <Label>Фото вещи</Label>
@@ -361,204 +361,203 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                 )}
               </div>
             </div>
-              <div>
-                <Label htmlFor="item_name">Название вещи *</Label>
-                <Input
-                  id="item_name"
-                  value={formData.item_name}
-                  onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
-                  placeholder="Например: Белая рубашка"
-                  required
-                />
-              </div>
+            <div>
+              <Label htmlFor="item_name">Название вещи *</Label>
+              <Input
+                id="item_name"
+                value={formData.item_name}
+                onChange={(e) => setFormData({ ...formData, item_name: e.target.value })}
+                placeholder="Например: Белая рубашка"
+                required
+              />
+            </div>
 
-              <div>
-                <Label htmlFor="item_name_en">Название на английском</Label>
-                <Input
-                  id="item_name_en"
-                  value={formData.item_name_en}
-                  onChange={(e) => setFormData({ ...formData, item_name_en: e.target.value })}
-                  placeholder="English name"
-                />
-              </div>
+            <div>
+              <Label htmlFor="item_name_en">Название на английском</Label>
+              <Input
+                id="item_name_en"
+                value={formData.item_name_en}
+                onChange={(e) => setFormData({ ...formData, item_name_en: e.target.value })}
+                placeholder="English name"
+              />
+            </div>
 
-              <div>
-                <Label htmlFor="description">Описание</Label>
-                <Textarea
-                  id="description"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Описание вещи"
-                  rows={3}
-                />
-              </div>
+            <div>
+              <Label htmlFor="description">Описание</Label>
+              <Textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                placeholder="Описание вещи"
+                rows={3}
+              />
+            </div>
 
-              <div>
-                <Label htmlFor="description_en">Описание на английском</Label>
-                <Textarea
-                  id="description_en"
-                  value={formData.description_en}
-                  onChange={(e) => setFormData({ ...formData, description_en: e.target.value })}
-                  placeholder="English description"
-                  rows={3}
-                />
-              </div>
+            <div>
+              <Label htmlFor="description_en">Описание на английском</Label>
+              <Textarea
+                id="description_en"
+                value={formData.description_en}
+                onChange={(e) => setFormData({ ...formData, description_en: e.target.value })}
+                placeholder="English description"
+                rows={3}
+              />
+            </div>
 
-              <div>
-                <Label htmlFor="clothing_type">Тип одежды</Label>
-                <Select
-                  value={formData.clothing_type}
-                  onValueChange={(value) => setFormData({ ...formData, clothing_type: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите тип одежды" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CLOTHING_TYPES.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type}
+            <div>
+              <Label htmlFor="clothing_type">Тип одежды</Label>
+              <Select
+                value={formData.clothing_type}
+                onValueChange={(value) => setFormData({ ...formData, clothing_type: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите тип одежды" />
+                </SelectTrigger>
+                <SelectContent>
+                  {CLOTHING_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="size_type">Размер</Label>
+              <Input
+                id="size_type"
+                value={formData.size_type}
+                onChange={(e) => setFormData({ ...formData, size_type: e.target.value })}
+                placeholder="Например: M, 42, L"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Цвет</Label>
+              <ColorPicker
+                value={formData.color}
+                onChange={(color) => setFormData({ ...formData, color: color })}
+                imagePreview={imagePreview}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="shade">Оттенок</Label>
+              <Input
+                id="shade"
+                value={formData.shade}
+                onChange={(e) => setFormData({ ...formData, shade: e.target.value })}
+                placeholder="Например: светлый, темный, яркий"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="material">Материал</Label>
+              <Input
+                id="material"
+                value={formData.material}
+                onChange={(e) => setFormData({ ...formData, material: e.target.value })}
+                placeholder="Например: хлопок, шерсть, полиэстер"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="style">Стиль</Label>
+              <Input
+                id="style"
+                value={formData.style}
+                onChange={(e) => setFormData({ ...formData, style: e.target.value })}
+                placeholder="Например: классический, спортивный, casual"
+              />
+            </div>
+
+            <div className="space-y-4">
+              <Label>Характеристики</Label>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="has_print"
+                  checked={formData.has_print}
+                  onCheckedChange={(checked) => setFormData({ ...formData, has_print: checked as boolean })}
+                />
+                <Label htmlFor="has_print">Есть принт</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="has_details"
+                  checked={formData.has_details}
+                  onCheckedChange={(checked) => setFormData({ ...formData, has_details: checked as boolean })}
+                />
+                <Label htmlFor="has_details">Есть детали</Label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Базовая вещь</Label>
+              <Select
+                value={formData.basic_item_id}
+                onValueChange={(value) => setFormData({ ...formData, basic_item_id: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Не выбрано</SelectItem>
+                  {basicItems.map((item) => {
+                    const name = item.item_name || item.name_ru || item.name_en || "Без названия"
+                    return (
+                      <SelectItem key={item.id} value={String(item.id)}>
+                        <div className="flex items-center gap-2">
+                          {item.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={item.image_url || "/placeholder.svg"}
+                              alt={name}
+                              className="w-6 h-6 rounded object-cover border"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 rounded bg-gray-100 border" />
+                          )}
+                          <span className="truncate">{name}</span>
+                        </div>
                       </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="size_type">Размер</Label>
-                <Input
-                  id="size_type"
-                  value={formData.size_type}
-                  onChange={(e) => setFormData({ ...formData, size_type: e.target.value })}
-                  placeholder="Например: M, 42, L"
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="store_url">Ссылка на товар в магазине</Label>
+              <Input
+                id="store_url"
+                type="url"
+                value={formData.store_url}
+                onChange={(e) => setFormData({ ...formData, store_url: e.target.value })}
+                placeholder="https://shop.com/product/123"
+              />
+            </div>
 
-              <div className="space-y-2">
-                <Label>Цвет</Label>
-                <ColorPicker
-                  value={formData.color}
-                  onChange={(color) => setFormData({ ...formData, color: color })}
-                  imagePreview={imagePreview}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="notes">Заметки</Label>
+              <Textarea
+                id="notes"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Дополнительная информация о вещи"
+                rows={3}
+              />
+            </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="shade">Оттенок</Label>
-                <Input
-                  id="shade"
-                  value={formData.shade}
-                  onChange={(e) => setFormData({ ...formData, shade: e.target.value })}
-                  placeholder="Например: светлый, темный, яркий"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="material">Материал</Label>
-                <Input
-                  id="material"
-                  value={formData.material}
-                  onChange={(e) => setFormData({ ...formData, material: e.target.value })}
-                  placeholder="Например: хлопок, шерсть, полиэстер"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="style">Стиль</Label>
-                <Input
-                  id="style"
-                  value={formData.style}
-                  onChange={(e) => setFormData({ ...formData, style: e.target.value })}
-                  placeholder="Например: классический, спортивный, casual"
-                />
-              </div>
-
-              <div className="space-y-4">
-                <Label>Характеристики</Label>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="has_print"
-                    checked={formData.has_print}
-                    onCheckedChange={(checked) => setFormData({ ...formData, has_print: checked as boolean })}
-                  />
-                  <Label htmlFor="has_print">Есть принт</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="has_details"
-                    checked={formData.has_details}
-                    onCheckedChange={(checked) => setFormData({ ...formData, has_details: checked as boolean })}
-                  />
-                  <Label htmlFor="has_details">Есть детали</Label>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Базовая вещь</Label>
-                <Select
-                  value={formData.basic_item_id}
-                  onValueChange={(value) => setFormData({ ...formData, basic_item_id: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder={isLoadingBasicItems ? "Загрузка..." : "Выберите базовую вещь"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Не выбрано</SelectItem>
-                    {basicItems.map((item) => {
-                      const name = item.item_name || item.name_ru || item.name_en || "Без названия"
-                      return (
-                        <SelectItem key={item.id} value={String(item.id)}>
-                          <div className="flex items-center gap-2">
-                            {item.image_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={item.image_url || "/placeholder.svg"}
-                                alt={name}
-                                className="w-6 h-6 rounded object-cover border"
-                              />
-                            ) : (
-                              <div className="w-6 h-6 rounded bg-gray-100 border" />
-                            )}
-                            <span className="truncate">{name}</span>
-                          </div>
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="url">Ссылка на товар в магазине</Label>
-                <Input
-                  id="url"
-                  type="url"
-                  value={formData.url}
-                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                  placeholder="https://shop.com/product/123"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Заметки</Label>
-                <Textarea
-                  id="notes"
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="Дополнительная информация о вещи"
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex gap-4">
-                <Button type="submit" disabled={isLoading} className="flex-1">
-                  {isLoading ? "Добавление..." : "Добавить вещь"}
+            <div className="flex gap-4">
+              <Button type="submit" disabled={isLoading} className="flex-1">
+                {isLoading ? "Добавление..." : "Добавить вещь"}
+              </Button>
+              {onCancel && (
+                <Button type="button" variant="outline" onClick={onCancel}>
+                  Отмена
                 </Button>
-                {onCancel && (
-                  <Button type="button" variant="outline" onClick={onCancel}>
-                    Отмена
-                  </Button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </form>
@@ -566,3 +565,5 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     </Card>
   )
 }
+
+export default AddWardrobeItemForm
