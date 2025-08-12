@@ -61,7 +61,7 @@ interface AIAnalysisResponse {
   shade: string
   has_details: string
   basic_item_id: number | null
-  img_url: string
+  img_url?: string // Made img_url optional since it might not be present in text-only analysis
 }
 
 export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemFormProps) {
@@ -196,13 +196,17 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       clothing_type: AI_PART_MAPPING[item.part] || prev.clothing_type,
     }))
 
-    // Set the AI processed image as preview
-    setImagePreview(item.img_url)
-    // Clear the original file since we're using AI processed image
-    setImageFile(null)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-
-    toast.success("Поля заполнены данными выбранной вещи")
+    if (item.img_url) {
+      // Set the AI processed image as preview
+      setImagePreview(item.img_url)
+      // Clear the original file since we're using AI processed image
+      setImageFile(null)
+      if (fileInputRef.current) fileInputRef.current.value = ""
+      toast.success("Поля заполнены данными выбранной вещи и фото заменено")
+    } else {
+      // Keep original photo, only fill form fields
+      toast.success("Поля заполнены данными выбранной вещи")
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -335,36 +339,40 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                 </div>
 
                 {aiAnalysisItems.length > 0 && (
-                  <div className="mt-4 p-4 border rounded-lg bg-blue-50">
-                    <Label className="text-sm font-medium text-blue-900 mb-3 block">
-                      Найденные вещи ({aiAnalysisItems.length}):
-                    </Label>
-                    <div className="space-y-3">
+                  <div className="mt-4 space-y-3">
+                    <h4 className="text-sm font-medium">Выберите вещь из анализа:</h4>
+                    <div className="grid gap-3 max-h-60 overflow-y-auto">
                       {aiAnalysisItems.map((item, index) => (
                         <div
                           key={index}
+                          onClick={() => selectAiItem(item)}
                           className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                             selectedAiItem === item
-                              ? "border-blue-500 bg-blue-100"
-                              : "border-gray-200 bg-white hover:border-gray-300"
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-200 hover:border-gray-300"
                           }`}
-                          onClick={() => selectAiItem(item)}
                         >
-                          <div className="flex items-start gap-3">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={item.img_url || "/placeholder.svg"}
-                              alt={item.item_name}
-                              className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
-                            />
+                          <div className="flex gap-3">
+                            {item.img_url && (
+                              <div className="w-16 h-16 flex-shrink-0">
+                                <img
+                                  src={item.img_url || "/placeholder.svg"}
+                                  alt={item.item_name}
+                                  className="w-full h-full object-cover rounded"
+                                />
+                              </div>
+                            )}
                             <div className="flex-1 min-w-0">
-                              <h4 className="font-medium text-sm text-gray-900 truncate">{item.item_name}</h4>
+                              <h5 className="font-medium text-sm truncate">{item.item_name}</h5>
                               <p className="text-xs text-gray-600 mt-1 line-clamp-2">{item.description}</p>
-                              <div className="flex items-center gap-2 mt-2">
-                                <span className="text-xs bg-gray-100 px-2 py-1 rounded">
+                              <div className="flex gap-2 mt-2 text-xs text-gray-500">
+                                <span className="bg-gray-100 px-2 py-1 rounded">
                                   {AI_PART_MAPPING[item.part] || item.part}
                                 </span>
-                                <span className="text-xs text-gray-500">{item.material}</span>
+                                <span className="bg-gray-100 px-2 py-1 rounded">{item.material}</span>
+                                {item.img_url && (
+                                  <span className="bg-blue-100 text-blue-600 px-2 py-1 rounded">С фото</span>
+                                )}
                               </div>
                             </div>
                           </div>
