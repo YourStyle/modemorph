@@ -131,7 +131,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
-  const handleAIAnalysis = async () => {
+  const handleAIAnalysis = async (type: "text" | "all" = "text") => {
     if (!imageFile) {
       toast.error("Сначала загрузите фото")
       return
@@ -155,7 +155,10 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       const analysisRes = await fetch(`${aiApiUrl}/get-clothes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: uploaded.url }),
+        body: JSON.stringify({
+          image_url: uploaded.url,
+          type: type,
+        }),
       })
 
       if (!analysisRes.ok) throw new Error("AI analysis failed")
@@ -288,17 +291,28 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                         className="w-full h-48 object-cover rounded-lg"
                       />
                       {imageFile && (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          className="absolute bottom-2 left-2"
-                          onClick={handleAIAnalysis}
-                          disabled={isAnalyzing}
-                        >
-                          <Sparkles className="h-4 w-4 mr-1" />
-                          {isAnalyzing ? "Анализ..." : "Сделать ИИ анализ"}
-                        </Button>
+                        <div className="absolute bottom-2 left-2 flex gap-2">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleAIAnalysis("text")}
+                            disabled={isAnalyzing}
+                          >
+                            <Sparkles className="h-4 w-4 mr-1" />
+                            {isAnalyzing ? "Анализ..." : "ИИ анализ"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAIAnalysis("all")}
+                            disabled={isAnalyzing}
+                          >
+                            <Sparkles className="h-4 w-4 mr-1" />
+                            {isAnalyzing ? "Генерация..." : "ИИ генерация"}
+                          </Button>
+                        </div>
                       )}
                     </div>
                   ) : (
