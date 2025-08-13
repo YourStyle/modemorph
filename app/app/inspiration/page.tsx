@@ -93,6 +93,7 @@ export default function InspirationPage() {
         await fetch("/api/outfits/track-view", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({ outfitId: current.id }),
         })
         setViewedOutfits((prev) => new Set([...prev, current.id]))
@@ -112,8 +113,8 @@ export default function InspirationPage() {
         setLoading(true)
         setError(null)
         const [outfitsRes, likesRes] = await Promise.all([
-          fetch("/api/outfits/inspiration", { cache: "no-store" }),
-          fetch("/api/user-likes", { cache: "no-store" }),
+          fetch("/api/outfits/inspiration", { cache: "no-store", credentials: "include" }),
+          fetch("/api/user-likes", { cache: "no-store", credentials: "include" }),
         ])
         if (!outfitsRes.ok) throw new Error("Failed to fetch outfits")
         const data: ApiResponse = await outfitsRes.json()
@@ -158,7 +159,9 @@ export default function InspirationPage() {
     if (!nextCursor || fetchingMore) return
     try {
       setFetchingMore(true)
-      const res = await fetch(`/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}`)
+      const res = await fetch(`/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}`, {
+        credentials: "include",
+      })
       if (!res.ok) {
         setNextCursor(null)
         return
@@ -248,6 +251,7 @@ export default function InspirationPage() {
       const res = await fetch("/api/outfits/save-to-looks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ outfitId: outfit.id }),
       })
       if (!res.ok) throw new Error("Failed to save outfit")
@@ -256,6 +260,7 @@ export default function InspirationPage() {
       await fetch("/api/outfits/track-save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ outfitId: outfit.id }),
       }).catch((e) => console.warn("Failed to track save:", e))
     } catch (e) {
@@ -273,6 +278,7 @@ export default function InspirationPage() {
       const res = await fetch("/api/outfits/like", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ outfitId: outfit.id, action }),
       })
       if (!res.ok) throw new Error("Failed to like")
