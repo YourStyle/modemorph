@@ -605,20 +605,14 @@ function Slide({
         ))}
 
         {remaining > 0 && (
-          <>
-            <button
-              onClick={() => setOpen(true)}
-              className="w-14 h-14 rounded-xl bg-white text-black font-semibold flex items-center justify-center ring-1 ring-white/15 shadow-xl"
-              aria-label="Показать все вещи"
-              title="Показать все вещи"
-            >
-              <span className="text-sm">{`+${remaining}`}</span>
-            </button>
-
-            <div className="fixed inset-x-0 bottom-0 z-[1200]">
-              <BottomNavigation />
-            </div>
-          </>
+          <button
+            onClick={() => setOpen(true)}
+            className="w-14 h-14 rounded-xl bg-white text-black font-semibold flex items-center justify-center ring-1 ring-white/15 shadow-xl"
+            aria-label="Показать все вещи"
+            title="Показать все вещи"
+          >
+            <span className="text-sm">{`+${remaining}`}</span>
+          </button>
         )}
       </div>
     </div>
