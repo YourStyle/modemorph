@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { ExternalLink, Loader2, Edit, Heart, Eye, Bookmark } from "lucide-react"
+import { ExternalLink, Loader2, Edit, Heart, Eye, Bookmark, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 type WardrobeItem = {
@@ -59,6 +59,7 @@ export default function AdminOutfitDetailsPage() {
   const [previewUrl, setPreviewUrl] = useState("")
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     if (!outfitId || Number.isNaN(outfitId)) return
@@ -156,6 +157,44 @@ export default function AdminOutfitDetailsPage() {
     }
   }
 
+  async function handleDeleteOutfit() {
+    if (!outfit) return
+
+    const confirmed = confirm(
+      `Вы уверены, что хотите удалить образ "${outfit.name || "Без названия"}"? Это действие нельзя отменить.`,
+    )
+    if (!confirmed) return
+
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/outfits/${outfit.id}`, {
+        method: "DELETE",
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to delete outfit")
+      }
+
+      toast({
+        title: "Удалено",
+        description: "Образ успешно удален",
+      })
+
+      // Redirect to outfits list after successful deletion
+      router.push("/admin/outfits")
+    } catch (e) {
+      console.error(e)
+      toast({
+        title: "Ошибка",
+        description: e instanceof Error ? e.message : "Ошибка удаления",
+        variant: "destructive",
+      })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="p-6 flex items-center justify-center">
@@ -183,10 +222,23 @@ export default function AdminOutfitDetailsPage() {
           <p className="text-sm text-muted-foreground mt-1">
             Создан {new Date(outfit.created_at).toLocaleDateString("ru-RU")}
           </p>
-          <div className="mt-3">
+          <div className="mt-3 flex gap-3">
             <Button variant="outline" onClick={() => router.push(`/admin/wardrobe?edit=${outfit.id}`)}>
               <Edit className="h-4 w-4 mr-2" />
               Редактировать состав (на странице гардероба)
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteOutfit} disabled={deleting}>
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Удаление...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Удалить образ
+                </>
+              )}
             </Button>
           </div>
         </div>
