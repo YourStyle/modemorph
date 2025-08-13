@@ -10,7 +10,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
     }
 
-    const invalidItems = items.filter((item) => !item.wardrobe_item_id || typeof item.wardrobe_item_id !== "number")
+    const processedItems = items.map((item, index) => {
+      // If item is just a number, convert it to the expected format
+      if (typeof item === "number") {
+        return {
+          wardrobe_item_id: item,
+          position: index + 1,
+        }
+      }
+      // If item is an object, use existing logic
+      return {
+        wardrobe_item_id: item.wardrobe_item_id || item.id,
+        position: item.position || index + 1,
+      }
+    })
+
+    // Validate that all items have valid wardrobe_item_id
+    const invalidItems = processedItems.filter(
+      (item) => !item.wardrobe_item_id || typeof item.wardrobe_item_id !== "number",
+    )
     if (invalidItems.length > 0) {
       console.error("Invalid wardrobe_item_id values:", invalidItems)
       return NextResponse.json(
@@ -53,13 +71,11 @@ export async function POST(request: Request) {
 
     const createdOutfit = outfit[0]
 
-    const outfitItems = items
-      .filter((item) => item.wardrobe_item_id && typeof item.wardrobe_item_id === "number")
-      .map((item: any, index: number) => ({
-        outfit_id: createdOutfit.id,
-        wardrobe_item_id: item.wardrobe_item_id,
-        position: item.position || index + 1,
-      }))
+    const outfitItems = processedItems.map((item) => ({
+      outfit_id: createdOutfit.id,
+      wardrobe_item_id: item.wardrobe_item_id,
+      position: item.position,
+    }))
 
     console.log("Creating outfit items:", outfitItems)
 
