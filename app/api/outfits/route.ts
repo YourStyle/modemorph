@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name, description, season, occasion, items } = body
+    const { name, description, season, occasion, items, preview_image_url, preview_url } = body
 
     if (!name || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
@@ -58,6 +58,7 @@ export async function POST(request: Request) {
       user_id: user.id,
       season: season ? season.toString() : null,
       occasion: occasion ? occasion.toString() : null,
+      preview_image_url: preview_image_url || preview_url || null,
     }
 
     const { data: outfit, error: outfitError } = await supabase.from("outfits").insert(outfitData).select()
