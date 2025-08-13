@@ -60,7 +60,7 @@ export function MobileOptimizedWardrobeGrid({
     return 12
   }, [])
 
-  // Определяем количество колонок в зависимости от размера экрана и соединения
+  // Определяем количество колонок в зависимости от размера экр��на и соединения
   const gridCols = useMemo(() => {
     if (typeof window === "undefined") return "grid-cols-2"
 

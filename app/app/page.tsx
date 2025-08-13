@@ -275,6 +275,14 @@ export default function HomePage() {
     }
   }
 
+  const getAuthToken = async () => {
+    const supabase = createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    return session?.access_token
+  }
+
   // Load user items count
   useEffect(() => {
     const loadUserItemsCount = async () => {
@@ -324,6 +332,8 @@ export default function HomePage() {
           return
         }
 
+        const authToken = await getAuthToken()
+
         console.log("Making API request to:", `${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`)
         console.log("Request payload:", {
           user_id: user.id,
@@ -335,6 +345,7 @@ export default function HomePage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(authToken && { Authorization: `Bearer ${authToken}` }),
           },
           body: JSON.stringify({
             user_id: user.id,
@@ -404,6 +415,8 @@ export default function HomePage() {
         return
       }
 
+      const authToken = await getAuthToken()
+
       console.log("Manual recommendation request to:", `${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`)
       console.log("Request payload:", {
         user_id: user.id,
@@ -415,6 +428,7 @@ export default function HomePage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
         body: JSON.stringify({
           user_id: user.id,
@@ -581,7 +595,7 @@ export default function HomePage() {
                   onClick={() => setIsAddSheetOpen(true)}
                   className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
                 >
-                  + ��обавить в гардероб
+                  + добавить в гардероб
                 </Button>
               </CardContent>
             </Card>

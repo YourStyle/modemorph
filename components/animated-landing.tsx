@@ -42,20 +42,20 @@ export function AnimatedLanding() {
           {/* Карточки с фотографиями в веерном стиле */}
           <div className="relative py-12 lg:py-20 animate-fade-in-up animation-delay-800">
             {/* Мобильная версия - 3 карточки веером */}
-            <div className="block lg:hidden">
+            <div className="block lg:hidden overflow-hidden">
               <div className="relative w-full h-96 mx-auto flex items-center justify-center">
                 {/* Левая карточка - 1_woman */}
                 <div className="absolute group cursor-pointer">
                   <div
-                    className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-44 h-64 z-0"
-                    style={{ transform: "translateX(-120px) translateY(60px) rotate(-20deg)" }}
+                    className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-36 h-52 z-0"
+                    style={{ transform: "translateX(-80px) translateY(40px) rotate(-20deg)" }}
                   ></div>
                   <div
-                    className="relative w-44 h-64 rounded-3xl overflow-hidden shadow-xl z-10 transition-all duration-300 group-hover:scale-105"
-                    style={{ transform: "translateX(-140px) translateY(20px) rotate(-20deg)" }}
+                    className="relative w-36 h-52 rounded-3xl overflow-hidden shadow-xl z-10 transition-all duration-300 group-hover:scale-105"
+                    style={{ transform: "translateX(-90px) translateY(20px) rotate(-20deg)" }}
                   >
                     <img
-                      src="/images/1_woman.png"
+                      src="https://storage.yandexcloud.net/modemorphs3/static/1_woman.png"
                       alt="Стильный женский образ"
                       className="w-full h-full object-cover"
                     />
@@ -64,10 +64,10 @@ export function AnimatedLanding() {
 
                 {/* Центральная карточка - 2_woman */}
                 <div className="absolute group cursor-pointer">
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-48 h-68 z-0"></div>
-                  <div className="relative w-48 h-68 rounded-3xl overflow-hidden shadow-xl z-30 transition-all duration-300 group-hover:scale-105">
+                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-40 h-56 z-0"></div>
+                  <div className="relative w-40 h-56 rounded-3xl overflow-hidden shadow-xl z-30 transition-all duration-300 group-hover:scale-105">
                     <img
-                      src="/images/2_woman.png"
+                      src="https://storage.yandexcloud.net/modemorphs3/static/2_woman.png"
                       alt="Элегантный женский образ"
                       className="w-full h-full object-cover"
                     />
@@ -77,14 +77,18 @@ export function AnimatedLanding() {
                 {/* Правая карточка - 3_woman */}
                 <div className="absolute group cursor-pointer">
                   <div
-                    className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-44 h-64 z-0"
-                    style={{ transform: "translateX(120px) translateY(60px) rotate(20deg)" }}
+                    className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-36 h-52 z-0"
+                    style={{ transform: "translateX(80px) translateY(40px) rotate(20deg)" }}
                   ></div>
                   <div
-                    className="relative w-44 h-64 rounded-3xl overflow-hidden shadow-xl z-10 transition-all duration-300 group-hover:scale-105"
-                    style={{ transform: "translateX(140px) translateY(20px) rotate(20deg)" }}
+                    className="relative w-36 h-52 rounded-3xl overflow-hidden shadow-xl z-10 transition-all duration-300 group-hover:scale-105"
+                    style={{ transform: "translateX(90px) translateY(20px) rotate(20deg)" }}
                   >
-                    <img src="/images/3_woman.png" alt="Модный женский образ" className="w-full h-full object-cover" />
+                    <img
+                      src="https://storage.yandexcloud.net/modemorphs3/static/3_woman.png"
+                      alt="Модный женский образ"
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 </div>
               </div>
@@ -101,7 +105,7 @@ export function AnimatedLanding() {
                   <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
                   <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-10">
                     <img
-                      src="/images/1_woman.png"
+                      src="https://storage.yandexcloud.net/modemorphs3/static/1_woman.png"
                       alt="Стильный женский образ 1"
                       className="w-full h-full object-cover"
                     />
@@ -116,7 +120,7 @@ export function AnimatedLanding() {
                   <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
                   <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-20">
                     <img
-                      src="/images/2_woman.png"
+                      src="https://storage.yandexcloud.net/modemorphs3/static/2_woman.png"
                       alt="Элегантный женский образ 2"
                       className="w-full h-full object-cover"
                     />
@@ -131,7 +135,7 @@ export function AnimatedLanding() {
                   <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
                   <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-30">
                     <img
-                      src="/images/3_woman.png"
+                      src="https://storage.yandexcloud.net/modemorphs3/static/3_woman.png"
                       alt="Модный женский образ 3"
                       className="w-full h-full object-cover"
                     />
@@ -146,7 +150,7 @@ export function AnimatedLanding() {
                   <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
                   <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-20">
                     <img
-                      src="/images/4_woman.png"
+                      src="https://storage.yandexcloud.net/modemorphs3/static/4_woman.png"
                       alt="Трендовый женский образ 4"
                       className="w-full h-full object-cover"
                     />
@@ -161,7 +165,7 @@ export function AnimatedLanding() {
                   <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
                   <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-10">
                     <img
-                      src="/images/5_woman.png"
+                      src="https://storage.yandexcloud.net/modemorphs3/static/5_woman.png"
                       alt="Современный женский образ 5"
                       className="w-full h-full object-cover"
                     />

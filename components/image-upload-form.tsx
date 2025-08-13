@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Upload, X, Loader2, Check, Plus } from "lucide-react"
 import Image from "next/image"
+import { createClient } from "@/lib/supabase/client"
 
 interface ResponseItem {
   index: number
@@ -143,6 +144,14 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
     return itemsWithImages
   }
 
+  const getAuthToken = async () => {
+    const supabase = createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    return session?.access_token
+  }
+
   const handleAnalyze = async () => {
     if (selectedFiles.length === 0) return
 
@@ -151,6 +160,8 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
 
     try {
       let allResults: ItemWithImage[] = []
+
+      const authToken = await getAuthToken()
 
       // Анализируем каждое фото с улучшенной обработкой ошибок
       for (const photo of selectedFiles) {
@@ -171,6 +182,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
             signal: controller.signal,
             headers: {
               Accept: "application/json",
+              ...(authToken && { Authorization: `Bearer ${authToken}` }),
             },
           })
 
@@ -242,7 +254,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false, isAdded: true } : r)))
     } catch (error) {
       console.error("Error saving item:", error)
-      // Сбрасываем состояние при ошибк��
+      // Сбрасываем состояние при ошибке
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false } : r)))
     }
   }

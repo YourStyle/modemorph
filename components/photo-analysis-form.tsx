@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Upload, X, Loader2, Check, Plus, AlertCircle } from "lucide-react"
 import { AIAssistantLoader } from "@/components/ai-assistant-loader"
 import Image from "next/image"
+import { createClient } from "@/lib/supabase/client"
 
 interface ResponseItem {
   index: number
@@ -212,6 +213,14 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     return itemsWithImages
   }
 
+  const getAuthToken = async () => {
+    const supabase = createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    return session?.access_token
+  }
+
   const analyzePhoto = async (file: File): Promise<PhotoAnalysisResult> => {
     const formData = new FormData()
     formData.append("image", file)
@@ -224,12 +233,15 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 минуты
 
     try {
+      const authToken = await getAuthToken()
+
       const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
         method: "POST",
         body: formData,
         signal: controller.signal,
         headers: {
           Accept: "application/json",
+          ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
       })
 

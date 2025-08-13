@@ -171,6 +171,13 @@ export default function AIAssistantPage() {
     }
   }
 
+  const getAuthToken = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    return session?.access_token
+  }
+
   const handleSend = async () => {
     if (!inputValue.trim() || isLoading) return
 
@@ -225,6 +232,8 @@ export default function AIAssistantPage() {
       const requestUrl = `${aiApiUrl}/user-prompt-rec`
       console.log("AI API URL:", requestUrl)
 
+      const authToken = await getAuthToken()
+
       const requestBody = {
         user_id: userId,
         prompt: userMessage,
@@ -236,6 +245,7 @@ export default function AIAssistantPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
         body: JSON.stringify(requestBody),
       })

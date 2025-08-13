@@ -62,6 +62,11 @@ export async function POST(request: NextRequest) {
 
     console.log("Sending VTON request:", vtonRequest)
 
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    const authToken = session?.access_token
+
     // Use NEXT_PUBLIC_AI_API_URL + /vton
     const vtonUrl = `${process.env.NEXT_PUBLIC_AI_API_URL}/vton`
 
@@ -70,6 +75,7 @@ export async function POST(request: NextRequest) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...(authToken && { Authorization: `Bearer ${authToken}` }),
       },
       body: JSON.stringify(vtonRequest),
     })

@@ -13,6 +13,7 @@ import { Upload, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 
 const CLOTHING_TYPES = [
   "верхняя", // футболка, рубашка, свитер, худи, кардиган, пиджак и т.п.
@@ -133,6 +134,14 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
 
+  const getAuthToken = async () => {
+    const supabase = createClient()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    return session?.access_token
+  }
+
   const handleAIAnalysis = async (type: "text" | "all" = "text") => {
     if (!imageFile) {
       toast.error("Сначала загрузите фото")
@@ -154,9 +163,14 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         throw new Error("AI API URL not configured")
       }
 
+      const authToken = await getAuthToken()
+
       const analysisRes = await fetch(`${aiApiUrl}/get-clothes`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken && { Authorization: `Bearer ${authToken}` }),
+        },
         body: JSON.stringify({
           image_url: uploaded.url,
           type: type,
@@ -391,6 +405,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                 )}
               </div>
             </div>
+
             <div>
               <Label htmlFor="item_name">Название вещи *</Label>
               <Input
