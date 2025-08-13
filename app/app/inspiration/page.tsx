@@ -6,7 +6,6 @@ import Image from "next/image"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
@@ -70,6 +69,9 @@ export default function InspirationPage() {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
   const [index, setIndex] = useState(0)
+  const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(new Set())
+
+  const current = outfits[index]
 
   // Hide any global top navigation
   useEffect(() => {
@@ -82,6 +84,26 @@ export default function InspirationPage() {
     })
     return () => prev.forEach(({ el, display }) => (el.style.display = display))
   }, [])
+
+  useEffect(() => {
+    if (!current || viewedOutfits.has(current.id)) return
+
+    const trackView = async () => {
+      try {
+        await fetch("/api/outfits/track-view", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ outfitId: current.id }),
+        })
+        setViewedOutfits((prev) => new Set([...prev, current.id]))
+      } catch (e) {
+        console.warn("Failed to track view:", e)
+      }
+    }
+
+    const timer = setTimeout(trackView, 1000) // Track after 1 second of viewing
+    return () => clearTimeout(timer)
+  }, [current, viewedOutfits])
 
   useEffect(() => {
     let cancelled = false
@@ -163,8 +185,6 @@ export default function InspirationPage() {
     setIndex((i) => i - drop)
   }, [index, outfits.length])
 
-  const current = filtered[index]
-
   type Dir = "up" | "down"
   const [anim, setAnim] = useState<{ from: number; to: number; dir: Dir } | null>(null)
   const [animPhase, setAnimPhase] = useState<"idle" | "start" | "run">("idle")
@@ -232,6 +252,12 @@ export default function InspirationPage() {
       })
       if (!res.ok) throw new Error("Failed to save outfit")
       setSavedOutfitIds((prev) => new Set([...prev, outfit.id]))
+
+      await fetch("/api/outfits/track-save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ outfitId: outfit.id }),
+      }).catch((e) => console.warn("Failed to track save:", e))
     } catch (e) {
       console.error(e)
     } finally {
@@ -427,7 +453,6 @@ export default function InspirationPage() {
                       )}
                     >
                       {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
-  
                     </button>
 
                     <button
@@ -488,7 +513,6 @@ export default function InspirationPage() {
                     aria-label="Лайк"
                   >
                     {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
-      
                   </Button>
                 </div>
               </div>
@@ -539,7 +563,6 @@ function Slide({
         src={previewSrc || "/placeholder.svg?height=1200&width=900&query=outfit%20preview"}
         alt={title || "Образ"}
         fill
-        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 100vw, 900px"
         className="object-cover sm:object-contain bg-neutral-950"
         priority={false}
       />
@@ -552,7 +575,6 @@ function Slide({
           </Badge>
         </div>
       )}
-
 
       {/* Left rail: thumbnails */}
       <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20">
@@ -587,33 +609,9 @@ function Slide({
               <span className="text-sm">{`+${remaining}`}</span>
             </button>
 
-            <Sheet open={open} onOpenChange={setOpen}>
-              <SheetContent side="bottom" className="h-[70vh] bg-neutral-950 text-white">
-                <SheetHeader>
-                  <SheetTitle>Все вещи из образа</SheetTitle>
-                </SheetHeader>
-                <div className="mt-4 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
-                  {items.map((item) => (
-                    <div key={item.id} className="space-y-2">
-                      <div className="relative w-full aspect-square rounded-lg overflow-hidden bg-neutral-800">
-                        {item.image_url ? (
-                          <Image
-                            src={item.image_url || "/placeholder.svg?height=400&width=400&query=outfit%20item"}
-                            alt={item.name || "Вещь"}
-                            fill
-                            sizes="200px"
-                            className="object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-neutral-700" />
-                        )}
-                      </div>
-                      <div className="text-xs text-neutral-300 line-clamp-2">{item.name}</div>
-                    </div>
-                  ))}
-                </div>
-              </SheetContent>
-            </Sheet>
+            <div className="fixed inset-x-0 bottom-0 z-[1200]">
+              <BottomNavigation />
+            </div>
           </>
         )}
       </div>

@@ -5,7 +5,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
   try {
     const { id } = params
 
-    // Immediately after parsing params and before any DB calls in GET(), add a numeric guard to prevent non-numeric IDs from hitting the database:
     const numericId = Number(id)
     if (!Number.isFinite(numericId) || numericId <= 0) {
       return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 })
@@ -17,7 +16,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     console.log("Fetching outfit with ID:", id)
 
-    // Получаем текущего пользователя
     const supabase = createClient()
     const {
       data: { user },
@@ -36,7 +34,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     console.log("Fetching outfit for user:", user.id)
 
-    // Получаем образ с элементами - используем правильные названия колонок
     const { data: outfit, error } = await supabase
       .from("outfits")
       .select(`
@@ -59,14 +56,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
           )
         )
       `)
-      .eq("id", numericId) // Replace both occurrences of `.eq("id", id)` in GET and the DELETE path with `.eq("id", numericId)`.
+      .eq("id", numericId)
       .eq("user_id", user.id)
       .single()
 
     if (error) {
       console.error("Error fetching outfit:", error)
 
-      // Check if outfit not found
       if (error.code === "PGRST116") {
         return NextResponse.json({ error: "Outfit not found" }, { status: 404 })
       }
@@ -79,10 +75,20 @@ export async function GET(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: "Outfit not found" }, { status: 404 })
     }
 
+    const { count: likesCount } = await supabase
+      .from("user_likes")
+      .select("*", { count: "exact", head: true })
+      .eq("outfit_id", numericId)
+
+    const outfitWithMetrics = {
+      ...outfit,
+      likes_count: likesCount || 0,
+    }
+
     console.log("Fetched outfit:", outfit.name)
     console.log("Outfit items count:", outfit.outfit_items?.length || 0)
 
-    return NextResponse.json({ outfit })
+    return NextResponse.json({ outfit: outfitWithMetrics })
   } catch (error) {
     console.error("Error in outfit GET API:", error)
     return NextResponse.json(
@@ -98,7 +104,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     const body = await request.json()
     const { name, description, season, occasion, items, preview_image_url } = body
 
-    // Compute `const numericId = Number(id)` and validate it like above:
     const numericId = Number(id)
     if (!Number.isFinite(numericId) || numericId <= 0) {
       return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 })
@@ -108,7 +113,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
     }
 
-    // Получаем текущего пользователя
     const supabase = createClient()
     const {
       data: { user },
@@ -124,7 +128,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Обновляем образ
     const { error: outfitError } = await supabase
       .from("outfits")
       .update({
@@ -136,7 +139,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
         updated_at: new Date().toISOString(),
       })
-      .eq("id", numericId) // Replace both occurrences of `.eq("id", id)` in GET and the DELETE path with `.eq("id", numericId)`.
+      .eq("id", numericId)
       .eq("user_id", user.id)
 
     if (outfitError) {
@@ -144,7 +147,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: `Failed to update outfit: ${outfitError.message}` }, { status: 500 })
     }
 
-    // Удаляем старые элементы образа
     const { error: deleteError } = await supabase.from("outfit_items").delete().eq("outfit_id", numericId)
 
     if (deleteError) {
@@ -152,9 +154,8 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: `Failed to update outfit items: ${deleteError.message}` }, { status: 500 })
     }
 
-    // Добавляем новые элементы к образу
     const outfitItems = items.map((itemId: number, index: number) => ({
-      outfit_id: numericId, // Use `outfit_id: numericId` instead of parsing again.
+      outfit_id: numericId,
       wardrobe_item_id: itemId,
       position: index,
     }))
@@ -180,7 +181,6 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
   try {
     const { id } = params
 
-    // Immediately after parsing params and before any DB calls in GET(), add a numeric guard to prevent non-numeric IDs from hitting the database:
     const numericId = Number(id)
     if (!Number.isFinite(numericId) || numericId <= 0) {
       return NextResponse.json({ error: "Invalid outfit ID" }, { status: 400 })
@@ -190,7 +190,6 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
     }
 
-    // Получаем текущего пользователя
     const supabase = createClient()
     const {
       data: { user },
@@ -206,8 +205,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Удаляем образ (элементы удалятся автоматически благодаря CASCADE)
-    const { error } = await supabase.from("outfits").delete().eq("id", numericId).eq("user_id", user.id) // Replace both occurrences of `.eq("id", id)` in GET and the DELETE path with `.eq("id", numericId)`.
+    const { error } = await supabase.from("outfits").delete().eq("id", numericId).eq("user_id", user.id)
 
     if (error) {
       console.error("Error deleting outfit:", error)

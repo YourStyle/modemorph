@@ -242,7 +242,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false, isAdded: true } : r)))
     } catch (error) {
       console.error("Error saving item:", error)
-      // Сбрасываем состояние при ошибке
+      // Сбрасываем состояние при ошибк��
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false } : r)))
     }
   }

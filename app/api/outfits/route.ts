@@ -59,6 +59,9 @@ export async function POST(request: Request) {
       season: season ? season.toString() : null,
       occasion: occasion ? occasion.toString() : null,
       preview_image_url: preview_image_url || preview_url || null,
+      likes_count: 0,
+      saves_count: 0,
+      views_count: 0,
     }
 
     const { data: outfit, error: outfitError } = await supabase.from("outfits").insert(outfitData).select()
@@ -116,7 +119,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Authentication error" }, { status: 401 })
     }
 
-    // Получаем образы пользователя с элементами
     const { data: outfits, error } = await supabase
       .from("outfits")
       .select(`
@@ -147,7 +149,21 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `Failed to fetch outfits: ${error.message}` }, { status: 500 })
     }
 
-    return NextResponse.json({ outfits: outfits || [] })
+    const enrichedOutfits = await Promise.all(
+      (outfits || []).map(async (outfit) => {
+        const { count: likesCount } = await supabase
+          .from("user_likes")
+          .select("*", { count: "exact", head: true })
+          .eq("outfit_id", outfit.id)
+
+        return {
+          ...outfit,
+          likes_count: likesCount || 0,
+        }
+      }),
+    )
+
+    return NextResponse.json({ outfits: enrichedOutfits })
   } catch (error) {
     console.error("Error in outfits GET API:", error)
     return NextResponse.json(
