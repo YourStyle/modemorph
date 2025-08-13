@@ -10,6 +10,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
     }
 
+    const invalidItems = items.filter((item) => !item.wardrobe_item_id || typeof item.wardrobe_item_id !== "number")
+    if (invalidItems.length > 0) {
+      console.error("Invalid wardrobe_item_id values:", invalidItems)
+      return NextResponse.json(
+        {
+          error: "Invalid wardrobe item IDs provided",
+          details: invalidItems,
+        },
+        { status: 400 },
+      )
+    }
+
     // Получаем текущего пользователя
     const supabase = createClient()
     const {
@@ -41,16 +53,24 @@ export async function POST(request: Request) {
 
     const createdOutfit = outfit[0]
 
-    // Добавляем элементы к образу - исправляем формат данных
-    const outfitItems = items.map((item: any, index: number) => ({
-      outfit_id: createdOutfit.id,
-      wardrobe_item_id: item.wardrobe_item_id || item.id, // Поддерживаем оба формата
-      position: item.position || index + 1,
-    }))
+    const outfitItems = items
+      .filter((item) => item.wardrobe_item_id && typeof item.wardrobe_item_id === "number")
+      .map((item: any, index: number) => ({
+        outfit_id: createdOutfit.id,
+        wardrobe_item_id: item.wardrobe_item_id,
+        position: item.position || index + 1,
+      }))
+
+    console.log("Creating outfit items:", outfitItems)
+
+    if (outfitItems.length === 0) {
+      return NextResponse.json({ error: "No valid wardrobe items to add to outfit" }, { status: 400 })
+    }
 
     const { error: itemsError } = await supabase.from("outfit_items").insert(outfitItems)
 
     if (itemsError) {
+      console.error("Database error inserting outfit items:", itemsError)
       return NextResponse.json({ error: `Failed to add items to outfit: ${itemsError.message}` }, { status: 500 })
     }
 

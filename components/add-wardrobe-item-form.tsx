@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Upload, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
+import { useRouter } from "next/navigation"
 
 const CLOTHING_TYPES = [
   "верхняя", // футболка, рубашка, свитер, худи, кардиган, пиджак и т.п.
@@ -91,6 +92,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const router = useRouter()
 
   useEffect(() => {
     void loadBasicItems()
@@ -204,7 +206,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       if (fileInputRef.current) fileInputRef.current.value = ""
       toast.success("Поля заполнены данными выбранной вещи и фото заменено")
     } else {
-      // Keep original photo, only fill form fields
+      // Keep original photo and file, only fill form fields
       toast.success("Поля заполнены данными выбранной вещи")
     }
   }
@@ -213,6 +215,11 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     e.preventDefault()
     if (!formData.item_name.trim()) {
       toast.error("Название вещи обязательно для заполнения")
+      return
+    }
+
+    if (!formData.store_url.trim()) {
+      toast.error("Ссылка на товар в магазине обязательна для заполнения")
       return
     }
 
@@ -265,6 +272,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       }
 
       toast.success("Вещь успешно сохранена")
+      router.push("/admin/wardrobe")
       onSuccess?.()
     } catch (error) {
       console.error("Error saving item:", error)
@@ -292,7 +300,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                       <img
                         src={imagePreview || "/placeholder.svg"}
                         alt="Preview"
-                        className="w-full h-48 object-cover rounded-lg"
+                        className="w-full max-h-80 object-contain rounded-lg bg-gray-50"
                       />
                       {imageFile && (
                         <div className="absolute bottom-2 left-2 flex gap-2">
@@ -550,13 +558,14 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="store_url">Ссылка на товар в магазине</Label>
+              <Label htmlFor="store_url">Ссылка на товар в магазине *</Label>
               <Input
                 id="store_url"
                 type="url"
                 value={formData.store_url}
                 onChange={(e) => setFormData({ ...formData, store_url: e.target.value })}
                 placeholder="https://shop.com/product/123"
+                required
               />
             </div>
 

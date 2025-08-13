@@ -53,26 +53,43 @@ export function SaveOutfitDialog({ isOpen, onClose, selectedItems, editingOutfit
       return
     }
 
+    const invalidItems = selectedItems.filter((item) => !item.id || typeof item.id !== "number")
+    if (invalidItems.length > 0) {
+      console.error("Invalid items found:", invalidItems)
+      toast({
+        title: "Ошибка",
+        description: "Некоторые выбранные вещи имеют неверный формат данных",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
 
     try {
       const method = editingOutfitId ? "PUT" : "POST"
 
-      // Исправляем формат данных для API
       const requestBody = {
         name: name.trim(),
         description: description.trim(),
         season,
         occasion,
-        items: selectedItems.map((item, index) => ({
-          wardrobe_item_id: item.id,
-          position: index + 1,
-        })),
+        items: selectedItems
+          .filter((item) => item.id && typeof item.id === "number") // Filter out invalid items
+          .map((item, index) => ({
+            wardrobe_item_id: item.id,
+            position: index + 1,
+          })),
       }
 
       if (editingOutfitId) {
         requestBody.id = editingOutfitId
       }
+
+      console.log("Saving outfit with data:", {
+        ...requestBody,
+        items: requestBody.items.map((item) => ({ wardrobe_item_id: item.wardrobe_item_id, position: item.position })),
+      })
 
       const response = await fetch("/api/outfits", {
         method,
