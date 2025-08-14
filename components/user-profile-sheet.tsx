@@ -12,6 +12,7 @@ import { CommonSheet } from "./common-sheet"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { PaywallModal } from "./paywall-modal"
 
 interface UserProfile {
   id: string
@@ -63,6 +64,8 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const supabase = createClient()
+  const [isPaywallOpen, setIsPaywallOpen] = useState(false)
+  const [subscriptionData, setSubscriptionData] = useState<any>(null)
 
   const [formData, setFormData] = useState({
     full_name: "",
@@ -77,6 +80,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   useEffect(() => {
     if (isOpen) {
       loadProfile()
+      loadSubscriptionData()
     }
   }, [isOpen])
 
@@ -156,6 +160,20 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
     }
   }
 
+  const loadSubscriptionData = async () => {
+    try {
+      const response = await fetch("/api/user-subscription", {
+        credentials: "include",
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setSubscriptionData(data)
+      }
+    } catch (error) {
+      console.error("Error loading subscription data:", error)
+    }
+  }
+
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({
       ...prev,
@@ -175,7 +193,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
     // Проверяем тип файла
     if (!file.type.startsWith("image/")) {
-      toast.error("Пожалу��ста, выберите изображение")
+      toast.error("Пожалуйста, выберите изображение")
       return
     }
 
@@ -347,6 +365,48 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                   </div>
                 ) : (
                   <>
+                    {profile && !profile.is_admin && (
+                      <div className="space-y-4 p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded-lg border border-purple-500/30">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-white font-medium">Подписка</h3>
+                            {subscriptionData?.subscription?.status === "active" ? (
+                              <div className="text-green-400 text-sm">
+                                Pro{" "}
+                                {subscriptionData.subscription.subscription_type === "monthly"
+                                  ? "299 ₽/мес"
+                                  : "2 490 ₽/год"}
+                              </div>
+                            ) : (
+                              <div className="text-gray-400 text-sm">Базовый план</div>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <div className="text-white font-medium">
+                              {subscriptionData?.credits?.credits_balance || 0} кредитов
+                            </div>
+                            <Button
+                              size="sm"
+                              onClick={() => setIsPaywallOpen(true)}
+                              className="mt-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                            >
+                              {subscriptionData?.subscription?.status === "active" ? "Купить кредиты" : "Получить Pro"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        {subscriptionData?.subscription?.status !== "active" && (
+                          <div className="text-xs text-gray-300 space-y-1">
+                            <div>Pro включает:</div>
+                            <div>• Генерация образов на аватаре</div>
+                            <div>• Отцифровка больше 10 вещей</div>
+                            <div>• Неограниченное общение с ИИ-стилистом</div>
+                            <div>• 40 кредитов в месяц</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <Label className="text-white">Email</Label>
                       <Input value={profile?.email || ""} disabled className="bg-gray-700 border-gray-600 text-white" />
@@ -550,9 +610,16 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
           <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
             Выйти
           </Button>
-
         </div>
       </div>
+      <PaywallModal
+        isOpen={isPaywallOpen}
+        onClose={() => setIsPaywallOpen(false)}
+        onSuccess={() => {
+          loadSubscriptionData()
+          toast.success("Данные обновлены!")
+        }}
+      />
     </CommonSheet>
   )
 }
