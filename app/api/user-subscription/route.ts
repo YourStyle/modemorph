@@ -13,11 +13,23 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Get user subscription
-    const { data: subscription } = await supabase.from("user_subscriptions").select("*").eq("user_id", user.id).single()
+    const { data: userProfile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single()
 
-    // Get user credits
-    const { data: credits } = await supabase.from("user_credits").select("*").eq("user_id", user.id).single()
+    if (!userProfile) {
+      return NextResponse.json({ error: "User profile not found" }, { status: 404 })
+    }
+
+    const { data: subscription } = await supabase
+      .from("user_subscriptions")
+      .select("*")
+      .eq("user_profile_id", userProfile.id)
+      .single()
+
+    const { data: credits } = await supabase
+      .from("user_credits")
+      .select("*")
+      .eq("user_profile_id", userProfile.id)
+      .single()
 
     // Get credit packs
     const { data: creditPacks } = await supabase
@@ -49,14 +61,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    const { data: userProfile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single()
+
+    if (!userProfile) {
+      return NextResponse.json({ error: "User profile not found" }, { status: 404 })
+    }
+
     const { action, type, packId } = await request.json()
 
     if (action === "subscribe") {
-      // Check if user already has subscription
       const { data: existingSubscription } = await supabase
         .from("user_subscriptions")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("user_profile_id", userProfile.id)
         .single()
 
       if (existingSubscription) {
@@ -64,6 +81,7 @@ export async function POST(request: Request) {
       }
 
       const price = type === "monthly" ? 299 : 2490
+      const startDate = new Date()
       const expiresAt = new Date()
       if (type === "monthly") {
         expiresAt.setMonth(expiresAt.getMonth() + 1)
@@ -71,10 +89,10 @@ export async function POST(request: Request) {
         expiresAt.setFullYear(expiresAt.getFullYear() + 1)
       }
 
-      // Create subscription
       const { error: subscriptionError } = await supabase.from("user_subscriptions").insert({
-        user_id: user.id,
+        user_profile_id: userProfile.id,
         subscription_type: type,
+        start_date: startDate.toISOString(),
         expires_at: expiresAt.toISOString(),
       })
 
@@ -82,9 +100,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 })
       }
 
-      // Add subscription credits
       await supabase.rpc("add_credits", {
-        p_user_id: user.id,
+        p_user_profile_id: userProfile.id,
         p_amount: 40,
         p_reason: "subscription",
         p_description: `Кредиты за подписку ${type === "monthly" ? "на месяц" : "на год"}`,
@@ -101,9 +118,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Credit pack not found" }, { status: 404 })
       }
 
-      // Add credits
       await supabase.rpc("add_credits", {
-        p_user_id: user.id,
+        p_user_profile_id: userProfile.id,
         p_amount: pack.credits,
         p_reason: "purchase",
         p_description: `Покупка пака "${pack.name}"`,

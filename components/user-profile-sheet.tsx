@@ -366,44 +366,55 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                 ) : (
                   <>
                     {profile && !profile.is_admin && (
-                      <div className="space-y-4 p-4 bg-gradient-to-r from-purple-900/20 to-blue-900/20 rounded-lg border border-purple-500/30">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h3 className="text-white font-medium">Подписка</h3>
-                            {subscriptionData?.subscription?.status === "active" ? (
-                              <div className="text-green-400 text-sm">
-                                Pro{" "}
-                                {subscriptionData.subscription.subscription_type === "monthly"
-                                  ? "299 ₽/мес"
-                                  : "2 490 ₽/год"}
-                              </div>
-                            ) : (
-                              <div className="text-gray-400 text-sm">Базовый план</div>
-                            )}
-                          </div>
-                          <div className="text-right">
-                            <div className="text-white font-medium">
-                              {subscriptionData?.credits?.credits_balance || 0} кредитов
+                      <div className="space-y-3">
+                        <h3 className="text-white font-medium text-sm">Ваш текущий план</h3>
+                        <div className="flex items-center gap-3">
+                          {/* Plan Info Block */}
+                          <div
+                            className={`flex-1 p-4 rounded-xl border ${
+                              subscriptionData?.subscription?.status === "active"
+                                ? "bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-400/30"
+                                : "bg-white/5 border-gray-700/50"
+                            } backdrop-blur-sm`}
+                          >
+                            <div className="text-white font-medium text-base mb-1">
+                              {subscriptionData?.subscription?.status === "active" ? "Pro" : "Бесплатно"}
                             </div>
+                            <div className="text-gray-400 text-sm">
+                              {subscriptionData?.subscription?.status === "active"
+                                ? "40 кредитов каждый месяц"
+                                : "30 кредитов каждый месяц"}
+                            </div>
+                            <div className="text-white/70 text-xs mt-2">
+                              {subscriptionData?.credits?.credits_balance || 0} кредитов доступно
+                            </div>
+                          </div>
+
+                          {/* Subscribe Button Block */}
+                          <div className="flex-shrink-0">
                             <Button
-                              size="sm"
                               onClick={() => setIsPaywallOpen(true)}
-                              className="mt-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                              className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white border-0 px-6 py-3 rounded-xl font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 flex items-center gap-2"
                             >
-                              {subscriptionData?.subscription?.status === "active" ? "Купить кредиты" : "Получить Pro"}
+                              {subscriptionData?.subscription?.status === "active" ? "Управление" : "Оформить подписку"}
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M5 12H19M19 12L12 5M19 12L12 19"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
                             </Button>
                           </div>
                         </div>
-
-                        {subscriptionData?.subscription?.status !== "active" && (
-                          <div className="text-xs text-gray-300 space-y-1">
-                            <div>Pro включает:</div>
-                            <div>• Генерация образов на аватаре</div>
-                            <div>• Отцифровка больше 10 вещей</div>
-                            <div>• Неограниченное общение с ИИ-стилистом</div>
-                            <div>• 40 кредитов в месяц</div>
-                          </div>
-                        )}
                       </div>
                     )}
 

@@ -72,20 +72,19 @@ export function TopNavigation() {
         return
       }
 
-      // Получаем профиль пользователя
       const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
+        .from("user_profiles")
         .select("*")
-        .eq("id", user.id)
+        .eq("user_id", user.id)
         .single()
 
       if (profileError) {
         console.error("Profile fetch error:", profileError)
-  
+
         const { data: newProfile, error: createError } = await supabase
-          .from("profiles")
+          .from("user_profiles")
           .insert({
-            id: user.id,
+            user_id: user.id,
             full_name: user.user_metadata?.full_name || "",
             avatar_url: user.user_metadata?.avatar_url || "",
           })

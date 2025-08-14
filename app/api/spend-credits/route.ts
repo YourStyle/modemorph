@@ -13,15 +13,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { amount, reason, description } = await request.json()
+    const { amount, reason, description, featureType } = await request.json()
 
     if (!amount || !reason) {
       return NextResponse.json({ error: "Amount and reason are required" }, { status: 400 })
     }
 
-    // Spend credits using the database function
+    const { data: profile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single()
+
+    if (!profile) {
+      return NextResponse.json({ error: "Profile not found" }, { status: 404 })
+    }
+
+    if (featureType) {
+      const { data: canUse } = await supabase.rpc("use_feature", {
+        p_user_profile_id: profile.id,
+        p_feature_type: featureType,
+      })
+
+      if (!canUse) {
+        return NextResponse.json({ error: "Daily limit exceeded" }, { status: 400 })
+      }
+    }
+
     const { data: success } = await supabase.rpc("spend_credits", {
-      p_user_id: user.id,
+      p_user_id: user.id, // Keep using auth user ID for credits
       p_amount: amount,
       p_reason: reason,
       p_description: description,
@@ -35,7 +51,7 @@ export async function POST(request: Request) {
     const { data: credits } = await supabase
       .from("user_credits")
       .select("credits_balance")
-      .eq("user_id", user.id)
+      .eq("user_profile_id", profile.id)
       .single()
 
     return NextResponse.json({

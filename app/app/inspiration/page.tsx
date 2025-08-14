@@ -6,9 +6,10 @@ import Image from "next/image"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2 } from "lucide-react"
+import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
+import { PaywallModal } from "@/components/paywall-modal"
 
 type OutfitItem = {
   id: string
@@ -71,6 +72,12 @@ export default function InspirationPage() {
   const [index, setIndex] = useState(0)
   const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(new Set())
 
+  const [dailyViewsUsed, setDailyViewsUsed] = useState(0)
+  const [dailyViewsLimit] = useState(10) // Free users get 10 views per day
+  const [showPaywall, setShowPaywall] = useState(false)
+  const [isBlurred, setIsBlurred] = useState(false)
+  const [userCredits, setUserCredits] = useState(0)
+
   const current = outfits[index]
 
   // Hide any global top navigation
@@ -86,17 +93,56 @@ export default function InspirationPage() {
   }, [])
 
   useEffect(() => {
-    if (!current || viewedOutfits.has(current.id)) return
+    const checkDailyLimits = async () => {
+      try {
+        const response = await fetch("/api/check-limits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ limitType: "daily", usageType: "ideas_views" }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (!data.canUse) {
+            setIsBlurred(true)
+          }
+        }
+      } catch (error) {
+        console.error("Error checking limits:", error)
+      }
+    }
+
+    checkDailyLimits()
+  }, [])
+
+  useEffect(() => {
+    if (!current || viewedOutfits.has(current.id) || isBlurred) return
 
     const trackView = async () => {
       try {
+        // Check if user can view more
+        const limitResponse = await fetch("/api/check-limits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ limitType: "daily", usageType: "ideas_views" }),
+        })
+
+        if (!limitResponse.ok || !(await limitResponse.json()).canUse) {
+          setIsBlurred(true)
+          return
+        }
+
         await fetch("/api/outfits/track-view", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ outfitId: current.id }),
         })
+
         setViewedOutfits((prev) => new Set([...prev, current.id]))
+        setDailyViewsUsed((prev) => prev + 1)
       } catch (e) {
         console.warn("Failed to track view:", e)
       }
@@ -104,7 +150,7 @@ export default function InspirationPage() {
 
     const timer = setTimeout(trackView, 1000) // Track after 1 second of viewing
     return () => clearTimeout(timer)
-  }, [current, viewedOutfits])
+  }, [current, viewedOutfits, isBlurred])
 
   useEffect(() => {
     let cancelled = false
@@ -300,6 +346,34 @@ export default function InspirationPage() {
     }
   }
 
+  const handleBuyMoreViews = async () => {
+    try {
+      const response = await fetch("/api/spend-credits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          amount: 2,
+          reason: "ideas_views",
+          description: "Купить 5 дополнительных просмотров идей",
+          usageType: "ideas_views",
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setUserCredits(data.newBalance)
+        setIsBlurred(false)
+        setDailyViewsUsed((prev) => Math.max(0, prev - 5)) // Reset 5 views
+      } else {
+        setShowPaywall(true)
+      }
+    } catch (error) {
+      console.error("Error buying views:", error)
+      setShowPaywall(true)
+    }
+  }
+
   const visibleItems = current?.items?.slice(0, 5) ?? []
   const remaining = Math.max(0, (current?.items?.length ?? 0) - visibleItems.length)
 
@@ -366,6 +440,34 @@ export default function InspirationPage() {
 
       <main className="absolute left-0 right-0 bottom-0 top-[45px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
         <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 touch-pan-y">
+          {isBlurred && (
+            <div className="absolute inset-0 z-[4000] bg-black/80 backdrop-blur-sm flex items-center justify-center">
+              <div className="text-center p-6 bg-gray-900/90 rounded-xl border border-gray-700 max-w-sm mx-4">
+                <Zap className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-white mb-2">Дневной лимит исчерпан</h3>
+                <p className="text-gray-300 mb-4 text-sm">
+                  Вы просмотрели {dailyViewsLimit} образов сегодня. Купите дополнительные просмотры или оформите
+                  подписку Pro.
+                </p>
+                <div className="space-y-3">
+                  <Button
+                    onClick={handleBuyMoreViews}
+                    className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800"
+                  >
+                    Купить 5 просмотров за 2 токена
+                  </Button>
+                  <Button
+                    onClick={() => setShowPaywall(true)}
+                    variant="outline"
+                    className="w-full border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
+                  >
+                    Оформить подписку Pro
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {filtered.length === 0 ? (
             <div className="absolute inset-0 grid place-items-center">
               <div className="text-neutral-400">Пока нет образов</div>
@@ -542,6 +644,15 @@ export default function InspirationPage() {
       <div className="fixed inset-x-0 bottom-0 z-[1200]">
         <BottomNavigation />
       </div>
+
+      <PaywallModal
+        isOpen={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onSuccess={() => {
+          setShowPaywall(false)
+          setIsBlurred(false)
+        }}
+      />
     </div>
   )
 }
