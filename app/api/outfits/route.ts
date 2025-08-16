@@ -59,8 +59,8 @@ export async function POST(request: Request) {
       season: season ? season.toString() : null,
       occasion: occasion ? occasion.toString() : null,
       preview_image_url: preview_image_url || preview_url || null,
-      likes_count: 0,
-      saves_count: 0,
+      likes: 0,
+      favorites_count: 0,
       views_count: 0,
     }
 

@@ -19,6 +19,7 @@ interface User {
   is_admin: boolean
   created_at: string
   updated_at: string
+  email: string | null
   user_subscriptions: Array<{
     subscription_type: string
     status: string
@@ -169,6 +170,11 @@ export default function AdminUsersPage() {
                         {subscription.subscription_type === "pro" ? "Pro" : subscription.subscription_type}
                       </Badge>
                     )}
+                  </div>
+
+                  <div className="mb-3 text-sm text-gray-500">
+                    <div>ID: {user.user_id}</div>
+                    {user.email && <div>Email: {user.email}</div>}
                   </div>
 
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm text-gray-600">
