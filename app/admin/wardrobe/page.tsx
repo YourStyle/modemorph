@@ -564,15 +564,7 @@ export default function WardrobePage() {
                       Найдено: {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
                     </h2>
                     <div className="flex gap-2">
-                      {!isCreatingOutfit && (
-                        <Button
-                          variant="outline"
-                          className="flex items-center gap-2 bg-white border-gray-300 hover:bg-gray-50"
-                        >
-                          <Upload className="h-4 w-4" />
-                          Загрузить фото
-                        </Button>
-                      )}
+
                       <Button
                         onClick={handleCreateOutfitToggle}
                         variant={isCreatingOutfit ? "destructive" : "default"}

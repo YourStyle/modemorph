@@ -45,7 +45,7 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
       }
     } catch (error) {
       console.error("Error loading wardrobe items:", error)
-      toast.error("Ошибка загрузки вещей")
+      toast.error("Ошибка загрузки ��ещей")
     } finally {
       setLoading(false)
     }
