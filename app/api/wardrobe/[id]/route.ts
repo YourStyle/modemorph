@@ -1,6 +1,66 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
+export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+  try {
+    const supabase = createClient()
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser()
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const itemId = Number.parseInt(params.id)
+    if (isNaN(itemId)) {
+      return NextResponse.json({ error: "Invalid item ID" }, { status: 400 })
+    }
+
+    // Check if user is admin to determine visibility filter
+    const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
+    const isAdmin = profile?.is_admin || false
+
+    let query = supabase
+      .from("wardrobe_items")
+      .select(
+        `
+      *,
+      basic_wardrobe_items (
+        id,
+        name_ru,
+        name_en,
+        description,
+        image_url
+      )
+    `,
+      )
+      .eq("id", itemId)
+
+    // Non-admin users can only see non-hidden items
+    if (!isAdmin) {
+      query = query.eq("is_hidden", false)
+    }
+
+    const { data: item, error } = await query.single()
+
+    if (error) {
+      if (error.code === "PGRST116") {
+        return NextResponse.json({ error: "Item not found" }, { status: 404 })
+      }
+      console.error("Error fetching wardrobe item:", error)
+      return NextResponse.json({ error: "Failed to fetch wardrobe item" }, { status: 500 })
+    }
+
+    return NextResponse.json({ item })
+  } catch (error) {
+    console.error("Error in GET /api/wardrobe/[id]:", error)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const supabase = createClient()
