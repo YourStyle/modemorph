@@ -18,9 +18,17 @@ import { Separator } from "@/components/ui/separator"
 import { WardrobeItemCard } from "@/components/wardrobe-item-card"
 import { useSelectedItems } from "@/contexts/selected-items-context"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/contexts/auth-context"
 
 import { Eye, EyeOff, Loader2, Plus, Save, Settings, Shirt, Upload, X } from "lucide-react"
 import type { WardrobeItem } from "@/lib/wardrobe"
+
+const itemHasPrint = (val: any): boolean => {
+  if (typeof val === "boolean") return val
+  if (val == null) return false
+  const s = String(val).trim().toLowerCase()
+  return s === "y" || s === "yes" || s === "true" || s === "да" || s === "есть" || s === "1"
+}
 
 export default function WardrobePage() {
   const [items, setItems] = useState<WardrobeItem[]>([])
@@ -61,45 +69,10 @@ export default function WardrobePage() {
   const router = useRouter()
   const { toast } = useToast()
 
+  const { user, loading: authLoading } = useAuth()
+
   // Load edit mode by query (?edit=ID), but do not navigate when toggling mode
   const editParam = useMemo(() => searchParams.get("edit"), [searchParams])
-  useEffect(() => {
-    if (editParam) {
-      void loadOutfitForEditing(Number(editParam))
-    }
-  }, [editParam])
-
-  const loadOutfitForEditing = async (outfitId: number) => {
-    try {
-      const response = await fetch(`/api/outfits/${outfitId}`, { cache: "no-store" })
-      if (!response.ok) throw new Error("Failed to load outfit")
-      const data = await response.json()
-      const outfit = data.outfit
-
-      // Fill selection with outfit items
-      const outfitItems: (WardrobeItem & { type: "user" })[] = (outfit.outfit_items || [])
-        .sort((a: any, b: any) => a.position - b.position)
-        .map((item: any) => ({
-          ...item.wardrobe_items,
-          image_url: item.wardrobe_items?.image_url || item.wardrobe_items?.basic_wardrobe_items?.image_url || null,
-          type: "user" as const,
-        }))
-
-      setSelectedItems(outfitItems)
-      setEditingOutfitId(outfitId)
-      setEditingOutfit(outfit)
-
-      setOutfitName(outfit.name ?? "")
-      setOutfitDescription(outfit.description ?? "")
-      setPreviewUrl(outfit.preview_url ?? "")
-
-      setIsCreatingOutfit(true)
-      toast({ title: "Режим редактирования", description: `Загружен образ "${outfit.name}"` })
-    } catch (e) {
-      console.error("Error loading outfit:", e)
-      toast({ title: "Ошибка", description: "Не удалось загрузить образ", variant: "destructive" })
-    }
-  }
 
   const fetchItems = useCallback(async (filters: { search: string }) => {
     setLoading(true)
@@ -196,6 +169,10 @@ export default function WardrobePage() {
     setIsCreatingOutfit((v) => !v)
   }
 
+  const handleEditItem = (itemId: number) => {
+    router.push(`/admin/wardrobe/edit?id=${itemId}`)
+  }
+
   // Save outfit actions
 
   const openSaveModal = () => {
@@ -242,14 +219,14 @@ export default function WardrobePage() {
       const url = editingOutfit?.id ? `/api/outfits/${editingOutfit.id}` : "/api/outfits"
       const method = editingOutfit?.id ? "PUT" : "POST"
 
-      const res = await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.error || "Не удалось сохранить образ")
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || "Не удалось сохранить образ")
       }
 
       toast({ title: "Сохранено", description: editingOutfit?.id ? "Образ обновлён" : "Образ создан" })
@@ -278,27 +255,43 @@ export default function WardrobePage() {
     }
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-red-600 text-lg font-semibold">Ошибка загрузки данных</div>
-          <p className="text-gray-600">{error}</p>
-          <Button onClick={handleRetry}>Попробовать снова</Button>
-        </div>
-      </div>
-    )
+  const loadOutfitForEditing = async (outfitId: number) => {
+    try {
+      const response = await fetch(`/api/outfits/${outfitId}`, { cache: "no-store" })
+      if (!response.ok) throw new Error("Failed to load outfit")
+      const data = await response.json()
+      const outfit = data.outfit
+
+      // Fill selection with outfit items
+      const outfitItems: (WardrobeItem & { type: "user" })[] = (outfit.outfit_items || [])
+        .sort((a: any, b: any) => a.position - b.position)
+        .map((item: any) => ({
+          ...item.wardrobe_items,
+          image_url: item.wardrobe_items?.image_url || item.wardrobe_items?.basic_wardrobe_items?.image_url || null,
+          type: "user" as const,
+        }))
+
+      setSelectedItems(outfitItems)
+      setEditingOutfitId(outfitId)
+      setEditingOutfit(outfit)
+
+      setOutfitName(outfit.name ?? "")
+      setOutfitDescription(outfit.description ?? "")
+      setPreviewUrl(outfit.preview_url ?? "")
+
+      setIsCreatingOutfit(true)
+      toast({ title: "Режим редактирования", description: `Загружен образ "${outfit.name}"` })
+    } catch (e) {
+      console.error("Error loading outfit:", e)
+      toast({ title: "Ошибка", description: "Не удалось загрузить образ", variant: "destructive" })
+    }
   }
 
-  const hiddenCount = items.filter((i) => i.is_hidden).length
-  const visibleCount = items.length - hiddenCount
-
-  const itemHasPrint = (val: any): boolean => {
-    if (typeof val === "boolean") return val
-    if (val == null) return false
-    const s = String(val).trim().toLowerCase()
-    return s === "y" || s === "yes" || s === "true" || s === "да" || s === "есть" || s === "1"
-  }
+  useEffect(() => {
+    if (editParam) {
+      void loadOutfitForEditing(Number(editParam))
+    }
+  }, [editParam])
 
   const filteredAndSortedItems = useMemo(() => {
     let arr = [...items]
@@ -344,6 +337,30 @@ export default function WardrobePage() {
 
     return arr
   }, [items, search, filterClothingType, filterColor, filterMaterial, filterPrint, sortOrder])
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-lg font-semibold">Загрузка...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-red-600 text-lg font-semibold">Необходима авторизация</div>
+          <Button onClick={() => router.push("/auth/login")}>Войти</Button>
+        </div>
+      </div>
+    )
+  }
+
+  const hiddenCount = items.filter((i) => i.is_hidden).length
+  const visibleCount = items.length - hiddenCount
 
   return (
     <div className="min-h-screen bg-gray-50 pb-40">
@@ -618,6 +635,7 @@ export default function WardrobePage() {
                           onVisibilityChange={handleVisibilityChange}
                           onDelete={handleDelete}
                           onRefresh={handleRefresh}
+                          onEdit={handleEditItem}
                         />
                       ),
                     )}

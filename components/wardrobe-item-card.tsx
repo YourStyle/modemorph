@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -12,44 +12,31 @@ import { ItemDetailsModal, type WardrobeItem } from "./item-details-modal"
 import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/contexts/auth-context"
 
 interface WardrobeItemCardProps {
   item: WardrobeItem
   onRefresh?: () => void
+  isAdmin?: boolean
+  onVisibilityChange?: (itemId: number, isHidden: boolean) => void
+  onDelete?: (itemId: number) => void
+  onEdit?: (itemId: number) => void
 }
 
-export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
+export function WardrobeItemCard({
+  item,
+  onRefresh,
+  isAdmin = false,
+  onVisibilityChange,
+  onDelete,
+  onEdit,
+}: WardrobeItemCardProps) {
   const [showDetails, setShowDetails] = useState(false)
   const [showEditSheet, setShowEditSheet] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
   const { toast } = useToast()
   const router = useRouter()
-  const supabase = createClient()
-
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) return
-
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("is_admin")
-          .eq("user_id", user.id)
-          .single()
-
-        setIsAdmin(profile?.is_admin === true)
-      } catch (error) {
-        console.error("Error checking admin status:", error)
-      }
-    }
-
-    checkAdminStatus()
-  }, [supabase])
+  const { user } = useAuth()
 
   const handleToggleVisibility = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -71,6 +58,7 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
           title: item.is_hidden ? "Вещь показана" : "Вещь скрыта",
           description: `Вещь "${item.item_name}" ${item.is_hidden ? "теперь видна" : "скрыта"} в гардеробе`,
         })
+        onVisibilityChange?.(item.id, !item.is_hidden)
         onRefresh?.()
       } else {
         throw new Error("Failed to update visibility")
@@ -105,6 +93,7 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
           title: "Вещь удалена",
           description: `Вещь "${item.item_name}" успешно удалена из гардероба`,
         })
+        onDelete?.(item.id)
         onRefresh?.()
       } else {
         throw new Error("Failed to delete item")
@@ -123,7 +112,7 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
   const handleEdit = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (isAdmin) {
-      router.push(`/admin/wardrobe/edit?id=${item.id}`)
+      onEdit?.(item.id)
     } else {
       setShowEditSheet(true)
     }
@@ -164,10 +153,12 @@ export function WardrobeItemCard({ item, onRefresh }: WardrobeItemCardProps) {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={handleEdit}>
-                    <Edit className="h-4 w-4 mr-2" />
-                    Редактировать
-                  </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem onClick={handleEdit}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Редактировать
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={handleToggleVisibility} disabled={isUpdating}>
                     {item.is_hidden ? (
                       <>
