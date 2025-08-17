@@ -59,6 +59,51 @@ const KEEP_BEHIND = 8
 const KEEP_AHEAD = 8
 const MAX_KEEP = KEEP_BEHIND + KEEP_AHEAD + 1
 
+function getViewedOutfitsKey() {
+  // Simple hash based on user agent and timestamp to prevent easy tampering
+  const userAgent = typeof window !== "undefined" ? window.navigator.userAgent : ""
+  const sessionStart =
+    typeof window !== "undefined"
+      ? window.sessionStorage.getItem("session_start") || Date.now().toString()
+      : Date.now().toString()
+  if (typeof window !== "undefined" && !window.sessionStorage.getItem("session_start")) {
+    window.sessionStorage.setItem("session_start", sessionStart)
+  }
+  const hash = btoa(userAgent + sessionStart).slice(0, 8)
+  return `viewed_outfits_${hash}`
+}
+
+function getViewedOutfits(): Set<string> {
+  if (typeof window === "undefined") return new Set()
+  try {
+    const key = getViewedOutfitsKey()
+    const stored = localStorage.getItem(key)
+    if (stored) {
+      const parsed = JSON.parse(stored)
+      return new Set(parsed.ids || [])
+    }
+  } catch (e) {
+    console.warn("Failed to load viewed outfits:", e)
+  }
+  return new Set()
+}
+
+function saveViewedOutfits(viewedIds: Set<string>) {
+  if (typeof window === "undefined") return
+  try {
+    const key = getViewedOutfitsKey()
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        ids: Array.from(viewedIds),
+        timestamp: Date.now(),
+      }),
+    )
+  } catch (e) {
+    console.warn("Failed to save viewed outfits:", e)
+  }
+}
+
 export default function InspirationPage() {
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -70,7 +115,7 @@ export default function InspirationPage() {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
   const [index, setIndex] = useState(0)
-  const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(new Set())
+  const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(() => getViewedOutfits())
 
   const [dailyViewsUsed, setDailyViewsUsed] = useState(0)
   const [dailyViewsLimit] = useState(10) // Free users get 10 views per day
@@ -79,6 +124,10 @@ export default function InspirationPage() {
   const [userCredits, setUserCredits] = useState(0)
 
   const current = outfits[index]
+
+  useEffect(() => {
+    saveViewedOutfits(viewedOutfits)
+  }, [viewedOutfits])
 
   // Hide any global top navigation
   useEffect(() => {
@@ -232,7 +281,7 @@ export default function InspirationPage() {
     const drop = start
     setOutfits((prev) => prev.slice(start, end))
     setIndex((i) => i - drop)
-  }, [index, outfits.length])
+  }, [index, outfits])
 
   type Dir = "up" | "down"
   const [anim, setAnim] = useState<{ from: number; to: number; dir: Dir } | null>(null)
@@ -242,9 +291,16 @@ export default function InspirationPage() {
   const startTransition = useCallback(
     (dir: Dir) => {
       const to = dir === "down" ? index + 1 : index - 1
-      if (to < 0 || to >= filtered.length || anim) return
+      if (to < 0 || to >= outfits.length || anim) return
+
+      const targetOutfit = outfits[to]
+      if (!targetOutfit) return
 
       const trackUsage = async () => {
+        if (viewedOutfits.has(targetOutfit.id)) {
+          return true // Skip API call if already viewed
+        }
+
         try {
           const response = await fetch("/api/limits/consume", {
             method: "POST",
@@ -262,6 +318,8 @@ export default function InspirationPage() {
             }
             console.warn("Usage tracking failed:", errorData.error)
           }
+
+          setViewedOutfits((prev) => new Set([...prev, targetOutfit.id]))
           return true
         } catch (error) {
           console.warn("Usage tracking error:", error)
@@ -285,7 +343,7 @@ export default function InspirationPage() {
         }, ANIM_MS)
       })
     },
-    [index, filtered.length, anim],
+    [index, outfits, anim, viewedOutfits],
   )
 
   const gotoPrev = useCallback(() => startTransition("up"), [startTransition])
@@ -410,8 +468,8 @@ export default function InspirationPage() {
 
   const currentPreview = getPreviewSrc(current)
 
-  const animFrom = anim ? filtered[anim.from] : null
-  const animTo = anim ? filtered[anim.to] : null
+  const animFrom = anim ? outfits[anim.from] : null
+  const animTo = anim ? outfits[anim.to] : null
   const animFromPreview = getPreviewSrc(animFrom || undefined)
   const animToPreview = getPreviewSrc(animTo || undefined)
 
@@ -565,10 +623,10 @@ export default function InspirationPage() {
                 <button
                   aria-label="Следующий образ"
                   onClick={gotoNext}
-                  disabled={index >= filtered.length - 1 || !!anim || filtered.length === 0}
+                  disabled={index >= outfits.length - 1 || !!anim || filtered.length === 0}
                   className={cn(
                     "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
-                    index >= filtered.length - 1 || !!anim || filtered.length === 0
+                    index >= outfits.length - 1 || !!anim || filtered.length === 0
                       ? "opacity-60 cursor-not-allowed"
                       : "",
                     "pointer-events-auto",
@@ -619,7 +677,9 @@ export default function InspirationPage() {
 
               {/* Desktop/tablet: corners */}
               <div className="hidden sm:block">
-                <div className="absolute bottom-3 left-3 z-[2000] pointer-events-auto">
+                <div
+                  className={cn("absolute bottom-3 left-3 pointer-events-auto", isBlurred ? "z-[2000]" : "z-[6000]")}
+                >
                   <Button
                     onClick={() => current && handleSave(current)}
                     disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
@@ -638,7 +698,9 @@ export default function InspirationPage() {
                   </Button>
                 </div>
 
-                <div className="absolute bottom-3 right-3 z-[2000] pointer-events-auto">
+                <div
+                  className={cn("absolute bottom-3 right-3 pointer-events-auto", isBlurred ? "z-[2000]" : "z-[6000]")}
+                >
                   <Button
                     variant="secondary"
                     onClick={() => current && handleLike(current)}

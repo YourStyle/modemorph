@@ -1,10 +1,9 @@
 "use client"
 
 import type React from "react"
-
-import { useEffect, useState, useRef } from "react"
+import { useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { useAuth } from "@/contexts/auth-context"
 
 interface AuthRedirectProps {
   children: React.ReactNode
@@ -13,83 +12,39 @@ interface AuthRedirectProps {
 }
 
 export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth/login" }: AuthRedirectProps) {
-  const [loading, setLoading] = useState(true)
-  const [authenticated, setAuthenticated] = useState(false)
+  const { user, loading } = useAuth()
   const router = useRouter()
-  const supabase = createClient()
-  const authCheckInProgress = useRef(false)
 
   useEffect(() => {
-    checkAuth()
+    const checkAuthCookies = () => {
+      if (typeof document === "undefined") return true
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (process.env.NODE_ENV === "development") {
-        console.log("Auth state changed:", event, !!session)
-      }
+      const cookies = document.cookie
+      const hasSupabaseAuthToken = cookies.includes("sb-") && cookies.includes("-auth-token")
 
-      if (event === "SIGNED_IN" && session) {
-        setAuthenticated(true)
-        setLoading(false)
-      } else if (event === "SIGNED_OUT" || !session) {
-        setAuthenticated(false)
-        setLoading(false)
-
+      if (!cookies || !hasSupabaseAuthToken) {
         if (requireAuth) {
-          router.push(redirectTo)
+          router.push("/")
+          return false
         }
       }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [supabase.auth, router, requireAuth, redirectTo])
-
-  const checkAuth = async () => {
-    if (authCheckInProgress.current) {
-      return
+      return true
     }
 
-    authCheckInProgress.current = true
-
-    try {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser()
-
-      if (process.env.NODE_ENV === "development") {
-        console.log("Auth check result:", { user: !!user, error })
-      }
-
-      if (error) {
-        console.error("Auth error:", error)
-        setAuthenticated(false)
-        if (requireAuth) {
-          router.push(redirectTo)
-        }
+    if (!loading) {
+      if (!checkAuthCookies()) {
         return
       }
 
       const isAuthenticated = !!user
-      setAuthenticated(isAuthenticated)
 
       if (requireAuth && !isAuthenticated) {
         router.push(redirectTo)
       } else if (!requireAuth && isAuthenticated) {
         router.push("/app")
       }
-    } catch (error) {
-      console.error("Error checking auth:", error)
-      setAuthenticated(false)
-      if (requireAuth) {
-        router.push(redirectTo)
-      }
-    } finally {
-      setLoading(false)
-      authCheckInProgress.current = false
     }
-  }
+  }, [user, loading, router, requireAuth, redirectTo])
 
   if (loading) {
     return (
@@ -102,7 +57,7 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
     )
   }
 
-  if (requireAuth && !authenticated) {
+  if (requireAuth && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center space-y-4">
@@ -113,7 +68,7 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
     )
   }
 
-  if (!requireAuth && authenticated) {
+  if (!requireAuth && user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center space-y-4">

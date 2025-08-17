@@ -4,6 +4,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { SelectedItemsProvider } from "@/contexts/selected-items-context"
+import { AuthProvider } from "@/contexts/auth-context"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -21,10 +22,12 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className={inter.className}>
-        <SelectedItemsProvider>
-          {children}
-          <Toaster />
-        </SelectedItemsProvider>
+        <AuthProvider>
+          <SelectedItemsProvider>
+            {children}
+            <Toaster />
+          </SelectedItemsProvider>
+        </AuthProvider>
       </body>
     </html>
   )

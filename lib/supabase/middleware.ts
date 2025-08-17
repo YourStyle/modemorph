@@ -25,8 +25,8 @@ export async function updateSession(request: NextRequest) {
     },
   )
 
-  // Обновляем сессию
-  await supabase.auth.getUser()
+  // Only refresh session without fetching user data
+  await supabase.auth.getSession()
 
   return supabaseResponse
 }
