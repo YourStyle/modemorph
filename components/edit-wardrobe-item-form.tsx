@@ -115,8 +115,13 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
 
   const removeImage = () => {
     setImageFile(null)
-    setImagePreview(item?.image_url || null)
+    setImagePreview(null)
     if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
+  const handleImageError = () => {
+    console.log("[v0] Image failed to load, clearing preview")
+    setImagePreview(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -208,6 +213,7 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
                       src={imagePreview || "/placeholder.svg"}
                       alt="Preview"
                       className="w-full max-h-80 object-contain rounded-lg bg-gray-50"
+                      onError={handleImageError}
                     />
                     <Button
                       type="button"
