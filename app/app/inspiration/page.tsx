@@ -243,16 +243,47 @@ export default function InspirationPage() {
     (dir: Dir) => {
       const to = dir === "down" ? index + 1 : index - 1
       if (to < 0 || to >= filtered.length || anim) return
-      setAnim({ from: index, to, dir })
-      setAnimPhase("start")
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setAnimPhase("run"))
+
+      const trackUsage = async () => {
+        try {
+          const response = await fetch("/api/limits/consume", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ featureType: "ideas_viewed" }),
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json()
+            if (response.status === 429) {
+              // Daily limit exceeded
+              setIsBlurred(true)
+              return false
+            }
+            console.warn("Usage tracking failed:", errorData.error)
+          }
+          return true
+        } catch (error) {
+          console.warn("Usage tracking error:", error)
+          return true // Continue navigation even if tracking fails
+        }
+      }
+
+      // Track usage before starting transition
+      trackUsage().then((canContinue) => {
+        if (!canContinue) return // Stop navigation if limit exceeded
+
+        setAnim({ from: index, to, dir })
+        setAnimPhase("start")
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => setAnimPhase("run"))
+        })
+        window.setTimeout(() => {
+          setIndex(to)
+          setAnim(null)
+          setAnimPhase("idle")
+        }, ANIM_MS)
       })
-      window.setTimeout(() => {
-        setIndex(to)
-        setAnim(null)
-        setAnimPhase("idle")
-      }, ANIM_MS)
     },
     [index, filtered.length, anim],
   )
@@ -346,7 +377,7 @@ export default function InspirationPage() {
     }
   }
 
-  const handleBuyMoreViews = async () => {
+  async function handleBuyMoreViews() {
     try {
       const response = await fetch("/api/spend-credits", {
         method: "POST",
@@ -641,7 +672,7 @@ export default function InspirationPage() {
         )}
       </main>
 
-      <div className="fixed inset-x-0 bottom-0 z-[1200]">
+      <div className="fixed inset-x-0 bottom-0 z-[5000]">
         <BottomNavigation />
       </div>
 
