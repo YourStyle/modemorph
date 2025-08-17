@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     }
 
     const { data: success } = await supabase.rpc("spend_credits", {
-      p_user_id: user.id, // Keep using auth user ID for credits
+      p_user_profile_id: profile.id, // Use profile.id instead of user.id
       p_amount: amount,
       p_reason: reason,
       p_description: description,
