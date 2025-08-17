@@ -18,8 +18,9 @@ export async function POST(request: Request) {
     if (!amount || !reason) {
       return NextResponse.json({ error: "Amount and reason are required" }, { status: 400 })
     }
-
+    console.log(user)
     const { data: profile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single()
+    console.log(profile)
 
     if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 })

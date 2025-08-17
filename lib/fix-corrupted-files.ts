@@ -233,7 +233,7 @@ export class CorruptedFilesFixer {
     try {
       const result = await listYandexS3Files()
       if (!result.success || !result.files) {
-        throw new Error("Не удалось получить список файлов")
+        throw new Error("Не удалось получить спис��к файлов")
       }
 
       const corruptedFiles = result.files.filter((file) => file.size === 75)

@@ -487,7 +487,7 @@ export class YandexMigrationService {
       // Берем последнюю часть пути (имя файла)
       const fileName = pathParts[pathParts.length - 1]
 
-      // Если есть папки в пути, сохраняем их
+      // Если есть папки в пути, сохран��ем их
       if (pathParts.length > 2) {
         const folders = pathParts.slice(1, -1).join("/")
         return `${folders}/${fileName}`
