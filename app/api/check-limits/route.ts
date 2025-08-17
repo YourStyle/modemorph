@@ -1,4 +1,4 @@
-// /api/limits/check  — учитывает бонусы; без лишних полей (expires_at удалён)
+// /api/limits/check — принимает featureType|usageType, учитывает бонусы
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse } from "next/server"
 
@@ -10,45 +10,43 @@ export async function POST(request: Request) {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser()
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    if (userError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const { featureType } = await request.json()
+    const body = await request.json()
+    // нормализуем имя параметра и синонимы значений
+    const raw = String(body.featureType ?? body.usageType ?? "").toLowerCase()
+    const featureType =
+      raw === "ideas_views"   ? "ideas_viewed" :
+      raw === "digitize" || raw === "wardrobe_digitizations" ? "wardrobe_items" :
+      raw
 
-    // Профиль (int id)
+    // профиль
     const { data: profile, error: profErr } = await supabase
-      .from("user_profiles")
-      .select("id")
-      .eq("user_id", user.id)
-      .single()
-    if (profErr || !profile) {
-      return NextResponse.json({ error: "Profile not found" }, { status: 404 })
-    }
+      .from("user_profiles").select("id").eq("user_id", user.id).single()
+    if (profErr || !profile) return NextResponse.json({ error: "Profile not found" }, { status: 404 })
 
-    // Сброс дневных счётчиков (RPC должен также обнулять *_bonus_today)
+    // сброс дневных счётчиков (должен обнулять *_bonus_today тоже)
     await supabase.rpc("reset_daily_limits_if_needed", { p_user_profile_id: profile.id })
 
-    // Активная подписка (expires_at удалён → проверяем end_date)
+    // активная подписка по end_date
     const nowIso = new Date().toISOString()
     const { data: sub } = await supabase
       .from("user_subscriptions")
-      .select("id, status, start_date, end_date")
+      .select("id")
       .eq("user_profile_id", profile.id)
       .eq("status", "active")
       .lte("start_date", nowIso)
       .gte("end_date", nowIso)
       .maybeSingle()
-
     const hasSub = !!sub
 
-    // Текущие дневные счётчики + бонусы
+    // счётчики + бонусы
     const { data: limits } = await supabase
       .from("daily_usage_limits")
-      .select(
-        "wardrobe_items_today, ai_requests_today, ideas_viewed_today, outfits_saved_today, " +
-        "wardrobe_items_bonus_today, ai_requests_bonus_today, ideas_viewed_bonus_today"
-      )
+      .select(`
+        wardrobe_items_today, ai_requests_today, ideas_viewed_today, outfits_saved_today,
+        wardrobe_items_bonus_today, ai_requests_bonus_today, ideas_viewed_bonus_today
+      `)
       .eq("user_profile_id", profile.id)
       .single()
 
@@ -64,7 +62,6 @@ export async function POST(request: Request) {
       ideas_viewed:   limits?.ideas_viewed_bonus_today   ?? 0,
     }
 
-    // Базовые квоты
     const base = {
       wardrobe_items: 5,
       ai_requests: hasSub ? 20 : 1,
@@ -72,34 +69,23 @@ export async function POST(request: Request) {
       outfits_saved: 999,
     } as const
 
-    // Суммарный лимит = базовый + бонус (для соответствующих фич)
-    const limitFor = (ft: string) => {
-      switch (ft) {
-        case "wardrobe_items": return base.wardrobe_items + bonus.wardrobe_items
-        case "ai_requests":    return base.ai_requests    + bonus.ai_requests
-        case "ideas_viewed":   return base.ideas_viewed   + bonus.ideas_viewed
-        case "outfits_saved":  return base.outfits_saved
-        default:               return 0
-      }
-    }
-    const usedFor = (ft: string) => {
-      switch (ft) {
-        case "wardrobe_items": return used.wardrobe_items
-        case "ai_requests":    return used.ai_requests
-        case "ideas_viewed":   return used.ideas_viewed
-        case "outfits_saved":  return used.outfits_saved
-        default:               return 0
-      }
-    }
+    const L =
+      featureType === "wardrobe_items" ? base.wardrobe_items + bonus.wardrobe_items :
+      featureType === "ai_requests"    ? base.ai_requests    + bonus.ai_requests :
+      featureType === "ideas_viewed"   ? base.ideas_viewed   + bonus.ideas_viewed :
+      featureType === "outfits_saved"  ? base.outfits_saved  : 0
 
-    const L = limitFor(featureType)
-    const u = usedFor(featureType)
+    const u =
+      featureType === "wardrobe_items" ? used.wardrobe_items :
+      featureType === "ai_requests"    ? used.ai_requests :
+      featureType === "ideas_viewed"   ? used.ideas_viewed :
+      featureType === "outfits_saved"  ? used.outfits_saved : 0
+
     const canUse = u < L
     const remaining = Math.max(L - u, 0)
 
     return NextResponse.json({ canUse, remaining, usedToday: u, dailyLimit: L })
-  } catch (error) {
-    console.error("Error checking limits:", error)
+  } catch (e) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
