@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { RotateCcw } from "lucide-react"
 
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -11,6 +12,7 @@ import { Upload, X, Loader2, Check, Plus, AlertCircle } from "lucide-react"
 import { AIAssistantLoader } from "@/components/ai-assistant-loader"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
+import { PhotoRegenerationModal } from "./photo-regeneration-modal"
 
 interface ResponseItem {
   index: number
@@ -77,6 +79,8 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   const [hasAnalyzed, setHasAnalyzed] = useState(false)
   const [needsReanalysis, setNeedsReanalysis] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [showRegenerationModal, setShowRegenerationModal] = useState(false)
+  const [isFirstTimeRegeneration, setIsFirstTimeRegeneration] = useState(true)
 
   // Автоматически запускаем анализ если есть начальные фото
   useEffect(() => {
@@ -454,6 +458,52 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     onReset?.()
   }
 
+  const handleRegenerate = async (file: File) => {
+    const formData = new FormData()
+    formData.append("image", file)
+
+    const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
+    const authToken = await getAuthToken()
+
+    const response = await fetch(`${aiApiUrl}/regenerate`, {
+      method: "POST",
+      body: formData,
+      headers: {
+        Accept: "application/json",
+        ...(authToken && { Authorization: `Bearer ${authToken}` }),
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error("Regeneration failed")
+    }
+
+    const blob = await response.blob()
+    const imageUrl = URL.createObjectURL(blob)
+
+    return {
+      imageUrl,
+      item_name: "Улучшенная вещь",
+      description: "Описание после улучшения",
+      material: "Материал",
+      color: "Цвет",
+      style: "Стиль",
+    }
+  }
+
+  const openRegenerationModal = () => {
+    setShowRegenerationModal(true)
+    // Check if user has used regeneration before (could be stored in localStorage)
+    const hasUsedRegeneration = localStorage.getItem("hasUsedRegeneration")
+    setIsFirstTimeRegeneration(!hasUsedRegeneration)
+  }
+
+  const closeRegenerationModal = () => {
+    setShowRegenerationModal(false)
+    // Mark that user has used regeneration
+    localStorage.setItem("hasUsedRegeneration", "true")
+  }
+
   const ProgressLoader = () => (
     <div className="space-y-6">
       <div className="text-center py-6">
@@ -714,6 +764,17 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                           "Добавить"
                         )}
                       </Button>
+
+                      {/* Regeneration Button */}
+                      <Button
+                        onClick={openRegenerationModal}
+                        variant="outline"
+                        size="sm"
+                        className="w-full h-8 text-xs mt-2 bg-transparent"
+                      >
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        Перегенерировать
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
@@ -721,6 +782,14 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
             </div>
           </div>
         )}
+
+        {/* Regeneration Modal */}
+        <PhotoRegenerationModal
+          isOpen={showRegenerationModal}
+          onClose={closeRegenerationModal}
+          onRegenerate={handleRegenerate}
+          isFirstTime={isFirstTimeRegeneration}
+        />
       </div>
     </div>
   )
