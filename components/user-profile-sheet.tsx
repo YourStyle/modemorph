@@ -343,7 +343,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
     <CommonSheet isOpen={isOpen} onClose={onClose} title="Профиль" backgroundColor="dark">
       <div className="flex flex-col h-full">
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+        <div className="flex-1 overflow-y-auto pb-4 md:pb-0">
           <div className="space-y-6">
             <Tabs defaultValue="about" className="w-full">
               <TabsList className="grid w-full grid-cols-2 bg-white">
@@ -544,6 +544,17 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                         {isSaving ? "Сохранение..." : "Сохранить изменения"}
                       </Button>
                     </div>
+
+                    {/* Mobile save button */}
+                    <div className="md:hidden">
+                      <Button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
+                      >
+                        {isSaving ? "Сохранение..." : "Сохранить изменения"}
+                      </Button>
+                    </div>
                   </>
                 )}
               </TabsContent>
@@ -609,8 +620,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
           </div>
         </div>
 
-        {/* Fixed bottom buttons for mobile */}
-        <div className="flex gap-4 pt-4 border-t border-gray-600">
+        <div className="md:hidden flex gap-4 p-4 pt-3 border-t border-gray-600 bg-slate-800/95 backdrop-blur-sm safe-area-inset-bottom">
           <Button
             variant="outline"
             onClick={onClose}
