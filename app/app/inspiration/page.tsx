@@ -10,6 +10,7 @@ import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2, Zap } 
 import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { PaywallModal } from "@/components/paywall-modal"
+import { OutfitItemsSheet } from "@/components/outfit-items-sheet"
 
 type OutfitItem = {
   id: string
@@ -122,6 +123,10 @@ export default function InspirationPage() {
   const [showPaywall, setShowPaywall] = useState(false)
   const [isBlurred, setIsBlurred] = useState(false)
   const [userCredits, setUserCredits] = useState(0)
+
+  const [showOutfitItems, setShowOutfitItems] = useState(false)
+  const [selectedOutfitItems, setSelectedOutfitItems] = useState<OutfitItem[]>([])
+  const [selectedOutfitTitle, setSelectedOutfitTitle] = useState<string>("")
 
   const current = outfits[index]
 
@@ -463,6 +468,58 @@ export default function InspirationPage() {
     }
   }
 
+  const preloadedImages = useRef<Set<string>>(new Set())
+
+  const preloadImage = useCallback((src: string) => {
+    if (!src || preloadedImages.current.has(src)) return
+
+    const img = new window.Image()
+    img.src = src
+    preloadedImages.current.add(src)
+  }, [])
+
+  useEffect(() => {
+    if (!outfits.length) return
+
+    // Preload current image
+    const currentSrc = getPreviewSrc(current)
+    if (currentSrc) preloadImage(currentSrc)
+
+    // Preload next image
+    if (index < outfits.length - 1) {
+      const nextSrc = getPreviewSrc(outfits[index + 1])
+      if (nextSrc) preloadImage(nextSrc)
+    }
+
+    // Preload previous image
+    if (index > 0) {
+      const prevSrc = getPreviewSrc(outfits[index - 1])
+      if (prevSrc) preloadImage(prevSrc)
+    }
+
+    // Preload item images for current outfit
+    current?.items?.forEach((item) => {
+      if (item.image_url) preloadImage(item.image_url)
+    })
+  }, [current, index, outfits, preloadImage])
+
+  const handleItemClick = useCallback((outfit: FeedOutfit) => {
+    setSelectedOutfitItems(outfit.items || [])
+    setSelectedOutfitTitle(outfit.title || "")
+    setShowOutfitItems(true)
+  }, [])
+
+  useEffect(() => {
+    // Clear preloaded images cache periodically to prevent memory leaks
+    const interval = setInterval(() => {
+      if (preloadedImages.current.size > 50) {
+        preloadedImages.current.clear()
+      }
+    }, 30000) // Clear every 30 seconds
+
+    return () => clearInterval(interval)
+  }, [])
+
   const visibleItems = current?.items?.slice(0, 5) ?? []
   const remaining = Math.max(0, (current?.items?.length ?? 0) - visibleItems.length)
 
@@ -571,6 +628,7 @@ export default function InspirationPage() {
                   items={visibleItems}
                   remaining={remaining}
                   likes={current?.likes ?? 0}
+                  onItemClick={() => current && handleItemClick(current)}
                 />
               )}
 
@@ -588,6 +646,7 @@ export default function InspirationPage() {
                       animPhase === "run" ? (anim.dir === "down" ? "-translate-y-full" : "translate-y-full") : "",
                     )}
                     likes={animFrom.likes ?? 0}
+                    onItemClick={() => handleItemClick(animFrom)}
                   />
                   <Slide
                     key={`to-${anim.to}`}
@@ -601,6 +660,7 @@ export default function InspirationPage() {
                       animPhase === "run" ? "translate-y-0" : "",
                     )}
                     likes={animTo.likes ?? 0}
+                    onItemClick={() => handleItemClick(animTo)}
                   />
                 </>
               )}
@@ -746,6 +806,13 @@ export default function InspirationPage() {
           setIsBlurred(false)
         }}
       />
+
+      <OutfitItemsSheet
+        isOpen={showOutfitItems}
+        onClose={() => setShowOutfitItems(false)}
+        items={selectedOutfitItems}
+        outfitTitle={selectedOutfitTitle}
+      />
     </div>
   )
 }
@@ -757,6 +824,7 @@ function Slide({
   remaining,
   likes,
   className,
+  onItemClick,
 }: {
   title?: string
   previewSrc: string
@@ -764,9 +832,8 @@ function Slide({
   remaining: number
   likes: number
   className?: string
+  onItemClick?: () => void
 }) {
-  const [open, setOpen] = useState(false)
-
   return (
     <div className={cn("relative h-full w-full", className)}>
       <Image
@@ -789,9 +856,10 @@ function Slide({
       {/* Left rail: thumbnails */}
       <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20">
         {items.map((item) => (
-          <div
+          <button
             key={item.id}
-            className="relative w-14 h-14 rounded-xl overflow-hidden ring-1 ring-white/15 bg-neutral-800 shadow-lg"
+            onClick={onItemClick}
+            className="relative w-14 h-14 rounded-xl overflow-hidden ring-1 ring-white/15 bg-neutral-800 shadow-lg hover:ring-white/30 transition-all active:scale-95"
             title={item.name || "Вещь"}
           >
             {item.image_url ? (
@@ -805,13 +873,13 @@ function Slide({
             ) : (
               <div className="w-full h-full bg-neutral-700" />
             )}
-          </div>
+          </button>
         ))}
 
         {remaining > 0 && (
           <button
-            onClick={() => setOpen(true)}
-            className="w-14 h-14 rounded-xl bg-white text-black font-semibold flex items-center justify-center ring-1 ring-white/15 shadow-xl"
+            onClick={onItemClick}
+            className="w-14 h-14 rounded-xl bg-white text-black font-semibold flex items-center justify-center ring-1 ring-white/15 shadow-xl hover:bg-neutral-100 transition-all active:scale-95"
             aria-label="Показать все вещи"
             title="Показать все вещи"
           >
