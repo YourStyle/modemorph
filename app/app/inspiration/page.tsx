@@ -117,7 +117,6 @@ function BufferedImage({
   const [visibleIndex, setVisibleIndex] = useState(0)
   const [bufferSrcs, setBufferSrcs] = useState<[string | null, string | null]>([src, null])
 
-  // При изменении src заполняем невидимый буфер новым адресом.
   useEffect(() => {
     if (bufferSrcs[visibleIndex] === src) return
     const nextIndex = 1 - visibleIndex
@@ -128,13 +127,11 @@ function BufferedImage({
     })
   }, [src, bufferSrcs, visibleIndex])
 
-  // Когда изображение в невидимом буфере полностью загружено, делаем его видимым
-  // и очищаем предыдущий буфер.
   const handleComplete = (index: number) => {
     if (index !== visibleIndex) {
       setVisibleIndex(index)
       setBufferSrcs((prev) => {
-      const newBuffers = [...prev]
+        const newBuffers = [...prev]
         newBuffers[1 - index] = null
         return newBuffers as [string | null, string | null]
       })
@@ -151,11 +148,13 @@ function BufferedImage({
             src={bufferSrc}
             alt={alt}
             fill
-            priority={false}
+            // использование eager/priority/fetchPriority ускоряет загрузку
+            loading="eager"
+            fetchPriority="high"
+            priority
             onLoadingComplete={() => handleComplete(idx)}
             className={cn(
               className,
-              // Плавное изменение прозрачности вместо замены, чтобы избежать мерцания
               "transition-opacity duration-300",
               idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
             )}
@@ -540,29 +539,32 @@ export default function InspirationPage() {
   }, [])
 
   useEffect(() => {
-    if (!outfits.length) return
+  if (!outfits.length) return
 
-    // Preload current image
-    const currentSrc = getPreviewSrc(current)
-    if (currentSrc) preloadImage(currentSrc)
+  // Preload current image
+  const currentSrc = getPreviewSrc(current)
+  if (currentSrc) preloadImage(currentSrc)
 
-    // Preload next image
-    if (index < outfits.length - 1) {
-      const nextSrc = getPreviewSrc(outfits[index + 1])
+  // Preload next two images
+  for (let offset = 1; offset <= 2; offset++) {
+    const idx = index + offset
+    if (idx < outfits.length) {
+      const nextSrc = getPreviewSrc(outfits[idx])
       if (nextSrc) preloadImage(nextSrc)
     }
+  }
 
-    // Preload previous image
-    if (index > 0) {
-      const prevSrc = getPreviewSrc(outfits[index - 1])
-      if (prevSrc) preloadImage(prevSrc)
-    }
+  // Preload previous image
+  if (index > 0) {
+    const prevSrc = getPreviewSrc(outfits[index - 1])
+    if (prevSrc) preloadImage(prevSrc)
+  }
 
-    // Preload item images for current outfit
-    current?.items?.forEach((item) => {
-      if (item.image_url) preloadImage(item.image_url)
-    })
-  }, [current, index, outfits, preloadImage])
+  // Preload item images for current outfit
+  current?.items?.forEach((item) => {
+    if (item.image_url) preloadImage(item.image_url)
+  })
+}, [current, index, outfits, preloadImage])
 
   const handleItemClick = useCallback((outfit: FeedOutfit) => {
     setSelectedOutfitItems(outfit.items || [])
