@@ -105,6 +105,67 @@ function saveViewedOutfits(viewedIds: Set<string>) {
   }
 }
 
+function BufferedImage({
+  src,
+  alt,
+  className,
+}: {
+  src: string
+  alt: string
+  className?: string
+}) {
+  const [visibleIndex, setVisibleIndex] = useState(0)
+  const [bufferSrcs, setBufferSrcs] = useState<[string | null, string | null]>([src, null])
+
+  // При изменении src заполняем невидимый буфер новым адресом.
+  useEffect(() => {
+    if (bufferSrcs[visibleIndex] === src) return
+    const nextIndex = 1 - visibleIndex
+    setBufferSrcs((prev) => {
+      const newBuffers = [...prev]
+      newBuffers[nextIndex] = src
+      return newBuffers as [string | null, string | null]
+    })
+  }, [src, bufferSrcs, visibleIndex])
+
+  // Когда изображение в невидимом буфере полностью загружено, делаем его видимым
+  // и очищаем предыдущий буфер.
+  const handleComplete = (index: number) => {
+    if (index !== visibleIndex) {
+      setVisibleIndex(index)
+      setBufferSrcs((prev) => {
+      const newBuffers = [...prev]
+        newBuffers[1 - index] = null
+        return newBuffers as [string | null, string | null]
+      })
+    }
+  }
+
+  return (
+    <>
+      {bufferSrcs.map((bufferSrc, idx) => {
+        if (!bufferSrc) return null
+        return (
+          <Image
+            key={idx}
+            src={bufferSrc}
+            alt={alt}
+            fill
+            priority={false}
+            onLoadingComplete={() => handleComplete(idx)}
+            className={cn(
+              className,
+              // Плавное изменение прозрачности вместо замены, чтобы избежать мерцания
+              "transition-opacity duration-300",
+              idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
+            )}
+          />
+        )
+      })}
+    </>
+  )
+}
+
 export default function InspirationPage() {
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
@@ -836,12 +897,10 @@ function Slide({
 }) {
   return (
     <div className={cn("relative h-full w-full", className)}>
-      <Image
+      <BufferedImage
         src={previewSrc || "/placeholder.svg?height=1200&width=900&query=outfit%20preview"}
         alt={title || "Образ"}
-        fill
         className="object-cover sm:object-contain bg-neutral-950"
-        priority={false}
       />
 
       {/* Title */}
