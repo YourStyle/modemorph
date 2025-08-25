@@ -314,20 +314,7 @@ export default function WardrobePage() {
           </div>
 
           {/* Category Icons */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
-            {clothingCategories.map((category) => (
-              <button
-                key={category.id}
-                onClick={handleCategoryClick}
-                className="flex flex-col items-center p-4 rounded-2xl bg-gray-100 hover:bg-gray-200 transition-colors"
-              >
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center mb-2 shadow-sm">
-                  <span className="text-2xl">{category.emoji}</span>
-                </div>
-                <span className="text-xs text-gray-700 text-center font-medium">{category.name}</span>
-              </button>
-            ))}
-          </div>
+
 
           {/* Hidden file input */}
           <input
