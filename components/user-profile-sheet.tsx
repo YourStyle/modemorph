@@ -457,7 +457,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
           padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
         }
         .safe-bottom-padding {
-          padding-bottom: calc(10rem + env(safe-area-inset-bottom, 0px)); /* запас под sticky-футер */
+          padding-bottom: calc(3rem); /* запас под sticky-футер */
         }
       `}</style>
     </CommonSheet>
