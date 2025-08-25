@@ -10,6 +10,7 @@ type FeedOutfit = {
     id: string
     name: string
     image_url: string
+    url?: string | null
     color?: string | null
     shade?: string | null
     style?: string | null
@@ -72,6 +73,7 @@ export async function GET(request: Request) {
             id,
             item_name,
             image_url,
+            url,
             color,
             shade,
             style,
@@ -96,6 +98,7 @@ export async function GET(request: Request) {
             id: String(w.id),
             name: w.item_name ?? "",
             image_url: w.image_url ?? "",
+            url: w.url ?? null,
             color: w.color ?? null,
             shade: w.shade ?? null,
             style: w.style ?? null,

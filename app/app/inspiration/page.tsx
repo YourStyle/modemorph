@@ -1,6 +1,8 @@
 "use client"
 
-import type React from "react"
+import React from "react"
+
+import type { ReactElement } from "react"
 
 import Image from "next/image"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -105,80 +107,87 @@ function saveViewedOutfits(viewedIds: Set<string>) {
   }
 }
 
-function BufferedImage({
-  src,
-  alt,
-  className,
-}: {
-  src: string
-  alt: string
-  className?: string
-}) {
-  const [visibleIndex, setVisibleIndex] = useState(0)
-  const [bufferSrcs, setBufferSrcs] = useState<[string | null, string | null]>([src, null])
-  const [loadingStates, setLoadingStates] = useState<[boolean, boolean]>([true, true])
+const BufferedImage = React.memo(
+  ({
+    src,
+    alt,
+    className,
+  }: {
+    src: string
+    alt: string
+    className?: string
+  }) => {
+    const [visibleIndex, setVisibleIndex] = useState(0)
+    const [bufferSrcs, setBufferSrcs] = useState<[string | null, string | null]>([src, null])
+    const [loadingStates, setLoadingStates] = useState<[boolean, boolean]>([true, true])
 
-  useEffect(() => {
-    if (bufferSrcs[visibleIndex] === src) return
-    const nextIndex = 1 - visibleIndex
-    setBufferSrcs((prev) => {
-      const newBuffers = [...prev]
-      newBuffers[nextIndex] = src
-      return newBuffers as [string | null, string | null]
-    })
-    setLoadingStates((prev) => {
-      const newStates = [...prev]
-      newStates[nextIndex] = true
-      return newStates as [boolean, boolean]
-    })
-  }, [src, bufferSrcs, visibleIndex])
+    useEffect(() => {
+      if (bufferSrcs[visibleIndex] === src) return
+      const nextIndex = 1 - visibleIndex
+      setBufferSrcs((prev) => {
+        const newBuffers = [...prev]
+        newBuffers[nextIndex] = src
+        return newBuffers as [string | null, string | null]
+      })
+      setLoadingStates((prev) => {
+        const newStates = [...prev]
+        newStates[nextIndex] = true
+        return newStates as [boolean, boolean]
+      })
+    }, [src, bufferSrcs, visibleIndex])
 
-  const handleComplete = (index: number) => {
-    setLoadingStates((prev) => {
-      const newStates = [...prev]
-      newStates[index] = false
-      return newStates as [boolean, boolean]
-    })
-
-    if (index !== visibleIndex && !loadingStates[index]) {
-      setTimeout(() => {
-        setVisibleIndex(index)
-        setBufferSrcs((prev) => {
-          const newBuffers = [...prev]
-          newBuffers[1 - index] = null
-          return newBuffers as [string | null, string | null]
+    const handleComplete = useCallback(
+      (index: number) => {
+        setLoadingStates((prev) => {
+          const newStates = [...prev]
+          newStates[index] = false
+          return newStates as [boolean, boolean]
         })
-      }, 50) // Small delay for smoother transition
-    }
-  }
 
-  return (
-    <>
-      {bufferSrcs.map((bufferSrc, idx) => {
-        if (!bufferSrc) return null
-        return (
-          <Image
-            key={idx}
-            src={bufferSrc || "/placeholder.svg"}
-            alt={alt}
-            fill
-            loading="eager"
-            fetchPriority="high"
-            priority
-            onLoad={() => handleComplete(idx)}
-            className={cn(
-              className,
-              "transition-opacity duration-500 ease-out",
-              idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
-            )}
-          />
-        )
-      })}
-    </>
-  )
-}
+        if (index !== visibleIndex && !loadingStates[index]) {
+          setTimeout(() => {
+            setVisibleIndex(index)
+            setBufferSrcs((prev) => {
+              const newBuffers = [...prev]
+              newBuffers[1 - index] = null
+              return newBuffers as [string | null, string | null]
+            })
+          }, 100) // Increased delay for smoother transitions
+        }
+      },
+      [visibleIndex, loadingStates],
+    )
 
-export default function InspirationPage() {
+    return (
+      <>
+        {bufferSrcs.map((bufferSrc, idx) => {
+          if (!bufferSrc) return null
+          return (
+            <Image
+              key={`${bufferSrc}-${idx}`}
+              src={bufferSrc || "/placeholder.svg"}
+              alt={alt}
+              fill
+              loading="eager"
+              fetchPriority="high"
+              priority
+              onLoad={() => handleComplete(idx)}
+              className={cn(
+                className,
+                "transition-opacity duration-300 ease-out", // Smoother transition timing
+                idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
+              )}
+            />
+          )
+        })}
+      </>
+    )
+  },
+)
+
+BufferedImage.displayName = "BufferedImage"
+
+export default function InspirationPage(): ReactElement {
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -1019,16 +1028,25 @@ function normalizeOutfits(list: any[]): FeedOutfit[] {
   }))
 }
 
-const BufferedItemImage = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
+const BufferedItemImage = React.memo(({ src, alt, className }: { src: string; alt: string; className?: string }) => {
   const [currentSrc, setCurrentSrc] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const imageCache = useRef<Map<string, boolean>>(new Map())
 
   useEffect(() => {
     if (!src) return
 
+    // Check if image is already cached
+    if (imageCache.current.has(src)) {
+      setCurrentSrc(src)
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
     const img = new window.Image()
     img.onload = () => {
+      imageCache.current.set(src, true)
       setCurrentSrc(src)
       setIsLoading(false)
     }
@@ -1048,7 +1066,9 @@ const BufferedItemImage = ({ src, alt, className }: { src: string; alt: string; 
       alt={alt}
       fill
       sizes="56px"
-      className={cn("object-cover transition-opacity duration-200", className)}
+      className={cn("object-cover transition-opacity duration-300", className)}
     />
   )
-}
+})
+
+BufferedItemImage.displayName = "BufferedItemImage"

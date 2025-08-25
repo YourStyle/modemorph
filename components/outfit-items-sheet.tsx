@@ -40,7 +40,7 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
     setAddingItems((prev) => new Set([...prev, item.id]))
 
     try {
-      const response = await fetch("/api/wardrobe", {
+      const response = await fetch("/api/wardrobe-user-items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
