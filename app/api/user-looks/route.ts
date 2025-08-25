@@ -1,6 +1,34 @@
 import { createClient } from "@/lib/supabase/server"
 import { type NextRequest, NextResponse } from "next/server"
 
+
+async function expandBasicItem(supabase: any, id: number) {
+  // 1) пробуем в basic_wardrobe_items (name_ru)
+  const { data: b1 } = await supabase
+    .from("basic_wardrobe_items")
+    .select("id, name_ru, image_url")
+    .eq("id", id)
+    .maybeSingle?.() ?? { data: null } // если нет maybeSingle в типах, оставь .single() с try/catch
+
+  if (b1) {
+    return { ...b1, source: "basic" as const }
+  }
+
+  // 2) фолбэк в wardrobe_items (item_name)
+  const { data: b2 } = await supabase
+    .from("wardrobe_items")
+    .select("id, item_name, image_url")
+    .eq("id", id)
+    .maybeSingle?.() ?? { data: null }
+
+  if (b2) {
+    // приводим к ожидаемому полю name_ru, чтобы фронт не менять
+    return { id: b2.id, name_ru: b2.item_name, image_url: b2.image_url, source: "basic" as const }
+  }
+
+  return null
+}
+
 export async function GET() {
   try {
     const supabase = createClient()
@@ -56,18 +84,7 @@ export async function GET() {
                   }
                 : null
             } else if (item.type === "basic") {
-              const { data: basicItem } = await supabase
-                .from("basic_wardrobe_items")
-                .select("id, name_ru, image_url")
-                .eq("id", item.id)
-                .single()
-
-              return basicItem
-                ? {
-                    ...basicItem,
-                    source: "basic",
-                  }
-                : null
+              return await expandBasicItem(supabase, item.id)
             }
             return null
           }),
@@ -151,18 +168,7 @@ export async function POST(request: NextRequest) {
               }
             : null
         } else if (item.type === "basic") {
-          const { data: basicItem } = await supabase
-            .from("wardrobe_items")
-            .select("id, item_name, image_url")
-            .eq("id", item.id)
-            .single()
-
-          return basicItem
-            ? {
-                ...basicItem,
-                source: "basic",
-              }
-            : null
+          return await expandBasicItem(supabase, item.id)
         }
         return null
       }),
