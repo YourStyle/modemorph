@@ -1,11 +1,7 @@
 "use client"
 
-// Лента: сохранена существующая верстка карточек и адаптивность.
-// Изменена только логика переключения слайдов на модель с вертикальным скролл-контейнером,
-// где все загруженные карточки остаются в DOM, а активная карточка определяется IntersectionObserver.
-// Управление стрелками переводит скролл к соседним карточкам (без ручной перекладки DOM).
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactElement } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -14,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { PaywallModal } from "@/components/paywall-modal"
 import { OutfitItemsSheet } from "@/components/outfit-items-sheet"
+
 
 type OutfitItem = {
   id: string
@@ -51,6 +48,12 @@ type ApiResponse = {
 }
 
 type TabKey = "popular" | "liked"
+
+const WINDOW_SIZE = 10
+const WINDOW_STEP = 3
+const DOWN_TRIGGER = 7   // когда локальный индекс >= 7 — сдвигаем окно вниз
+const UP_TRIGGER = 2
+
 
 function getPreviewSrc(o?: FeedOutfit | null): string {
   const direct = (o?.preview_image_url || "").trim()
@@ -174,6 +177,8 @@ BufferedImage.displayName = "BufferedImage"
 
 export default function InspirationPage(): ReactElement {
   // Данные / состояние
+  const [windowStart, setWindowStart] = useState(0) // глобальный индекс начала окна
+  const adjustScrollRef = useRef(0) 
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -200,7 +205,6 @@ export default function InspirationPage(): ReactElement {
 
   // Ссылки на скролл-контейнер и карточки
   const scrollerRef = useRef<HTMLDivElement | null>(null)
-  const slideRefs = useRef<Array<HTMLDivElement | null>>([])
 
   const current = outfits[index]
 
@@ -303,9 +307,7 @@ export default function InspirationPage(): ReactElement {
   // Смена вкладки -> на начало списка
   useEffect(() => {
     setIndex(0)
-    if (slideRefs.current[0]) {
-      slideRefs.current[0].scrollIntoView({ behavior: "instant", block: "start" as ScrollLogicalPosition })
-    }
+     setWindowStart(0)
   }, [activeTab])
 
   // Фильтры
@@ -314,6 +316,7 @@ export default function InspirationPage(): ReactElement {
     return outfits.filter((o) => likedIds.has(o.id))
   }, [activeTab, outfits, likedIds])
 
+  const rendered = useMemo(() => filtered.slice(windowStart, Math.min(filtered.length, windowStart + WINDOW_SIZE)),[filtered, windowStart])
   // Дозагрузка при приближении к концу
   useEffect(() => {
     if (activeTab !== "popular") return
@@ -345,14 +348,12 @@ export default function InspirationPage(): ReactElement {
   }
 
   // Управление клавиатурой
-  const scrollToIndex = useCallback(
-    (to: number) => {
-      if (to < 0 || to >= filtered.length) return
-      const node = slideRefs.current[to]
-      if (node) node.scrollIntoView({ behavior: "smooth", block: "start" })
-    },
-    [filtered.length],
-  )
+  const scrollStep = useCallback((dir: "up" | "down") => {
+  const h = scrollerRef.current?.clientHeight || window.innerHeight || 0
+    if (!h) return
+    scrollerRef.current?.scrollBy({ top: dir === "down" ? h : -h, behavior: "smooth" })
+  }, [])
+
   const gotoPrev = useCallback(() => scrollToIndex(index - 1), [scrollToIndex, index])
   const gotoNext = useCallback(() => scrollToIndex(index + 1), [scrollToIndex, index])
 
@@ -367,30 +368,55 @@ export default function InspirationPage(): ReactElement {
 
   // Определение активной карточки через IntersectionObserver (карточка считается активной при ~70% видимости)
   useEffect(() => {
-    if (!scrollerRef.current || filtered.length === 0) return
+    if (!scrollerRef.current || rendered.length === 0) return
     const root = scrollerRef.current
     const thresholds = [0, 0.25, 0.5, 0.7, 0.85, 1]
-    const observer = new IntersectionObserver(
-      (entries) => {
-        // Выбираем карточку с максимальной долей видимости
-        let bestIdx = index
-        let bestRatio = 0
-        for (const entry of entries) {
-          const el = entry.target as HTMLDivElement
-          const i = Number(el.dataset.index)
-          if (entry.isIntersecting && entry.intersectionRatio >= bestRatio) {
-            bestRatio = entry.intersectionRatio
-            bestIdx = i
-          }
+    const observer = new IntersectionObserver((entries) => {
+      let bestIdx = index
+      let bestRatio = 0
+      for (const entry of entries) {
+        const el = entry.target as HTMLDivElement
+        const i = Number(el.dataset.index) // ГЛОБАЛЬНЫЙ индекс!
+        if (entry.isIntersecting && entry.intersectionRatio >= bestRatio) {
+          bestRatio = entry.intersectionRatio
+          bestIdx = i
         }
-        if (bestRatio >= 0.7 && bestIdx !== index) setIndex(bestIdx)
-      },
-      { root, threshold: thresholds },
-    )
+      }
+      if (bestRatio >= 0.7 && bestIdx !== index) setIndex(bestIdx)
+    }, { root, threshold: thresholds })
 
-    slideRefs.current.forEach((el) => el && observer.observe(el))
+    const nodes = root.querySelectorAll<HTMLDivElement>("[data-window-node='1']")
+    nodes.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
-  }, [filtered.length, index])
+  }, [rendered, windowStart, index])
+
+
+  useEffect(() => {
+    if (!filtered.length) return
+    const localIndex = index - windowStart
+    const viewH = scrollerRef.current?.clientHeight || 0
+
+    // вниз
+    if (localIndex >= DOWN_TRIGGER && windowStart + WINDOW_SIZE < filtered.length) {
+      const shift = Math.min(WINDOW_STEP, filtered.length - (windowStart + WINDOW_SIZE))
+      setWindowStart((ws) => ws + shift)
+      adjustScrollRef.current += shift * viewH
+    }
+
+    // вверх
+    if (localIndex <= UP_TRIGGER && windowStart > 0) {
+      const shift = Math.min(WINDOW_STEP, windowStart)
+      setWindowStart((ws) => ws - shift)
+      adjustScrollRef.current -= shift * viewH
+    }
+  }, [index, filtered.length, windowStart])
+
+  useLayoutEffect(() => {
+    if (adjustScrollRef.current !== 0 && scrollerRef.current) {
+      scrollerRef.current.scrollTop += adjustScrollRef.current
+      adjustScrollRef.current = 0
+    }
+  }, [windowStart])
 
   // Прелоад ближайших изображений (текущее + окрестность)
   const preloadedImages = useRef<Set<string>>(new Set())
@@ -638,22 +664,24 @@ export default function InspirationPage(): ReactElement {
               "[-webkit-overflow-scrolling:touch]",
             )}
           >
-            {filtered.length === 0 ? (
+            {rendered.length === 0 ? (
               <div className="h-full grid place-items-center">
                 <div className="text-neutral-400">Пока нет образов</div>
               </div>
             ) : (
-              filtered.map((o, i) => {
-                const isCurrent = i === index
-                const items = (isCurrent ? current?.items : o.items) ?? []
-                const preview = isCurrent ? currentPreview : getPreviewSrc(o)
+              rendered.map((o, i) => {
+                const globalIndex = windowStart + i
+                const isCurrent = globalIndex === index
+                const items = (isCurrent ? filtered[globalIndex]?.items : o.items) ?? []
+                const preview = getPreviewSrc(filtered[globalIndex] ?? o)
                 const show = items.slice(0, 5)
                 const rest = Math.max(0, items.length - show.length)
+
                 return (
                   <div
                     key={o.id}
-                    ref={(el) => (slideRefs.current[i] = el)}
-                    data-index={i}
+                    data-index={globalIndex}
+                    data-window-node="1"
                     className="snap-start h-full w-full relative"
                   >
                     <Slide
