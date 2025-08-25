@@ -206,7 +206,7 @@ export default function InspirationPage(): ReactElement {
   // Ссылки на скролл-контейнер и карточки
   const scrollerRef = useRef<HTMLDivElement | null>(null)
 
-  const current = outfits[index]
+  const current = filtered[index]
 
   useEffect(() => {
     saveViewedOutfits(viewedOutfits)
@@ -354,8 +354,8 @@ export default function InspirationPage(): ReactElement {
     scrollerRef.current?.scrollBy({ top: dir === "down" ? h : -h, behavior: "smooth" })
   }, [])
 
-  const gotoPrev = useCallback(() => scrollToIndex(index - 1), [scrollToIndex, index])
-  const gotoNext = useCallback(() => scrollToIndex(index + 1), [scrollToIndex, index])
+  const gotoPrev = useCallback(() => scrollStep("up"), [scrollStep])
+  const gotoNext = useCallback(() => scrollStep("down"), [scrollStep])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -563,6 +563,12 @@ export default function InspirationPage(): ReactElement {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    const maxStart = Math.max(0, filtered.length - WINDOW_SIZE)
+    if (windowStart > maxStart) setWindowStart(maxStart)
+    if (index >= filtered.length) setIndex(Math.max(0, filtered.length - 1))
+  }, [filtered.length])
+
   // Данные для текущего экрана
   const visibleItems = current?.items?.slice(0, 5) ?? []
   const remaining = Math.max(0, (current?.items?.length ?? 0) - visibleItems.length)
@@ -589,10 +595,6 @@ export default function InspirationPage(): ReactElement {
     )
   }
 
-  // Поддержка refs по количеству карточек
-  slideRefs.current = Array(filtered.length)
-    .fill(null)
-    .map((_, i) => slideRefs.current[i] || null)
 
   return (
     <div className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
