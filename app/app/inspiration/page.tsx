@@ -364,7 +364,7 @@ export default function InspirationPage() {
   type Dir = "up" | "down"
   const [anim, setAnim] = useState<{ from: number; to: number; dir: Dir } | null>(null)
   const [animPhase, setAnimPhase] = useState<"idle" | "start" | "run">("idle")
-  const ANIM_MS = 280
+  const ANIM_MS = 450
 
   const startTransition = useCallback(
     (dir: Dir) => {
@@ -458,7 +458,7 @@ export default function InspirationPage() {
   }, [])
 
   const onTouchEnd = useCallback(() => {
-    const threshold = 80 // Increased threshold for more deliberate swipes
+    const threshold = 100 // Increased from 80 for smoother interaction
     if (isScrolling.current && Math.abs(touchDeltaY.current) > threshold) {
       if (touchDeltaY.current > threshold) gotoPrev()
       else if (touchDeltaY.current < -threshold) gotoNext()
@@ -470,53 +470,69 @@ export default function InspirationPage() {
 
   const preloadedImages = useRef<Set<string>>(new Set())
 
-  const preloadImage = useCallback((src: string) => {
-    if (!src || preloadedImages.current.has(src)) return
+  const preloadImage = useCallback((src: string): Promise<void> => {
+    if (!src || preloadedImages.current.has(src)) return Promise.resolve()
 
-    const img = new window.Image()
-    img.src = src
-    img.loading = "eager"
-    preloadedImages.current.add(src)
+    return new Promise((resolve) => {
+      const img = new window.Image()
+      img.onload = () => {
+        preloadedImages.current.add(src)
+        resolve()
+      }
+      img.onerror = () => {
+        resolve() // Still resolve to not block other preloading
+      }
+      img.src = src
+      img.loading = "eager"
+    })
   }, [])
 
   useEffect(() => {
     if (!outfits.length) return
 
+    const preloadPromises: Promise<void>[] = []
+
     // Preload current outfit and items
     const currentSrc = getPreviewSrc(current)
-    if (currentSrc) preloadImage(currentSrc)
+    if (currentSrc) preloadPromises.push(preloadImage(currentSrc))
 
     // Preload current outfit item thumbnails
     current?.items?.forEach((item) => {
-      if (item.image_url) preloadImage(item.image_url)
+      if (item.image_url) preloadPromises.push(preloadImage(item.image_url))
     })
 
-    // Preload next 3 outfits and their items
-    for (let offset = 1; offset <= 3; offset++) {
+    for (let offset = 1; offset <= 5; offset++) {
       const idx = index + offset
       if (idx < outfits.length) {
         const nextOutfit = outfits[idx]
         const nextSrc = getPreviewSrc(nextOutfit)
-        if (nextSrc) preloadImage(nextSrc)
+        if (nextSrc) preloadPromises.push(preloadImage(nextSrc))
 
-        // Preload next outfit's item thumbnails
-        nextOutfit?.items?.slice(0, 5).forEach((item) => {
-          if (item.image_url) preloadImage(item.image_url)
+        nextOutfit?.items?.forEach((item) => {
+          if (item.image_url) preloadPromises.push(preloadImage(item.image_url))
         })
       }
     }
 
-    // Preload previous outfit and items
-    if (index > 0) {
-      const prevOutfit = outfits[index - 1]
-      const prevSrc = getPreviewSrc(prevOutfit)
-      if (prevSrc) preloadImage(prevSrc)
+    for (let offset = 1; offset <= 2; offset++) {
+      const idx = index - offset
+      if (idx >= 0) {
+        const prevOutfit = outfits[idx]
+        const prevSrc = getPreviewSrc(prevOutfit)
+        if (prevSrc) preloadPromises.push(preloadImage(prevSrc))
 
-      // Preload previous outfit's item thumbnails
-      prevOutfit?.items?.slice(0, 5).forEach((item) => {
-        if (item.image_url) preloadImage(item.image_url)
-      })
+        // Preload previous outfit's item thumbnails
+        prevOutfit?.items?.forEach((item) => {
+          if (item.image_url) preloadPromises.push(preloadImage(item.image_url))
+        })
+      }
     }
+
+    // Wait for critical images to load
+    Promise.all(preloadPromises.slice(0, 10)).then(() => {
+      // Critical images loaded, continue with the rest in background
+      Promise.all(preloadPromises.slice(10))
+    })
   }, [current, index, outfits, preloadImage])
 
   const [isSaving, setIsSaving] = useState(false)
@@ -967,13 +983,7 @@ function Slide({
             title={item.name || "Вещь"}
           >
             {item.image_url ? (
-              <Image
-                src={item.image_url || "/placeholder.svg?height=200&width=200&query=item%20thumbnail"}
-                alt={item.name || "Вещь"}
-                fill
-                sizes="56px"
-                className="object-cover"
-              />
+              <BufferedItemImage src={item.image_url} alt={item.name || "Вещь"} className="object-cover" />
             ) : (
               <div className="w-full h-full bg-neutral-700" />
             )}
@@ -1007,4 +1017,38 @@ function normalizeOutfits(list: any[]): FeedOutfit[] {
     isSaved: !!o.isSaved,
     preview_image_url: typeof o?.preview_image_url === "string" ? o.preview_image_url : "",
   }))
+}
+
+const BufferedItemImage = ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
+  const [currentSrc, setCurrentSrc] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    if (!src) return
+
+    setIsLoading(true)
+    const img = new window.Image()
+    img.onload = () => {
+      setCurrentSrc(src)
+      setIsLoading(false)
+    }
+    img.onerror = () => {
+      setIsLoading(false)
+    }
+    img.src = src
+  }, [src])
+
+  if (isLoading || !currentSrc) {
+    return <div className={cn("bg-neutral-700 animate-pulse", className)} />
+  }
+
+  return (
+    <Image
+      src={currentSrc || "/placeholder.svg"}
+      alt={alt}
+      fill
+      sizes="56px"
+      className={cn("object-cover transition-opacity duration-200", className)}
+    />
+  )
 }

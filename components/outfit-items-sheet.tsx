@@ -45,27 +45,32 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          name: item.name,
+          item_name: item.name,
           image_url: item.image_url,
-          color: item.color,
-          shade: item.shade,
-          style: item.style,
-          material: item.material,
-          url: item.url,
-          size_type: item.size_type,
-          has_print: item.has_print === "true",
-          has_details: item.has_details === "true",
+          color: item.color || "",
+          shade: item.shade || "",
+          style: item.style || "",
+          material: item.material || "",
+          url: item.url || "",
+          size_type: item.size_type || "",
+          has_print: item.has_print === "true" || item.has_print === true,
+          has_details: item.has_details === "true" || item.has_details === true,
           notes: item.notes,
-          is_basic: item.is_basic,
+          is_basic: item.is_basic || false,
           basic_item_id: item.basic_item_id,
+          item_name_en: null,
+          description: null,
+          description_en: null,
+          basic_material_id: null,
+          clothing_type: null,
         }),
       })
 
       if (!response.ok) {
-        throw new Error("Failed to add item to wardrobe")
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to add item to wardrobe")
       }
 
-      // Show success feedback (you could add a toast here)
       console.log("Item added to wardrobe successfully")
     } catch (error) {
       console.error("Error adding item to wardrobe:", error)

@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       color: body.color ?? "",
       shade: body.shade ?? "",
       has_details: normalizeBool(body.has_details),
-      url: body.url ?? "",
+      url: body.url ?? "", // Fixed URL field mapping - use body.url for shop_url field
       image_url: body.image_url ?? null,
       is_basic: body.is_basic ?? false,
       basic_item_id: body.basic_item_id ?? null,
