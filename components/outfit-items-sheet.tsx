@@ -133,7 +133,7 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
       size="sm"
       variant="outline"
       onClick={() => window.open(item.url!, "_blank")}
-      className="w-full sm:flex-1 h-12 text-sm rounded-lg px-4 border border-neutral-600 text-white hover:bg-white/10 active:translate-y-[1px] transition-colors"
+      className="w-full sm:flex-1 h-12 text-sm rounded-lg px-4 bg-white text-black hover:bg-neutral-200 active:translate-y-[1px] transition-colors disabled:opacity-70"
     >
       <ExternalLink className="w-3 h-3 mr-1" />В магазине
     </Button>
