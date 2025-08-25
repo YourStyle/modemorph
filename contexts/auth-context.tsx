@@ -3,12 +3,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
+import { useRouter } from "next/navigation"
 
 interface AuthContextType {
   user: User | null
   loading: boolean
   signOut: () => Promise<void>
   refreshUser: () => Promise<void>
+  trackUnauthorizedError: () => void
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -16,7 +18,9 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [unauthorizedCount, setUnauthorizedCount] = useState(0)
   const supabase = createClient()
+  const router = useRouter()
 
   const handleRefreshTokenError = async (error: any) => {
     if (error?.message?.includes("refresh_token_not_found") || error?.message?.includes("Invalid Refresh Token")) {
@@ -29,6 +33,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
   }
+
+  const trackUnauthorizedError = () => {
+    setUnauthorizedCount((prev) => {
+      const newCount = prev + 1
+      console.log(`[v0] Unauthorized error count: ${newCount}`)
+
+      if (newCount >= 4) {
+        console.log("[v0] Too many unauthorized errors, redirecting to home")
+        router.push("/")
+        setUnauthorizedCount(0)
+      }
+
+      return newCount
+    })
+  }
+
+  useEffect(() => {
+    if (user) {
+      setUnauthorizedCount(0)
+    }
+  }, [user])
 
   useEffect(() => {
     // Get initial session
@@ -88,7 +113,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return <AuthContext.Provider value={{ user, loading, signOut, refreshUser }}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={{ user, loading, signOut, refreshUser, trackUnauthorizedError }}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {

@@ -5,7 +5,19 @@ import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Menu, Home, Settings, UserCheck, ChevronDown, Shirt, Package, Palette, Layers, Sparkles } from "lucide-react"
+import {
+  Menu,
+  Home,
+  Settings,
+  UserCheck,
+  ChevronDown,
+  Shirt,
+  Package,
+  Palette,
+  Layers,
+  Sparkles,
+  DollarSign,
+} from "lucide-react"
 
 export default async function AdminLayout({
   children,
@@ -31,6 +43,7 @@ export default async function AdminLayout({
   const navigationItems = [
     { href: "/admin", label: "Главная", icon: Home },
     { href: "/admin/users", label: "Пользователи", icon: UserCheck },
+    { href: "/admin/feature-costs", label: "Стоимость функций", icon: DollarSign },
     { href: "/admin/settings", label: "Настройки", icon: Settings },
   ]
 

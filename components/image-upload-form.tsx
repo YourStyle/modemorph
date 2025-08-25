@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Upload, X, Loader2, Check, Plus } from "lucide-react"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
+import { Buffer } from "buffer"
 
 interface ResponseItem {
   index: number
@@ -82,7 +83,46 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
 
   const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
     try {
-      // Скачиваем изображение
+      if (imageUrl.startsWith("data:image/") || /^[A-Za-z0-9+/]+=*$/.test(imageUrl)) {
+        console.log("Processing base64 image...")
+
+        let base64Data: string
+        let mimeType = "image/jpeg"
+
+        if (imageUrl.startsWith("data:image/")) {
+          const matches = imageUrl.match(/^data:image\/([^;]+);base64,(.+)$/)
+          if (matches) {
+            mimeType = `image/${matches[1]}`
+            base64Data = matches[2]
+          } else {
+            throw new Error("Invalid base64 image format")
+          }
+        } else {
+          base64Data = imageUrl
+        }
+
+        // Convert base64 to blob
+        const buffer = Buffer.from(base64Data, "base64")
+        const blob = new Blob([buffer], { type: mimeType })
+        const file = new File([blob], "image.jpg", { type: mimeType })
+
+        // Upload to S3
+        const formData = new FormData()
+        formData.append("file", file)
+
+        const uploadResponse = await fetch("/api/upload-image", {
+          method: "POST",
+          body: formData,
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error("Failed to upload base64 image")
+        }
+
+        const { url } = await uploadResponse.json()
+        return url
+      }
+
       const response = await fetch(imageUrl)
       if (!response.ok) {
         throw new Error("Failed to download image")

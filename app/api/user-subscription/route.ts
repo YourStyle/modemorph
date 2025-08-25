@@ -9,8 +9,15 @@ export async function GET() {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser()
+
     if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        {
+          status: 401,
+          headers: { "X-Track-Unauthorized": "true" },
+        },
+      )
     }
 
     const { data: userProfile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single()
@@ -57,8 +64,15 @@ export async function POST(request: Request) {
       data: { user },
       error: userError,
     } = await supabase.auth.getUser()
+
     if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        {
+          status: 401,
+          headers: { "X-Track-Unauthorized": "true" },
+        },
+      )
     }
 
     const { data: userProfile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single()

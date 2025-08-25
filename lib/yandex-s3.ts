@@ -1,12 +1,16 @@
 import crypto from "crypto"
 
 // Конфигурация Yandex Cloud Object Storage
-const YC_ACCESS_KEY_ID = "YCAJEgcVJ04k2fvyqYm48FmEZ"
-const YC_SECRET_ACCESS_KEY = "YCO3hBDQmlL0rtle4z3Pzisx_9FTocXGSMkuoZqq"
+const YC_ACCESS_KEY_ID = process.env.YANDEX_ACCESS_KEY_ID || process.env.YC_ACCESS_KEY_ID
+const YC_SECRET_ACCESS_KEY = process.env.YANDEX_SECRET_ACCESS_KEY || process.env.YC_SECRET_ACCESS_KEY
 const YC_REGION = "ru-central1"
 const YC_SERVICE = "s3"
 const YC_HOST = "storage.yandexcloud.net"
-const YC_BUCKET = "modemorphs3"
+const YC_BUCKET = process.env.YANDEX_BUCKET_NAME || "modemorphs3"
+
+if (!YC_ACCESS_KEY_ID || !YC_SECRET_ACCESS_KEY) {
+  throw new Error("Missing required Yandex Cloud credentials in environment variables")
+}
 
 /**
  * Создает подпись AWS Signature Version 4 для Yandex Cloud
