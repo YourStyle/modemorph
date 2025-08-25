@@ -173,9 +173,7 @@ const BufferedImage = React.memo(
               className={cn(
                 className,
                 "transition-opacity duration-300 ease-out will-change-opacity [backface-visibility:hidden]",
-                idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
-                // white backdrop to avoid dark “blink” on decode
-                "bg-white",
+                idx === visibleIndex ? "opacity-100" : "opacity-0 absolute"
               )}
             />
           )
