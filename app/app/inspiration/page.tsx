@@ -108,54 +108,50 @@ function saveViewedOutfits(viewedIds: Set<string>) {
 }
 
 const BufferedImage = React.memo(
-  ({
-    src,
-    alt,
-    className,
-  }: {
-    src: string
-    alt: string
-    className?: string
-  }) => {
+  ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
     const [visibleIndex, setVisibleIndex] = useState(0)
     const [bufferSrcs, setBufferSrcs] = useState<[string | null, string | null]>([src, null])
-    const [loadingStates, setLoadingStates] = useState<[boolean, boolean]>([true, true])
+    const loadingRef = useRef<[boolean, boolean]>([true, true])
+    const swapTimeout = useRef<number | null>(null)
 
+    // when src changes, load into hidden buffer
     useEffect(() => {
       if (bufferSrcs[visibleIndex] === src) return
       const nextIndex = 1 - visibleIndex
       setBufferSrcs((prev) => {
-        const newBuffers = [...prev]
-        newBuffers[nextIndex] = src
-        return newBuffers as [string | null, string | null]
+        const copy = [...prev] as [string | null, string | null]
+        copy[nextIndex] = src
+        return copy
       })
-      setLoadingStates((prev) => {
-        const newStates = [...prev]
-        newStates[nextIndex] = true
-        return newStates as [boolean, boolean]
-      })
+      loadingRef.current[nextIndex] = true
     }, [src, bufferSrcs, visibleIndex])
+
+    // ensure we don’t leave timeouts hanging between rapid swipes
+    useEffect(() => {
+      return () => {
+        if (swapTimeout.current) {
+          window.clearTimeout(swapTimeout.current)
+          swapTimeout.current = null
+        }
+      }
+    }, [])
 
     const handleComplete = useCallback(
       (index: number) => {
-        setLoadingStates((prev) => {
-          const newStates = [...prev]
-          newStates[index] = false
-          return newStates as [boolean, boolean]
-        })
-
-        if (index !== visibleIndex && !loadingStates[index]) {
-          setTimeout(() => {
+        loadingRef.current[index] = false
+        if (index !== visibleIndex && !loadingRef.current[index]) {
+          // small delay for softer crossfade and to avoid “blink”
+          swapTimeout.current = window.setTimeout(() => {
             setVisibleIndex(index)
             setBufferSrcs((prev) => {
-              const newBuffers = [...prev]
-              newBuffers[1 - index] = null
-              return newBuffers as [string | null, string | null]
+              const copy = [...prev] as [string | null, string | null]
+              copy[1 - index] = null
+              return copy
             })
-          }, 100) // Increased delay for smoother transitions
+          }, 80)
         }
       },
-      [visibleIndex, loadingStates],
+      [visibleIndex],
     )
 
     return (
@@ -164,18 +160,22 @@ const BufferedImage = React.memo(
           if (!bufferSrc) return null
           return (
             <Image
-              key={`${bufferSrc}-${idx}`}
-              src={bufferSrc || "/placeholder.svg"}
+              key={`${idx}-${bufferSrc}`}
+              src={bufferSrc}
               alt={alt}
               fill
-              loading="eager"
-              fetchPriority="high"
-              priority
-              onLoad={() => handleComplete(idx)}
+              priority={idx === visibleIndex}
+              // onLoadingComplete fires after decode -> no flash
+              onLoadingComplete={() => handleComplete(idx)}
+              // eager for visible layer; high priority helps on first paint
+              loading={idx === visibleIndex ? "eager" : "lazy"}
+              fetchPriority={idx === visibleIndex ? "high" : "auto"}
               className={cn(
                 className,
-                "transition-opacity duration-300 ease-out", // Smoother transition timing
+                "transition-opacity duration-300 ease-out will-change-opacity [backface-visibility:hidden]",
                 idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
+                // white backdrop to avoid dark “blink” on decode
+                "bg-white",
               )}
             />
           )
@@ -184,7 +184,6 @@ const BufferedImage = React.memo(
     )
   },
 )
-
 BufferedImage.displayName = "BufferedImage"
 
 export default function InspirationPage(): ReactElement {
@@ -373,7 +372,7 @@ export default function InspirationPage(): ReactElement {
   type Dir = "up" | "down"
   const [anim, setAnim] = useState<{ from: number; to: number; dir: Dir } | null>(null)
   const [animPhase, setAnimPhase] = useState<"idle" | "start" | "run">("idle")
-  const ANIM_MS = 450
+  const ANIM_MS = 520
 
   const startTransition = useCallback(
     (dir: Dir) => {
@@ -480,21 +479,25 @@ export default function InspirationPage(): ReactElement {
   const preloadedImages = useRef<Set<string>>(new Set())
 
   const preloadImage = useCallback((src: string): Promise<void> => {
-    if (!src || preloadedImages.current.has(src)) return Promise.resolve()
-
-    return new Promise((resolve) => {
-      const img = new window.Image()
-      img.onload = () => {
-        preloadedImages.current.add(src)
-        resolve()
+  if (!src || preloadedImages.current.has(src)) return Promise.resolve()
+  return new Promise((resolve) => {
+    const img = new window.Image()
+    img.onload = async () => {
+      try {
+        // decode waits until image is ready to paint
+        // @ts-ignore - not all browsers type this
+        if (typeof img.decode === "function") await img.decode()
+      } catch (_) {
+        // ignore decode failures; proceed
       }
-      img.onerror = () => {
-        resolve() // Still resolve to not block other preloading
-      }
-      img.src = src
-      img.loading = "eager"
-    })
-  }, [])
+      preloadedImages.current.add(src)
+      resolve()
+    }
+    img.onerror = () => resolve()
+    img.loading = "eager"
+    img.src = src
+  })
+}, [])
 
   useEffect(() => {
     if (!outfits.length) return
@@ -772,10 +775,10 @@ export default function InspirationPage(): ReactElement {
                     items={animFrom.items?.slice(0, 5) ?? []}
                     remaining={Math.max(0, (animFrom.items?.length ?? 0) - 5)}
                     className={cn(
-                      "absolute inset-0 transition-transform duration-300 ease-out",
-                      animPhase === "start" ? "translate-y-0" : "",
-                      animPhase === "run" ? (anim.dir === "down" ? "-translate-y-full" : "translate-y-full") : "",
-                    )}
+        "absolute inset-0 transition-transform duration-[520ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] will-change-transform",
+        animPhase === "start" ? "translate-y-0" : "",
+        animPhase === "run" ? (anim.dir === "down" ? "-translate-y-full" : "translate-y-full") : "",
+      )}
                     likes={animFrom.likes ?? 0}
                     onItemClick={() => handleItemClick(animFrom)}
                   />
@@ -786,10 +789,10 @@ export default function InspirationPage(): ReactElement {
                     items={animTo.items?.slice(0, 5) ?? []}
                     remaining={Math.max(0, (animTo.items?.length ?? 0) - 5)}
                     className={cn(
-                      "absolute inset-0 transition-transform duration-300 ease-out",
-                      animPhase === "start" ? (anim.dir === "down" ? "translate-y-full" : "-translate-y-full") : "",
-                      animPhase === "run" ? "translate-y-0" : "",
-                    )}
+        "absolute inset-0 transition-transform duration-[520ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] will-change-transform",
+        animPhase === "start" ? (anim.dir === "down" ? "translate-y-full" : "-translate-y-full") : "",
+        animPhase === "run" ? "translate-y-0" : "",
+      )}
                     likes={animTo.likes ?? 0}
                     onItemClick={() => handleItemClick(animTo)}
                   />
@@ -973,7 +976,6 @@ function Slide({
         className="object-cover sm:object-contain bg-neutral-950"
       />
 
-      {/* Title */}
       {!!title && (
         <div className="absolute top-3 left-3 right-24 z-20">
           <Badge variant="secondary" className="bg-white/95 text-black hover:bg-white inline-flex">
@@ -982,19 +984,19 @@ function Slide({
         </div>
       )}
 
-      {/* Left rail: thumbnails */}
       <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20">
         {items.map((item) => (
           <button
             key={item.id}
             onClick={onItemClick}
-            className="relative w-14 h-14 rounded-xl overflow-hidden ring-1 ring-white/15 bg-neutral-800 shadow-lg hover:ring-white/30 transition-all active:scale-95"
+            className="relative w-14 h-14 rounded-xl overflow-hidden ring-1 ring-white/15 bg-white shadow-lg hover:ring-white/30 transition-all active:scale-95"
             title={item.name || "Вещь"}
           >
             {item.image_url ? (
               <BufferedItemImage src={item.image_url} alt={item.name || "Вещь"} className="object-cover" />
             ) : (
-              <div className="w-full h-full bg-neutral-700" />
+              // placeholder now white
+              <div className="w-full h-full bg-white" />
             )}
           </button>
         ))}
@@ -1028,47 +1030,59 @@ function normalizeOutfits(list: any[]): FeedOutfit[] {
   }))
 }
 
-const BufferedItemImage = React.memo(({ src, alt, className }: { src: string; alt: string; className?: string }) => {
-  const [currentSrc, setCurrentSrc] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const imageCache = useRef<Map<string, boolean>>(new Map())
+const BufferedItemImage = React.memo(
+  ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
+    const [currentSrc, setCurrentSrc] = useState<string | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
+    const imageCache = useRef<Map<string, boolean>>(new Map())
 
-  useEffect(() => {
-    if (!src) return
+    useEffect(() => {
+      if (!src) return
+      if (imageCache.current.has(src)) {
+        setCurrentSrc(src)
+        setIsLoading(false)
+        return
+      }
 
-    // Check if image is already cached
-    if (imageCache.current.has(src)) {
-      setCurrentSrc(src)
-      setIsLoading(false)
-      return
+      let cancelled = false
+      setIsLoading(true)
+      const img = new window.Image()
+      img.onload = async () => {
+        try {
+          // @ts-ignore
+          if (typeof img.decode === "function") await img.decode()
+        } catch (_) {}
+        if (!cancelled) {
+          imageCache.current.set(src, true)
+          setCurrentSrc(src)
+          setIsLoading(false)
+        }
+      }
+      img.onerror = () => {
+        if (!cancelled) setIsLoading(false)
+      }
+      img.src = src
+
+      return () => {
+        cancelled = true
+      }
+    }, [src])
+
+    if (isLoading || !currentSrc) {
+      // white placeholder instead of gray; subtle pulse removed to avoid “blink”
+      return <div className={cn("bg-white", className)} />
     }
 
-    setIsLoading(true)
-    const img = new window.Image()
-    img.onload = () => {
-      imageCache.current.set(src, true)
-      setCurrentSrc(src)
-      setIsLoading(false)
-    }
-    img.onerror = () => {
-      setIsLoading(false)
-    }
-    img.src = src
-  }, [src])
-
-  if (isLoading || !currentSrc) {
-    return <div className={cn("bg-neutral-700 animate-pulse", className)} />
-  }
-
-  return (
-    <Image
-      src={currentSrc || "/placeholder.svg"}
-      alt={alt}
-      fill
-      sizes="56px"
-      className={cn("object-cover transition-opacity duration-300", className)}
-    />
-  )
-})
-
+    return (
+      <Image
+        src={currentSrc}
+        alt={alt}
+        fill
+        sizes="56px"
+        priority={false}
+        className={cn("object-cover transition-opacity duration-300 will-change-opacity", className)}
+      />
+    )
+  },
+)
 BufferedItemImage.displayName = "BufferedItemImage"

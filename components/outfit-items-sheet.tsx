@@ -112,33 +112,33 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
               <div className="p-3 space-y-3">
                 <h3 className="font-medium text-sm line-clamp-2">{item.name}</h3>
 
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => handleAddToWardrobe(item)}
-                    disabled={addingItems.has(item.id)}
-                    className="flex-1 bg-white text-black hover:bg-neutral-200 h-8 text-xs"
-                  >
-                    {addingItems.has(item.id) ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <>
-                        <Plus className="w-3 h-3 mr-1" />В гардероб
-                      </>
-                    )}
-                  </Button>
+                <div className="flex flex-col sm:flex-row gap-2">
+  <Button
+    size="sm"
+    onClick={() => handleAddToWardrobe(item)}
+    disabled={addingItems.has(item.id)}
+    className="flex-1 bg-white text-black hover:bg-neutral-200 h-8 text-xs"
+  >
+    {addingItems.has(item.id) ? (
+      <Loader2 className="w-3 h-3 animate-spin" />
+    ) : (
+      <>
+        <Plus className="w-3 h-3 mr-1" />В гардероб
+      </>
+    )}
+  </Button>
 
-                  {item.url && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => window.open(item.url!, "_blank")}
-                      className="flex-1 h-8 text-xs border-neutral-600 hover:bg-neutral-700 text-white"
-                    >
-                      <ExternalLink className="w-3 h-3 mr-1" />В магазине
-                    </Button>
-                  )}
-                </div>
+  {item.url && (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={() => window.open(item.url!, "_blank")}
+      className="flex-1 h-8 text-xs border-neutral-600 hover:bg-neutral-200 text-black"
+    >
+      <ExternalLink className="w-3 h-3 mr-1" />В магазине
+    </Button>
+  )}
+</div>
               </div>
             </div>
           ))}
