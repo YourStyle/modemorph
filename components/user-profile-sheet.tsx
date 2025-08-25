@@ -453,6 +453,15 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
       {/* Ютилити: скрываем скроллбар; учитываем safe-area снизу, чтобы футер не перекрывался iOS-панелью */}
       <style jsx global>{`
+      .scrollbar-none::-webkit-scrollbar {
+        display: none;
+      }
+
+      /* Firefox */
+      .scrollbar-none {
+        scrollbar-width: none; /* скрыть полосу прокрутки */
+        -ms-overflow-style: none; /* IE/Edge */
+      }
         .footer-safe {
           padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
         }
