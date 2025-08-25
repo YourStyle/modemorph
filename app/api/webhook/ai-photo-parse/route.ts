@@ -28,7 +28,7 @@ async function handleImageUrl(imageUrl: string): Promise<string> {
     console.log("🔄 Converting base64 image to file and uploading to S3...")
 
     let base64Data: string
-    let mimeType = "image/jpeg" // default
+    let mimeType = "image/png" // default
 
     if (imageUrl.startsWith("data:image/")) {
       // Extract mime type and base64 data
@@ -48,7 +48,7 @@ async function handleImageUrl(imageUrl: string): Promise<string> {
     const buffer = Buffer.from(base64Data, "base64")
 
     // Generate unique filename
-    const fileExtension = mimeType.split("/")[1] || "jpg"
+    const fileExtension = mimeType.split("/")[1] || "png"
     const fileName = `ai-parsed-${nanoid(8)}.${fileExtension}`
 
     // Upload to S3
