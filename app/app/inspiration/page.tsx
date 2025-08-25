@@ -116,6 +116,7 @@ function BufferedImage({
 }) {
   const [visibleIndex, setVisibleIndex] = useState(0)
   const [bufferSrcs, setBufferSrcs] = useState<[string | null, string | null]>([src, null])
+  const [loadingStates, setLoadingStates] = useState<[boolean, boolean]>([true, true])
 
   useEffect(() => {
     if (bufferSrcs[visibleIndex] === src) return
@@ -125,16 +126,29 @@ function BufferedImage({
       newBuffers[nextIndex] = src
       return newBuffers as [string | null, string | null]
     })
+    setLoadingStates((prev) => {
+      const newStates = [...prev]
+      newStates[nextIndex] = true
+      return newStates as [boolean, boolean]
+    })
   }, [src, bufferSrcs, visibleIndex])
 
   const handleComplete = (index: number) => {
-    if (index !== visibleIndex) {
-      setVisibleIndex(index)
-      setBufferSrcs((prev) => {
-        const newBuffers = [...prev]
-        newBuffers[1 - index] = null
-        return newBuffers as [string | null, string | null]
-      })
+    setLoadingStates((prev) => {
+      const newStates = [...prev]
+      newStates[index] = false
+      return newStates as [boolean, boolean]
+    })
+
+    if (index !== visibleIndex && !loadingStates[index]) {
+      setTimeout(() => {
+        setVisibleIndex(index)
+        setBufferSrcs((prev) => {
+          const newBuffers = [...prev]
+          newBuffers[1 - index] = null
+          return newBuffers as [string | null, string | null]
+        })
+      }, 50) // Small delay for smoother transition
     }
   }
 
@@ -145,17 +159,16 @@ function BufferedImage({
         return (
           <Image
             key={idx}
-            src={bufferSrc}
+            src={bufferSrc || "/placeholder.svg"}
             alt={alt}
             fill
-            // использование eager/priority/fetchPriority ускоряет загрузку
             loading="eager"
             fetchPriority="high"
             priority
-            onLoadingComplete={() => handleComplete(idx)}
+            onLoad={() => handleComplete(idx)}
             className={cn(
               className,
-              "transition-opacity duration-300",
+              "transition-opacity duration-500 ease-out",
               idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
             )}
           />
@@ -425,21 +438,86 @@ export default function InspirationPage() {
 
   const touchStartY = useRef<number | null>(null)
   const touchDeltaY = useRef(0)
+  const isScrolling = useRef(false)
+
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY
     touchDeltaY.current = 0
+    isScrolling.current = false
   }, [])
+
   const onTouchMove = useCallback((e: React.TouchEvent) => {
     if (touchStartY.current == null) return
     touchDeltaY.current = e.touches[0].clientY - touchStartY.current
+
+    // Prevent default scrolling behavior
+    if (Math.abs(touchDeltaY.current) > 10) {
+      e.preventDefault()
+      isScrolling.current = true
+    }
   }, [])
+
   const onTouchEnd = useCallback(() => {
-    const threshold = 50
-    if (touchDeltaY.current > threshold) gotoPrev()
-    else if (touchDeltaY.current < -threshold) gotoNext()
+    const threshold = 80 // Increased threshold for more deliberate swipes
+    if (isScrolling.current && Math.abs(touchDeltaY.current) > threshold) {
+      if (touchDeltaY.current > threshold) gotoPrev()
+      else if (touchDeltaY.current < -threshold) gotoNext()
+    }
     touchStartY.current = null
     touchDeltaY.current = 0
+    isScrolling.current = false
   }, [gotoPrev, gotoNext])
+
+  const preloadedImages = useRef<Set<string>>(new Set())
+
+  const preloadImage = useCallback((src: string) => {
+    if (!src || preloadedImages.current.has(src)) return
+
+    const img = new window.Image()
+    img.src = src
+    img.loading = "eager"
+    preloadedImages.current.add(src)
+  }, [])
+
+  useEffect(() => {
+    if (!outfits.length) return
+
+    // Preload current outfit and items
+    const currentSrc = getPreviewSrc(current)
+    if (currentSrc) preloadImage(currentSrc)
+
+    // Preload current outfit item thumbnails
+    current?.items?.forEach((item) => {
+      if (item.image_url) preloadImage(item.image_url)
+    })
+
+    // Preload next 3 outfits and their items
+    for (let offset = 1; offset <= 3; offset++) {
+      const idx = index + offset
+      if (idx < outfits.length) {
+        const nextOutfit = outfits[idx]
+        const nextSrc = getPreviewSrc(nextOutfit)
+        if (nextSrc) preloadImage(nextSrc)
+
+        // Preload next outfit's item thumbnails
+        nextOutfit?.items?.slice(0, 5).forEach((item) => {
+          if (item.image_url) preloadImage(item.image_url)
+        })
+      }
+    }
+
+    // Preload previous outfit and items
+    if (index > 0) {
+      const prevOutfit = outfits[index - 1]
+      const prevSrc = getPreviewSrc(prevOutfit)
+      if (prevSrc) preloadImage(prevSrc)
+
+      // Preload previous outfit's item thumbnails
+      prevOutfit?.items?.slice(0, 5).forEach((item) => {
+        if (item.image_url) preloadImage(item.image_url)
+      })
+    }
+  }, [current, index, outfits, preloadImage])
 
   const [isSaving, setIsSaving] = useState(false)
   const [isLiking, setIsLiking] = useState(false)
@@ -528,44 +606,6 @@ export default function InspirationPage() {
     }
   }
 
-  const preloadedImages = useRef<Set<string>>(new Set())
-
-  const preloadImage = useCallback((src: string) => {
-    if (!src || preloadedImages.current.has(src)) return
-
-    const img = new window.Image()
-    img.src = src
-    preloadedImages.current.add(src)
-  }, [])
-
-  useEffect(() => {
-  if (!outfits.length) return
-
-  // Preload current image
-  const currentSrc = getPreviewSrc(current)
-  if (currentSrc) preloadImage(currentSrc)
-
-  // Preload next two images
-  for (let offset = 1; offset <= 2; offset++) {
-    const idx = index + offset
-    if (idx < outfits.length) {
-      const nextSrc = getPreviewSrc(outfits[idx])
-      if (nextSrc) preloadImage(nextSrc)
-    }
-  }
-
-  // Preload previous image
-  if (index > 0) {
-    const prevSrc = getPreviewSrc(outfits[index - 1])
-    if (prevSrc) preloadImage(prevSrc)
-  }
-
-  // Preload item images for current outfit
-  current?.items?.forEach((item) => {
-    if (item.image_url) preloadImage(item.image_url)
-  })
-}, [current, index, outfits, preloadImage])
-
   const handleItemClick = useCallback((outfit: FeedOutfit) => {
     setSelectedOutfitItems(outfit.items || [])
     setSelectedOutfitTitle(outfit.title || "")
@@ -618,6 +658,9 @@ export default function InspirationPage() {
     <div
       className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
     >
       {/* Tabs persist at top */}
       <div className="absolute top-0 left-0 right-0 z-[3000] bg-black/80 backdrop-blur border-b border-neutral-900">
@@ -648,7 +691,7 @@ export default function InspirationPage() {
       </div>
 
       <main className="absolute left-0 right-0 bottom-0 top-[45px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
-        <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 touch-pan-y">
+        <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 touch-none select-none">
           {isBlurred && (
             <div className="absolute inset-0 z-[4000] bg-black/80 backdrop-blur-sm flex items-center justify-center">
               <div className="text-center p-6 bg-gray-900/90 rounded-xl border border-gray-700 max-w-sm mx-4">

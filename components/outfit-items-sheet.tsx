@@ -3,7 +3,6 @@
 import { useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Plus, ExternalLink, Loader2 } from "lucide-react"
 
@@ -105,23 +104,10 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
                 )}
               </div>
 
-              <div className="p-3 space-y-2">
+              <div className="p-3 space-y-3">
                 <h3 className="font-medium text-sm line-clamp-2">{item.name}</h3>
 
-                <div className="flex flex-wrap gap-1">
-                  {item.color && (
-                    <Badge variant="secondary" className="text-xs bg-neutral-700 text-neutral-300">
-                      {item.color}
-                    </Badge>
-                  )}
-                  {item.material && (
-                    <Badge variant="secondary" className="text-xs bg-neutral-700 text-neutral-300">
-                      {item.material}
-                    </Badge>
-                  )}
-                </div>
-
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2">
                   <Button
                     size="sm"
                     onClick={() => handleAddToWardrobe(item)}
@@ -142,9 +128,9 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
                       size="sm"
                       variant="outline"
                       onClick={() => window.open(item.url!, "_blank")}
-                      className="h-8 w-8 p-0 border-neutral-600 hover:bg-neutral-700"
+                      className="flex-1 h-8 text-xs border-neutral-600 hover:bg-neutral-700 text-white"
                     >
-                      <ExternalLink className="w-3 h-3" />
+                      <ExternalLink className="w-3 h-3 mr-1" />В магазине
                     </Button>
                   )}
                 </div>
