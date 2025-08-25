@@ -1,11 +1,12 @@
 "use client"
 
-import React from "react"
+// Лента: сохранена существующая верстка карточек и адаптивность.
+// Изменена только логика переключения слайдов на модель с вертикальным скролл-контейнером,
+// где все загруженные карточки остаются в DOM, а активная карточка определяется IntersectionObserver.
+// Управление стрелками переводит скролл к соседним карточкам (без ручной перекладки DOM).
 
-import type { ReactElement } from "react"
-
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react"
 import Image from "next/image"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2, Zap } from "lucide-react"
@@ -58,12 +59,7 @@ function getPreviewSrc(o?: FeedOutfit | null): string {
   return firstItem || "/placeholder.svg?height=1200&width=900"
 }
 
-const KEEP_BEHIND = 8
-const KEEP_AHEAD = 8
-const MAX_KEEP = KEEP_BEHIND + KEEP_AHEAD + 1
-
 function getViewedOutfitsKey() {
-  // Simple hash based on user agent and timestamp to prevent easy tampering
   const userAgent = typeof window !== "undefined" ? window.navigator.userAgent : ""
   const sessionStart =
     typeof window !== "undefined"
@@ -85,9 +81,7 @@ function getViewedOutfits(): Set<string> {
       const parsed = JSON.parse(stored)
       return new Set(parsed.ids || [])
     }
-  } catch (e) {
-    console.warn("Failed to load viewed outfits:", e)
-  }
+  } catch (_) {}
   return new Set()
 }
 
@@ -102,11 +96,10 @@ function saveViewedOutfits(viewedIds: Set<string>) {
         timestamp: Date.now(),
       }),
     )
-  } catch (e) {
-    console.warn("Failed to save viewed outfits:", e)
-  }
+  } catch (_) {}
 }
 
+// Буферизованное фото полноэкранного превью без «морганий».
 const BufferedImage = React.memo(
   ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
     const [visibleIndex, setVisibleIndex] = useState(0)
@@ -114,7 +107,6 @@ const BufferedImage = React.memo(
     const loadingRef = useRef<[boolean, boolean]>([true, true])
     const swapTimeout = useRef<number | null>(null)
 
-    // when src changes, load into hidden buffer
     useEffect(() => {
       if (bufferSrcs[visibleIndex] === src) return
       const nextIndex = 1 - visibleIndex
@@ -126,7 +118,6 @@ const BufferedImage = React.memo(
       loadingRef.current[nextIndex] = true
     }, [src, bufferSrcs, visibleIndex])
 
-    // ensure we don’t leave timeouts hanging between rapid swipes
     useEffect(() => {
       return () => {
         if (swapTimeout.current) {
@@ -140,7 +131,6 @@ const BufferedImage = React.memo(
       (index: number) => {
         loadingRef.current[index] = false
         if (index !== visibleIndex && !loadingRef.current[index]) {
-          // small delay for softer crossfade and to avoid “blink”
           swapTimeout.current = window.setTimeout(() => {
             setVisibleIndex(index)
             setBufferSrcs((prev) => {
@@ -165,15 +155,13 @@ const BufferedImage = React.memo(
               alt={alt}
               fill
               priority={idx === visibleIndex}
-              // onLoadingComplete fires after decode -> no flash
               onLoadingComplete={() => handleComplete(idx)}
-              // eager for visible layer; high priority helps on first paint
               loading={idx === visibleIndex ? "eager" : "lazy"}
               fetchPriority={idx === visibleIndex ? "high" : "auto"}
               className={cn(
                 className,
                 "transition-opacity duration-300 ease-out will-change-opacity [backface-visibility:hidden]",
-                idx === visibleIndex ? "opacity-100" : "opacity-0 absolute"
+                idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
               )}
             />
           )
@@ -185,6 +173,7 @@ const BufferedImage = React.memo(
 BufferedImage.displayName = "BufferedImage"
 
 export default function InspirationPage(): ReactElement {
+  // Данные / состояние
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -194,11 +183,13 @@ export default function InspirationPage(): ReactElement {
   const [savedOutfitIds, setSavedOutfitIds] = useState<Set<string>>(new Set())
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
+
+  // Текущий индекс активной карточки определяется IntersectionObserver (см. ниже)
   const [index, setIndex] = useState(0)
   const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(() => getViewedOutfits())
 
   const [dailyViewsUsed, setDailyViewsUsed] = useState(0)
-  const [dailyViewsLimit] = useState(10) // Free users get 10 views per day
+  const [dailyViewsLimit] = useState(10)
   const [showPaywall, setShowPaywall] = useState(false)
   const [isBlurred, setIsBlurred] = useState(false)
   const [userCredits, setUserCredits] = useState(0)
@@ -207,13 +198,17 @@ export default function InspirationPage(): ReactElement {
   const [selectedOutfitItems, setSelectedOutfitItems] = useState<OutfitItem[]>([])
   const [selectedOutfitTitle, setSelectedOutfitTitle] = useState<string>("")
 
+  // Ссылки на скролл-контейнер и карточки
+  const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const slideRefs = useRef<Array<HTMLDivElement | null>>([])
+
   const current = outfits[index]
 
   useEffect(() => {
     saveViewedOutfits(viewedOutfits)
   }, [viewedOutfits])
 
-  // Hide any global top navigation
+  // Скрыть глобальную верхнюю навигацию на время просмотра
   useEffect(() => {
     const selectors = ["header", "[data-top-navigation]", "#top-navigation", "nav[aria-label='Top']", ".top-navigation"]
     const elements = document.querySelectorAll<HTMLElement>(selectors.join(","))
@@ -225,6 +220,7 @@ export default function InspirationPage(): ReactElement {
     return () => prev.forEach(({ el, display }) => (el.style.display = display))
   }, [])
 
+  // Проверка дневных лимитов
   useEffect(() => {
     const checkDailyLimits = async () => {
       try {
@@ -234,57 +230,44 @@ export default function InspirationPage(): ReactElement {
           credentials: "include",
           body: JSON.stringify({ limitType: "daily", usageType: "ideas_views" }),
         })
-
         if (response.ok) {
           const data = await response.json()
-          if (!data.canUse) {
-            setIsBlurred(true)
-          }
+          if (!data.canUse) setIsBlurred(true)
         }
-      } catch (error) {
-        console.error("Error checking limits:", error)
-      }
+      } catch (_) {}
     }
-
     checkDailyLimits()
   }, [])
 
+  // Трекинг просмотра активной карточки
   useEffect(() => {
     if (!current || viewedOutfits.has(current.id) || isBlurred) return
-
-    const trackView = async () => {
+    const timer = setTimeout(async () => {
       try {
-        // Check if user can view more
         const limitResponse = await fetch("/api/check-limits", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ limitType: "daily", usageType: "ideas_views" }),
         })
-
         if (!limitResponse.ok || !(await limitResponse.json()).canUse) {
           setIsBlurred(true)
           return
         }
-
         await fetch("/api/outfits/track-view", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ outfitId: current.id }),
         })
-
         setViewedOutfits((prev) => new Set([...prev, current.id]))
         setDailyViewsUsed((prev) => prev + 1)
-      } catch (e) {
-        console.warn("Failed to track view:", e)
-      }
-    }
-
-    const timer = setTimeout(trackView, 1000) // Track after 1 second of viewing
+      } catch (_) {}
+    }, 1000)
     return () => clearTimeout(timer)
   }, [current, viewedOutfits, isBlurred])
 
+  // Первичная загрузка
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -307,7 +290,6 @@ export default function InspirationPage(): ReactElement {
           if (!cancelled) setLikedIds(new Set((likedData?.liked ?? []).map(String)))
         }
       } catch (e) {
-        console.error(e)
         if (!cancelled) setError("Не удалось загрузить образы")
       } finally {
         if (!cancelled) setLoading(false)
@@ -318,19 +300,25 @@ export default function InspirationPage(): ReactElement {
     }
   }, [])
 
+  // Смена вкладки -> на начало списка
   useEffect(() => {
     setIndex(0)
+    if (slideRefs.current[0]) {
+      slideRefs.current[0].scrollIntoView({ behavior: "instant", block: "start" as ScrollLogicalPosition })
+    }
   }, [activeTab])
 
+  // Фильтры
   const filtered = useMemo(() => {
     if (activeTab === "popular") return outfits
     return outfits.filter((o) => likedIds.has(o.id))
   }, [activeTab, outfits, likedIds])
 
+  // Дозагрузка при приближении к концу
   useEffect(() => {
     if (activeTab !== "popular") return
     if (fetchingMore || !nextCursor) return
-    if (index >= filtered.length - 2) void loadMore()
+    if (index >= filtered.length - 3) void loadMore()
   }, [index, filtered.length, nextCursor, fetchingMore, activeTab])
 
   async function loadMore() {
@@ -349,89 +337,24 @@ export default function InspirationPage(): ReactElement {
       const extra = normalizeOutfits(data.outfits)
       setOutfits((prev) => [...prev, ...extra])
       setNextCursor(data.nextCursor ?? null)
-    } catch (e) {
-      console.warn("Failed to fetch more outfits:", e)
+    } catch (_) {
       setNextCursor(null)
     } finally {
       setFetchingMore(false)
     }
   }
 
-  useEffect(() => {
-    if (outfits.length <= MAX_KEEP) return
-    if (index <= KEEP_BEHIND) return
-    const start = Math.max(0, index - KEEP_BEHIND)
-    const end = Math.min(outfits.length, index + KEEP_AHEAD + 1)
-    const drop = start
-    setOutfits((prev) => prev.slice(start, end))
-    setIndex((i) => i - drop)
-  }, [index, outfits])
-
-  type Dir = "up" | "down"
-  const [anim, setAnim] = useState<{ from: number; to: number; dir: Dir } | null>(null)
-  const [animPhase, setAnimPhase] = useState<"idle" | "start" | "run">("idle")
-  const ANIM_MS = 520
-
-  const startTransition = useCallback(
-    (dir: Dir) => {
-      const to = dir === "down" ? index + 1 : index - 1
-      if (to < 0 || to >= outfits.length || anim) return
-
-      const targetOutfit = outfits[to]
-      if (!targetOutfit) return
-
-      const trackUsage = async () => {
-        if (viewedOutfits.has(targetOutfit.id)) {
-          return true // Skip API call if already viewed
-        }
-
-        try {
-          const response = await fetch("/api/limits/consume", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ featureType: "ideas_viewed" }),
-          })
-
-          if (!response.ok) {
-            const errorData = await response.json()
-            if (response.status === 429) {
-              // Daily limit exceeded
-              setIsBlurred(true)
-              return false
-            }
-            console.warn("Usage tracking failed:", errorData.error)
-          }
-
-          setViewedOutfits((prev) => new Set([...prev, targetOutfit.id]))
-          return true
-        } catch (error) {
-          console.warn("Usage tracking error:", error)
-          return true // Continue navigation even if tracking fails
-        }
-      }
-
-      // Track usage before starting transition
-      trackUsage().then((canContinue) => {
-        if (!canContinue) return // Stop navigation if limit exceeded
-
-        setAnim({ from: index, to, dir })
-        setAnimPhase("start")
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => setAnimPhase("run"))
-        })
-        window.setTimeout(() => {
-          setIndex(to)
-          setAnim(null)
-          setAnimPhase("idle")
-        }, ANIM_MS)
-      })
+  // Управление клавиатурой
+  const scrollToIndex = useCallback(
+    (to: number) => {
+      if (to < 0 || to >= filtered.length) return
+      const node = slideRefs.current[to]
+      if (node) node.scrollIntoView({ behavior: "smooth", block: "start" })
     },
-    [index, outfits, anim, viewedOutfits],
+    [filtered.length],
   )
-
-  const gotoPrev = useCallback(() => startTransition("up"), [startTransition])
-  const gotoNext = useCallback(() => startTransition("down"), [startTransition])
+  const gotoPrev = useCallback(() => scrollToIndex(index - 1), [scrollToIndex, index])
+  const gotoNext = useCallback(() => scrollToIndex(index + 1), [scrollToIndex, index])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -442,109 +365,82 @@ export default function InspirationPage(): ReactElement {
     return () => window.removeEventListener("keydown", onKey)
   }, [gotoPrev, gotoNext])
 
-  const touchStartY = useRef<number | null>(null)
-  const touchDeltaY = useRef(0)
-  const isScrolling = useRef(false)
+  // Определение активной карточки через IntersectionObserver (карточка считается активной при ~70% видимости)
+  useEffect(() => {
+    if (!scrollerRef.current || filtered.length === 0) return
+    const root = scrollerRef.current
+    const thresholds = [0, 0.25, 0.5, 0.7, 0.85, 1]
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Выбираем карточку с максимальной долей видимости
+        let bestIdx = index
+        let bestRatio = 0
+        for (const entry of entries) {
+          const el = entry.target as HTMLDivElement
+          const i = Number(el.dataset.index)
+          if (entry.isIntersecting && entry.intersectionRatio >= bestRatio) {
+            bestRatio = entry.intersectionRatio
+            bestIdx = i
+          }
+        }
+        if (bestRatio >= 0.7 && bestIdx !== index) setIndex(bestIdx)
+      },
+      { root, threshold: thresholds },
+    )
 
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY
-    touchDeltaY.current = 0
-    isScrolling.current = false
-  }, [])
+    slideRefs.current.forEach((el) => el && observer.observe(el))
+    return () => observer.disconnect()
+  }, [filtered.length, index])
 
-  const onTouchMove = useCallback((e: React.TouchEvent) => {
-    if (touchStartY.current == null) return
-    touchDeltaY.current = e.touches[0].clientY - touchStartY.current
-
-    // Prevent default scrolling behavior
-    if (Math.abs(touchDeltaY.current) > 10) {
-      e.preventDefault()
-      isScrolling.current = true
-    }
-  }, [])
-
-  const onTouchEnd = useCallback(() => {
-    const threshold = 100 // Increased from 80 for smoother interaction
-    if (isScrolling.current && Math.abs(touchDeltaY.current) > threshold) {
-      if (touchDeltaY.current > threshold) gotoPrev()
-      else if (touchDeltaY.current < -threshold) gotoNext()
-    }
-    touchStartY.current = null
-    touchDeltaY.current = 0
-    isScrolling.current = false
-  }, [gotoPrev, gotoNext])
-
+  // Прелоад ближайших изображений (текущее + окрестность)
   const preloadedImages = useRef<Set<string>>(new Set())
-
   const preloadImage = useCallback((src: string): Promise<void> => {
-  if (!src || preloadedImages.current.has(src)) return Promise.resolve()
-  return new Promise((resolve) => {
-    const img = new window.Image()
-    img.onload = async () => {
-      try {
-        // decode waits until image is ready to paint
-        // @ts-ignore - not all browsers type this
-        if (typeof img.decode === "function") await img.decode()
-      } catch (_) {
-        // ignore decode failures; proceed
+    if (!src || preloadedImages.current.has(src)) return Promise.resolve()
+    return new Promise((resolve) => {
+      const img = new window.Image()
+      img.onload = async () => {
+        try {
+          // @ts-ignore
+          if (typeof img.decode === "function") await img.decode()
+        } catch (_) {}
+        preloadedImages.current.add(src)
+        resolve()
       }
-      preloadedImages.current.add(src)
-      resolve()
-    }
-    img.onerror = () => resolve()
-    img.loading = "eager"
-    img.src = src
-  })
-}, [])
+      img.onerror = () => resolve()
+      img.loading = "eager"
+      img.src = src
+    })
+  }, [])
 
   useEffect(() => {
-    if (!outfits.length) return
-
-    const preloadPromises: Promise<void>[] = []
-
-    // Preload current outfit and items
-    const currentSrc = getPreviewSrc(current)
-    if (currentSrc) preloadPromises.push(preloadImage(currentSrc))
-
-    // Preload current outfit item thumbnails
-    current?.items?.forEach((item) => {
-      if (item.image_url) preloadPromises.push(preloadImage(item.image_url))
-    })
-
-    for (let offset = 1; offset <= 5; offset++) {
-      const idx = index + offset
-      if (idx < outfits.length) {
-        const nextOutfit = outfits[idx]
-        const nextSrc = getPreviewSrc(nextOutfit)
-        if (nextSrc) preloadPromises.push(preloadImage(nextSrc))
-
-        nextOutfit?.items?.forEach((item) => {
-          if (item.image_url) preloadPromises.push(preloadImage(item.image_url))
-        })
+    if (!filtered.length) return
+    const targets: string[] = []
+    // Текущее превью
+    const curSrc = getPreviewSrc(filtered[index])
+    if (curSrc) targets.push(curSrc)
+    // Следующие/предыдущие несколько карточек + миниатюры
+    for (let d = 1; d <= 5; d++) {
+      const ni = index + d
+      const pi = index - d
+      if (ni < filtered.length) {
+        const next = filtered[ni]
+        const s = getPreviewSrc(next)
+        if (s) targets.push(s)
+        next?.items?.forEach((it) => it.image_url && targets.push(it.image_url))
+      }
+      if (pi >= 0) {
+        const prev = filtered[pi]
+        const s = getPreviewSrc(prev)
+        if (s) targets.push(s)
+        prev?.items?.forEach((it) => it.image_url && targets.push(it.image_url))
       }
     }
+    ;(async () => {
+      for (const s of targets.slice(0, 12)) await preloadImage(s)
+    })()
+  }, [filtered, index, preloadImage])
 
-    for (let offset = 1; offset <= 2; offset++) {
-      const idx = index - offset
-      if (idx >= 0) {
-        const prevOutfit = outfits[idx]
-        const prevSrc = getPreviewSrc(prevOutfit)
-        if (prevSrc) preloadPromises.push(preloadImage(prevSrc))
-
-        // Preload previous outfit's item thumbnails
-        prevOutfit?.items?.forEach((item) => {
-          if (item.image_url) preloadPromises.push(preloadImage(item.image_url))
-        })
-      }
-    }
-
-    // Wait for critical images to load
-    Promise.all(preloadPromises.slice(0, 10)).then(() => {
-      // Critical images loaded, continue with the rest in background
-      Promise.all(preloadPromises.slice(10))
-    })
-  }, [current, index, outfits, preloadImage])
-
+  // Служебные обработчики
   const [isSaving, setIsSaving] = useState(false)
   const [isLiking, setIsLiking] = useState(false)
 
@@ -560,15 +456,13 @@ export default function InspirationPage(): ReactElement {
       })
       if (!res.ok) throw new Error("Failed to save outfit")
       setSavedOutfitIds((prev) => new Set([...prev, outfit.id]))
-
       await fetch("/api/outfits/track-save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ outfitId: outfit.id }),
-      }).catch((e) => console.warn("Failed to track save:", e))
-    } catch (e) {
-      console.error(e)
+      }).catch(() => {})
+    } catch (_) {
     } finally {
       setIsSaving(false)
     }
@@ -597,8 +491,7 @@ export default function InspirationPage(): ReactElement {
         else next.delete(outfit.id)
         return next
       })
-    } catch (e) {
-      console.error(e)
+    } catch (_) {
     } finally {
       setIsLiking(false)
     }
@@ -617,17 +510,15 @@ export default function InspirationPage(): ReactElement {
           usageType: "ideas_views",
         }),
       })
-
       if (response.ok) {
         const data = await response.json()
         setUserCredits(data.newBalance)
         setIsBlurred(false)
-        setDailyViewsUsed((prev) => Math.max(0, prev - 5)) // Reset 5 views
+        setDailyViewsUsed((prev) => Math.max(0, prev - 5))
       } else {
         setShowPaywall(true)
       }
-    } catch (error) {
-      console.error("Error buying views:", error)
+    } catch (_) {
       setShowPaywall(true)
     }
   }
@@ -638,26 +529,18 @@ export default function InspirationPage(): ReactElement {
     setShowOutfitItems(true)
   }, [])
 
+  // Очистка кэша прелоада для контроля памяти
   useEffect(() => {
-    // Clear preloaded images cache periodically to prevent memory leaks
     const interval = setInterval(() => {
-      if (preloadedImages.current.size > 50) {
-        preloadedImages.current.clear()
-      }
-    }, 30000) // Clear every 30 seconds
-
+      if (preloadedImages.current.size > 80) preloadedImages.current.clear()
+    }, 30000)
     return () => clearInterval(interval)
   }, [])
 
+  // Данные для текущего экрана
   const visibleItems = current?.items?.slice(0, 5) ?? []
   const remaining = Math.max(0, (current?.items?.length ?? 0) - visibleItems.length)
-
   const currentPreview = getPreviewSrc(current)
-
-  const animFrom = anim ? outfits[anim.from] : null
-  const animTo = anim ? outfits[anim.to] : null
-  const animFromPreview = getPreviewSrc(animFrom || undefined)
-  const animToPreview = getPreviewSrc(animTo || undefined)
 
   if (loading) {
     return (
@@ -680,15 +563,14 @@ export default function InspirationPage(): ReactElement {
     )
   }
 
+  // Поддержка refs по количеству карточек
+  slideRefs.current = Array(filtered.length)
+    .fill(null)
+    .map((_, i) => slideRefs.current[i] || null)
+
   return (
-    <div
-      className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
-    >
-      {/* Tabs persist at top */}
+    <div className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+      {/* Верхние вкладки */}
       <div className="absolute top-0 left-0 right-0 z-[3000] bg-black/80 backdrop-blur border-b border-neutral-900">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
           <div className="flex justify-center gap-8 py-3">
@@ -717,7 +599,9 @@ export default function InspirationPage(): ReactElement {
       </div>
 
       <main className="absolute left-0 right-0 bottom-0 top-[45px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
-        <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 touch-none select-none">
+        {/* Контейнер карточек: вертикальный скролл, снап к экрану, плавный скролл */}
+        <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 select-none">
+          {/* Оверлей лимита */}
           {isBlurred && (
             <div className="absolute inset-0 z-[4000] bg-black/80 backdrop-blur-sm flex items-center justify-center">
               <div className="text-center p-6 bg-gray-900/90 rounded-xl border border-gray-700 max-w-sm mx-4">
@@ -746,181 +630,154 @@ export default function InspirationPage(): ReactElement {
             </div>
           )}
 
-          {filtered.length === 0 ? (
-            <div className="absolute inset-0 grid place-items-center">
-              <div className="text-neutral-400">Пока нет образов</div>
-            </div>
-          ) : (
-            <>
-              {!anim && (
-                <Slide
-                  key={`slide-${index}`}
-                  title={current?.title}
-                  previewSrc={currentPreview}
-                  items={visibleItems}
-                  remaining={remaining}
-                  likes={current?.likes ?? 0}
-                  onItemClick={() => current && handleItemClick(current)}
-                />
-              )}
-
-              {anim && animFrom && animTo && (
-                <>
-                  <Slide
-                    key={`from-${anim.from}`}
-                    title={animFrom.title}
-                    previewSrc={animFromPreview}
-                    items={animFrom.items?.slice(0, 5) ?? []}
-                    remaining={Math.max(0, (animFrom.items?.length ?? 0) - 5)}
-                    className={cn(
-        "absolute inset-0 transition-transform duration-[520ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] will-change-transform",
-        animPhase === "start" ? "translate-y-0" : "",
-        animPhase === "run" ? (anim.dir === "down" ? "-translate-y-full" : "translate-y-full") : "",
-      )}
-                    likes={animFrom.likes ?? 0}
-                    onItemClick={() => handleItemClick(animFrom)}
-                  />
-                  <Slide
-                    key={`to-${anim.to}`}
-                    title={animTo.title}
-                    previewSrc={animToPreview}
-                    items={animTo.items?.slice(0, 5) ?? []}
-                    remaining={Math.max(0, (animTo.items?.length ?? 0) - 5)}
-                    className={cn(
-        "absolute inset-0 transition-transform duration-[520ms] [transition-timing-function:cubic-bezier(0.22,1,0.36,1)] will-change-transform",
-        animPhase === "start" ? (anim.dir === "down" ? "translate-y-full" : "-translate-y-full") : "",
-        animPhase === "run" ? "translate-y-0" : "",
-      )}
-                    likes={animTo.likes ?? 0}
-                    onItemClick={() => handleItemClick(animTo)}
-                  />
-                </>
-              )}
-
-              {/* Right-side controls */}
-              <div className="absolute right-3 inset-y-0 flex flex-col items-center justify-center gap-3 z-[150] pointer-events-none">
-                <button
-                  aria-label="Предыдущий образ"
-                  onClick={gotoPrev}
-                  disabled={index === 0 || !!anim || filtered.length === 0}
-                  className={cn(
-                    "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
-                    index === 0 || !!anim || filtered.length === 0 ? "opacity-60 cursor-not-allowed" : "",
-                    "pointer-events-auto",
-                  )}
-                >
-                  <ChevronUp className="w-6 h-6" />
-                </button>
-
-                <button
-                  aria-label="Следующий образ"
-                  onClick={gotoNext}
-                  disabled={index >= outfits.length - 1 || !!anim || filtered.length === 0}
-                  className={cn(
-                    "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
-                    index >= outfits.length - 1 || !!anim || filtered.length === 0
-                      ? "opacity-60 cursor-not-allowed"
-                      : "",
-                    "pointer-events-auto",
-                  )}
-                >
-                  <ChevronDown className="w-6 h-6" />
-                </button>
-
-                {/* Mobile: Like then Save, with larger spacing from arrows */}
-                {filtered.length > 0 && (
-                  <div className="mt-9 flex flex-col gap-3 pointer-events-auto sm:hidden">
-                    <button
-                      onClick={() => current && handleLike(current)}
-                      disabled={isLiking}
-                      aria-label="Лайк"
-                      className={cn(
-                        "w-12 h-12 rounded-full flex items-center justify-center shadow-xl",
-                        current?.isLiked
-                          ? "bg-red-500 text-white"
-                          : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30",
-                      )}
-                    >
-                      {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
-                    </button>
-
-                    <button
-                      onClick={() => current && handleSave(current)}
-                      disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
-                      aria-label={
-                        !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"
-                      }
-                      className={cn(
-                        "w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-xl",
-                        !!current && (isSaving || savedOutfitIds.has(current.id) || current.isSaved) && "opacity-80",
-                      )}
-                    >
-                      {isSaving ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? (
-                        <BookmarkCheck className="w-5 h-5" />
-                      ) : (
-                        <Bookmark className="w-5 h-5" />
-                      )}
-                    </button>
+          {/* Список карточек с привязкой по экрану */}
+          <div
+            ref={scrollerRef}
+            className={cn(
+              "h-full w-full overflow-y-auto scroll-smooth snap-y snap-mandatory",
+              "[-webkit-overflow-scrolling:touch]",
+            )}
+          >
+            {filtered.length === 0 ? (
+              <div className="h-full grid place-items-center">
+                <div className="text-neutral-400">Пока нет образов</div>
+              </div>
+            ) : (
+              filtered.map((o, i) => {
+                const isCurrent = i === index
+                const items = (isCurrent ? current?.items : o.items) ?? []
+                const preview = isCurrent ? currentPreview : getPreviewSrc(o)
+                const show = items.slice(0, 5)
+                const rest = Math.max(0, items.length - show.length)
+                return (
+                  <div
+                    key={o.id}
+                    ref={(el) => (slideRefs.current[i] = el)}
+                    data-index={i}
+                    className="snap-start h-full w-full relative"
+                  >
+                    <Slide
+                      title={o.title}
+                      previewSrc={preview}
+                      items={show}
+                      remaining={rest}
+                      likes={o.likes ?? 0}
+                      onItemClick={() => handleItemClick(o)}
+                    />
                   </div>
+                )
+              })
+            )}
+
+            {/* Sentinel для безопасного отступа в конце списка */}
+            <div aria-hidden className="h-2" />
+          </div>
+
+          {/* Правые стрелки и экшены — поверх скролл-контейнера */}
+          {filtered.length > 0 && (
+            <div className="absolute right-3 inset-y-0 flex flex-col items-center justify-center gap-3 z-[150] pointer-events-none">
+              <button
+                aria-label="Предыдущий образ"
+                onClick={gotoPrev}
+                disabled={index === 0 || filtered.length === 0}
+                className={cn(
+                  "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
+                  index === 0 || filtered.length === 0 ? "opacity-60 cursor-not-allowed" : "",
+                  "pointer-events-auto",
                 )}
-              </div>
+              >
+                <ChevronUp className="w-6 h-6" />
+              </button>
 
-              {/* Desktop/tablet: corners */}
-              <div className="hidden sm:block">
-                <div
-                  className={cn("absolute bottom-3 left-3 pointer-events-auto", isBlurred ? "z-[2000]" : "z-[6000]")}
-                >
-                  <Button
-                    onClick={() => current && handleSave(current)}
-                    disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
-                    className="bg-white text-black hover:bg-neutral-200 h-11 w-11 p-0 rounded-full shadow-xl"
-                    aria-label={
-                      !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"
-                    }
-                  >
-                    {isSaving ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? (
-                      <BookmarkCheck className="w-5 h-5" />
-                    ) : (
-                      <Bookmark className="w-5 h-5" />
-                    )}
-                  </Button>
-                </div>
+              <button
+                aria-label="Следующий образ"
+                onClick={gotoNext}
+                disabled={index >= filtered.length - 1 || filtered.length === 0}
+                className={cn(
+                  "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
+                  index >= filtered.length - 1 || filtered.length === 0 ? "opacity-60 cursor-not-allowed" : "",
+                  "pointer-events-auto",
+                )}
+              >
+                <ChevronDown className="w-6 h-6" />
+              </button>
 
-                <div
-                  className={cn("absolute bottom-3 right-3 pointer-events-auto", isBlurred ? "z-[2000]" : "z-[6000]")}
+              {/* Мобильные кнопки лайка/сохранения */}
+              <div className="mt-9 flex flex-col gap-3 pointer-events-auto sm:hidden">
+                <button
+                  onClick={() => current && handleLike(current)}
+                  disabled={isLiking}
+                  aria-label="Лайк"
+                  className={cn(
+                    "w-12 h-12 rounded-full flex items-center justify-center shadow-xl",
+                    current?.isLiked ? "bg-red-500 text-white" : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30",
+                  )}
                 >
-                  <Button
-                    variant="secondary"
-                    onClick={() => current && handleLike(current)}
-                    disabled={isLiking}
-                    className={cn(
-                      "h-11 w-11 p-0 rounded-full shadow-xl",
-                      current?.isLiked
-                        ? "bg-red-500 text-white hover:bg-red-600"
-                        : "bg-white/15 text-white hover:bg-white/25",
-                    )}
-                    aria-label="Лайк"
-                  >
-                    {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
-                  </Button>
-                </div>
+                  {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
+                </button>
+
+                <button
+                  onClick={() => current && handleSave(current)}
+                  disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
+                  aria-label={!!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"}
+                  className={cn(
+                    "w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-xl",
+                    !!current && (isSaving || savedOutfitIds.has(current.id) || current.isSaved) && "opacity-80",
+                  )}
+                >
+                  {isSaving ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? (
+                    <BookmarkCheck className="w-5 h-5" />
+                  ) : (
+                    <Bookmark className="w-5 h-5" />
+                  )}
+                </button>
               </div>
-            </>
+            </div>
           )}
+
+          {/* Desktop/tablet экшены по углам */}
+          <div className="hidden sm:block">
+            <div className={cn("absolute bottom-3 left-3 pointer-events-auto", isBlurred ? "z-[2000]" : "z-[6000]")}>
+              <Button
+                onClick={() => current && handleSave(current)}
+                disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
+                className="bg-white text-black hover:bg-neutral-200 h-11 w-11 p-0 rounded-full shadow-xl"
+                aria-label={!!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"}
+              >
+                {isSaving ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? (
+                  <BookmarkCheck className="w-5 h-5" />
+                ) : (
+                  <Bookmark className="w-5 h-5" />
+                )}
+              </Button>
+            </div>
+
+            <div className={cn("absolute bottom-3 right-3 pointer-events-auto", isBlurred ? "z-[2000]" : "z-[6000]")}>
+              <Button
+                variant="secondary"
+                onClick={() => current && handleLike(current)}
+                disabled={isLiking}
+                className={cn(
+                  "h-11 w-11 p-0 rounded-full shadow-xl",
+                  current?.isLiked ? "bg-red-500 text-white hover:bg-red-600" : "bg-white/15 text-white hover:bg-white/25",
+                )}
+                aria-label="Лайк"
+              >
+                {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
+              </Button>
+            </div>
+          </div>
         </section>
 
-        {/* Dots */}
+        {/* Точки прогресса */}
         {filtered.length > 0 && (
           <div className="mt-3 flex justify-center gap-2 px-4">
             {filtered.map((_, i) => (
-              <div
-                key={i}
-                className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-white" : "w-2 bg-neutral-600")}
-              />
+              <div key={i} className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-white" : "w-2 bg-neutral-600")} />
             ))}
           </div>
         )}
@@ -949,6 +806,7 @@ export default function InspirationPage(): ReactElement {
   )
 }
 
+// Одна карточка (вёрстка сохранена)
 function Slide({
   title,
   previewSrc,
@@ -967,7 +825,7 @@ function Slide({
   onItemClick?: () => void
 }) {
   return (
-    <div className={cn("relative h-full w-full", className)}>
+    <div className={cn("relative h-full w-full touch-pan-y", className)}>
       <BufferedImage
         src={previewSrc || "/placeholder.svg?height=1200&width=900&query=outfit%20preview"}
         alt={title || "Образ"}
@@ -982,6 +840,7 @@ function Slide({
         </div>
       )}
 
+      {/* Левый столбец с миниатюрами (плейсхолдеры — белые до загрузки) */}
       <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20">
         {items.map((item) => (
           <button
@@ -993,7 +852,6 @@ function Slide({
             {item.image_url ? (
               <BufferedItemImage src={item.image_url} alt={item.name || "Вещь"} className="object-cover" />
             ) : (
-              // placeholder now white
               <div className="w-full h-full bg-white" />
             )}
           </button>
@@ -1028,6 +886,7 @@ function normalizeOutfits(list: any[]): FeedOutfit[] {
   }))
 }
 
+// Буферизованные миниатюры (белый плейсхолдер до отрисовки изображения)
 const BufferedItemImage = React.memo(
   ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
     const [currentSrc, setCurrentSrc] = useState<string | null>(null)
@@ -1067,7 +926,6 @@ const BufferedItemImage = React.memo(
     }, [src])
 
     if (isLoading || !currentSrc) {
-      // white placeholder instead of gray; subtle pulse removed to avoid “blink”
       return <div className={cn("bg-white", className)} />
     }
 
