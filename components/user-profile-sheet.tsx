@@ -34,10 +34,7 @@ interface UserProfileSheetProps {
   onClose: () => void
 }
 
-const CLOTHING_SIZES = [
-  "XXS","XS","S","M","L","XL","XXL","XXXL",
-  "40","42","44","46","48","50","52","54","56","58","60",
-]
+const CLOTHING_SIZES = ["XXS","XS","S","M","L","XL","XXL","XXXL","40","42","44","46","48","50","52","54","56","58","60"]
 
 export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -71,41 +68,36 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
     setIsLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profileData } = await supabase
-          .from("user_profiles")
-          .select("*")
-          .eq("user_id", user.id)
-          .single()
+      if (!user) return
+      const { data: profileData } = await supabase.from("user_profiles").select("*").eq("user_id", user.id).single()
 
-        let userProfile: UserProfile = {
-          id: profileData?.id || "",
-          user_id: user.id,
-          email: user.email || "",
-          full_name: profileData?.full_name || user.user_metadata?.full_name || "",
-          gender: profileData?.gender || "",
-          avatar_url: profileData?.avatar_url || "",
-          height: profileData?.height || undefined,
-          weight: profileData?.weight || undefined,
-          top_size: profileData?.top_size || "",
-          bottom_size: profileData?.bottom_size || "",
-          shoe_size: profileData?.shoe_size || undefined,
-          is_admin: profileData?.is_admin || false,
-        }
-
-        setProfile(userProfile)
-        setFormData({
-          full_name: userProfile.full_name || "",
-          gender: userProfile.gender || "",
-          height: userProfile.height?.toString() || "",
-          weight: userProfile.weight?.toString() || "",
-          top_size: userProfile.top_size || "",
-          bottom_size: userProfile.bottom_size || "",
-          shoe_size: userProfile.shoe_size?.toString() || "",
-        })
+      const userProfile: UserProfile = {
+        id: profileData?.id || "",
+        user_id: user.id,
+        email: user.email || "",
+        full_name: profileData?.full_name || user.user_metadata?.full_name || "",
+        gender: profileData?.gender || "",
+        avatar_url: profileData?.avatar_url || "",
+        height: profileData?.height || undefined,
+        weight: profileData?.weight || undefined,
+        top_size: profileData?.top_size || "",
+        bottom_size: profileData?.bottom_size || "",
+        shoe_size: profileData?.shoe_size || undefined,
+        is_admin: profileData?.is_admin || false,
       }
-    } catch (error) {
-      console.error("Error loading profile:", error)
+
+      setProfile(userProfile)
+      setFormData({
+        full_name: userProfile.full_name || "",
+        gender: userProfile.gender || "",
+        height: userProfile.height?.toString() || "",
+        weight: userProfile.weight?.toString() || "",
+        top_size: userProfile.top_size || "",
+        bottom_size: userProfile.bottom_size || "",
+        shoe_size: userProfile.shoe_size?.toString() || "",
+      })
+    } catch (e) {
+      console.error(e)
       toast.error("Ошибка загрузки профиля")
     } finally {
       setIsLoading(false)
@@ -114,73 +106,51 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
   const loadSubscriptionData = async () => {
     try {
-      const response = await fetch("/api/user-subscription", { credentials: "include" })
-      if (response.ok) {
-        const data = await response.json()
-        setSubscriptionData(data)
-      }
-    } catch (error) {
-      console.error("Error loading subscription data:", error)
+      const res = await fetch("/api/user-subscription", { credentials: "include" })
+      if (res.ok) setSubscriptionData(await res.json())
+    } catch (e) {
+      console.error("Error loading subscription data:", e)
     }
   }
 
-  const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-  }
-
-  const handleNumberInput = (field: string, value: string) => {
-    const numericValue = value.replace(/[^0-9]/g, "")
-    handleInputChange(field, numericValue)
-  }
+  const handleInputChange = (field: string, value: string) => setFormData((p) => ({ ...p, [field]: value }))
+  const handleNumberInput = (field: string, value: string) => handleInputChange(field, value.replace(/[^0-9]/g, ""))
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file || !profile) return
-
-    if (!file.type.startsWith("image/")) {
-      toast.error("Пожалуйста, выберите изображение")
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Размер файла не должен превышать 5MB")
-      return
-    }
+    const f = event.target.files?.[0]
+    if (!f || !profile) return
+    if (!f.type.startsWith("image/")) return toast.error("Пожалуйста, выберите изображение")
+    if (f.size > 5 * 1024 * 1024) return toast.error("Размер файла не должен превышать 5MB")
 
     setIsUploadingAvatar(true)
     try {
-      const formData = new FormData()
-      formData.append("file", file)
-      formData.append("folder", "avatars")
-
-      const response = await fetch("/api/upload-to-yandex", { method: "POST", body: formData })
-      const result = await response.json()
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || `HTTP error! status: ${response.status}`)
-      }
+      const fd = new FormData()
+      fd.append("file", f)
+      fd.append("folder", "avatars")
+      const resp = await fetch("/api/upload-to-yandex", { method: "POST", body: fd })
+      const result = await resp.json()
+      if (!resp.ok || !result.success) throw new Error(result.error || `HTTP ${resp.status}`)
 
       if (profile.id) {
-        const { error: updateError } = await supabase
-          .from("user_profiles")
+        const { error } = await supabase.from("user_profiles")
           .update({ avatar_url: result.url, updated_at: new Date().toISOString() })
           .eq("id", profile.id)
-        if (updateError) throw updateError
+        if (error) throw error
       } else {
-        const { error: insertError } = await supabase.from("user_profiles").insert({
+        const { error } = await supabase.from("user_profiles").insert({
           user_id: profile.user_id,
           avatar_url: result.url,
           is_admin: false,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        if (insertError) throw insertError
+        if (error) throw error
       }
-
       setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
       toast.success("Аватар успешно обновлен")
-    } catch (error) {
-      console.error("Error uploading avatar:", error)
-      toast.error(`Ошибка загрузки аватара: ${error instanceof Error ? error.message : "Неизвестная ошибка"}`)
+    } catch (e: any) {
+      console.error(e)
+      toast.error(`Ошибка загрузки аватара: ${e?.message || "Неизвестная ошибка"}`)
     } finally {
       setIsUploadingAvatar(false)
       if (fileInputRef.current) fileInputRef.current.value = ""
@@ -201,7 +171,6 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         shoe_size: formData.shoe_size ? Number.parseInt(formData.shoe_size) : null,
         updated_at: new Date().toISOString(),
       }
-
       if (profile.id) {
         const { error } = await supabase.from("user_profiles").update(updateData).eq("id", profile.id)
         if (error) throw error
@@ -214,12 +183,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         })
         if (error) throw error
       }
-
       toast.success("Профиль успешно обновлен")
       loadProfile()
-    } catch (error) {
-      console.error("Error saving profile:", error)
-      toast.error(`Ошибка сохранения профиля: ${error instanceof Error ? error.message : "Неизвестная ошибка"}`)
+    } catch (e: any) {
+      console.error(e)
+      toast.error(`Ошибка сохранения профиля: ${e?.message || "Неизвестная ошибка"}`)
     } finally {
       setIsSaving(false)
     }
@@ -230,17 +198,18 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
       await supabase.auth.signOut()
       router.push("/auth/login")
       onClose()
-    } catch (error) {
-      console.error("Error signing out:", error)
+    } catch (e) {
+      console.error(e)
       toast.error("Ошибка при выходе")
     }
   }
 
   return (
     <CommonSheet isOpen={isOpen} onClose={onClose} title="Профиль" backgroundColor="dark">
-      <div className="flex flex-col h-full">
-        {/* ПРОКРУЧИВАЕМАЯ ОБЛАСТЬ — скролл скрыт, прокрутка остаётся */}
-        <div className="flex-1 overflow-y-auto no-scrollbar pb-28 md:pb-0">
+      {/* min-h-0 критично, чтобы не «съедался» низ и sticky-футер работал корректно */}
+      <div className="flex flex-col h-full min-h-0">
+        {/* Скроллируемая зона: скролл скрыт, но прокрутка есть; дополнительный нижний паддинг под фикс-футер */}
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none pb-40 safe-bottom-padding">
           <div className="space-y-6">
             <Tabs defaultValue="about" className="w-full">
               <TabsList className="grid w-full grid-cols-2 bg-white">
@@ -251,10 +220,10 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
               <TabsContent value="about" className="space-y-6 mt-6">
                 {isLoading ? (
                   <div className="space-y-4">
-                    <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
-                    <div className="h-10 bg-gray-600 rounded animate-pulse"></div>
-                    <div className="h-4 bg-gray-600 rounded animate-pulse"></div>
-                    <div className="h-10 bg-gray-600 rounded animate-pulse"></div>
+                    <div className="h-4 bg-gray-600 rounded animate-pulse" />
+                    <div className="h-10 bg-gray-600 rounded animate-pulse" />
+                    <div className="h-4 bg-gray-600 rounded animate-pulse" />
+                    <div className="h-10 bg-gray-600 rounded animate-pulse" />
                   </div>
                 ) : (
                   <>
@@ -262,7 +231,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                       <div className="space-y-3">
                         <h3 className="text-white font-medium text-sm">Ваш текущий план</h3>
 
-                        {/* БЛОК ПЛАНА: кнопка ВНУТРИ блока; на мобилке — одной колонкой, кнопка под информацией */}
+                        {/* Внутри Plan Info Block; на мобилке всё в одну колонку — кнопка снизу */}
                         <div
                           className={`p-4 rounded-xl border backdrop-blur-sm ${
                             subscriptionData?.subscription?.status === "active"
@@ -271,7 +240,6 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                           }`}
                         >
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                            {/* Информация о плане */}
                             <div>
                               <div className="text-white font-medium text-base mb-1">
                                 {subscriptionData?.subscription?.status === "active" ? "Pro" : "Бесплатно"}
@@ -286,7 +254,6 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                               </div>
                             </div>
 
-                            {/* Кнопка подписки (внутри блока плана) */}
                             <Button
                               onClick={() => setIsPaywallOpen(true)}
                               className="w-full md:w-auto bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white border-0 px-6 py-3 rounded-xl font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
@@ -323,11 +290,9 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                           type="button"
                           variant={formData.gender === "male" ? "default" : "outline"}
                           onClick={() => handleInputChange("gender", "male")}
-                          className={`flex-1 ${
-                            formData.gender === "male"
-                              ? "bg-blue-600 hover:bg-blue-700 text-white"
-                              : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
-                          }`}
+                          className={`flex-1 ${formData.gender === "male"
+                            ? "bg-blue-600 hover:bg-blue-700 text-white"
+                            : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"}`}
                         >
                           👨 Мужской
                         </Button>
@@ -335,11 +300,9 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                           type="button"
                           variant={formData.gender === "female" ? "default" : "outline"}
                           onClick={() => handleInputChange("gender", "female")}
-                          className={`flex-1 ${
-                            formData.gender === "female"
-                              ? "bg-pink-600 hover:bg-pink-700 text-white"
-                              : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
-                          }`}
+                          className={`flex-1 ${formData.gender === "female"
+                            ? "bg-pink-600 hover:bg-pink-700 text-white"
+                            : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"}`}
                         >
                           👩 Женский
                         </Button>
@@ -372,28 +335,24 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
                     <div className="space-y-2">
                       <Label className="text-white">Размер верхней одежды</Label>
-                      <Select value={formData.top_size} onValueChange={(value) => handleInputChange("top_size", value)}>
+                      <Select value={formData.top_size} onValueChange={(v) => handleInputChange("top_size", v)}>
                         <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                           <SelectValue placeholder="Выберите размер" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CLOTHING_SIZES.map((size) => (
-                            <SelectItem key={size} value={size}>{size}</SelectItem>
-                          ))}
+                          {CLOTHING_SIZES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div className="space-y-2">
                       <Label className="text-white">Размер нижней одежды</Label>
-                      <Select value={formData.bottom_size} onValueChange={(value) => handleInputChange("bottom_size", value)}>
+                      <Select value={formData.bottom_size} onValueChange={(v) => handleInputChange("bottom_size", v)}>
                         <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                           <SelectValue placeholder="Выберите размер" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CLOTHING_SIZES.map((size) => (
-                            <SelectItem key={size} value={size}>{size}</SelectItem>
-                          ))}
+                          {CLOTHING_SIZES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -410,13 +369,8 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                       />
                     </div>
 
-                    {/* Кнопка сохранения (общая логика, разделена по брейкпоинтам) */}
-                    <div className="hidden md:block">
-                      <Button onClick={handleSave} disabled={isSaving} className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0">
-                        {isSaving ? "Сохранение..." : "Сохранить изменения"}
-                      </Button>
-                    </div>
-                    <div className="md:hidden">
+                    {/* Кнопка сохранения */}
+                    <div>
                       <Button onClick={handleSave} disabled={isSaving} className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0">
                         {isSaving ? "Сохранение..." : "Сохранить изменения"}
                       </Button>
@@ -469,33 +423,22 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
               </TabsContent>
             </Tabs>
           </div>
-        </div>
 
-        {/* НИЖНИЕ КНОПКИ ВСЕГДА ВИДИМЫ — вынесены ВНЕ скролла */}
-        <div className="hidden md:flex gap-4 p-4 pt-3 border-t border-gray-600 bg-slate-800/95 backdrop-blur-sm">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
-          >
-            Закрыть
-          </Button>
-          <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
-            Выйти
-          </Button>
-        </div>
-
-        <div className="md:hidden flex gap-4 p-4 pt-3 border-t border-gray-600 bg-slate-800/95 backdrop-blur-sm safe-area-inset-bottom">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
-          >
-            Закрыть
-          </Button>
-          <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
-            Выйти
-          </Button>
+          {/* Sticky-футер ВНУТРИ скролла: всегда виден и не обрезается */}
+          <div className="sticky bottom-0 z-20 border-t border-gray-600 bg-slate-800/95 backdrop-blur-sm px-4 py-3 footer-safe">
+            <div className="flex gap-4">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
+              >
+                Закрыть
+              </Button>
+              <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
+                Выйти
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -508,15 +451,13 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         }}
       />
 
-      {/* Скрываем скроллбар, сохраняя прокрутку.
-         При желании перенесите в globals.css как класс .no-scrollbar */}
+      {/* Ютилити: скрываем скроллбар; учитываем safe-area снизу, чтобы футер не перекрывался iOS-панелью */}
       <style jsx global>{`
-        .no-scrollbar {
-          -ms-overflow-style: none; /* IE/Edge */
-          scrollbar-width: none;    /* Firefox */
+        .footer-safe {
+          padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
         }
-        .no-scrollbar::-webkit-scrollbar {
-          display: none;            /* Chrome/Safari */
+        .safe-bottom-padding {
+          padding-bottom: calc(10rem + env(safe-area-inset-bottom, 0px)); /* запас под sticky-футер */
         }
       `}</style>
     </CommonSheet>

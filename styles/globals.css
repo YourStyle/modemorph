@@ -8,8 +8,7 @@ body {
 
 /* Chrome / Safari / Opera */
 .scrollbar-none::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
+ display: none;
 }
 
 /* Firefox */
@@ -17,6 +16,7 @@ body {
   scrollbar-width: none; /* скрыть полосу прокрутки */
   -ms-overflow-style: none; /* IE/Edge */
 }
+
 
 @layer utilities {
   .text-balance {

@@ -66,54 +66,61 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
 
     if (userError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        {
-          status: 401,
-          headers: { "X-Track-Unauthorized": "true" },
-        },
-      )
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { data: userProfile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single()
+    const { data: userProfile, error: upErr } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .single()
 
-    if (!userProfile) {
+    if (upErr || !userProfile) {
       return NextResponse.json({ error: "User profile not found" }, { status: 404 })
     }
 
     const { action, type, packId } = await request.json()
 
     if (action === "subscribe") {
+      // Проверяем, нет ли активной подписки
       const { data: existingSubscription } = await supabase
         .from("user_subscriptions")
         .select("*")
         .eq("user_profile_id", userProfile.id)
-        .single()
+        .eq("status", "active")
+        .maybeSingle()
 
       if (existingSubscription) {
         return NextResponse.json({ error: "User already has subscription" }, { status: 400 })
       }
 
-      const price = type === "monthly" ? 299 : 2490
+      // Даты
       const startDate = new Date()
-      const expiresAt = new Date()
+      const expireAt = new Date()
       if (type === "monthly") {
-        expiresAt.setMonth(expiresAt.getMonth() + 1)
+        expireAt.setMonth(expireAt.getMonth() + 1)
       } else {
-        expiresAt.setFullYear(expiresAt.getFullYear() + 1)
+        expireAt.setFullYear(expireAt.getFullYear() + 1)
       }
 
-      const { error: subscriptionError } = await supabase.from("user_subscriptions").insert({
-        user_profile_id: userProfile.id,
-        subscription_type: type,
-        start_date: startDate.toISOString(),
-        expires_at: expiresAt.toISOString(),
-      })
+      // ВАЖНО: используем правильное имя колонки expire_at (без s) и сразу ставим статус
+      const { error: subscriptionError } = await supabase
+        .from("user_subscriptions")
+        .insert({
+          user_profile_id: userProfile.id,
+          subscription_type: type,          // "monthly" | "yearly"
+          status: "active",                 // если NOT NULL
+          start_date: startDate.toISOString(),
+          expire_at: expireAt.toISOString() // <-- правильная колонка из схемы
+        })
 
       if (subscriptionError) {
+        // временно логируем текст ошибки для диагностики RLS/NOT NULL/типов
+        console.error("subscriptionError:", subscriptionError)
         return NextResponse.json({ error: "Failed to create subscription" }, { status: 500 })
       }
 
+      // Начисляем кредиты
       await supabase.rpc("add_credits", {
         p_user_profile_id: userProfile.id,
         p_amount: 40,
@@ -125,10 +132,13 @@ export async function POST(request: Request) {
     }
 
     if (action === "buy_credits") {
-      // Get credit pack
-      const { data: pack } = await supabase.from("credit_packs").select("*").eq("id", packId).single()
+      const { data: pack, error: packErr } = await supabase
+        .from("credit_packs")
+        .select("*")
+        .eq("id", packId)
+        .single()
 
-      if (!pack) {
+      if (packErr || !pack) {
         return NextResponse.json({ error: "Credit pack not found" }, { status: 404 })
       }
 
