@@ -206,7 +206,12 @@ export default function InspirationPage(): ReactElement {
   // Ссылки на скролл-контейнер и карточки
   const scrollerRef = useRef<HTMLDivElement | null>(null)
 
-  
+  const filtered = useMemo(() => {
+    if (activeTab === "popular") return outfits
+    return outfits.filter((o) => likedIds.has(o.id))
+  }, [activeTab, outfits, likedIds])
+
+  const current = filtered[index]
 
   useEffect(() => {
     saveViewedOutfits(viewedOutfits)
@@ -310,13 +315,6 @@ export default function InspirationPage(): ReactElement {
      setWindowStart(0)
   }, [activeTab])
 
-  // Фильтры
-  const filtered = useMemo(() => {
-    if (activeTab === "popular") return outfits
-    return outfits.filter((o) => likedIds.has(o.id))
-  }, [activeTab, outfits, likedIds])
-
-  const current = filtered[index]
 
   const rendered = useMemo(() => filtered.slice(windowStart, Math.min(filtered.length, windowStart + WINDOW_SIZE)),[filtered, windowStart])
   // Дозагрузка при приближении к концу
