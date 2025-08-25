@@ -664,6 +664,7 @@ export default function InspirationPage(): ReactElement {
             className={cn(
               "h-full w-full overflow-y-auto scroll-smooth snap-y snap-mandatory",
               "[-webkit-overflow-scrolling:touch]",
+              "scrollbar-none", 
             )}
           >
             {rendered.length === 0 ? (
