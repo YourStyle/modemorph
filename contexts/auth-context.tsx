@@ -72,20 +72,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         console.log("[v0] Getting initial session...")
 
-        // Check what's in localStorage first
-        if (typeof window !== "undefined") {
-          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]
-          const authTokenKey = `sb-${supabaseUrl}-auth-token`
-          const authToken = localStorage.getItem(authTokenKey)
-          console.log("[v0] Auth token in localStorage:", !!authToken)
+        const { data: refreshData, error: refreshError } = await supabaseRef.current.auth.refreshSession()
 
-          // Check for any Supabase-related keys
-          const supabaseKeys = Object.keys(localStorage).filter(
-            (key) => key.includes("supabase") || key.includes("sb-"),
-          )
-          console.log("[v0] Supabase keys in localStorage:", supabaseKeys)
+        if (refreshError && !refreshError.message.includes("refresh_token_not_found")) {
+          console.log("[v0] Refresh session error:", refreshError.message)
         }
 
+        // Now get the current session (which should include server-side session if it exists)
         const {
           data: { session },
           error,
@@ -108,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("Error getting initial session:", error)
         await handleRefreshTokenError(error)
       } finally {
-        setLoading(false)
+        setTimeout(() => setLoading(false), 100)
       }
     }
 
@@ -122,7 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       debounceTimer = setTimeout(() => {
         console.log("[v0] Auth state changed:", event, !!session?.user)
         setUser(session?.user ?? null)
-        setLoading(false)
+        if (event !== "INITIAL_SESSION") {
+          setLoading(false)
+        }
       }, 100)
     })
 
@@ -135,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       clearTimeout(debounceTimer)
     }
-  }, []) // Remove supabase.auth dependency to prevent re-runs
+  }, [])
 
   const signOut = async () => {
     await supabaseRef.current.auth.signOut()
