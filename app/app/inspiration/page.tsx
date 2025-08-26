@@ -253,15 +253,16 @@ export default function InspirationPage(): ReactElement {
     if (!current || viewedOutfits.has(current.id) || isBlurred) return
     const timer = setTimeout(async () => {
       try {
-        const limitResponse = await fetch("/api/check-limits", {
+        const consumeRes = await fetch("/api/check-limits", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ limitType: "daily", usageType: "ideas_views" }),
+          body: JSON.stringify({ featureType: "ideas_views" }),
         })
-        if (!limitResponse.ok || !(await limitResponse.json()).canUse) {
-          setIsBlurred(true)
-          return
+        const consume = await consumeRes.json()
+        if (!consumeRes.ok || !consume?.canUse) {
+          setIsBlurred(true);
+          return;
         }
         await fetch("/api/outfits/track-view", {
           method: "POST",
