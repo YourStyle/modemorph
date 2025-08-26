@@ -50,7 +50,7 @@ export default async function AdminLayout({
   const clothingItems = [
     { href: "/admin/wardrobe", label: "Гардероб", icon: Package },
     { href: "/admin/outfits", label: "Образы", icon: Palette },
-    { href: "/admin/wardrobe/add", label: "Базовые вещи", icon: Layers },
+    { href: "/admin/wardrobe/basics", label: "Базовые вещи", icon: Layers },
     { href: "/admin/combinations", label: "Комбинации", icon: Sparkles },
   ]
 
