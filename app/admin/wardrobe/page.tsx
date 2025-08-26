@@ -8,6 +8,8 @@ import Link from "next/link"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
 
+import LoadingSkeleton from "./loading"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -340,36 +342,8 @@ export default function WardrobePage() {
     return arr
   }, [items, search, filterClothingType, filterColor, filterMaterial, filterPrint, sortOrder])
 
-  if (authLoading) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="text-lg font-semibold">Загрузка...</div>
-          </div>
-        </div>
-      )
-  }
-
-    // Если пользователь не авторизован, показываем приглашение войти
-  if (!user) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="text-red-600 text-lg font-semibold">Необходима авторизация</div>
-            <Button onClick={() => router.push("/auth/login")}>Войти</Button>
-          </div>
-        </div>
-      )
-  }
-
-  if (loading) {
-      return (
-        <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-          <div className="text-center space-y-4">
-            <div className="text-lg font-semibold">Загрузка...</div>
-          </div>
-        </div>
-      )
+  if (authLoading || loading) {
+    return <LoadingSkeleton />
   }
 
   const hiddenCount = items.filter((i) => i.is_hidden).length
