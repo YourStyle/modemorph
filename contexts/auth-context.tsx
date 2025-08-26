@@ -70,10 +70,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        console.log("[v0] Getting initial session...")
+
+        // Check what's in localStorage first
+        if (typeof window !== "undefined") {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]
+          const authTokenKey = `sb-${supabaseUrl}-auth-token`
+          const authToken = localStorage.getItem(authTokenKey)
+          console.log("[v0] Auth token in localStorage:", !!authToken)
+
+          // Check for any Supabase-related keys
+          const supabaseKeys = Object.keys(localStorage).filter(
+            (key) => key.includes("supabase") || key.includes("sb-"),
+          )
+          console.log("[v0] Supabase keys in localStorage:", supabaseKeys)
+        }
+
         const {
           data: { session },
           error,
         } = await supabaseRef.current.auth.getSession()
+
+        console.log("[v0] getSession result:", {
+          hasSession: !!session,
+          hasUser: !!session?.user,
+          error: error?.message,
+        })
+
         if (error) {
           console.error("Error getting session:", error)
           await handleRefreshTokenError(error)
@@ -121,10 +144,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
+      console.log("[v0] Refreshing user...")
       const {
         data: { user },
         error,
       } = await supabaseRef.current.auth.getUser()
+
+      console.log("[v0] getUser result:", {
+        hasUser: !!user,
+        error: error?.message,
+      })
+
       if (error) {
         console.error("Error refreshing user:", error)
         await handleRefreshTokenError(error)
