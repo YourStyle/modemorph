@@ -14,6 +14,8 @@ export function createClient() {
           autoRefreshToken: true,
           persistSession: true,
           detectSessionInUrl: true,
+          storageKey: `sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]}-auth-token`,
+          flowType: "pkce",
         },
       },
     )

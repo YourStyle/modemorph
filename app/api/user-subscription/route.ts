@@ -111,7 +111,7 @@ export async function POST(request: Request) {
           subscription_type: type,          // "monthly" | "yearly"
           status: "active",                 // если NOT NULL
           start_date: startDate.toISOString(),
-          expire_at: expireAt.toISOString() // <-- правильная колонка из схемы
+          expires_at: expireAt.toISOString() // <-- правильная колонка из схемы
         })
 
       if (subscriptionError) {
