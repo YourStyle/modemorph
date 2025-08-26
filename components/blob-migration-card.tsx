@@ -144,7 +144,7 @@ export function BlobMigrationCard() {
               </div>
               <div className="text-center p-3 bg-green-50 rounded-lg">
                 <div className="text-lg font-bold text-green-600">{status.successfulFiles}</div>
-                <div className="text-xs text-green-600">Успешно</div>
+                <div className="text-xs text-green-600">��спешно</div>
               </div>
               <div className="text-center p-3 bg-red-50 rounded-lg">
                 <div className="text-lg font-bold text-red-600">{status.failedFiles.length}</div>

@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 import { useRouter } from "next/navigation"
@@ -19,146 +19,94 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [unauthorizedCount, setUnauthorizedCount] = useState(0)
-  const supabaseRef = useRef(createClient())
+  const supabase = createClient()
   const router = useRouter()
-  const authListenerRef = useRef<any>(null)
 
+  // Очищаем некорректные токены при ошибке обновления
   const handleRefreshTokenError = async (error: any) => {
     if (error?.message?.includes("refresh_token_not_found") || error?.message?.includes("Invalid Refresh Token")) {
-      console.log("[v0] Clearing invalid session due to refresh token error")
-      await supabaseRef.current.auth.signOut()
+      await supabase.auth.signOut()
       setUser(null)
-      // Clear any stale session data
+      // Удаляем токен из localStorage
       if (typeof window !== "undefined") {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]
-        localStorage.removeItem(`sb-${supabaseUrl}-auth-token`)
-        Object.keys(localStorage).forEach((key) => {
-          if (key.includes("supabase") || key.includes("sb-")) {
-            localStorage.removeItem(key)
-          }
-        })
+        localStorage.removeItem(`sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]}-auth-token`)
       }
     }
   }
 
+  // Счётчик неавторизованных ошибок; по достижении порога перенаправляем на главную
   const trackUnauthorizedError = () => {
     setUnauthorizedCount((prev) => {
       const newCount = prev + 1
-      console.log(`[v0] Unauthorized error count: ${newCount}`)
-
       if (newCount >= 4) {
-        console.log("[v0] Too many unauthorized errors, redirecting to home")
         router.push("/")
         setUnauthorizedCount(0)
       }
-
       return newCount
     })
   }
 
+  // Обнуляем счётчик, если есть пользователь
   useEffect(() => {
     if (user) {
       setUnauthorizedCount(0)
     }
   }, [user])
 
+  // Инициализация пользователя и подписка на изменения сессии
   useEffect(() => {
-    if (authListenerRef.current) {
-      return
-    }
-
-    // Get initial session
-    const getInitialSession = async () => {
+    // Первичная загрузка пользователя
+    const getInitialUser = async () => {
       try {
-        console.log("[v0] Getting initial session...")
-
-        const { data: refreshData, error: refreshError } = await supabaseRef.current.auth.refreshSession()
-
-        if (refreshError && !refreshError.message.includes("refresh_token_not_found")) {
-          console.log("[v0] Refresh session error:", refreshError.message)
-        }
-
-        // Now get the current session (which should include server-side session if it exists)
         const {
-          data: { session },
+          data: { user },
           error,
-        } = await supabaseRef.current.auth.getSession()
-
-        console.log("[v0] getSession result:", {
-          hasSession: !!session,
-          hasUser: !!session?.user,
-          error: error?.message,
-        })
-
+        } = await supabase.auth.getUser()
         if (error) {
-          console.error("Error getting session:", error)
+          // При ошибке очищаем сессию и сбрасываем пользователя
           await handleRefreshTokenError(error)
+          setUser(null)
         } else {
-          setUser(session?.user ?? null)
-          console.log("[v0] Initial session loaded:", !!session?.user)
+          setUser(user ?? null)
         }
       } catch (error) {
-        console.error("Error getting initial session:", error)
         await handleRefreshTokenError(error)
+        setUser(null)
       } finally {
-        setTimeout(() => setLoading(false), 100)
+        setLoading(false)
       }
     }
 
-    getInitialSession()
+    getInitialUser()
 
-    let debounceTimer: NodeJS.Timeout
+    // Обновляем пользователя при изменении сессии
     const {
       data: { subscription },
-    } = supabaseRef.current.auth.onAuthStateChange(async (event, session) => {
-      clearTimeout(debounceTimer)
-      debounceTimer = setTimeout(() => {
-        console.log("[v0] Auth state changed:", event, !!session?.user)
-        setUser(session?.user ?? null)
-        if (event !== "INITIAL_SESSION") {
-          setLoading(false)
-        }
-      }, 100)
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      setUser(session?.user ?? null)
     })
 
-    authListenerRef.current = subscription
+    return () => subscription.unsubscribe()
+  }, [supabase.auth])
 
-    return () => {
-      if (authListenerRef.current) {
-        authListenerRef.current.unsubscribe()
-        authListenerRef.current = null
-      }
-      clearTimeout(debounceTimer)
-    }
-  }, [])
-
+  // Выход из аккаунта
   const signOut = async () => {
-    await supabaseRef.current.auth.signOut()
-    setUnauthorizedCount(0)
+    await supabase.auth.signOut()
   }
 
+  // Обновление пользователя; ошибки обрабатываются молча
   const refreshUser = async () => {
     try {
-      console.log("[v0] Refreshing user...")
       const {
         data: { user },
         error,
-      } = await supabaseRef.current.auth.getUser()
-
-      console.log("[v0] getUser result:", {
-        hasUser: !!user,
-        error: error?.message,
-      })
-
+      } = await supabase.auth.getUser()
       if (error) {
-        console.error("Error refreshing user:", error)
-        await handleRefreshTokenError(error)
         setUser(null)
       } else {
         setUser(user)
       }
-    } catch (error) {
-      console.error("Error refreshing user:", error)
+    } catch (_error) {
       setUser(null)
     }
   }
