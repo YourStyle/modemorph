@@ -71,7 +71,7 @@ export default function WardrobePage() {
   const router = useRouter()
   const { toast } = useToast()
 
-  const { user, loading: authLoading } = useAuth()
+  const { loading: authLoading } = useAuth()
 
   // Load edit mode by query (?edit=ID), but do not navigate when toggling mode
   const editParam = useMemo(() => searchParams.get("edit"), [searchParams])
@@ -95,10 +95,10 @@ export default function WardrobePage() {
   }, [])
 
   useEffect(() => {
-      if (!authLoading && user) {
+      if (!authLoading) {
         void fetchItems({ search: "" })
       }
-  }, [fetchItems, authLoading, user])
+  }, [fetchItems, authLoading])
 
   const handleRetry = () => {
     void fetchItems({ search })
