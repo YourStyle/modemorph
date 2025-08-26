@@ -121,12 +121,15 @@ export async function POST(request: Request) {
       }
 
       // Начисляем кредиты
-      await supabase.rpc("add_credits", {
+      const { error: addErr } = await supabase.rpc("add_credits", {
         p_user_profile_id: userProfile.id,
         p_amount: 40,
         p_reason: "subscription",
         p_description: `Кредиты за подписку ${type === "monthly" ? "на месяц" : "на год"}`,
-      })
+      });
+      if (addErr) {
+        return NextResponse.json({ error: addErr.message }, { status: 400 });
+      }
 
       return NextResponse.json({ success: true, message: "Подписка успешно оформлена!" })
     }
@@ -142,12 +145,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Credit pack not found" }, { status: 404 })
       }
 
-      await supabase.rpc("add_credits", {
+      const { error: addErr } = await supabase.rpc("add_credits", {
         p_user_profile_id: userProfile.id,
         p_amount: pack.credits,
         p_reason: "purchase",
         p_description: `Покупка пака "${pack.name}"`,
-      })
+      });
+      if (addErr) {
+        return NextResponse.json({ error: addErr.message }, { status: 400 });
+      }
 
       return NextResponse.json({ success: true, message: `Куплено ${pack.credits} кредитов!` })
     }
