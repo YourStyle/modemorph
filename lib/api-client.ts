@@ -7,6 +7,8 @@ export function useApiClient() {
 
   const apiCall = async (url: string, options: RequestInit = {}) => {
     const response = await fetch(url, {
+      credentials: "include",
+      cache: "no-store",
       ...options,
       headers: {
         "Content-Type": "application/json",
@@ -15,7 +17,7 @@ export function useApiClient() {
     })
 
     if (response.status === 401) {
-      console.log(`[v0] 401 error detected from ${url}`)
+    
       trackUnauthorizedError()
     }
 
@@ -23,31 +25,4 @@ export function useApiClient() {
   }
 
   return { apiCall }
-}
-
-if (typeof window !== "undefined") {
-  const originalFetch = window.fetch
-  let authContext: any = null
-
-  // Store auth context reference
-  window.setAuthContext = (context: any) => {
-    authContext = context
-  }
-
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const response = await originalFetch(input, init)
-
-    if (response.status === 401 && authContext?.trackUnauthorizedError) {
-      console.log(`[v0] Global 401 error detected from ${input}`)
-      authContext.trackUnauthorizedError()
-    }
-
-    return response
-  }
-}
-
-declare global {
-  interface Window {
-    setAuthContext: (context: any) => void
-  }
 }

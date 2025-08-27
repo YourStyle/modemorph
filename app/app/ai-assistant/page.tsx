@@ -227,7 +227,7 @@ export default function AIAssistantPage() {
       const weather = await getCurrentWeather()
       console.log("Weather data:", weather)
 
-      // Делаем запрос к AI API
+      // ��елаем запрос к AI API
       const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app"
       const requestUrl = `${aiApiUrl}/user-prompt-rec`
       console.log("AI API URL:", requestUrl)

@@ -1,142 +1,105 @@
-"use client"
+"use client";
 
-import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react"
-import { createClient } from "@/lib/supabase/client"
-import type { User } from "@supabase/supabase-js"
-import { useRouter } from "next/navigation"
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 
 interface AuthContextType {
-  user: User | null
-  loading: boolean
-  signOut: () => Promise<void>
-  refreshUser: () => Promise<void>
-  trackUnauthorizedError: () => void
+  user: User | null;
+  loading: boolean;
+  signOut: () => Promise<void>;
+  refreshUser: () => Promise<void>;
+  trackUnauthorizedError: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [unauthorizedCount, setUnauthorizedCount] = useState(0)
-  const supabaseRef = useRef(createClient())
-  const supabase = supabaseRef.current
-  const router = useRouter()
-  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const redirectingRef = useRef(false);
 
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.setAuthContext?.({ trackUnauthorizedError })
-    }
-  }, [])
+  const supabase = useRef(createClient()).current;
 
-  const handleRefreshTokenError = async (error: any) => {
-    if (error?.message?.includes("refresh_token_not_found") || error?.message?.includes("Invalid Refresh Token")) {
-      await supabase.auth.signOut()
-      setUser(null)
-      if (typeof window !== "undefined") {
-        localStorage.removeItem(`sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]}-auth-token`)
-      }
-    }
-  }
+  // Единая функция "жёсткого" выхода и редиректа
+  const forceLogoutAndRedirect = async () => {
+    if (redirectingRef.current) return;
+    redirectingRef.current = true;
 
+    try {
+      await supabase.auth.signOut();
+    } catch {/* ignore */}
+
+    // Чистим локальные токены (supabase-js хранит тут)
+    try {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+      const projectRef = url?.split("//")[1]?.split(".")[0];
+      if (projectRef) localStorage.removeItem(`sb-${projectRef}-auth-token`);
+    } catch {/* ignore */}
+
+    setUser(null);
+
+    // Жёсткий редирект, чтобы точно сбросить все сторы приложения
+    const next = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/";
+    window.location.href = `/auth/login?next=${encodeURIComponent(next)}`;
+  };
+
+  // Вызывается при любом 401 от наших API
   const trackUnauthorizedError = () => {
-    setUnauthorizedCount((prev) => {
-      const newCount = prev + 1
-      console.log(`[v0] 401 error count: ${newCount}`)
-      if (newCount >= 4 && !redirectTimeoutRef.current) {
-        console.log(`[v0] Redirecting to homepage due to ${newCount} 401 errors`)
-        redirectTimeoutRef.current = setTimeout(() => {
-          router.push("/")
-          setUnauthorizedCount(0)
-          redirectTimeoutRef.current = null
-        }, 100)
-      }
-      return newCount
-    })
-  }
+    void forceLogoutAndRedirect();
+  };
 
+  // Инициализация пользователя
   useEffect(() => {
-    if (user) {
-      setUnauthorizedCount(0)
-      if (redirectTimeoutRef.current) {
-        clearTimeout(redirectTimeoutRef.current)
-        redirectTimeoutRef.current = null
-      }
-    }
-  }, [user])
-
-  useEffect(() => {
-    return () => {
-      if (redirectTimeoutRef.current) {
-        clearTimeout(redirectTimeoutRef.current)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    const getInitialUser = async () => {
+    const init = async () => {
       try {
-        const {
-          data: { user },
-          error,
-        } = await supabase.auth.getUser()
+        const { data, error } = await supabase.auth.getUser();
         if (error) {
-          await handleRefreshTokenError(error)
-          setUser(null)
-        } else {
-          setUser(user ?? null)
+          // Если токен «битый» — сразу чистим и редиректим
+          await forceLogoutAndRedirect();
+          return;
         }
-      } catch (error) {
-        await handleRefreshTokenError(error)
-        setUser(null)
+        setUser(data.user ?? null);
+      } catch {
+        await forceLogoutAndRedirect();
+        return;
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    getInitialUser()
+    init();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser(session?.user ?? null)
-    })
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      setUser(session?.user ?? null);
+    });
 
-    return () => subscription.unsubscribe()
-  }, [supabase.auth])
+    return () => sub.subscription.unsubscribe();
+  }, [supabase]);
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-  }
+    await forceLogoutAndRedirect();
+  };
 
   const refreshUser = async () => {
     try {
-      const {
-        data: { user },
-        error,
-      } = await supabase.auth.getUser()
-      if (error) {
-        setUser(null)
-      } else {
-        setUser(user)
-      }
-    } catch (_error) {
-      setUser(null)
+      const { data, error } = await supabase.auth.getUser();
+      if (error) setUser(null);
+      else setUser(data.user ?? null);
+    } catch {
+      setUser(null);
     }
-  }
+  };
 
   return (
     <AuthContext.Provider value={{ user, loading, signOut, refreshUser, trackUnauthorizedError }}>
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider")
-  }
-  return context
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
+  return ctx;
 }
