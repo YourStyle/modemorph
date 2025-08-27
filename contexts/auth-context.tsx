@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 
@@ -14,103 +14,93 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function isOnAuthPage() {
+function onAuthPage() {
   if (typeof window === "undefined") return false;
   const p = window.location.pathname;
   return p === "/auth/login" || p.startsWith("/auth/");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const supabase = useRef(createClient()).current;
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const redirectingRef = useRef(false);
-  const supabase = useRef(createClient()).current;
 
-  // единый «жёсткий» выход + (условный) редирект
-  const forceLogoutAndMaybeRedirect = async () => {
-    // уже уходим — не повторяем
+  const hardLogout = async () => {
     if (redirectingRef.current) return;
     redirectingRef.current = true;
 
     try {
       await supabase.auth.signOut();
-    } catch { /* ignore */ }
+    } catch {}
 
-    // подчистим локальные токены supabase-js
     try {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-      const projectRef = url?.split("//")[1]?.split(".")[0];
-      if (projectRef) localStorage.removeItem(`sb-${projectRef}-auth-token`);
-    } catch { /* ignore */ }
+      const ref = url?.split("//")[1]?.split(".")[0];
+      if (ref) localStorage.removeItem(`sb-${ref}-auth-token`);
+    } catch {}
 
     setUser(null);
 
-    // На auth-страницах НЕ редиректим (оставляем пользователя заполнять форму)
-    if (isOnAuthPage()) {
+    if (!onAuthPage() && typeof window !== "undefined") {
+      const next = window.location.pathname + window.location.search;
+      window.location.href = `/auth/login?next=${encodeURIComponent(next)}`;
+    } else {
       redirectingRef.current = false;
-      return;
     }
-
-    // Жёсткий редирект на логин
-    const next =
-      typeof window !== "undefined"
-        ? window.location.pathname + window.location.search
-        : "/";
-    window.location.href = `/auth/login?next=${encodeURIComponent(next)}`;
   };
 
   const trackUnauthorizedError = () => {
-    // На страницах логина 401 ожидаемы — не дёргаем редирект.
-    if (isOnAuthPage()) return;
-    void forceLogoutAndMaybeRedirect();
+    if (onAuthPage()) return;
+    void hardLogout();
   };
 
-  // начальная инициализация пользователя
+  // первичная загрузка пользователя
   useEffect(() => {
     const init = async () => {
       try {
         const { data, error } = await supabase.auth.getUser();
-
-        // если просто нет сессии — user=null и без редиректа
         if (!error) {
           setUser(data.user ?? null);
         } else {
-          // реальный случай битого refresh-token — уйдём на логин
-          const msg = (error?.message || "").toLowerCase();
-          const isTokenBroken =
+          const msg = (error.message || "").toLowerCase();
+          const tokenBroken =
             msg.includes("refresh_token_not_found") ||
             msg.includes("invalid refresh token") ||
-            msg.includes("jwt") || // «битые» подписи и т.п.
+            msg.includes("jwt") ||
             msg.includes("jws");
-          if (isTokenBroken) {
-            await forceLogoutAndMaybeRedirect();
+          if (tokenBroken) {
+            await hardLogout();
             return;
           }
           setUser(null);
         }
       } catch {
-        // на любой неожиданный сбой — чистим и остаёмся на месте, если уже /auth/*
-        await forceLogoutAndMaybeRedirect();
+        await hardLogout();
         return;
       } finally {
         setLoading(false);
       }
     };
-
     init();
 
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
       setUser(session?.user ?? null);
-      // если юзер появился — снимаем «флаг редиректа» (на случай возврата назад)
       redirectingRef.current = false;
     });
 
     return () => sub.subscription.unsubscribe();
   }, [supabase]);
 
-  const signOut = async () => {
-    await forceLogoutAndMaybeRedirect();
-  };
+  // Фолбэк: если не авторизован и это не /auth/* — редиректим
+  useEffect(() => {
+    if (!loading && !user && !onAuthPage() && typeof window !== "undefined") {
+      const next = window.location.pathname + window.location.search;
+      window.location.replace(`/auth/login?next=${encodeURIComponent(next)}`);
+    }
+  }, [loading, user]);
+
+  const signOut = async () => { await hardLogout(); };
 
   const refreshUser = async () => {
     try {
