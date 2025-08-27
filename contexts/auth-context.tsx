@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, useRef, type ReactNode } from "react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 import { useRouter } from "next/navigation"
@@ -19,43 +19,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [unauthorizedCount, setUnauthorizedCount] = useState(0)
-  const supabase = createClient()
+  const supabaseRef = useRef(createClient())
+  const supabase = supabaseRef.current
   const router = useRouter()
+  const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
-  // Очищаем некорректные токены при ошибке обновления
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.setAuthContext?.({ trackUnauthorizedError })
+    }
+  }, [])
+
   const handleRefreshTokenError = async (error: any) => {
     if (error?.message?.includes("refresh_token_not_found") || error?.message?.includes("Invalid Refresh Token")) {
       await supabase.auth.signOut()
       setUser(null)
-      // Удаляем токен из localStorage
       if (typeof window !== "undefined") {
         localStorage.removeItem(`sb-${process.env.NEXT_PUBLIC_SUPABASE_URL?.split("//")[1]?.split(".")[0]}-auth-token`)
       }
     }
   }
 
-  // Счётчик неавторизованных ошибок; по достижении порога перенаправляем на главную
   const trackUnauthorizedError = () => {
     setUnauthorizedCount((prev) => {
       const newCount = prev + 1
-      if (newCount >= 4) {
-        router.push("/")
-        setUnauthorizedCount(0)
+      console.log(`[v0] 401 error count: ${newCount}`)
+      if (newCount >= 4 && !redirectTimeoutRef.current) {
+        console.log(`[v0] Redirecting to homepage due to ${newCount} 401 errors`)
+        redirectTimeoutRef.current = setTimeout(() => {
+          router.push("/")
+          setUnauthorizedCount(0)
+          redirectTimeoutRef.current = null
+        }, 100)
       }
       return newCount
     })
   }
 
-  // Обнуляем счётчик, если есть пользователь
   useEffect(() => {
     if (user) {
       setUnauthorizedCount(0)
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current)
+        redirectTimeoutRef.current = null
+      }
     }
   }, [user])
 
-  // Инициализация пользователя и подписка на изменения сессии
   useEffect(() => {
-    // Первичная загрузка пользователя
+    return () => {
+      if (redirectTimeoutRef.current) {
+        clearTimeout(redirectTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     const getInitialUser = async () => {
       try {
         const {
@@ -63,7 +82,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           error,
         } = await supabase.auth.getUser()
         if (error) {
-          // При ошибке очищаем сессию и сбрасываем пользователя
           await handleRefreshTokenError(error)
           setUser(null)
         } else {
@@ -79,7 +97,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     getInitialUser()
 
-    // Обновляем пользователя при изменении сессии
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -89,12 +106,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [supabase.auth])
 
-  // Выход из аккаунта
   const signOut = async () => {
     await supabase.auth.signOut()
   }
 
-  // Обновление пользователя; ошибки обрабатываются молча
   const refreshUser = async () => {
     try {
       const {
