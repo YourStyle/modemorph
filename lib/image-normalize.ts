@@ -1,4 +1,4 @@
-// utils/image-normalize.ts
+"use client"
 import heic2any from "heic2any"
 
 type NormalizeOpts = {

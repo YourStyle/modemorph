@@ -97,7 +97,7 @@ export class YandexMigrationService {
         onProgress?.({
           currentBatch: Math.floor(i / 5) + 1,
           totalBatches: Math.ceil(allFiles.length / 5),
-          currentFile: `Обработка файлов ${i + 1}-${Math.min(i + 5, allFiles.length)} из ${allFiles.length}`,
+          currentFile: `Обраб��тка файлов ${i + 1}-${Math.min(i + 5, allFiles.length)} из ${allFiles.length}`,
         })
 
         const batchPromises = batch.map(async (file) => {
