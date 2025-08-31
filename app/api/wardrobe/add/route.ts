@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       })
       .single()
 
-    // Загружаем изображение, если оно есть
+    // Загружаем изоб��ажение, если оно есть
     let imageUrl = null
     if (imageFile && imageFile.size > 0) {
       try {

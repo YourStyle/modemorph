@@ -1,6 +1,3 @@
-// POST /api/check-limits
-// { usageType } -> ПРОВЕРКА без списания (canUse + remaining)
-// { featureType } -> СПИСАНИЕ 1 единицы (auto-topup из кредитов) + remaining
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -11,15 +8,25 @@ type Feature =
   | "outfits_saved"
   | "vton_used";
 
-function normalize(raw: string): Feature {
-  const v = String(raw || "").toLowerCase();
-  if (["digitize", "wardrobe", "wardrobe_items"].includes(v)) return "wardrobe_items_anlyzed";
-  if (["ai", "assistant", "ai_requests"].includes(v)) return "ai_requests";
-  if (["ideas", "ideas_views", "ideas_viewed"].includes(v)) return "ideas_viewed";
-  if (["looks", "outfits", "outfits_saved"].includes(v)) return "outfits_saved";
-  if (["vton", "tryon", "vton_used"].includes(v)) return "vton_used";
-  return "ideas_viewed";
+const FEATURE_KEYS = {
+  wardrobe_items_anlyzed: "wardrobe_items_anlyzed", // 👈 именно так, с опечаткой, как в БД
+  ai_requests: "ai_requests",
+  vton_used: "vton_used",
+  ideas_viewed: "ideas_viewed",
+  outfits_saved: "outfits_saved",
+} as const;
+
+
+function normFeature(s?: string) {
+  if (!s) return null;
+  const k = s.trim().toLowerCase();
+  if (k in FEATURE_KEYS) return k as keyof typeof FEATURE_KEYS;
+  // допустимые синонимы → каноническое имя
+  if (k === "wardrobe_items_analyzed") return "wardrobe_items_anlyzed"; // 👈 мапим «правильное» на колонку с опечаткой
+  if (k === "vton") return "vton_used";
+  return null; 
 }
+
 
 export async function POST(req: Request) {
   const supabase = createClient();
@@ -32,7 +39,14 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) ?? {};
   const mode = body.featureType ? "consume" : "check";
-  const key = normalize(body.featureType ?? body.usageType ?? "");
+  const feature = normFeature(body.featureType);
+  if (!feature) {
+    return NextResponse.json(
+      { error: `Unknown featureType: ${body.featureType}` },
+      { status: 400 }
+    );
+  }
+
 
   // профиль
   const { data: profile } = await supabase
@@ -56,13 +70,13 @@ export async function POST(req: Request) {
     // списываем 1 (с автотопапом из кредитов, если нужно)
     const { data: ok, error: rpcErr } = await supabase.rpc("use_feature", {
       p_user_profile_id: profile.id,
-      p_feature: key,
+      p_feature: feature,
       p_count: count,
     });
 
     await supabase.rpc("log_usage_event", {
       p_user_profile_id: profileId,
-      p_feature: key,
+      p_feature: feature,
       p_action: ok ? "consume_success" : "consume_fail",
       p_count: count,
       p_page_path: pagePath,
@@ -83,14 +97,14 @@ export async function POST(req: Request) {
     // просто проверка возможности (учитывая возможность авто-топапа)
     const { data: canUse, error: canErr } = await supabase.rpc("can_use_feature", {
       p_user_profile_id: profile.id,
-      p_feature: key,
+      p_feature: feature,
       p_count: count,
     });
     if (canErr) return NextResponse.json({ error: canErr.message }, { status: 400 });
 
     await supabase.rpc("log_usage_event", {
       p_user_profile_id: profileId,
-      p_feature: key,
+      p_feature: feature,
       p_action: "check",
       p_count: count,
       p_page_path: pagePath,
@@ -110,13 +124,13 @@ export async function POST(req: Request) {
     .single();
 
   const remaining =
-    key === "wardrobe_items_anlyzed"
+    feature === "wardrobe_items_anlyzed"
       ? limits?.wardrobe_items_anlyzed ?? 0
-      : key === "ai_requests"
+      : feature === "ai_requests"
       ? limits?.ai_requests ?? 0
-      : key === "vton_used"
+      : feature === "vton_used"
       ? limits?.vton_used ?? 0
-      : key === "ideas_viewed"
+      : feature === "ideas_viewed"
       ? limits?.ideas_viewed ?? 0
       : limits?.outfits_saved ?? 0;
 
