@@ -10,8 +10,9 @@ import { CreateLookSheet } from "@/components/create-look-sheet"
 import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collection-sheet"
 import { CollectionFilterModal } from "@/components/collection-filter-modal"
 import { toast } from "sonner"
-import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
-import { PaywallModal } from "@/components/paywall-modal";
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
+import { PaywallModal } from "@/components/paywall-modal"
+import { useFeature } from "@/hooks/use-feature"
 
 interface ExpandedItem {
   id: number
@@ -50,7 +51,7 @@ export default function LooksPage() {
   const [loading, setLoading] = useState(true)
   const [isAddCollectionOpen, setIsAddCollectionOpen] = useState(false)
   const [isCreateLookOpen, setIsCreateLookOpen] = useState(false)
-  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false)
   const [addOutfitsSheet, setAddOutfitsSheet] = useState<{
     isOpen: boolean
     sectionId: number
@@ -75,7 +76,7 @@ export default function LooksPage() {
   })
 
   const { log, consume } = useFeature()
-  useReconcileLimits(true);
+  useReconcileLimits(true)
 
   useEffect(() => {
     loadData()
@@ -329,11 +330,13 @@ export default function LooksPage() {
           )}
         </div>
 
-        <PaywallModal
-          isOpen={paywallOpen}
-          onClose={() => setPaywallOpen(false)}
-          onSuccess={() => setPaywallOpen(false)}
-        />
+        {paywallOpen && (
+          <PaywallModal
+            isOpen={paywallOpen}
+            onClose={() => setPaywallOpen(false)}
+            onSuccess={() => setPaywallOpen(false)}
+          />
+        )}
       </Card>
     )
   }
@@ -370,27 +373,27 @@ export default function LooksPage() {
           </div>
           <div className="flex items-center gap-2">
             {hasLooks && (
-  <div className="flex flex-col gap-2 w-full md:flex-row md:gap-4">
-    <Button
-      onClick={() => handleOpenFilter(section)}
-      variant="outline"
-      size="sm"
-      className="text-gray-700 border-gray-200 hover:bg-gray-50 w-full md:w-auto"
-    >
-      <Search className="w-4 h-4 mr-1" />
-      Поиск и фильтры
-    </Button>
-    <Button
-      onClick={() => handleOpenAddOutfits(section)}
-      variant="outline"
-      size="sm"
-      className="text-gray-700 border-gray-200 hover:bg-gray-50 w-full md:w-auto"
-    >
-      <Plus className="w-4 h-4 mr-1" />
-      Добавить образы
-    </Button>
-  </div>
-)}
+              <div className="flex flex-col gap-2 w-full md:flex-row md:gap-4">
+                <Button
+                  onClick={() => handleOpenFilter(section)}
+                  variant="outline"
+                  size="sm"
+                  className="text-gray-700 border-gray-200 hover:bg-gray-50 w-full md:w-auto"
+                >
+                  <Search className="w-4 h-4 mr-1" />
+                  Поиск и фильтры
+                </Button>
+                <Button
+                  onClick={() => handleOpenAddOutfits(section)}
+                  variant="outline"
+                  size="sm"
+                  className="text-gray-700 border-gray-200 hover:bg-gray-50 w-full md:w-auto"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Добавить образы
+                </Button>
+              </div>
+            )}
 
             <Button variant="ghost" size="sm" className="p-2">
               <ExternalLink className="w-4 h-4" />
