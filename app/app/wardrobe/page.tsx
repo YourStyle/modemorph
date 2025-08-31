@@ -11,9 +11,13 @@ import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { Progress } from "@/components/ui/progress"
 import { Plus, ChevronDown, ChevronUp, Search } from 'lucide-react'
-import { useToast } from "@/hooks/use-toast"
+
 import { Input } from "@/components/ui/input"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
+import { PaywallModal } from "@/components/paywall-modal";
+
+import { useToast } from "@/hooks/use-toast"
+import { useFeature } from "@/hooks/use-feature"
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -118,12 +122,15 @@ export default function WardrobePage() {
   const [selectedPhotos, setSelectedPhotos] = useState<UploadedPhoto[]>([])
   const [isLoadingUserItems, setIsLoadingUserItems] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const { toast } = useToast()
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
   const [searchQuery, setSearchQuery] = useState("")
 
   useReconcileLimits(true);
+
+  const { log, consume } = useFeature()
 
   useEffect(() => {
     fetchBasicItems()
@@ -180,7 +187,8 @@ export default function WardrobePage() {
   }
 
   const handleAddToWardrobe = () => {
-    // Сразу открываем диалог выбора файлов
+    
+    void log("wardrobe_items_anlyzed", "click", { pagePath: "/app/wardrobe" })
     fileInputRef.current?.click()
   }
 
@@ -288,6 +296,31 @@ export default function WardrobePage() {
       }
       return prev.filter(p => p.id !== photoId)
     })
+  }
+
+  const handleAnalysisSuccess = async ({
+    photos,
+    analysisResults,
+    batchId,
+  }: {
+    photos: UploadedPhoto[]
+    analysisResults: { success: boolean; items: any[] }[]
+    batchId: string
+  }) => {
+    // считаем, сколько фото проанализировано успешно (есть items)
+    const succeeded = analysisResults.filter(r => r.success && r.items && r.items.length > 0).length
+    if (succeeded <= 0) return
+
+    // спишем по 1 за каждое удачное фото (наш API сейчас списывает по 1 за вызов)
+    const res = await consume("wardrobe_items_anlyzed", {
+        pagePath: "/app/wardrobe",
+        requestId: batchId,
+        photosCount: photos.length,
+        succeeded,
+      }, photos.length)
+      if (!res.ok && res.code === "payment_required") {
+          setPaywallOpen(true)
+      }
   }
 
   return (
@@ -466,9 +499,15 @@ export default function WardrobePage() {
         </div>
       </div>
 
-      <AddToClosetSheet isOpen={isAddSheetOpen} onClose={handleSheetClose} initialPhotos={selectedPhotos || []} />
+      <AddToClosetSheet isOpen={isAddSheetOpen} onClose={handleSheetClose} initialPhotos={selectedPhotos || []} onAnalysisSuccess={handleAnalysisSuccess}/>
 
       <CategoryProgressSheet isOpen={isCategorySheetOpen} onClose={() => setIsCategorySheetOpen(false)} />
+
+      <PaywallModal
+        isOpen={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        onSuccess={() => setPaywallOpen(false)}
+      />
     </div>
   )
 }

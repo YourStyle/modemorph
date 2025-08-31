@@ -40,26 +40,32 @@ interface OutfitCardProps {
   suggestion: OutfitSuggestion
   onSaveOutfit?: (suggestion: OutfitSuggestion) => void
   userLooks?: any[]
+  onTryOnClick?: (payload: {
+    requestId: string
+    suggestion: OutfitSuggestion
+    items: OutfitItem[]
+  }) => void
+   onTryOnSuccess?: (payload: {
+    requestId: string
+    suggestion: OutfitSuggestion
+  }) => void
 }
 
-export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [] }: OutfitCardProps) {
+export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnClick }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showTryOnModal, setShowTryOnModal] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
   const [vtonLoading, setVtonLoading] = useState(false)
   const [vtonResult, setVtonResult] = useState<any>(null)
+  const [tryOnRequestId, setTryOnRequestId] = useState<string | null>(null) // ⬅️ для корреляции событий
 
-  // Ensure suggestion and items exist
-  if (!suggestion) {
-    return null
-  }
+  if (!suggestion) return null
 
   const items = suggestion.items || []
   const title = suggestion.title || "Без названия"
   const suggestedItemsCount = suggestion.suggested_items_count || 0
 
-  // Check if this outfit is saved
   const isSaved = userLooks.some(
     (look: any) =>
       look.name === title ||
@@ -73,12 +79,9 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [] }: OutfitC
       toast.error("Нет вещей для сохранения")
       return
     }
-
     setSaving(true)
     try {
-      if (onSaveOutfit) {
-        await onSaveOutfit(suggestion)
-      }
+      if (onSaveOutfit) await onSaveOutfit(suggestion)
     } catch (error) {
       console.error("Error saving outfit:", error)
     } finally {
@@ -86,6 +89,14 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [] }: OutfitC
     }
   }
 
+  const openTryOnModal = () => {
+    const reqId = crypto.randomUUID()
+    setTryOnRequestId(reqId)
+    onTryOnClick?.({ requestId: reqId, suggestion, items }) // ⬅️ событие наверх
+    setShowTryOnModal(true)
+  }
+
+  // текущая логика VTON остаётся как была (если хочешь, потом вынесем тоже наверх)
   const handleTryOn = async () => {
     if (items.length === 0) {
       toast.error("Нет вещей для примерки")
@@ -96,7 +107,6 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [] }: OutfitC
     setVtonResult(null)
 
     try {
-      // Prepare items for VTON request
       const vtonItems = items.map((item) => ({
         name: item.name,
         description: `${item.style || ""} ${item.has_print || ""} ${item.has_details || ""}`.trim(),
@@ -107,21 +117,17 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [] }: OutfitC
 
       const response = await fetch("/api/vton", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           items: vtonItems,
+          requestId: tryOnRequestId ?? crypto.randomUUID(),
         }),
       })
 
       const result = await response.json()
+      if (!response.ok) throw new Error(result.error || "Failed to process virtual try-on")
 
-      if (!response.ok) {
-        throw new Error(result.error || "Failed to process virtual try-on")
-      }
-
-      setVtonResult(result.result)
+      onTryOnSuccess?.({ requestId: tryOnRequestId ?? crypto.randomUUID(), suggestion })
       toast.success("Примерка готова!")
     } catch (error) {
       console.error("Error in virtual try-on:", error)
@@ -131,13 +137,8 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [] }: OutfitC
     }
   }
 
-  const handleImageError = (itemId: string) => {
-    setImageErrors((prev) => ({ ...prev, [itemId]: true }))
-  }
-
-  const handleItemClick = (item: OutfitItem) => {
-    setSelectedItem(item)
-  }
+  const handleImageError = (itemId: string) => setImageErrors((prev) => ({ ...prev, [itemId]: true }))
+  const handleItemClick = (item: OutfitItem) => setSelectedItem(item)
 
   return (
     <>
@@ -249,7 +250,7 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [] }: OutfitC
               variant="outline"
               size="sm"
               className="flex-1 text-gray-700 border-gray-200 bg-transparent"
-              onClick={() => setShowTryOnModal(true)}
+              onClick={openTryOnModal} // ⬅️ карточка только сообщает и открывает модалку
               disabled={vtonLoading}
             >
               {vtonLoading ? (

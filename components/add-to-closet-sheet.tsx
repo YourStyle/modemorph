@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Camera } from "lucide-react"
 import { PhotoAnalysisForm } from "./photo-analysis-form"
@@ -14,15 +14,38 @@ interface UploadedPhoto {
   id: string
 }
 
+type AnalysisSuccessPayload = {
+  items: any[]
+  photos: UploadedPhoto[]
+  analysisResults: { success: boolean; items: any[] }[]
+}
+
 interface AddToClosetSheetProps {
   isOpen: boolean
   onClose: () => void
   initialPhotos?: UploadedPhoto[]
+  /** новый колбэк: отдадим результат анализа наверх (не закрываем шторку автоматически) */
+  onAnalysisSuccess?: (payload: AnalysisSuccessPayload & { batchId: string }) => void
 }
 
-export function AddToClosetSheet({ isOpen, onClose, initialPhotos = [] }: AddToClosetSheetProps) {
+export function AddToClosetSheet({
+  isOpen,
+  onClose,
+  initialPhotos = [],
+  onAnalysisSuccess,
+}: AddToClosetSheetProps) {
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
   const [showAnalysisForm, setShowAnalysisForm] = useState(false)
+  const batchIdRef = useRef<string>("")
+
+  // генерируем batchId при каждом открытии
+  useEffect(() => {
+    if (isOpen) {
+      batchIdRef.current = crypto.randomUUID()
+    } else {
+      batchIdRef.current = ""
+    }
+  }, [isOpen])
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
@@ -47,8 +70,10 @@ export function AddToClosetSheet({ isOpen, onClose, initialPhotos = [] }: AddToC
     fileInput.click()
   }
 
-  const handleSuccess = () => {
-    onClose()
+  // ⚠️ Больше НЕ закрываем шторку по успешному анализу — отдаём данные наверх, пусть родитель решит.
+  const handleAnalysisSuccess = (payload?: AnalysisSuccessPayload) => {
+    if (!payload) return
+    onAnalysisSuccess?.({ ...payload, batchId: batchIdRef.current })
   }
 
   const handleClose = () => {
@@ -57,10 +82,7 @@ export function AddToClosetSheet({ isOpen, onClose, initialPhotos = [] }: AddToC
   }
 
   const handleReset = () => {
-    // Освобождаем URL объекты
-    selectedFiles.forEach((photo) => {
-      URL.revokeObjectURL(photo.preview)
-    })
+    selectedFiles.forEach((photo) => URL.revokeObjectURL(photo.preview))
     setSelectedFiles([])
     setShowAnalysisForm(false)
   }
@@ -72,7 +94,7 @@ export function AddToClosetSheet({ isOpen, onClose, initialPhotos = [] }: AddToC
         <div className="h-[calc(90vh-120px)] overflow-hidden">
           <PhotoAnalysisForm
             initialPhotos={selectedFiles.length > 0 ? selectedFiles : initialPhotos}
-            onSuccess={handleSuccess}
+            onSuccess={handleAnalysisSuccess}   // ← прокидываем payload наверх
             onReset={handleReset}
           />
         </div>

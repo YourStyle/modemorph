@@ -64,7 +64,11 @@ interface PhotoAnalysisResult {
 
 interface PhotoAnalysisFormProps {
   initialPhotos?: UploadedPhoto[]
-  onSuccess?: () => void
+  onSuccess?: (payload?: {
+    items: ItemWithImage[]  
+    photos: UploadedPhoto[]   
+    analysisResults: PhotoAnalysisResult[] 
+  }) => void
   onReset?: () => void
 }
 
@@ -370,6 +374,18 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
       // Устанавливаем результаты
       setResults(allSuccessfulItems)
       setAnalysisResults(analysisResults)
+
+      if (allSuccessfulItems.length > 0) {
+        try {
+          onSuccess?.({
+            items: allSuccessfulItems,
+            photos,                // это локальная переменная функции handleAnalyze
+            analysisResults,
+          })
+        } catch {
+          // глушим любые коллбэк-ошибки, чтобы не ломать UI
+        }
+      }
 
       // Если есть хотя бы один успешный результат, не показываем общую ошибку
       if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {

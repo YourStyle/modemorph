@@ -11,6 +11,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
 import { PhotoAnalysisForm } from "@/components/photo-analysis-form"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
+import { PaywallModal } from "@/components/paywall-modal";
+import { useFeature } from "@/hooks/use-feature" 
 
 interface Message {
   role: "user" | "assistant"
@@ -72,9 +74,12 @@ export default function AIAssistantPage() {
   ])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+   const { log, consume } = useFeature()
 
   useReconcileLimits(true);
 
@@ -186,63 +191,41 @@ export default function AIAssistantPage() {
 
     const userMessage = inputValue.trim()
 
-    // Валидация длины сообщения
     if (userMessage.length < 20) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "Пожалуйста, опишите ваш запрос более подробно (минимум 20 символов). Расскажите больше о том, что вас интересует! 😊",
-        },
-      ])
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "Пожалуйста, опишите ваш запрос более подробно (минимум 20 символов). Расскажите больше о том, что вас интересует! 😊",
+      }])
       return
     }
 
     if (userMessage.length > 2000) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content:
-            "Ваш запрос слишком длинный (максимум 2000 символов). Попробуйте сократить его, сохранив основную суть! ✂️",
-        },
-      ])
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "Ваш запрос слишком длинный (максимум 2000 символов). Попробуйте сократить его, сохранив основную суть! ✂️",
+      }])
       return
     }
 
-    // Добавляем сообщение пользователя
+    // Генерируем requestId и логируем попытку (без списания)
+    const requestId = crypto.randomUUID() // ⬅️ добавлено
+    void log("ai_requests", "attempt", {
+      pagePath: "/app/ai-assistant",
+      requestId,
+      chars: userMessage.length,
+    }) // ⬅️ добавлено
+
     setMessages((prev) => [...prev, { role: "user", content: userMessage }])
     setInputValue("")
     setIsLoading(true)
 
     try {
-      console.log("Starting AI request processing...")
-      console.log("User message:", userMessage)
-      console.log("User ID:", userId)
+      if (!userId) throw new Error("User ID not available")
 
-      // Получаем user_id для запроса
-      if (!userId) {
-        throw new Error("User ID not available")
-      }
-
-      // Получаем текущую погоду
       const weather = await getCurrentWeather()
-      console.log("Weather data:", weather)
-
-      // ��елаем запрос к AI API
       const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app"
       const requestUrl = `${aiApiUrl}/user-prompt-rec`
-      console.log("AI API URL:", requestUrl)
-
       const authToken = await getAuthToken()
-
-      const requestBody = {
-        user_id: userId,
-        prompt: userMessage,
-        weather: weather,
-      }
-      console.log("Request body:", requestBody)
 
       const response = await fetch(requestUrl, {
         method: "POST",
@@ -250,51 +233,30 @@ export default function AIAssistantPage() {
           "Content-Type": "application/json",
           ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({ user_id: userId, prompt: userMessage, weather }),
       })
 
-      console.log("AI API response status:", response.status)
-
       if (!response.ok) {
-        const errorText = await response.text()
+        const errorText = await response.text().catch(() => "")
         console.error("AI API error:", response.status, errorText)
         throw new Error(`AI API error: ${response.status}`)
       }
 
       const responseData: AIPromptResponse[] = await response.json()
-      console.log("AI API response data:", responseData)
-
       if (!Array.isArray(responseData) || responseData.length === 0) {
         throw new Error("Invalid response format from AI API")
       }
 
       const firstResponse = responseData[0]
 
-      // Обрабатываем разные типы ответов
       if ("type" in firstResponse && firstResponse.type === "trash") {
-        // Trash response - неподходящий запрос
-        console.log("Received trash response")
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content:
-              "Извините, но я не могу помочь с этим запросом. Попробуйте задать вопрос о стиле, моде или гардеробе! 👗✨",
-          },
-        ])
+        setMessages((prev) => [...prev, {
+          role: "assistant",
+          content: "Извините, но я не могу помочь с этим запросом. Попробуйте задать вопрос о стиле, моде или гардеробе! 👗✨",
+        }])
       } else if ("content" in firstResponse) {
-        // Content response - текстовый ответ
-        console.log("Received content response:", firstResponse.content)
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: firstResponse.content,
-          },
-        ])
+        setMessages((prev) => [...prev, { role: "assistant", content: firstResponse.content }])
       } else if ("id" in firstResponse && "title" in firstResponse && "items" in firstResponse) {
-        // Outfit response - рекомендация образа
-        console.log("Received outfit response:", firstResponse.title)
         const outfitRecommendation: UserRecommendation = {
           id: firstResponse.id,
           title: firstResponse.title,
@@ -310,25 +272,21 @@ export default function AIAssistantPage() {
 
         setMessages((prev) => [
           ...prev,
-          {
-            role: "assistant",
-            content: `Отличный выбор! Вот образ "${firstResponse.title}":`,
-            outfit: outfitRecommendation,
-          },
+          { role: "assistant", content: `Отличный выбор! Вот образ "${firstResponse.title}":`, outfit: outfitRecommendation },
         ])
       } else {
-        console.error("Unknown response format:", firstResponse)
         throw new Error("Unknown response format from AI API")
       }
+
+      // ⬇️ списываем 1 ai_request ПОСЛЕ успешного ответа
+      const bill = await consume("ai_requests", { pagePath: "/app/ai-assistant", requestId }, 1)
+      if (!bill.ok && bill.code === "payment_required") setPaywallOpen(true)
     } catch (error) {
       console.error("Error in handleSend:", error)
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Произошла ошибка при обработке вашего запроса. Попробуйте еще раз! 🔄",
-        },
-      ])
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        content: "Произошла ошибка при обработке вашего запроса. Попробуйте еще раз! 🔄",
+      }])
     } finally {
       setIsLoading(false)
     }
@@ -454,5 +412,11 @@ export default function AIAssistantPage() {
         </div>
       </div>
     </div>
+
+    <PaywallModal
+      isOpen={paywallOpen}
+      onClose={() => setPaywallOpen(false)}
+      onSuccess={() => setPaywallOpen(false)}
+    />
   )
 }

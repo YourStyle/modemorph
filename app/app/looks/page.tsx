@@ -11,6 +11,7 @@ import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collect
 import { CollectionFilterModal } from "@/components/collection-filter-modal"
 import { toast } from "sonner"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
+import { PaywallModal } from "@/components/paywall-modal";
 
 interface ExpandedItem {
   id: number
@@ -49,6 +50,7 @@ export default function LooksPage() {
   const [loading, setLoading] = useState(true)
   const [isAddCollectionOpen, setIsAddCollectionOpen] = useState(false)
   const [isCreateLookOpen, setIsCreateLookOpen] = useState(false)
+  const [paywallOpen, setPaywallOpen] = useState(false);
   const [addOutfitsSheet, setAddOutfitsSheet] = useState<{
     isOpen: boolean
     sectionId: number
@@ -71,6 +73,8 @@ export default function LooksPage() {
     sectionName: "",
     looks: [],
   })
+
+  const { log, consume } = useFeature()
   useReconcileLimits(true);
 
   useEffect(() => {
@@ -124,6 +128,13 @@ export default function LooksPage() {
     items: Array<{ type: string; id: number }>
   }) => {
     try {
+      const requestId = crypto.randomUUID()
+      void log("outfits_saved", "attempt", {
+        pagePath: "/app/looks",
+        requestId,
+        itemsCount: lookData?.items?.length ?? 0,
+      })
+
       const response = await fetch("/api/user-looks", {
         method: "POST",
         headers: {
@@ -136,6 +147,9 @@ export default function LooksPage() {
         const newLook = await response.json()
         setSavedLooks((prev) => [newLook, ...prev])
         toast.success("Образ создан успешно!")
+
+        const bill = await consume("outfits_saved", { pagePath: "/app/looks", requestId, lookId: newLook?.id }, 1)
+        if (!bill.ok && bill.code === "payment_required") setPaywallOpen(true)
       } else {
         throw new Error("Failed to create look")
       }
@@ -314,6 +328,12 @@ export default function LooksPage() {
             </Button>
           )}
         </div>
+
+        <PaywallModal
+          isOpen={paywallOpen}
+          onClose={() => setPaywallOpen(false)}
+          onSuccess={() => setPaywallOpen(false)}
+        />
       </Card>
     )
   }

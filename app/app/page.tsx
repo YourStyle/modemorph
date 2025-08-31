@@ -8,6 +8,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Sparkles, Star, Plus } from "lucide-react"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
+import { useFeature } from "@/hooks/use-feature";
+import { PaywallModal } from "@/components/paywall-modal";
 
 interface OutfitItem {
   id: string
@@ -122,6 +124,9 @@ export default function HomePage() {
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
   const [isFromCache, setIsFromCache] = useState(false)
   const [userLooks, setUserLooks] = useState<any[]>([])
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const { log, consume } = useFeature()
+  useReconcileLimits(true);
 
   // Cache management functions
   const getCachedRecommendations = (): CachedRecommendations | null => {
@@ -208,6 +213,26 @@ export default function HomePage() {
     }
   }
 
+  const handleTryOnClick = ({ requestId, suggestion, items }) => {
+    // ⬇️ РОВНО как у тебя было: лог клика
+    void log("vton_used", "click", {
+      pagePath: "/app",
+      requestId,
+      outfitId: suggestion.id,
+      itemIds: items.map(i => i.id),
+    })
+  }
+
+  const handleTryOnSuccess = async ({ requestId, suggestion }) => {
+    // ⬇️ списание ПОСЛЕ успешной примерки
+    const res = await consume("vton_used", {
+      pagePath: "/app",
+      requestId,
+      outfitId: suggestion.id,
+    })
+    if (!res.ok && res.code === "payment_required") setPaywallOpen(true)
+  }
+
   // Handle save/unsave outfit
   const handleSaveOutfit = async (suggestion: OutfitSuggestion) => {
     if (!suggestion || !suggestion.items || suggestion.items.length === 0) {
@@ -284,7 +309,7 @@ export default function HomePage() {
     return session?.access_token
   }
 
-  useReconcileLimits(true);
+  
 
   // Load user items count
   useEffect(() => {
@@ -657,6 +682,8 @@ export default function HomePage() {
                               >
                                 <OutfitCard
                                   suggestion={suggestion}
+                                  onTryOnClick={handleTryOnClick}
+                                  onTryOnSuccess={handleTryOnSuccess}
                                   onSaveOutfit={handleSaveOutfit}
                                   userLooks={userLooks}
                                 />
@@ -679,6 +706,12 @@ export default function HomePage() {
       </div>
 
       <AddToClosetSheet isOpen={isAddSheetOpen} onClose={() => setIsAddSheetOpen(false)} />
+
+      <PaywallModal
+        isOpen={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        onSuccess={() => setPaywallOpen(false)}
+      />
     </div>
   )
 }
