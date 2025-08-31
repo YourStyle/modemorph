@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { PaywallModal } from "./paywall-modal"
+import { normalizeImageFile } from "@/lib/image-normalize"
 
 interface UserProfile {
   id: string
@@ -116,46 +117,76 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const handleInputChange = (field: string, value: string) => setFormData((p) => ({ ...p, [field]: value }))
   const handleNumberInput = (field: string, value: string) => handleInputChange(field, value.replace(/[^0-9]/g, ""))
 
-  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const f = event.target.files?.[0]
-    if (!f || !profile) return
-    if (!f.type.startsWith("image/")) return toast.error("Пожалуйста, выберите изображение")
-    if (f.size > 5 * 1024 * 1024) return toast.error("Размер файла не должен превышать 5MB")
+  // ↓ обновлённый обработчик: конверсия HEIC/HEIF → JPEG и сжатие до лимита 5MB
+const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const raw = event.target.files?.[0]
+  if (!raw || !profile) return
 
-    setIsUploadingAvatar(true)
-    try {
-      const fd = new FormData()
-      fd.append("file", f)
-      fd.append("folder", "avatars")
-      const resp = await fetch("/api/upload-to-yandex", { method: "POST", body: fd })
-      const result = await resp.json()
-      if (!resp.ok || !result.success) throw new Error(result.error || `HTTP ${resp.status}`)
+  // Разрешаем HEIC/HEIF даже если mime может быть нестандартным
+  const isImageLike =
+    raw.type.startsWith("image/") || /\.(heic|heif|jpg|jpeg|png|webp)$/i.test(raw.name)
+  if (!isImageLike) return toast.error("Пожалуйста, выберите изображение")
 
-      if (profile.id) {
-        const { error } = await supabase.from("user_profiles")
-          .update({ avatar_url: result.url, updated_at: new Date().toISOString() })
-          .eq("id", profile.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from("user_profiles").insert({
-          user_id: profile.user_id,
-          avatar_url: result.url,
-          is_admin: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        if (error) throw error
+  setIsUploadingAvatar(true)
+  try {
+    // 1) Нормализация: HEIC/HEIF → JPEG, даунскейл (для аватара обычно хватает 1024px)
+    let fileForUpload = await normalizeImageFile(raw, {
+      maxWidth: 1024,
+      output: "image/jpeg",
+      quality: 0.9,
+    })
+
+    // 2) Контроль размера: если всё ещё >5MB — дополнительное сжатие
+    if (fileForUpload.size > 5 * 1024 * 1024) {
+      fileForUpload = await normalizeImageFile(fileForUpload, {
+        maxWidth: 1024,
+        output: "image/jpeg",
+        quality: 0.8,
+      })
+      if (fileForUpload.size > 5 * 1024 * 1024) {
+        toast.error("Файл слишком большой после сжатия (>5MB). Уменьшите качество/размер.")
+        return
       }
-      setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
-      toast.success("Аватар успешно обновлен")
-    } catch (e: any) {
-      console.error(e)
-      toast.error(`Ошибка загрузки аватара: ${e?.message || "Неизвестная ошибка"}`)
-    } finally {
-      setIsUploadingAvatar(false)
-      if (fileInputRef.current) fileInputRef.current.value = ""
     }
+
+    // 3) Загрузка в хранилище
+    const fd = new FormData()
+    fd.append("file", fileForUpload, fileForUpload.name) // важно передать имя
+    fd.append("folder", "avatars")
+
+    const resp = await fetch("/api/upload-to-yandex", { method: "POST", body: fd })
+    const result = await resp.json()
+    if (!resp.ok || !result.success) throw new Error(result.error || `HTTP ${resp.status}`)
+
+    // 4) Обновление профиля
+    if (profile.id) {
+      const { error } = await supabase
+        .from("user_profiles")
+        .update({ avatar_url: result.url, updated_at: new Date().toISOString() })
+        .eq("id", profile.id)
+      if (error) throw error
+    } else {
+      const { error } = await supabase.from("user_profiles").insert({
+        user_id: profile.user_id,
+        avatar_url: result.url,
+        is_admin: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      if (error) throw error
+    }
+
+    setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
+    toast.success("Аватар успешно обновлён")
+  } catch (e: any) {
+    console.error(e)
+    toast.error(`Ошибка загрузки аватара: ${e?.message || "Неизвестная ошибка"}`)
+  } finally {
+    setIsUploadingAvatar(false)
+    if (fileInputRef.current) fileInputRef.current.value = ""
   }
+}
+
 
   const handleSave = async () => {
     if (!profile) return
@@ -394,7 +425,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                         <input
                           ref={fileInputRef}
                           type="file"
-                          accept="image/*"
+                          accept="image/heic,image/heif,image/heic-sequence,image/jpeg,image/jpg,image/webp,image/png,image/*"
                           onChange={handleAvatarUpload}
                           className="hidden"
                         />
