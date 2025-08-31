@@ -1,6 +1,3 @@
-"use client"
-import heic2any from "heic2any"
-
 type NormalizeOpts = {
   maxWidth?: number
   output?: "image/jpeg" | "image/png"
@@ -35,6 +32,12 @@ export async function normalizeImageFile(
   file: File,
   opts: NormalizeOpts = { maxWidth: 2048, output: "image/jpeg", quality: 0.9 }
 ): Promise<File> {
+
+
+  if (typeof window === "undefined" || typeof document === "undefined") {
+    return file
+  }
+
   const maxWidth = opts.maxWidth ?? 2048
   const output = opts.output ?? "image/jpeg"
   const quality = opts.quality ?? 0.9
@@ -43,6 +46,7 @@ export async function normalizeImageFile(
 
   // 1) HEIC/HEIF → JPEG/PNG
   if (isHeicHeif(file)) {
+   const { default: heic2any } = await import("heic2any")
     const converted = (await heic2any({
       blob: file,
       toType: output,
