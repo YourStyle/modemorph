@@ -186,39 +186,42 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     } catch (error) {
       console.error("Error downloading and uploading image:", error)
       throw error
-    }
+  }
   }
 
+
   const loadBasicItemImages = async (items: ResponseItem[]): Promise<ItemWithImage[]> => {
-    const itemsWithImages: ItemWithImage[] = []
+        const jobs = items.map(async (item) => {
+          let finalImageUrl = item.image_url || item.img_url
 
-    for (const item of items) {
-      let finalImageUrl = item.image_url || item.img_url
-
-      try {
-        // Если есть img_url, скачиваем и загружаем в blob
-        if (item.img_url && !item.image_url) {
-          finalImageUrl = await downloadAndUploadImage(item.img_url)
-        }
-        // Если есть basic_item_id, получаем изображение базовой вещи
-        else if (item.basic_item_id && !finalImageUrl) {
-          const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
-          if (response.ok) {
-            const basicItem = await response.json()
-            finalImageUrl = basicItem.image_url
+          try {
+            // Если есть внешний img_url — скачиваем и заливаем В ПАРАЛЛЕЛЬ с остальными
+            if (item.img_url && !item.image_url) {
+              finalImageUrl = await downloadAndUploadImage(item.img_url)
+            }
+            // Если есть basic_item_id — тащим картинку базовой вещи
+            else if (item.basic_item_id && !finalImageUrl) {
+              const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
+              if (response.ok) {
+                const basicItem = await response.json()
+                finalImageUrl = basicItem.image_url
+              }
+            }
+          } catch (e) {
+            console.error("Error loading image for item:", item.item_name, e)
           }
-        }
-      } catch (error) {
-        console.error("Error loading image for item:", item.item_name, error)
-      }
 
-      itemsWithImages.push({
-        ...item,
-        finalImageUrl,
-      })
-    }
+          return { ...item, finalImageUrl }
+        })
 
-    return itemsWithImages
+        const settled = await Promise.allSettled(jobs)
+
+        // Возвращаем, даже если часть джоб упала — без краша всего результата
+        return settled.map((s, i) =>
+          s.status === "fulfilled"
+            ? s.value
+            : { ...items[i], finalImageUrl: items[i].image_url || items[i].img_url },
+        )
   }
 
   const getAuthToken = async () => {
@@ -320,95 +323,80 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   }
 
   const handleAnalyze = async (photosToAnalyze?: UploadedPhoto[]) => {
-    const photos = photosToAnalyze || selectedFiles
-    if (photos.length === 0) return
+        const photos = photosToAnalyze || selectedFiles
+        if (photos.length === 0) return
 
-    setLoading(true)
-    setError(null)
-    setHasAnalyzed(true)
-    setNeedsReanalysis(false)
-    setResults([]) // Очищаем предыдущие результаты
-    setAnalysisResults([]) // Очищаем результаты анализа
-    setProgress(0)
-    setProgressText("Подготовка к анализу...")
+        setLoading(true)
+        setError(null)
+        setHasAnalyzed(true)
+        setNeedsReanalysis(false)
+        setResults([])
+        setAnalysisResults([])
+        setProgress(10)
+        setProgressText(`Анализируем ${photos.length} фото `)
 
-    // Начальный прогресс
-    setProgress(10)
-    setProgressText("Загружаем фото...")
-
-    try {
-      // Анализируем каждое фото с обновлением прогресса
-      const analysisResults: PhotoAnalysisResult[] = []
-      const progressStep = 60 / photos.length // 60% делим на количество фото
-
-      for (let i = 0; i < photos.length; i++) {
-        const photo = photos[i]
-        setProgressText(`Анализируем фото ${i + 1} из ${photos.length}...`)
-
-        const result = await analyzePhoto(photo.file)
-        analysisResults.push(result)
-
-        // Обновляем прогресс после каждого фото
-        const currentProgress = 10 + (i + 1) * progressStep
-        setProgress(currentProgress)
-      }
-
-      setProgress(70)
-      setProgressText("Загружаем изображения базовых вещей...")
-
-      // Собираем все успешные результаты
-      const allSuccessfulItems: ItemWithImage[] = []
-      const failedAnalyses: PhotoAnalysisResult[] = []
-
-      analysisResults.forEach((result) => {
-        if (result.success) {
-          allSuccessfulItems.push(...result.items)
-        } else {
-          failedAnalyses.push(result)
-        }
-      })
-
-      setProgress(90)
-      setProgressText("Завершаем обработку...")
-
-      // Устанавливаем результаты
-      setResults(allSuccessfulItems)
-      setAnalysisResults(analysisResults)
-
-      if (allSuccessfulItems.length > 0) {
         try {
-          onSuccess?.({
-            items: allSuccessfulItems,
-            photos,                // это локальная переменная функции handleAnalyze
-            analysisResults,
-          })
-        } catch {
-          // глушим любые коллбэк-ошибки, чтобы не ломать UI
+          const total = photos.length
+          const step = 60 / total
+          let done = 0
+
+          // Запускаем все анализы параллельно; каждый завершившийся двигает прогресс
+          const tasks = photos.map(({ file }) =>
+            analyzePhoto(file).finally(() => {
+              done += 1
+              setProgress((prev) => Math.min(10 + done * step, 85))
+              setProgressText(`Готово ${done} из ${total}`)
+            }),
+          )
+
+          const settled = await Promise.allSettled(tasks)
+
+          const analysisResults: PhotoAnalysisResult[] = settled.map((s, idx) =>
+            s.status === "fulfilled"
+              ? s.value
+              : {
+                  success: false,
+                  items: [],
+                  error: "Ошибка анализа",
+                  fileName: photos[idx].file.name,
+                },
+          )
+
+          setProgress(90)
+          setProgressText("Собираем результаты...")
+
+          const allSuccessfulItems = analysisResults.flatMap((r) => (r.success ? r.items : []))
+          const failedAnalyses = analysisResults.filter((r) => !r.success)
+
+          setResults(allSuccessfulItems)
+          setAnalysisResults(analysisResults)
+
+          if (allSuccessfulItems.length > 0) {
+            try {
+              onSuccess?.({ items: allSuccessfulItems, photos, analysisResults })
+            } catch {}
+          }
+
+          if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {
+            setError("Не удалось проанализировать ни одно изображение")
+          }
+
+          setProgress(100)
+          setProgressText("Готово!")
+
+          setTimeout(() => {
+            setLoading(false)
+            setProgress(0)
+            setProgressText("")
+          }, 800)
+        } catch (error) {
+          console.error("Analysis error:", error)
+          setError("Произошла ошибка при анализе фото")
+          setLoading(false)
+          setProgress(0)
+          setProgressText("")
         }
       }
-
-      // Если есть хотя бы один успешный результат, не показываем общую ошибку
-      if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {
-        setError("Не удалось проанализировать ни одно изображение")
-      }
-
-      setProgress(100)
-      setProgressText("Анализ завершен!")
-
-      // Через секунду скрываем прогресс бар
-      setTimeout(() => {
-        setLoading(false)
-        setProgress(0)
-        setProgressText("")
-      }, 1000)
-    } catch (error) {
-      console.error("Analysis error:", error)
-      setError("Произошла ошибка при анализе фото")
-      setLoading(false)
-      setProgress(0)
-      setProgressText("")
-    }
-  }
 
   const handleSaveItem = async (item: ItemWithImage, index: number) => {
     try {
@@ -782,15 +770,6 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                       </Button>
 
                       {/* Regeneration Button */}
-                      <Button
-                        onClick={openRegenerationModal}
-                        variant="outline"
-                        size="sm"
-                        className="w-full h-8 text-xs mt-2 bg-transparent"
-                      >
-                        <RotateCcw className="h-3 w-3 mr-1" />
-                        Перегенерировать
-                      </Button>
                     </div>
                   </CardContent>
                 </Card>
