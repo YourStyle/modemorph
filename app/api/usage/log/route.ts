@@ -4,14 +4,32 @@ import { createClient } from "@/lib/supabase/server";
 type Feature = "wardrobe_items_anlyzed" | "ai_requests" | "ideas_viewed" | "outfits_saved" | "vton_used";
 type Action = "click" | "attempt" | "purchase_sub" | "purchase_credits";
 
-function normFeature(s: string): Feature {
-  const v = (s || "").toLowerCase();
-  if (["digitize", "wardrobe", "wardrobe_items"].includes(v)) return "wardrobe_items_anlyzed";
-  if (["ai", "assistant", "ai_requests"].includes(v)) return "ai_requests";
-  if (["ideas", "ideas_views"].includes(v)) return "ideas_viewed";
-  if (["looks", "outfits"].includes(v)) return "outfits_saved";
-  if (["vton", "tryon"].includes(v)) return "vton_used";
-  return "ideas_viewed";
+const FEATURE_KEYS: Record<string, Feature> = {
+  // точные ключи
+  wardrobe_items_anlyzed: "wardrobe_items_anlyzed",
+  ai_requests: "ai_requests",
+  ideas_viewed: "ideas_viewed",
+  outfits_saved: "outfits_saved",
+  vton_used: "vton_used",
+  // синонимы → каноническое имя
+  digitize: "wardrobe_items_anlyzed",
+  wardrobe: "wardrobe_items_anlyzed",
+  wardrobe_items: "wardrobe_items_anlyzed",
+  wardrobe_items_analyzed: "wardrobe_items_anlyzed", // правильное написание → с опечаткой в колонке
+  ai: "ai_requests",
+  assistant: "ai_requests",
+  ideas: "ideas_viewed",
+  ideas_views: "ideas_viewed",
+  looks: "outfits_saved",
+  outfits: "outfits_saved",
+  vton: "vton_used",
+  tryon: "vton_used",
+};
+
+function normFeature(s: string | undefined | null): Feature | null {
+  if (!s) return null;
+  const v = s.toLowerCase();
+  return FEATURE_KEYS[v] ?? null;
 }
 
 export async function POST(req: Request) {
