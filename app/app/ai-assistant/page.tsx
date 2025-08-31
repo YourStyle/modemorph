@@ -10,9 +10,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
 import { PhotoAnalysisForm } from "@/components/photo-analysis-form"
-import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
-import { PaywallModal } from "@/components/paywall-modal";
-import { useFeature } from "@/hooks/use-feature" 
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
+import { PaywallModal } from "@/components/paywall-modal"
+import { useFeature } from "@/hooks/use-feature"
 
 interface Message {
   role: "user" | "assistant"
@@ -74,14 +74,14 @@ export default function AIAssistantPage() {
   ])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
-   const { log, consume } = useFeature()
+  const { log, consume } = useFeature()
 
-  useReconcileLimits(true);
+  useReconcileLimits(true)
 
   useEffect(() => {
     // Получаем ID пользователя при загрузке
@@ -192,18 +192,26 @@ export default function AIAssistantPage() {
     const userMessage = inputValue.trim()
 
     if (userMessage.length < 20) {
-      setMessages((prev) => [...prev, {
-        role: "assistant",
-        content: "Пожалуйста, опишите ваш запрос более подробно (минимум 20 символов). Расскажите больше о том, что вас интересует! 😊",
-      }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "Пожалуйста, опишите ваш запрос более подробно (минимум 20 символов). Расскажите больше о том, что вас интересует! 😊",
+        },
+      ])
       return
     }
 
     if (userMessage.length > 2000) {
-      setMessages((prev) => [...prev, {
-        role: "assistant",
-        content: "Ваш запрос слишком длинный (максимум 2000 символов). Попробуйте сократить его, сохранив основную суть! ✂️",
-      }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            "Ваш запрос слишком длинный (максимум 2000 символов). Попробуйте сократить его, сохранив основную суть! ✂️",
+        },
+      ])
       return
     }
 
@@ -250,10 +258,14 @@ export default function AIAssistantPage() {
       const firstResponse = responseData[0]
 
       if ("type" in firstResponse && firstResponse.type === "trash") {
-        setMessages((prev) => [...prev, {
-          role: "assistant",
-          content: "Извините, но я не могу помочь с этим запросом. Попробуйте задать вопрос о стиле, моде или гардеробе! 👗✨",
-        }])
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              "Извините, но я не могу помочь с этим запросом. Попробуйте задать вопрос о стиле, моде или гардеробе! 👗✨",
+          },
+        ])
       } else if ("content" in firstResponse) {
         setMessages((prev) => [...prev, { role: "assistant", content: firstResponse.content }])
       } else if ("id" in firstResponse && "title" in firstResponse && "items" in firstResponse) {
@@ -272,7 +284,11 @@ export default function AIAssistantPage() {
 
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: `Отличный выбор! Вот образ "${firstResponse.title}":`, outfit: outfitRecommendation },
+          {
+            role: "assistant",
+            content: `Отличный выбор! Вот образ "${firstResponse.title}":`,
+            outfit: outfitRecommendation,
+          },
         ])
       } else {
         throw new Error("Unknown response format from AI API")
@@ -283,10 +299,13 @@ export default function AIAssistantPage() {
       if (!bill.ok && bill.code === "payment_required") setPaywallOpen(true)
     } catch (error) {
       console.error("Error in handleSend:", error)
-      setMessages((prev) => [...prev, {
-        role: "assistant",
-        content: "Произошла ошибка при обработке вашего запроса. Попробуйте еще раз! 🔄",
-      }])
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Произошла ошибка при обработке вашего запроса. Попробуйте еще раз! 🔄",
+        },
+      ])
     } finally {
       setIsLoading(false)
     }
@@ -411,12 +430,13 @@ export default function AIAssistantPage() {
           </Button>
         </div>
       </div>
-    </div>
 
-    <PaywallModal
-      isOpen={paywallOpen}
-      onClose={() => setPaywallOpen(false)}
-      onSuccess={() => setPaywallOpen(false)}
-    />
+      {/* PaywallModal */}
+      <PaywallModal
+        isOpen={paywallOpen}
+        onClose={() => setPaywallOpen(false)}
+        onSuccess={() => setPaywallOpen(false)}
+      />
+    </div>
   )
 }
