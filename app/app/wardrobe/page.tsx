@@ -205,7 +205,7 @@ export default function WardrobePage() {
         })
         return {
           file: normalized,
-          preview: URL.createObjectURL(normalized),
+          preview: typeof window !== "undefined" ? URL.createObjectURL(normalized) : "",
           id: Math.random().toString(36).substr(2, 9),
         } as UploadedPhoto
       }),
@@ -221,10 +221,11 @@ export default function WardrobePage() {
   }
 
   const handleSheetClose = () => {
-    // Освобождаем URL объекты при закрытии
-    selectedPhotos.forEach((photo) => {
-      URL.revokeObjectURL(photo.preview)
-    })
+    if (typeof window !== "undefined") {
+      selectedPhotos.forEach((photo) => {
+        URL.revokeObjectURL(photo.preview)
+      })
+    }
     setSelectedPhotos([])
     setIsAddSheetOpen(false)
 
@@ -300,7 +301,7 @@ export default function WardrobePage() {
   const handleRemovePhoto = (photoId: string) => {
     setSelectedPhotos((prev) => {
       const photoToRemove = prev.find((p) => p.id === photoId)
-      if (photoToRemove) {
+      if (photoToRemove && typeof window !== "undefined") {
         URL.revokeObjectURL(photoToRemove.preview)
       }
       return prev.filter((p) => p.id !== photoId)
