@@ -10,14 +10,15 @@ import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { Progress } from "@/components/ui/progress"
-import { Plus, ChevronDown, ChevronUp, Search } from 'lucide-react'
+import { Plus, ChevronDown, ChevronUp, Search } from "lucide-react"
 
 import { Input } from "@/components/ui/input"
-import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
-import { PaywallModal } from "@/components/paywall-modal";
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
+import { PaywallModal } from "@/components/paywall-modal"
 
 import { useToast } from "@/hooks/use-toast"
 import { useFeature } from "@/hooks/use-feature"
+import { normalizeImageFile } from "@/lib/image-normalize"
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -83,9 +84,9 @@ const BasicItemsSkeleton = () => {
 }
 
 // Компонент для превью выбранных фото
-const SelectedPhotosPreview = ({ photos, onRemove }: { photos: UploadedPhoto[], onRemove: (id: string) => void }) => {
+const SelectedPhotosPreview = ({ photos, onRemove }: { photos: UploadedPhoto[]; onRemove: (id: string) => void }) => {
   if (photos.length === 0) return null
-  
+
   return (
     <div className="mb-4">
       <h3 className="text-sm font-medium text-gray-700 mb-2">Выбранные фото ({photos.length})</h3>
@@ -122,13 +123,13 @@ export default function WardrobePage() {
   const [selectedPhotos, setSelectedPhotos] = useState<UploadedPhoto[]>([])
   const [isLoadingUserItems, setIsLoadingUserItems] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false)
   const { toast } = useToast()
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
   const [searchQuery, setSearchQuery] = useState("")
 
-  useReconcileLimits(true);
+  useReconcileLimits(true)
 
   const { log, consume } = useFeature()
 
@@ -187,22 +188,30 @@ export default function WardrobePage() {
   }
 
   const handleAddToWardrobe = () => {
-    
     void log("wardrobe_items_anlyzed", "click", { pagePath: "/app/wardrobe" })
     fileInputRef.current?.click()
   }
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length === 0) return
 
-    const newPhotos: UploadedPhoto[] = files.map((file) => ({
-      file,
-      preview: URL.createObjectURL(file),
-      id: Math.random().toString(36).substr(2, 9),
-    }))
+    const prepared = await Promise.all(
+      files.map(async (file) => {
+        const normalized = await normalizeImageFile(file, {
+          maxWidth: 2048,
+          output: "image/jpeg",
+          quality: 0.9,
+        })
+        return {
+          file: normalized,
+          preview: URL.createObjectURL(normalized),
+          id: Math.random().toString(36).substr(2, 9),
+        } as UploadedPhoto
+      }),
+    )
 
-    setSelectedPhotos(newPhotos)
+    setSelectedPhotos(prepared)
     setIsAddSheetOpen(true)
 
     // Очищаем input для возможности повторного выбора тех же файлов
@@ -289,12 +298,12 @@ export default function WardrobePage() {
   const progressPercentage = (userItemsCount / targetItemsCount) * 100
 
   const handleRemovePhoto = (photoId: string) => {
-    setSelectedPhotos(prev => {
-      const photoToRemove = prev.find(p => p.id === photoId)
+    setSelectedPhotos((prev) => {
+      const photoToRemove = prev.find((p) => p.id === photoId)
       if (photoToRemove) {
         URL.revokeObjectURL(photoToRemove.preview)
       }
-      return prev.filter(p => p.id !== photoId)
+      return prev.filter((p) => p.id !== photoId)
     })
   }
 
@@ -308,19 +317,23 @@ export default function WardrobePage() {
     batchId: string
   }) => {
     // считаем, сколько фото проанализировано успешно (есть items)
-    const succeeded = analysisResults.filter(r => r.success && r.items && r.items.length > 0).length
+    const succeeded = analysisResults.filter((r) => r.success && r.items && r.items.length > 0).length
     if (succeeded <= 0) return
 
     // спишем по 1 за каждое удачное фото (наш API сейчас списывает по 1 за вызов)
-    const res = await consume("wardrobe_items_anlyzed", {
+    const res = await consume(
+      "wardrobe_items_anlyzed",
+      {
         pagePath: "/app/wardrobe",
         requestId: batchId,
         photosCount: photos.length,
         succeeded,
-      }, photos.length)
-      if (!res.ok && res.code === "payment_required") {
-          setPaywallOpen(true)
-      }
+      },
+      photos.length,
+    )
+    if (!res.ok && res.code === "payment_required") {
+      setPaywallOpen(true)
+    }
   }
 
   return (
@@ -351,12 +364,11 @@ export default function WardrobePage() {
 
           {/* Category Icons */}
 
-
           {/* Hidden file input */}
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
+            accept="image/heic,image/heif,image/heic-sequence,image/jpeg,image/jpg,image/webp,image/png"
             onChange={handleFileSelect}
             className="hidden"
             multiple
@@ -499,7 +511,12 @@ export default function WardrobePage() {
         </div>
       </div>
 
-      <AddToClosetSheet isOpen={isAddSheetOpen} onClose={handleSheetClose} initialPhotos={selectedPhotos || []} onAnalysisSuccess={handleAnalysisSuccess}/>
+      <AddToClosetSheet
+        isOpen={isAddSheetOpen}
+        onClose={handleSheetClose}
+        initialPhotos={selectedPhotos || []}
+        onAnalysisSuccess={handleAnalysisSuccess}
+      />
 
       <CategoryProgressSheet isOpen={isCategorySheetOpen} onClose={() => setIsCategorySheetOpen(false)} />
 

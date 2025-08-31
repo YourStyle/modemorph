@@ -594,7 +594,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
+                        accept="image/heic,image/heif,image/heic-sequence,image/jpeg,image/jpg,image/webp,image/png"
                         onChange={handleFileSelect}
                         className="hidden"
                         multiple
@@ -643,7 +643,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/heic,image/jpeg,image/jpg,image/webp,image/png"
+                    accept="image/heic,image/heif,image/heic-sequence,image/jpeg,image/jpg,image/webp,image/png"
                     onChange={handleFileSelect}
                     className="hidden"
                     multiple

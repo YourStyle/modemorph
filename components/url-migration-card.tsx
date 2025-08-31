@@ -174,7 +174,7 @@ export function UrlMigrationCard() {
           </p>
           <ul className="list-disc list-inside mt-1 space-y-1">
             <li>Заменяет все blob.vercel-storage.com URL на storage.yandexcloud.net/modemorphs3</li>
-            <li>Обрабатывает все таблицы с изображениями</li>
+            <li>Обрабатывает ��се таблицы с изображениями</li>
             <li>Сохраняет оригинальную структуру папок и имена файлов</li>
             <li>Обновляет записи в базе данных</li>
           </ul>
