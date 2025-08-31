@@ -202,7 +202,7 @@ export default function WardrobePage() {
         if (typeof window !== "undefined") {
           try {
             normalizedFile = await normalizeImageFile(file, {
-              maxWidth: 2048,
+              maxWidth: 1024,
               output: "image/jpeg",
               quality: 0.9,
             })
