@@ -198,14 +198,24 @@ export default function WardrobePage() {
 
     const prepared = await Promise.all(
       files.map(async (file) => {
-        const normalized = await normalizeImageFile(file, {
-          maxWidth: 2048,
-          output: "image/jpeg",
-          quality: 0.9,
-        })
+        let normalizedFile = file
+        if (typeof window !== "undefined") {
+          try {
+            normalizedFile = await normalizeImageFile(file, {
+              maxWidth: 2048,
+              output: "image/jpeg",
+              quality: 0.9,
+            })
+          } catch (error) {
+            console.error("Error normalizing image:", error)
+            // Fall back to original file if normalization fails
+            normalizedFile = file
+          }
+        }
+
         return {
-          file: normalized,
-          preview: typeof window !== "undefined" ? URL.createObjectURL(normalized) : "",
+          file: normalizedFile,
+          preview: typeof window !== "undefined" ? URL.createObjectURL(normalizedFile) : "",
           id: Math.random().toString(36).substr(2, 9),
         } as UploadedPhoto
       }),
