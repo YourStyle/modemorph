@@ -13,6 +13,7 @@ import { Progress } from "@/components/ui/progress"
 import { Plus, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { useToast } from "@/hooks/use-toast"
 import { Input } from "@/components/ui/input"
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -121,6 +122,8 @@ export default function WardrobePage() {
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
   const [searchQuery, setSearchQuery] = useState("")
+
+  useReconcileLimits(true);
 
   useEffect(() => {
     fetchBasicItems()

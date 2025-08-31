@@ -10,6 +10,7 @@ import { CreateLookSheet } from "@/components/create-look-sheet"
 import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collection-sheet"
 import { CollectionFilterModal } from "@/components/collection-filter-modal"
 import { toast } from "sonner"
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 
 interface ExpandedItem {
   id: number
@@ -70,6 +71,7 @@ export default function LooksPage() {
     sectionName: "",
     looks: [],
   })
+  useReconcileLimits(true);
 
   useEffect(() => {
     loadData()

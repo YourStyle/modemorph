@@ -121,14 +121,17 @@ export async function POST(request: Request) {
       }
 
       // Начисляем кредиты
-      const { error: addErr } = await supabase.rpc("add_credits", {
-        p_user_profile_id: userProfile.id,
-        p_amount: 40,
-        p_reason: "subscription",
-        p_description: `Кредиты за подписку ${type === "monthly" ? "на месяц" : "на год"}`,
-      });
-      if (addErr) {
-        return NextResponse.json({ error: addErr.message }, { status: 400 });
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("id")
+        .eq("user_id", user.id)
+        .single();
+
+      if (profile) {
+        const { error: actErr } = await supabase.rpc("activate_subscription_and_reset_limits", {
+          p_user_profile_id: profile.id,
+        });
+        if (actErr) return NextResponse.json({ error: actErr.message }, { status: 400 });
       }
 
       return NextResponse.json({ success: true, message: "Подписка успешно оформлена!" })

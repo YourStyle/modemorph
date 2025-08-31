@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { PaywallModal } from "@/components/paywall-modal"
 import { OutfitItemsSheet } from "@/components/outfit-items-sheet"
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 
 
 type OutfitItem = {
@@ -212,6 +213,8 @@ export default function InspirationPage(): ReactElement {
   }, [activeTab, outfits, likedIds])
 
   const current = filtered[index]
+
+  useReconcileLimits(true);
 
   useEffect(() => {
     saveViewedOutfits(viewedOutfits)

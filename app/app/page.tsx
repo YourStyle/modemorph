@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Sparkles, Star, Plus } from "lucide-react"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 
 interface OutfitItem {
   id: string
@@ -282,6 +283,8 @@ export default function HomePage() {
     } = await supabase.auth.getSession()
     return session?.access_token
   }
+
+  useReconcileLimits(true);
 
   // Load user items count
   useEffect(() => {

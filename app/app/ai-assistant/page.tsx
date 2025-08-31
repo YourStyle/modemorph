@@ -10,6 +10,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
 import { PhotoAnalysisForm } from "@/components/photo-analysis-form"
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 
 interface Message {
   role: "user" | "assistant"
@@ -74,6 +75,8 @@ export default function AIAssistantPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
+
+  useReconcileLimits(true);
 
   useEffect(() => {
     // Получаем ID пользователя при загрузке
