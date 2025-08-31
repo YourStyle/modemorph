@@ -45,13 +45,13 @@ interface OutfitCardProps {
     suggestion: OutfitSuggestion
     items: OutfitItem[]
   }) => void
-   onTryOnSuccess?: (payload: {
+  onTryOnSuccess?: (payload: {
     requestId: string
     suggestion: OutfitSuggestion
   }) => void
 }
 
-export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnClick }: OutfitCardProps) {
+export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showTryOnModal, setShowTryOnModal] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
@@ -98,43 +98,60 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
 
   // текущая логика VTON остаётся как была (если хочешь, потом вынесем тоже наверх)
   const handleTryOn = async () => {
-    if (items.length === 0) {
-      toast.error("Нет вещей для примерки")
-      return
-    }
+        if (items.length === 0) {
+          toast.error("Нет вещей для примерки")
+          return
+        }
 
-    setVtonLoading(true)
-    setVtonResult(null)
+        setVtonLoading(true)
+        setVtonResult(null)
 
-    try {
-      const vtonItems = items.map((item) => ({
-        name: item.name,
-        description: `${item.style || ""} ${item.has_print || ""} ${item.has_details || ""}`.trim(),
-        color: item.color,
-        material: item.material,
-        image_url: item.image_url,
-      }))
+        try {
+          const vtonItems = items.map((item) => ({
+            name: item.name,
+            description: `${item.style || ""} ${item.has_print || ""} ${item.has_details || ""}`.trim(),
+            color: item.color,
+            material: item.material,
+            image_url: item.image_url,
+          }))
 
-      const response = await fetch("/api/vton", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: vtonItems,
-          requestId: tryOnRequestId ?? crypto.randomUUID(),
-        }),
-      })
+          const response = await fetch("/api/vton", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              items: vtonItems,
+              requestId: tryOnRequestId ?? crypto.randomUUID(),
+            }),
+          })
 
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.error || "Failed to process virtual try-on")
+          const data = await response.json()
 
-      onTryOnSuccess?.({ requestId: tryOnRequestId ?? crypto.randomUUID(), suggestion })
-      toast.success("Примерка готова!")
-    } catch (error) {
-      console.error("Error in virtual try-on:", error)
-      toast.error(error instanceof Error ? error.message : "Ошибка при примерке")
-    } finally {
-      setVtonLoading(false)
-    }
+          if (!response.ok || data?.success === false) {
+            throw new Error(data?.error || "Failed to process virtual try-on")
+          }
+
+          // Унифицированно достаём URL из разных возможных форматов ответа
+          const imageUrl =
+            data?.result?.[0]?.avatar_url ??
+            data?.result?.avatar_url ??
+            data?.avatar_url ??
+            data?.image_url ??
+            data?.url ??
+            null
+
+          if (!imageUrl) {
+            throw new Error("Сервер не вернул avatar_url / image_url")
+          }
+          setVtonResult({ image_url: imageUrl, raw: data })
+
+          onTryOnSuccess?.({ requestId: tryOnRequestId ?? crypto.randomUUID(), suggestion })
+          toast.success("Примерка готова!")
+        } catch (error) {
+          console.error("Error in virtual try-on:", error)
+          toast.error(error instanceof Error ? error.message : "Ошибка при примерке")
+        } finally {
+          setVtonLoading(false)
+        }
   }
 
   const handleImageError = (itemId: string) => setImageErrors((prev) => ({ ...prev, [itemId]: true }))
@@ -285,15 +302,20 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
             ) : vtonResult ? (
               <div className="text-center">
                 <div className="mb-4">
-                  {vtonResult.image_url && (
-                    <Image
-                      src={vtonResult.image_url || "/placeholder.svg"}
-                      alt="Virtual try-on result"
-                      width={300}
-                      height={400}
-                      className="rounded-lg mx-auto"
-                    />
-                  )}
+                  {(() => {
+                    const previewUrl = vtonResult?.image_url || vtonResult?.avatar_url
+                    return previewUrl ? (
+                      <Image
+                        src={previewUrl}
+                        alt="Virtual try-on result"
+                        width={300}
+                        height={400}
+                        className="rounded-lg mx-auto"
+                      />
+                    ) : (
+                      <div className="text-sm text-gray-500">Нет изображения в ответе</div>
+                    )
+                  })()}
                 </div>
                 <p className="text-green-600 font-medium">Примерка готова!</p>
                 {vtonResult.message && <p className="text-sm text-gray-600 mt-2">{vtonResult.message}</p>}
