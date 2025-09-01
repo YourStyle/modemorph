@@ -33,12 +33,12 @@ export async function POST(req: Request) {
     const OutSum = Number(payment.amount).toFixed(2)
     const InvId  = payment.invoice_id
     const Desc   = description || `Оплата заказа #${InvId}`
-    const SignatureValue = md5(`${OutSum}:${InvId}:${Pass1}`)
+    const SignatureValue = md5(`${MerchantLogin}:${OutSum}:${InvId}:${Pass1}`)
 
     const url = new URL("https://auth.robokassa.ru/Merchant/Index.aspx")
     url.searchParams.set("MerchantLogin", MerchantLogin)
     url.searchParams.set("OutSum", OutSum)
-    url.searchParams.set("InvId", String(InvId))
+    url.searchParams.set("InvoiceID", String(InvId))
     url.searchParams.set("Description", Desc)
     url.searchParams.set("SignatureValue", SignatureValue)
     url.searchParams.set("SuccessURL", `${process.env.PUBLIC_BASE_URL}/payment/waiting`)
