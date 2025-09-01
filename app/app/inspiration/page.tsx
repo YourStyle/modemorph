@@ -240,7 +240,7 @@ export default function InspirationPage(): ReactElement {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ limitType: "daily", usageType: "ideas_views" }),
+          body: JSON.stringify({ limitType: "daily", usageType: "ideas_viewed" }),
         })
         if (response.ok) {
           const data = await response.json()
@@ -260,7 +260,7 @@ export default function InspirationPage(): ReactElement {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ featureType: "ideas_views" }),
+          body: JSON.stringify({ featureType: "ideas_viewed" }),
         })
         const consume = await consumeRes.json()
         if (!consumeRes.ok || !consume?.canUse) {
@@ -535,9 +535,9 @@ export default function InspirationPage(): ReactElement {
         credentials: "include",
         body: JSON.stringify({
           amount: 2,
-          reason: "ideas_views",
+          reason: "ideas_viewed",
           description: "Купить 5 дополнительных просмотров идей",
-          usageType: "ideas_views",
+          usageType: "ideas_viewed",
         }),
       })
       if (response.ok) {
