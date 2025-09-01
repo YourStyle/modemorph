@@ -422,13 +422,7 @@ export default function AIAssistantPage() {
         </div>
 
         {/* Quick Actions */}
-        <div className="flex space-x-2 mt-3">
-          <PhotoAnalysisForm />
-          <Button variant="outline" size="sm" className="text-xs bg-transparent">
-            <Camera className="h-3 w-3 mr-1" />
-            Фото образа
-          </Button>
-        </div>
+
       </div>
 
       {/* PaywallModal */}
