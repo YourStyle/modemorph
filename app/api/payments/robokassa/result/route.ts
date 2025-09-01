@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 import crypto from "crypto"
+
 const md5 = (s: string) => crypto.createHash("md5").update(s).digest("hex")
 
 // Admin client (обходит RLS)
@@ -14,48 +15,164 @@ export async function POST(req: Request) {
   try {
     const form = await req.formData()
     const OutSum = String(form.get("OutSum") ?? "")
-    // читаем и InvId, и InvoiceID — берём первое непустое
-    const rawInv  = (form.get("InvId") ?? form.get("InvoiceID") ?? "").toString()
-    const Sig     = String(form.get("SignatureValue") ?? "")
-    const PASS2   = process.env.ROBOKASSA_PASS2!
+    const rawInv = String(form.get("InvId") ?? form.get("InvoiceID") ?? "")
+    const Sig    = String(form.get("SignatureValue") ?? "")
+    const PASS2  = process.env.ROBOKASSA_PASS2!
 
     if (!rawInv || !OutSum || !Sig) {
-      return NextResponse.json({ success:false, error:"missing required fields" }, { status:400 })
+      return NextResponse.json({ success:false, error:"missing fields" }, { status:400 })
     }
 
-    // Подпись по доке: MD5(OutSum:InvId:Pass2)
+    // Подпись Result: MD5(OutSum:InvId:Pass2) — регистр хеша не учитываем
     const expected = md5(`${OutSum}:${rawInv}:${PASS2}`)
     if (expected.toLowerCase() !== Sig.toLowerCase()) {
-      return NextResponse.json({ success:false, error:"Bad signature" }, { status:400 })
+      return NextResponse.json({ success:false, error:"bad signature" }, { status:400 })
     }
 
-    const invNum = Number(rawInv)
+    const invId = Number(rawInv)
+
+    // 1) Находим платёж
     const { data: payment, error: selErr } = await admin
       .from("payments")
-      .select("id, amount, status")
-      .eq("invoice_id", invNum)
+      .select("id, user_id, amount, status, meta, invoice_id")
+      .eq("invoice_id", invId)
       .maybeSingle()
+
     if (selErr || !payment) {
-      return NextResponse.json({ success:false, error:"Payment not found" }, { status:404 })
+      return NextResponse.json({ success:false, error:"payment not found" }, { status:404 })
     }
 
-    // Сумму сравниваем как числа (без строгих строковых нулей)
+    // (опц.) Сверка суммы
     if (+payment.amount !== +OutSum) {
-      // при желании можно логировать расхождение и всё равно принять
-      // return NextResponse.json({ success:false, error:"Amount mismatch" }, { status:400 })
+      // можно логировать, но не валить обработку
+      // return NextResponse.json({ success:false, error:"amount mismatch" }, { status:400 })
     }
 
+    // 2) Ставим paid (если ещё нет)
     if (payment.status !== "paid") {
       const { error: updErr } = await admin
         .from("payments")
         .update({ status: "paid" })
-        .eq("invoice_id", invNum)
-      if (updErr) return NextResponse.json({ success:false, error: updErr.message }, { status:500 })
+        .eq("invoice_id", invId)
+      if (updErr) return NextResponse.json({ success:false, error:updErr.message }, { status:500 })
     }
 
-    // Ответ строго "OK{InvId}"
-    return new Response(`OK${rawInv}`, { status: 200 })
-  } catch (e: any) {
-    return NextResponse.json({ success:false, error: e.message }, { status:500 })
+    const meta = (payment.meta ?? {}) as any
+
+    // Идемпотентность: уже применено — отвечаем OK
+    if (meta?.post_applied === true) {
+      return new Response(`OK${rawInv}`, { status:200 })
+    }
+
+    // 3) Бизнес-логика НАЧИСЛЕНИЙ — эквивалент твоего /api/user-subscription
+
+    // Находим профиль пользователя
+    const { data: profile, error: profErr } = await admin
+      .from("user_profiles")
+      .select("id")
+      .eq("user_id", payment.user_id)
+      .single()
+
+    if (profErr || !profile) {
+      await admin.from("payments").update({
+        meta: { ...meta, post_applied:true, post_error:"profile_not_found" }
+      }).eq("invoice_id", invId)
+      return new Response(`OK${rawInv}`, { status:200 })
+    }
+
+    if (meta?.action === "subscribe") {
+      // === Ветка subscribe (точно как в твоём POST) ===
+      const type: "monthly"|"yearly" = meta?.type === "yearly" ? "yearly" : "monthly"
+
+      // Проверяем, нет ли активной подписки
+      const { data: existing } = await admin
+        .from("user_subscriptions")
+        .select("id, status")
+        .eq("user_profile_id", profile.id)
+        .eq("status", "active")
+        .maybeSingle()
+
+      if (!existing) {
+        // Даты
+        const startDate = new Date()
+        const expireAt  = new Date()
+        if (type === "monthly") expireAt.setMonth(expireAt.getMonth() + 1)
+        else expireAt.setFullYear(expireAt.getFullYear() + 1)
+
+        // Создаём подписку
+        const { error: subscriptionError } = await admin
+          .from("user_subscriptions")
+          .insert({
+            user_profile_id: profile.id,
+            subscription_type: type,         // "monthly" | "yearly"
+            status: "active",
+            start_date: startDate.toISOString(),
+            expires_at: expireAt.toISOString()
+          })
+        if (subscriptionError) {
+          await admin.from("payments").update({
+            meta: { ...meta, post_applied:true, post_error:`sub_insert:${subscriptionError.message}` }
+          }).eq("invoice_id", invId)
+          return new Response(`OK${rawInv}`, { status:200 })
+        }
+
+        // Активируем плюшки
+        const { error: actErr } = await admin.rpc("activate_subscription_and_reset_limits", {
+          p_user_profile_id: profile.id,
+        })
+        if (actErr) {
+          await admin.from("payments").update({
+            meta: { ...meta, post_applied:true, post_error:`activate:${actErr.message}` }
+          }).eq("invoice_id", invId)
+          return new Response(`OK${rawInv}`, { status:200 })
+        }
+      }
+      // если уже активна — просто проставим post_applied ниже
+
+    } else if (meta?.action === "buy_credits" && Number.isFinite(+meta?.packId)) {
+      // === Ветка buy_credits (точно как в твоём POST) ===
+      const packId = Number(meta.packId)
+      const { data: pack, error: packErr } = await admin
+        .from("credit_packs")
+        .select("id, name, credits")
+        .eq("id", packId)
+        .single()
+
+      if (packErr || !pack) {
+        await admin.from("payments").update({
+          meta: { ...meta, post_applied:true, post_error:"pack_not_found" }
+        }).eq("invoice_id", invId)
+        return new Response(`OK${rawInv}`, { status:200 })
+      }
+
+      const { error: addErr } = await admin.rpc("add_credits", {
+        p_user_profile_id: profile.id,
+        p_amount: pack.credits,
+        p_reason: "purchase",
+        p_description: `Покупка пака "${pack.name}"`,
+      })
+      if (addErr) {
+        await admin.from("payments").update({
+          meta: { ...meta, post_applied:true, post_error:`add_credits:${addErr.message}` }
+        }).eq("invoice_id", invId)
+        return new Response(`OK${rawInv}`, { status:200 })
+      }
+    } else {
+      // неизвестное действие: просто помечаем
+      await admin.from("payments").update({
+        meta: { ...meta, post_applied:true, post_error:"unknown_action" }
+      }).eq("invoice_id", invId)
+      return new Response(`OK${rawInv}`, { status:200 })
+    }
+
+    // 4) Отмечаем, что пост-начисление применено (идемпотентность)
+    await admin.from("payments").update({
+      meta: { ...meta, post_applied:true, post_applied_at:new Date().toISOString() }
+    }).eq("invoice_id", invId)
+
+    // 5) Ответ RoboKassa — строго OK{InvId}
+    return new Response(`OK${rawInv}`, { status:200 })
+  } catch (e:any) {
+    return NextResponse.json({ success:false, error:e.message }, { status:500 })
   }
 }
