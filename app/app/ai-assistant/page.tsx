@@ -404,7 +404,7 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Input Area */}
-      <div className="bg-white border-t border-gray-200 pt-4 px-4 pb-13">
+      <div className="bg-white border-t border-gray-200 pt-4 px-4 pb-20">
         <div className="flex space-x-3">
           <div className="flex-1">
             <Input
