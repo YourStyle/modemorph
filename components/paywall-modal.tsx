@@ -6,6 +6,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Check, Sparkles, Zap, X } from "lucide-react"
 import { toast } from "sonner"
+import { startRoboPayment } from "@/lib/payments"
 
 interface PaywallModalProps {
   isOpen: boolean
@@ -55,54 +56,35 @@ export function PaywallModal({ isOpen, onClose, onSuccess }: PaywallModalProps) 
   }
 
   const handleSubscribe = async (type: "monthly" | "yearly") => {
-    setPurchasing(true)
-    try {
-      const response = await fetch("/api/user-subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ action: "subscribe", type }),
-      })
-
-      const result = await response.json()
-      if (response.ok) {
-        toast.success(result.message)
-        onSuccess?.()
-        onClose()
-      } else {
-        toast.error(result.error)
-      }
-    } catch (error) {
-      toast.error("Ошибка при оформлении подписки")
-    } finally {
-      setPurchasing(false)
-    }
+  setPurchasing(true)
+  try {
+    const amount = type === "monthly" ? 299 : 2990
+    const desc   = type === "monthly" ? "Подписка Pro (месяц)" : "Подписка Pro (год)"
+    // ← meta сообщает, что после оплаты нужно активировать подписку
+    await startRoboPayment(amount, desc, { action: "subscribe", type })
+  } catch (e: any) {
+    toast.error(e.message || "Ошибка при переходе к оплате")
+    setPurchasing(false)
   }
+}
 
-  const handleBuyCredits = async (packId: number) => {
-    setPurchasing(true)
-    try {
-      const response = await fetch("/api/user-subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ action: "buy_credits", packId }),
-      })
+// покупка кредит-пака
+const handleBuyCredits = async (packId: number) => {
+  setPurchasing(true)
+  try {
+    const pack = data?.creditPacks.find(p => p.id === packId)
+    if (!pack) throw new Error("Пакет не найден")
 
-      const result = await response.json()
-      if (response.ok) {
-        toast.success(result.message)
-        onSuccess?.()
-        onClose()
-      } else {
-        toast.error(result.error)
-      }
-    } catch (error) {
-      toast.error("Ошибка при покупке кредитов")
-    } finally {
-      setPurchasing(false)
-    }
+    await startRoboPayment(
+      pack.price_rub,
+      `Покупка кредитов: ${pack.name}`,
+      { action: "buy_credits", packId } // ← meta для post-активации
+    )
+  } catch (e: any) {
+    toast.error(e.message || "Ошибка при переходе к оплате")
+    setPurchasing(false)
   }
+}
 
   if (loading) {
     return (
