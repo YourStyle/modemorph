@@ -9,7 +9,7 @@ type Feature =
   | "vton_used";
 
 const FEATURE_KEYS = {
-  wardrobe_items_anlyzed: "wardrobe_items_anlyzed", // 👈 именно так, с опечаткой, как в БД
+  wardrobe_items_anlyzed: "wardrobe_items_anlyzed", 
   ai_requests: "ai_requests",
   vton_used: "vton_used",
   ideas_viewed: "ideas_viewed",
@@ -21,8 +21,7 @@ function normFeature(s?: string) {
   if (!s) return null;
   const k = s.trim().toLowerCase();
   if (k in FEATURE_KEYS) return k as keyof typeof FEATURE_KEYS;
-  // допустимые синонимы → каноническое имя
-  if (k === "wardrobe_items_analyzed") return "wardrobe_items_anlyzed"; // 👈 мапим «правильное» на колонку с опечаткой
+  if (k === "wardrobe_items_analyzed") return "wardrobe_items_anlyzed"; 
   if (k === "vton") return "vton_used";
   return null; 
 }
@@ -38,12 +37,20 @@ export async function POST(req: Request) {
   if (error || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json()) ?? {};
+
+  const rawFeatureName: string | undefined =
+    body.featureType ?? body.usageType ?? body.feature ?? body.type;
+  const feature = normFeature(rawFeatureName);
+
   const mode = body.featureType ? "consume" : "check";
-  const feature = normFeature(body.featureType);
   if (!feature) {
     return NextResponse.json(
-      { error: `Unknown featureType: ${body.featureType}` },
-      { status: 400 }
+      {
+        error: "Unknown feature type",
+        received: rawFeatureName ?? null,
+        allowed: Object.keys(FEATURE_KEYS),
+      },
+      { status: 400 },
     );
   }
 
