@@ -54,7 +54,13 @@ export default function MiniRegistrationPage() {
   }
 
   const handleSubmit = async () => {
-    if (!userId) return
+    if (!userId || isSubmitting) return
+
+    // Базовая валидация перед сабмитом
+    if (!formData.gender || !formData.height || !formData.weight || !formData.top_size || !formData.bottom_size || !formData.shoe_size) {
+      alert("Пожалуйста, заполните все обязательные поля.")
+      return
+    }
 
     setIsSubmitting(true)
     try {
