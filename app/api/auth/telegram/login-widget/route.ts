@@ -1,30 +1,27 @@
 // app/api/auth/telegram/login-widget/route.ts
-// Полная проверка подписи Login Widget + защита по времени.
+export const runtime = "nodejs"           // нужен Node, а не Edge (иначе env может быть пустым)
+export const dynamic = "force-dynamic"    // на всякий случай, чтобы env читались на каждом запросе
 
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
+
+function requireEnv(...keys: string[]) {
+  const missing = keys.filter((k) => !process.env[k])
+  if (missing.length) {
+    throw new Error(`Missing env: ${missing.join(", ")}`)
+  }
+}
 
 function isValidTelegramLogin(user: Record<string, any>, botToken: string) {
-  // 1) Секрет = SHA256(botToken)
   const secret = crypto.createHash("sha256").update(botToken).digest()
-
-  // 2) data_check_string: все поля, кроме hash, в алфавитном порядке "key=value" через \n
   const dataCheckString = Object.keys(user)
-    .filter((k) => k !== "hash" && user[k] !== undefined && user[k] !== null)
+    .filter((k) => k !== "hash" && user[k] != null)
     .sort()
     .map((k) => `${k}=${user[k]}`)
     .join("\n")
-
-  // 3) HMAC-SHA256(data_check_string, secret) в hex
   const hmac = crypto.createHmac("sha256", secret).update(dataCheckString).digest("hex")
   return hmac === user.hash
-}
-
-function isFresh(authDate: number, maxAgeSec = 24 * 60 * 60) {
-  // Рекомендуется проверять, что auth_date не старше суток (или вашего TTL)
-  const now = Math.floor(Date.now() / 1000)
-  return authDate > 0 && now - authDate <= maxAgeSec
 }
 
 function derivedPassword(telegramId: string, pepper: string) {
@@ -33,32 +30,27 @@ function derivedPassword(telegramId: string, pepper: string) {
 
 export async function POST(req: NextRequest) {
   try {
+    // жёсткая проверка env во время запроса
+    requireEnv(
+      "TELEGRAM_BOT_TOKEN",
+      "TELEGRAM_PEPPER",
+      "SUPABASE_URL",
+      "SUPABASE_ANON_KEY",
+      "SUPABASE_SERVICE_ROLE_KEY"
+    )
+    if (!isSupabaseConfigured) throw new Error("Supabase not configured")
+
     const { user } = await req.json()
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
-    const pepper = process.env.TELEGRAM_PEPPER
-
-    if (!botToken || !pepper) {
-      return NextResponse.json({ error: "Server misconfigured" }, { status: 500 })
-    }
-
-    // Проверка подписи Login Widget
-    if (!isValidTelegramLogin(user, botToken)) {
+    if (!isValidTelegramLogin(user, process.env.TELEGRAM_BOT_TOKEN!)) {
       return NextResponse.json({ error: "Invalid Telegram signature" }, { status: 401 })
     }
 
-    // Защита по времени (опционально, но желательно)
-    const authDate = Number(user?.auth_date || 0)
-    if (!isFresh(authDate, 24 * 60 * 60)) {
-      return NextResponse.json({ error: "Auth data expired" }, { status: 401 })
-    }
+    const email = `${user.id}@telegram.local`
+    const password = derivedPassword(String(user.id), process.env.TELEGRAM_PEPPER!)
 
     const supabase = createClient()
-    const email = `${user.id}@telegram.local`
-    const password = derivedPassword(String(user.id), pepper)
-
-    // Пытаемся войти; если нет пользователя — создаём и входим
-    let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-    if (signInError || !signInData?.session) {
+    let { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    if (error || !data?.session) {
       const admin = createClient({ role: "service" })
       await admin.auth.admin.createUser({
         email,
@@ -81,6 +73,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Auth error" }, { status: 500 })
+    return NextResponse.json(
+      { error: e?.message || "Server misconfigured" },
+      { status: 500 }
+    )
   }
 }

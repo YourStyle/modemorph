@@ -22,7 +22,7 @@ export function createClient(opts?: { role?: Role }) {
   // Выбор ключа: anon для обычных запросов, service — для админ-операций в API-роутах
   const supabaseKey =
     opts?.role === "service"
-      ? process.env.SUPABASE_SERVICE_ROLE || ""
+      ? process.env.SUPABASE_SERVICE_ROLE_KEY || ""
       : process.env.SUPABASE_ANON_KEY ||
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
         ""
@@ -59,4 +59,4 @@ export const isSupabaseConfigured =
  */
 export const isSupabaseServiceConfigured =
   !!((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-     process.env.SUPABASE_SERVICE_ROLE)
+     process.env.SUPABASE_SERVICE_ROLE_KEY)
