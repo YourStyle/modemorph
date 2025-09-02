@@ -7,15 +7,8 @@ import crypto from "crypto"
 import { createClient } from "@/lib/supabase/server"
 
 function requireEnv(...keys: string[]) {
-  const missing = keys.filter((k) => !process.env[k])
-  if (missing.length) throw new Error(`Missing env: ${missing.join(", ")}`)
-}
-
-type ParsedInit = {
-  dataCheckString: string
-  hash: string
-  authDate: number
-  user: any | null
+  const miss = keys.filter(k => !process.env[k])
+  if (miss.length) throw new Error(`Missing env: ${miss.join(", ")}`)
 }
 
 function isFresh(authDate: number, maxAgeSec = 24 * 60 * 60) {
@@ -23,34 +16,45 @@ function isFresh(authDate: number, maxAgeSec = 24 * 60 * 60) {
   return authDate > 0 && Math.abs(now - authDate) <= maxAgeSec
 }
 
-function parseInitData(raw: string) {
+type ParsedInit = {
+  entries: [string, string][],
+  hash: string,
+  authDate: number,
+  user: any | null
+}
+
+function parseInitData(raw: string): ParsedInit {
   const url = new URL("https://dummy.local/?" + raw)
   const entries = Array.from(url.searchParams.entries())
   const hash = url.searchParams.get("hash") || ""
   const authDate = Number(url.searchParams.get("auth_date") || "0")
   const userStr = url.searchParams.get("user") || ""
   let user: any = null
-  try {
-    user = userStr ? JSON.parse(userStr) : null
-  } catch {}
+  try { user = userStr ? JSON.parse(userStr) : null } catch {}
+  return { entries, hash, authDate, user }
+}
 
-  const dataCheckString = entries
-    .filter(([k]) => k !== "hash" && k !== "signature") // <-- ВАЖНО
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${v}`)
+function makeDCS(entries: [string,string][], omitExtras = false) {
+  const omit = new Set(["hash", ...(omitExtras ? ["signature"] : [])])
+  return entries
+    .filter(([k]) => !omit.has(k))
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([k,v]) => `${k}=${v}`)
     .join("\n")
-
-  return { dataCheckString, hash, authDate, user }
 }
 
 function verifyInitData(raw: string, botToken: string) {
-  const { dataCheckString, hash, authDate, user } = parseInitData(raw)
-
-  // ВАЖНО: секрет для Mini Apps — HMAC-SHA256(botToken, key="WebAppData")
+  const { entries, hash, authDate, user } = parseInitData(raw)
+  // секрет для Mini Apps: HMAC-SHA256(botToken, key="WebAppData")
   const secret = crypto.createHmac("sha256", "WebAppData").update(botToken).digest()
-  const hmac = crypto.createHmac("sha256", secret).update(dataCheckString).digest("hex")
 
-  return { ok: hmac === hash, authDate, user }
+  // Пытаемся для двух вариантов: (1) со signature (2) без signature
+  const variants = [ makeDCS(entries, false), makeDCS(entries, true) ]
+  const ok = variants.some(dcs =>
+    crypto.createHmac("sha256", secret).update(dcs).digest("hex") === hash
+  )
+
+  return { ok, authDate, user }
 }
 
 function derivedPassword(telegramId: string, pepper: string) {
@@ -66,22 +70,21 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}))
     const rawInitData: string = body?.initData || ""
+    if (!rawInitData) return NextResponse.json({ error: "No initData" }, { status: 400 })
 
-    // 1) Верификация подписи + TTL
+    // 1) verify + TTL
     const { ok, authDate, user: initUser } = verifyInitData(rawInitData, process.env.TELEGRAM_BOT_TOKEN!)
     if (!ok) return NextResponse.json({ error: "Invalid initData" }, { status: 401 })
     if (!isFresh(authDate)) return NextResponse.json({ error: "Init data expired" }, { status: 401 })
 
-    // 2) Извлекаем пользователя из верифицированного initData
+    // 2) user из проверенного initData
     const u = initUser || {}
     const tgId = String(u.id || "")
     if (!tgId) return NextResponse.json({ error: "No user in initData" }, { status: 400 })
 
     const email = `${tgId}@telegram.local`
     const password = derivedPassword(tgId, process.env.TELEGRAM_PEPPER!)
-
     const fullName = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || "User"
-
     const metadata = {
       provider: "telegram-miniapp",
       telegram_id: tgId,
@@ -92,36 +95,33 @@ export async function POST(req: NextRequest) {
       full_name: fullName || null,
     }
 
-    // anon-клиент — для входа; service — для админ операций
+    // anon — для входа (кука); service — для админ-операций
     const supabase = createClient()
     const admin = createClient({ role: "service" })
 
-    // 3) Быстрый вход, если учётка уже согласована
+    // 3) быстрый вход
     {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (!error && data?.session) {
-        try {
-          await (admin as any).from("user_profiles").upsert(
-            {
-              user_id: data.user?.id ?? data.session?.user?.id,
-              is_admin: false,
-              full_name: fullName,
-              avatar_url: u.photo_url ?? null,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "user_id" },
-          )
-        } catch {}
+        const { error: upErr } = await (admin as any).from("user_profiles").upsert(
+          {
+            user_id: data.user?.id ?? data.session?.user?.id,
+            is_admin: false,
+            full_name: fullName,
+            avatar_url: u.photo_url ?? null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        )
+        // не молчим о серверной ошибке
+        if (upErr) return NextResponse.json({ error: `profile upsert failed: ${upErr.message}` }, { status: 500 })
         return NextResponse.json({ success: true })
       }
     }
 
-    // 4) Создаём пользователя (или находим и обновляем)
+    // 4) создать/обновить пользователя
     const { data: created, error: createErr } = await (admin as any).auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: metadata,
+      email, password, email_confirm: true, user_metadata: metadata,
     })
 
     const userId =
@@ -137,27 +137,24 @@ export async function POST(req: NextRequest) {
         return obj?.id ?? null
       })())
 
-    if (!userId) {
-      return NextResponse.json({ error: "User lookup failed" }, { status: 500 })
-    }
+    if (!userId) return NextResponse.json({ error: "User lookup failed" }, { status: 500 })
 
     const upd = await (admin as any).auth.admin.updateUserById(userId, { password, user_metadata: metadata })
-    if (upd?.error) {
-      return NextResponse.json({ error: upd.error?.message || "updateUser failed" }, { status: 500 })
+    if ((upd as any)?.error) {
+      return NextResponse.json({ error: (upd as any).error?.message || "updateUser failed" }, { status: 500 })
     }
 
-    try {
-      await (admin as any).from("user_profiles").upsert(
-        {
-          user_id: userId,
-          is_admin: false,
-          full_name: fullName,
-          avatar_url: u.photo_url ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      )
-    } catch {}
+    const { error: upErr2 } = await (admin as any).from("user_profiles").upsert(
+      {
+        user_id: userId,
+        is_admin: false,
+        full_name: fullName,
+        avatar_url: u.photo_url ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" }
+    )
+    if (upErr2) return NextResponse.json({ error: `profile upsert failed: ${upErr2.message}` }, { status: 500 })
 
     const retry = await supabase.auth.signInWithPassword({ email, password })
     if (retry.error || !retry.data?.session) {
