@@ -1,24 +1,30 @@
 // app/api/auth/telegram/login-widget/route.ts
-// Верификация Telegram Login Widget (НЕ Mini App).
-// Секрет — bot token. Алгоритм: HMAC-SHA256(data_check_string, bot_token).
+// Полная проверка подписи Login Widget + защита по времени.
 
 import { NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@/lib/supabase/server"
 
 function isValidTelegramLogin(user: Record<string, any>, botToken: string) {
-  // Формируем data_check_string из всех полей, кроме hash
-  const dataPairs: string[] = []
-  for (const [k, v] of Object.entries(user)) {
-    if (k === "hash" || v === undefined || v === null) continue
-    dataPairs.push(`${k}=${v}`)
-  }
-  dataPairs.sort()
-  const dataCheckString = dataPairs.join("\n")
+  // 1) Секрет = SHA256(botToken)
+  const secret = crypto.createHash("sha256").update(botToken).digest()
 
-  // Вычисляем HMAC SHA256(data_check_string, botToken)
-  const hmac = crypto.createHmac("sha256", botToken).update(dataCheckString).digest("hex")
+  // 2) data_check_string: все поля, кроме hash, в алфавитном порядке "key=value" через \n
+  const dataCheckString = Object.keys(user)
+    .filter((k) => k !== "hash" && user[k] !== undefined && user[k] !== null)
+    .sort()
+    .map((k) => `${k}=${user[k]}`)
+    .join("\n")
+
+  // 3) HMAC-SHA256(data_check_string, secret) в hex
+  const hmac = crypto.createHmac("sha256", secret).update(dataCheckString).digest("hex")
   return hmac === user.hash
+}
+
+function isFresh(authDate: number, maxAgeSec = 24 * 60 * 60) {
+  // Рекомендуется проверять, что auth_date не старше суток (или вашего TTL)
+  const now = Math.floor(Date.now() / 1000)
+  return authDate > 0 && now - authDate <= maxAgeSec
 }
 
 function derivedPassword(telegramId: string, pepper: string) {
@@ -27,26 +33,33 @@ function derivedPassword(telegramId: string, pepper: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const user = body?.user || {}
+    const { user } = await req.json()
     const botToken = process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN
     const pepper = process.env.TELEGRAM_PEPPER
 
     if (!botToken || !pepper) {
       return NextResponse.json({ error: "Server misconfigured" }, { status: 500 })
     }
+
+    // Проверка подписи Login Widget
     if (!isValidTelegramLogin(user, botToken)) {
       return NextResponse.json({ error: "Invalid Telegram signature" }, { status: 401 })
+    }
+
+    // Защита по времени (опционально, но желательно)
+    const authDate = Number(user?.auth_date || 0)
+    if (!isFresh(authDate, 24 * 60 * 60)) {
+      return NextResponse.json({ error: "Auth data expired" }, { status: 401 })
     }
 
     const supabase = createClient()
     const email = `${user.id}@telegram.local`
     const password = derivedPassword(String(user.id), pepper)
 
-    // Pseudo: сначала пробуем войти, при ошибке — регистрируем и снова входим
+    // Пытаемся войти; если нет пользователя — создаём и входим
     let { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password })
-    if (signInError) {
-      const admin = createClient({ role: "service" }) // требует SUPABASE_SERVICE_ROLE на сервере
+    if (signInError || !signInData?.session) {
+      const admin = createClient({ role: "service" })
       await admin.auth.admin.createUser({
         email,
         password,
@@ -60,16 +73,12 @@ export async function POST(req: NextRequest) {
           telegram_photo_url: user.photo_url ?? null,
         },
       })
-      const res2 = await supabase.auth.signInWithPassword({ email, password })
-      signInData = res2.data
-      signInError = res2.error
+      const retry = await supabase.auth.signInWithPassword({ email, password })
+      if (retry.error || !retry.data?.session) {
+        return NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 })
+      }
     }
 
-    if (signInError || !signInData?.session) {
-      return NextResponse.json({ error: signInError?.message || "Auth failed" }, { status: 400 })
-    }
-
-    // Отдаём success — куки расставит middleware Supabase (SSR), либо можно вручную
     return NextResponse.json({ success: true })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Auth error" }, { status: 500 })
