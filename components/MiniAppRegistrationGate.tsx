@@ -51,6 +51,9 @@ interface Props { children: ReactNode }
 
 export default function MiniAppRegistrationGate({ children }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
+  const onMiniReg = (pathname || "").startsWith("/auth/mini-registration")
+
   const supabase = useMemo(() => createClient(), [])
   const [ready, setReady] = useState(false)
 
@@ -80,68 +83,70 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     setStatus(s => ({ ...s, fullscreenRequested: true }))
   }
 
-  useEffect(() => {
+   useEffect(() => {
+    let cancelled = false
     async function boot() {
-      const { inTMA, tg } = detectTMA()
-      setStatus(s => ({ ...s, isMiniApp: inTMA, platform: tg?.platform || "-", version: tg?.version || "-" }))
-
-      if (!inTMA || !tg) {
-        // В браузере вне TMA — ничего не меняем
-        setReady(true)
-        return
-      }
-
-      // Инициализация TMA
       try {
-        tg.ready()
-        tg.setHeaderColor?.(tg.colorScheme === "dark" ? "secondary_bg_color" : "bg_color")
-        tg.setBackgroundColor?.(tg.colorScheme === "dark" ? "#0e0e10" : "#ffffff")
-      } catch {}
+        const { inTMA, tg } = detectTMA()
+        setStatus(s => ({ ...s, isMiniApp: inTMA, platform: tg?.platform || "-", version: tg?.version || "-" }))
 
-      document.documentElement.style.setProperty("--tma-safe", "env(safe-area-inset-bottom)")
-      tg.onEvent?.("viewportChanged", () => {
-        const granted = !!tg.isExpanded || (tg.viewportStableHeight || 0) >= (window.innerHeight - 1)
-        setStatus(s => ({ ...s, fullscreenGranted: granted }))
-      })
+        if (!inTMA || !tg) {
+          return // outside TMA — просто рендерим контент
+        }
 
-      askFullscreen(tg)
-      const once = () => askFullscreen(tg)
-      window.addEventListener("touchstart", once, { once: true, passive: true })
-      window.addEventListener("click", once, { once: true })
+        // init TMA
+        try {
+          tg.ready()
+          tg.setHeaderColor?.(tg.colorScheme === "dark" ? "secondary_bg_color" : "bg_color")
+          tg.setBackgroundColor?.(tg.colorScheme === "dark" ? "#0e0e10" : "#ffffff")
+        } catch {}
 
-      // 1) Хэндшейк: если нет user — создаём сессию из initData
-      let user = await tmaHandshake()
+        askFullscreen(tg)
+        const once = () => askFullscreen(tg)
+        window.addEventListener("touchstart", once, { once: true, passive: true })
+        window.addEventListener("click", once, { once: true })
 
-      // 2) Внутри TMA всегда гоняем через мини-регистрацию, если нет user
-      if (!user) {
-        router.replace("/auth/mini-registration?from=tma")
+        // 1) Хэндшейк
+        const user = await tmaHandshake()
+
+        // 2) Если нет пользователя — пускаем на форму ТОЛЬКО если мы не на ней
+        if (!user) {
+          if (!onMiniReg) router.replace("/auth/mini-registration?from=tma")
+          return
+        }
+
+        // 3) Проверяем профиль
+        const { data: profile, error } = await supabase
+          .from("user_profiles")
+          .select("gender,height,weight,top_size,bottom_size,shoe_size")
+          .eq("user_id", user.id)
+          .maybeSingle() // безопаснее, чем .single()
+
+        const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
+        const missing = error || !profile
+          ? required
+          : required.filter(k => {
+              const v = (profile as any)[k]
+              return v === null || v === undefined || v === ""
+            })
+
+        // 4) Если профиль неполный — редиректим только с других страниц
+        if (missing.length > 0) {
+          if (!onMiniReg) router.replace("/auth/mini-registration?from=tma")
+          return
+        }
+
+        // 5) Всё ок — пропускаем детей
         return
+      } finally {
+        // КРИТИЧНО: никогда не держать экран серым
+        if (!cancelled) setReady(true)
       }
-
-      // 3) Проверка профиля
-      const { data: profile, error } = await supabase
-        .from("user_profiles")
-        .select("gender,height,weight,top_size,bottom_size,shoe_size")
-        .eq("user_id", user.id)
-        .single()
-
-      const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
-      const missing = !profile || error
-        ? required
-        : required.filter(k => {
-            const v = (profile as any)[k]
-            return v === null || v === undefined || v === ""
-          })
-
-      if (missing.length > 0) {
-        router.replace("/auth/mini-registration?from=tma")
-        return
-      }
-
-      setReady(true)
     }
+
     boot()
-  }, [router, supabase])
+    return () => { cancelled = true }
+  }, [router, supabase, pathname])
 
   const Debug = () =>
     !dbgOn ? null : (
@@ -160,7 +165,13 @@ export default function MiniAppRegistrationGate({ children }: Props) {
       </div>
     )
 
-  if (!ready) return <Debug />
+if (!ready) {
+      return (
+        <main className="mx-auto max-w-xl px-4 py-6 text-sm text-muted-foreground">
+          Подготавливаем форму…
+        </main>
+      )
+}
   return (
     <>
       {children}
