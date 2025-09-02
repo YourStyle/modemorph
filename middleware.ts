@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 export async function middleware(request: NextRequest) {
   try {
-    // О��новляем сессию пользователя
+    // Обновляем сессию пользователя
     const response = await updateSession(request)
     return response
   } catch (error) {

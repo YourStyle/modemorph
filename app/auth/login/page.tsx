@@ -2,6 +2,7 @@ import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { AuthLayout } from "@/components/auth-layout"
 import ModernLoginForm from "@/components/modern-login-form"
+import { TelegramLoginButton } from "@/components/auth/telegram-login-button";
 
 export default async function LoginPage() {
   // If Supabase is not configured, show setup message directly
@@ -26,6 +27,9 @@ export default async function LoginPage() {
 
   return (
     <AuthLayout showBackButton>
+      <div className="mt-4">
+        <TelegramLoginButton />
+      </div>
       <ModernLoginForm />
     </AuthLayout>
   )
