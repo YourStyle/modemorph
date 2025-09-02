@@ -5,7 +5,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { tmaHandshake } from "@/lib/tma/handshake"
 
@@ -47,7 +47,9 @@ function canRequestFullscreen(tg: NonNullable<typeof window.Telegram>["WebApp"])
   return apiOk && !desktop
 }
 
-interface Props { children: ReactNode }
+interface Props {
+  children: ReactNode
+}
 
 export default function MiniAppRegistrationGate({ children }: Props) {
   const router = useRouter()
@@ -78,17 +80,21 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     if (fsTried.current) return
     fsTried.current = true
     if (!canRequestFullscreen(tg)) return
-    try { tg.requestFullscreen?.() } catch {}
-    try { tg.expand?.() } catch {}
-    setStatus(s => ({ ...s, fullscreenRequested: true }))
+    try {
+      tg.requestFullscreen?.()
+    } catch {}
+    try {
+      tg.expand?.()
+    } catch {}
+    setStatus((s) => ({ ...s, fullscreenRequested: true }))
   }
 
-   useEffect(() => {
+  useEffect(() => {
     let cancelled = false
     async function boot() {
       try {
         const { inTMA, tg } = detectTMA()
-        setStatus(s => ({ ...s, isMiniApp: inTMA, platform: tg?.platform || "-", version: tg?.version || "-" }))
+        setStatus((s) => ({ ...s, isMiniApp: inTMA, platform: tg?.platform || "-", version: tg?.version || "-" }))
 
         if (!inTMA || !tg) {
           return // outside TMA — просто рендерим контент
@@ -122,13 +128,14 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           .eq("user_id", user.id)
           .maybeSingle() // безопаснее, чем .single()
 
-        const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
-        const missing = error || !profile
-          ? required
-          : required.filter(k => {
-              const v = (profile as any)[k]
-              return v === null || v === undefined || v === ""
-            })
+        const required = ["gender", "height", "weight", "top_size", "bottom_size", "shoe_size"]
+        const missing =
+          error || !profile
+            ? required
+            : required.filter((k) => {
+                const v = (profile as any)[k]
+                return v === null || v === undefined || v === ""
+              })
 
         // 4) Если профиль неполный — редиректим только с других страниц
         if (missing.length > 0) {
@@ -145,7 +152,9 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     }
 
     boot()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [router, supabase, pathname])
 
   const Debug = () =>
@@ -153,25 +162,33 @@ export default function MiniAppRegistrationGate({ children }: Props) {
       <div className="tma-debug">
         <div className="tma-debug__row">
           <b>TMA Debug</b>
-          <button className="tma-debug__btn" onClick={() => setDbgOn(false)}>hide</button>
+          <button className="tma-debug__btn" onClick={() => setDbgOn(false)}>
+            hide
+          </button>
         </div>
         <div className="tma-debug__grid">
-          <div>isMiniApp: <b>{String(status.isMiniApp)}</b></div>
-          <div>platform: <b>{status.platform}</b></div>
-          <div>version: <b>{status.version}</b></div>
-          <div>fullscreenRequested: <b>{String(status.fullscreenRequested)}</b></div>
-          <div>fullscreenGranted: <b>{String(status.fullscreenGranted)}</b></div>
+          <div>
+            isMiniApp: <b>{String(status.isMiniApp)}</b>
+          </div>
+          <div>
+            platform: <b>{status.platform}</b>
+          </div>
+          <div>
+            version: <b>{status.version}</b>
+          </div>
+          <div>
+            fullscreenRequested: <b>{String(status.fullscreenRequested)}</b>
+          </div>
+          <div>
+            fullscreenGranted: <b>{String(status.fullscreenGranted)}</b>
+          </div>
         </div>
       </div>
     )
 
-if (!ready) {
-      return (
-        <main className="mx-auto max-w-xl px-4 py-6 text-sm text-muted-foreground">
-          Подготавливаем форму…
-        </main>
-      )
-}
+  if (!ready) {
+    return <main className="mx-auto max-w-xl px-4 py-6 text-sm text-muted-foreground">Подготавливаем форму…</main>
+  }
   return (
     <>
       {children}
