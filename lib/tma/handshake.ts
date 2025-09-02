@@ -19,16 +19,8 @@ export async function tmaHandshake(): Promise<User | null> {
   const supabase = createClient()
 
   // 1) Если уже есть пользователь — просто вернём
-  try {
-    const { data } = await supabase.auth.getUser()
-    if (data.user) return data.user
-  } catch {}
-
-  // 2) Иначе пытаемся обменять initData на сессию
-  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
+   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
   const initData = tg?.initData || ""
-  const initDataUnsafe = tg?.initDataUnsafe || {}
-
   if (!initData) return null
 
   try {
@@ -44,10 +36,6 @@ export async function tmaHandshake(): Promise<User | null> {
   }
 
   // 3) Повторно читаем пользователя
-  try {
-    const { data } = await supabase.auth.getUser()
-    return data.user ?? null
-  } catch {
-    return null
-  }
+  const me = await fetch("/api/auth/me", { credentials: "include" }).then(r => r.ok ? r.json() : null)
+  return me?.user ?? null
 }

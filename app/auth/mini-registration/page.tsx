@@ -55,46 +55,16 @@ export default function MiniRegistrationPage() {
 
   const handleSubmit = async () => {
     if (!userId || isSubmitting) return
+      setIsSubmitting(true)
+      const { error } = await fetch("/api/profile/miniapp-upsert", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(formData),
+      }).then(async r => (r.ok ? {} : { error: await r.json().catch(() => ({})) }))
 
-    // Базовая валидация перед сабмитом
-    if (!formData.gender || !formData.height || !formData.weight || !formData.top_size || !formData.bottom_size || !formData.shoe_size) {
-      alert("Пожалуйста, заполните все обязательные поля.")
-      return
-    }
-
-    setIsSubmitting(true)
-    try {
-       const payload = {
-          user_id: userId,
-          gender: formData.gender,
-          height: Number.parseInt(formData.height),
-          weight: Number.parseInt(formData.weight),
-          top_size: formData.top_size,
-          bottom_size: formData.bottom_size,
-          shoe_size: Number.isFinite(Number(formData.shoe_size)) ? Number(formData.shoe_size) : formData.shoe_size,
-          referral: formData.referral || null, 
-          updated_at: new Date().toISOString(),
-        }
-
-      const { error } = await supabase
-        .from("user_profiles")
-        .upsert(payload, { onConflict: "user_id" })
-        .select("user_id")      // форсируем ответ, чтобы error surfaced
-
-      if (error) {
-        console.error("Supabase upsert error:", error)
-        alert(`Не удалось сохранить профиль: ${error.message}`)
-        return
-      }
-
-      // Навигация после сохранения
-      router.replace("/") 
-    } catch (e) {
-      console.error("Unexpected error saving profile:", e)
-      alert("Произошла ошибка при сохранении. Попробуйте ещё раз.")
-    } finally {
-      setIsSubmitting(false)
-    }
+      if (error) { alert(error.error || "Не удалось сохранить профиль"); setIsSubmitting(false); return }
+      router.replace("/")
   }
 
   const isStepValid = () => {
@@ -325,7 +295,7 @@ export default function MiniRegistrationPage() {
             ) : (
               <button
                 onClick={handleSubmit}
-                disabled={!isStepValid() || isSubmitting}
+                disabled={!isStepValid() || isSubmitting || !userId}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? "Сохранение..." : "Завершить"}

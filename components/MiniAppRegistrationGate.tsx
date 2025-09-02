@@ -1,7 +1,3 @@
-// components/MiniAppRegistrationGate.tsx
-// Обновлённая логика: если внутри TMA и (нет user ИЛИ профиль неполный) — всегда редирект на /auth/mini-registration.
-// Fullscreen запрашиваем только на мобильных клиентах с API ≥ 8.0. Desktop/web не трогаем.
-
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
@@ -116,32 +112,15 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         const user = await tmaHandshake()
 
         // 2) Если нет пользователя — пускаем на форму ТОЛЬКО если мы не на ней
-        if (!user) {
-          if (!onMiniReg) router.replace("/auth/mini-registration?from=tma")
-          return
-        }
+        if (!user){ if (!onMiniReg) router.replace("/auth/mini-registration?from=tma"); return }
 
         // 3) Проверяем профиль
-        const { data: profile, error } = await supabase
-          .from("user_profiles")
-          .select("gender,height,weight,top_size,bottom_size,shoe_size")
-          .eq("user_id", user.id)
-          .maybeSingle() // безопаснее, чем .single()
+        const prof = await fetch("/api/me/profile", { credentials: "include" }).then(r => r.ok ? r.json() : null)
+        const p = prof?.profile
+        const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
+        const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "")
+        if (missing.length > 0 && !onMiniReg) { router.replace("/auth/mini-registration?from=tma"); return }
 
-        const required = ["gender", "height", "weight", "top_size", "bottom_size", "shoe_size"]
-        const missing =
-          error || !profile
-            ? required
-            : required.filter((k) => {
-                const v = (profile as any)[k]
-                return v === null || v === undefined || v === ""
-              })
-
-        // 4) Если профиль неполный — редиректим только с других страниц
-        if (missing.length > 0) {
-          if (!onMiniReg) router.replace("/auth/mini-registration?from=tma")
-          return
-        }
 
         // 5) Всё ок — пропускаем детей
         return
