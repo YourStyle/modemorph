@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation" 
 import { tmaHandshake } from "@/lib/tma/handshake"
 import { createClient } from "@/lib/supabase/client"
 import { User, Weight, Ruler, Shirt, Users, Share2, Megaphone, Heart } from "lucide-react"
@@ -16,6 +17,7 @@ interface FormData {
 }
 
 export default function MiniRegistrationPage() {
+  const router = useRouter() 
   const supabase = createClient()
   const [ready, setReady] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
@@ -56,24 +58,34 @@ export default function MiniRegistrationPage() {
 
     setIsSubmitting(true)
     try {
-      await supabase.from("user_profiles").upsert(
-        {
+       const payload = {
           user_id: userId,
           gender: formData.gender,
           height: Number.parseInt(formData.height),
           weight: Number.parseInt(formData.weight),
           top_size: formData.top_size,
           bottom_size: formData.bottom_size,
-          shoe_size: formData.shoe_size,
-          referral: formData.referral,
+          shoe_size: Number.isFinite(Number(formData.shoe_size)) ? Number(formData.shoe_size) : formData.shoe_size,
+          referral: formData.referral || null, 
           updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" },
-      )
+        }
 
-      window.location.href = "/"
-    } catch (error) {
-      console.error("Error saving profile:", error)
+      const { error } = await supabase
+        .from("user_profiles")
+        .upsert(payload, { onConflict: "user_id" })
+        .select("user_id")      // форсируем ответ, чтобы error surfaced
+
+      if (error) {
+        console.error("Supabase upsert error:", error)
+        alert(`Не удалось сохранить профиль: ${error.message}`)
+        return
+      }
+
+      // Навигация после сохранения
+      router.replace("/") 
+    } catch (e) {
+      console.error("Unexpected error saving profile:", e)
+      alert("Произошла ошибка при сохранении. Попробуйте ещё раз.")
     } finally {
       setIsSubmitting(false)
     }
