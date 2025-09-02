@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { SelectedItemsProvider } from "@/contexts/selected-items-context"
 import { AuthProvider } from "@/contexts/auth-context"
 import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate" // новый импорт
+import Script from "next/script";
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -23,6 +24,10 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className={inter.className}>
+      <Script
+          src="https://telegram.org/js/telegram-web-app.js"
+          strategy="beforeInteractive"
+        />
         <AuthProvider>
           <SelectedItemsProvider>
             <MiniAppRegistrationGate>
