@@ -1,43 +1,31 @@
 // lib/supabase/server.ts
-// SSR-клиент Supabase + явная экспортируемая метка конфигурации.
-// Добавьте/замените файл целиком. Комментарии включены.
-
 import { createServerClient } from "@supabase/ssr"
 import { cookies, headers } from "next/headers"
 
-// Роль ключа: анонимный (по умолчанию) или сервисный (только на сервере)
 type Role = "anon" | "service"
 
-/**
- * SSR-клиент Supabase.
- * При role="service" используется SERVICE_ROLE (нельзя использовать на клиенте).
- */
+export const isSupabaseConfigured = !!(
+  (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+  (process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+)
+
 export function createClient(opts?: { role?: Role }) {
   const cookieStore = cookies()
   const hdrs = headers()
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ""
 
-  const supabaseUrl =
-    process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || ""
+  // поддержка обоих имён:
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE ?? process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""
 
-  // Выбор ключа: anon для обычных запросов, service — для админ-операций в API-роутах
-  const supabaseKey =
-    opts?.role === "service"
-      ? process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-      : process.env.SUPABASE_ANON_KEY ||
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-        ""
+  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 
-  return createServerClient(supabaseUrl, supabaseKey, {
+  const key = opts?.role === "service" ? serviceKey : anonKey
+
+  return createServerClient(url, key, {
     cookies: {
-      get(name: string) {
-        return cookieStore.get(name)?.value
-      },
-      set(name: string, value: string, options: any) {
-        cookieStore.set({ name, value, ...options })
-      },
-      remove(name: string, options: any) {
-        cookieStore.set({ name, value: "", ...options })
-      },
+      get: (n) => cookieStore.get(n)?.value,
+      set: (n, v, o) => cookieStore.set({ name: n, value: v, ...o }),
+      remove: (n, o) => cookieStore.set({ name: n, value: "", ...o }),
     },
     headers: {
       "x-forwarded-for": hdrs.get("x-forwarded-for") ?? undefined,
@@ -45,18 +33,3 @@ export function createClient(opts?: { role?: Role }) {
     },
   })
 }
-
-/**
- * Индикатор корректной конфигурации Supabase.
- * Экспорт добавлен для мест, где проверяется готовность окружения.
- */
-export const isSupabaseConfigured =
-  !!((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-     (process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY))
-
-/**
- * Дополнительно: индикатор наличия сервисного ключа (если нужен в API/cron).
- */
-export const isSupabaseServiceConfigured =
-  !!((process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL) &&
-     process.env.SUPABASE_SERVICE_ROLE_KEY)
