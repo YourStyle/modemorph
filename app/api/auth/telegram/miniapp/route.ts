@@ -22,21 +22,22 @@ type ParsedInit = {
   user: any | null
 }
 
-function parseInitData(raw: string): ParsedInit {
-  // НИЧЕГО не трогаем кроме парсинга query — важно сохранить точные значения
+function isFresh(authDate: number, maxAgeSec = 24 * 60 * 60) {
+  const now = Math.floor(Date.now() / 1000)
+  return authDate > 0 && Math.abs(now - authDate) <= maxAgeSec
+}
+
+function parseInitData(raw: string) {
   const url = new URL("https://dummy.local/?" + raw)
   const entries = Array.from(url.searchParams.entries())
-
   const hash = url.searchParams.get("hash") || ""
   const authDate = Number(url.searchParams.get("auth_date") || "0")
-
-  // user — это JSON-строка в query; берём её из initData, а не из тела запроса
   const userStr = url.searchParams.get("user") || ""
   let user: any = null
   try { user = userStr ? JSON.parse(userStr) : null } catch {}
 
   const dataCheckString = entries
-    .filter(([k]) => k !== "hash")
+    .filter(([k]) => k !== "hash" && k !== "signature")   // <-- ВАЖНО
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}=${v}`)
     .join("\n")
