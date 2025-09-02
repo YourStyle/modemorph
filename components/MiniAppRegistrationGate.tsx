@@ -1,27 +1,26 @@
 // components/MiniAppRegistrationGate.tsx
+// Обновлённая логика: если внутри TMA и (нет user ИЛИ профиль неполный) — всегда редирект на /auth/mini-registration.
+// Fullscreen запрашиваем только на мобильных клиентах с API ≥ 8.0. Desktop/web не трогаем.
+
 "use client"
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { tmaHandshake } from "@/lib/tma/handshake"
 
 declare global {
   interface Window {
     Telegram?: {
       WebApp?: {
-        // базовые поля
         platform?: string
         version?: string
         colorScheme?: string
         initData?: string
         initDataUnsafe?: Record<string, any>
-
-        // размеры/события
         isExpanded?: boolean
         viewportStableHeight?: number
         onEvent?: (event: string, cb: (...args: any[]) => void) => void
-
-        // методы
         ready: () => void
         expand?: () => void
         requestFullscreen?: () => void
@@ -42,7 +41,6 @@ function detectTMA() {
 }
 
 function canRequestFullscreen(tg: NonNullable<typeof window.Telegram>["WebApp"]) {
-  // Desktop (tdesktop/macos/linux/web) полноэкранный режим не всегда поддерживает.
   const p = (tg?.platform || "").toLowerCase()
   const desktop = p.includes("tdesktop") || p.includes("macos") || p.includes("linux") || p === "web"
   const apiOk = typeof tg?.isVersionAtLeast === "function" && tg.isVersionAtLeast("8.0")
@@ -56,7 +54,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const supabase = useMemo(() => createClient(), [])
   const [ready, setReady] = useState(false)
 
-  // debug-виджет
+  // debug
   const [dbgOn, setDbgOn] = useState(false)
   const [status, setStatus] = useState({
     isMiniApp: false,
@@ -72,7 +70,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     setDbgOn(env || q)
   }, [])
 
-  // ——— безопасный запрос fullscreen
   const fsTried = useRef(false)
   const askFullscreen = (tg: NonNullable<typeof window.Telegram>["WebApp"]) => {
     if (fsTried.current) return
@@ -86,61 +83,42 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   useEffect(() => {
     async function boot() {
       const { inTMA, tg } = detectTMA()
-      setStatus(s => ({
-        ...s,
-        isMiniApp: inTMA,
-        platform: tg?.platform || "-",
-        version: tg?.version || "-",
-      }))
+      setStatus(s => ({ ...s, isMiniApp: inTMA, platform: tg?.platform || "-", version: tg?.version || "-" }))
 
       if (!inTMA || !tg) {
+        // В браузере вне TMA — ничего не меняем
         setReady(true)
         return
       }
 
-      // инициализация + базовые цвета
+      // Инициализация TMA
       try {
         tg.ready()
         tg.setHeaderColor?.(tg.colorScheme === "dark" ? "secondary_bg_color" : "bg_color")
         tg.setBackgroundColor?.(tg.colorScheme === "dark" ? "#0e0e10" : "#ffffff")
       } catch {}
 
-      // корректная высота даже без fullscreen
       document.documentElement.style.setProperty("--tma-safe", "env(safe-area-inset-bottom)")
-
-      // подписки на viewport (даёт «почти fullscreen» через CSS-переменные)
       tg.onEvent?.("viewportChanged", () => {
         const granted = !!tg.isExpanded || (tg.viewportStableHeight || 0) >= (window.innerHeight - 1)
         setStatus(s => ({ ...s, fullscreenGranted: granted }))
       })
 
-      // запрос fullscreen — только на поддерживаемых мобильных клиентах
       askFullscreen(tg)
-      // iOS: повторить по первому жесту
       const once = () => askFullscreen(tg)
       window.addEventListener("touchstart", once, { once: true, passive: true })
       window.addEventListener("click", once, { once: true })
 
-      // ——— сессия Supabase по initData (если нет)
-      let { data: { user } } = await supabase.auth.getUser()
+      // 1) Хэндшейк: если нет user — создаём сессию из initData
+      let user = await tmaHandshake()
+
+      // 2) Внутри TMA всегда гоняем через мини-регистрацию, если нет user
       if (!user) {
-        const res = await fetch("/api/auth/telegram/miniapp", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ initData: tg.initData || "", initDataUnsafe: tg.initDataUnsafe || {} }),
-          credentials: "include",
-        })
-        if (res.ok) {
-          const r = await supabase.auth.getUser()
-          user = r.data.user ?? null
-        }
-      }
-      if (!user) {
-        setReady(true)
+        router.replace("/auth/mini-registration?from=tma")
         return
       }
 
-      // ——— жёсткая проверка профиля: в TMA незаполненного — на мини-регистрацию
+      // 3) Проверка профиля
       const { data: profile, error } = await supabase
         .from("user_profiles")
         .select("gender,height,weight,top_size,bottom_size,shoe_size")
@@ -156,7 +134,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           })
 
       if (missing.length > 0) {
-        router.replace("/auth/mini-registration")
+        router.replace("/auth/mini-registration?from=tma")
         return
       }
 
@@ -165,7 +143,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     boot()
   }, [router, supabase])
 
-  // ——— отладочный виджет
   const Debug = () =>
     !dbgOn ? null : (
       <div className="tma-debug">
