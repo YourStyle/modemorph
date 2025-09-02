@@ -17,7 +17,6 @@ body {
   -ms-overflow-style: none; /* IE/Edge */
 }
 
-
 @layer utilities {
   .text-balance {
     text-wrap: balance;
@@ -104,3 +103,5 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* TMA styles have been removed and moved to app/tma.css */

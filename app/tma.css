@@ -1,0 +1,43 @@
+/* Telegram Mini App (TMA) specific styles */
+
+/* Высота берётся из переменных, которые проставляет telegram-web-app.js */
+.tma-root {
+  min-height: var(--tg-viewport-stable-height, 100svh);
+  background: var(--tg-theme-bg-color, #fff);
+  padding-bottom: var(--tma-safe, 0px);
+}
+
+/* Отладочный виджет */
+.tma-debug {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  border-radius: 12px;
+  padding: 10px 12px;
+  max-width: 340px;
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+.tma-debug__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.tma-debug__btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 11px;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+.tma-debug__grid {
+  display: grid;
+  row-gap: 4px;
+}

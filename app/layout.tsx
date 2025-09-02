@@ -1,11 +1,13 @@
 import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
+import Script from "next/script"
 import "./globals.css"
+import "./tma.css" // см. блок CSS ниже
 import { Toaster } from "@/components/ui/toaster"
 import { SelectedItemsProvider } from "@/contexts/selected-items-context"
 import { AuthProvider } from "@/contexts/auth-context"
-import Script from "next/script"
+import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -23,12 +25,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
+        {/* Telegram WebApp API должен грузиться ДО интерактива */}
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
-      <body className={`${inter.className} min-h-[100svh] bg-background`} style={{ paddingBottom: "var(--tma-safe,0px)" }}>
+      {/* высота берётся из переменных, которые проставляет официальный скрипт */}
+      <body className={`${inter.className} tma-root`}>
         <AuthProvider>
           <SelectedItemsProvider>
-            {children}
+            <MiniAppRegistrationGate>
+              {children}
+            </MiniAppRegistrationGate>
             <Toaster />
           </SelectedItemsProvider>
         </AuthProvider>
