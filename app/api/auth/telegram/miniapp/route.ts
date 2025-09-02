@@ -2,17 +2,13 @@
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-import { NextRequest, NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@/lib/supabase/server"
 
 function requireEnv(...keys: string[]) {
-  const missing = keys.filter(k => !process.env[k])
+  const missing = keys.filter((k) => !process.env[k])
   if (missing.length) throw new Error(`Missing env: ${missing.join(", ")}`)
-}
-function isFresh(authDate: number, maxAgeSec = 24 * 60 * 60) {
-  const now = Math.floor(Date.now() / 1000)
-  return authDate > 0 && (now - authDate) <= maxAgeSec
 }
 
 type ParsedInit = {
@@ -34,10 +30,12 @@ function parseInitData(raw: string) {
   const authDate = Number(url.searchParams.get("auth_date") || "0")
   const userStr = url.searchParams.get("user") || ""
   let user: any = null
-  try { user = userStr ? JSON.parse(userStr) : null } catch {}
+  try {
+    user = userStr ? JSON.parse(userStr) : null
+  } catch {}
 
   const dataCheckString = entries
-    .filter(([k]) => k !== "hash" && k !== "signature")   // <-- ВАЖНО
+    .filter(([k]) => k !== "hash" && k !== "signature") // <-- ВАЖНО
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}=${v}`)
     .join("\n")
@@ -82,10 +80,7 @@ export async function POST(req: NextRequest) {
     const email = `${tgId}@telegram.local`
     const password = derivedPassword(tgId, process.env.TELEGRAM_PEPPER!)
 
-    const fullName =
-      [u.first_name, u.last_name].filter(Boolean).join(" ") ||
-      u.username ||
-      "User"
+    const fullName = [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || "User"
 
     const metadata = {
       provider: "telegram-miniapp",
@@ -114,7 +109,7 @@ export async function POST(req: NextRequest) {
               avatar_url: u.photo_url ?? null,
               updated_at: new Date().toISOString(),
             },
-            { onConflict: "user_id" }
+            { onConflict: "user_id" },
           )
         } catch {}
         return NextResponse.json({ success: true })
@@ -129,7 +124,7 @@ export async function POST(req: NextRequest) {
       user_metadata: metadata,
     })
 
-    let userId =
+    const userId =
       created?.user?.id ??
       (await (async () => {
         if (createErr && createErr.status !== 422) return null
@@ -160,7 +155,7 @@ export async function POST(req: NextRequest) {
           avatar_url: u.photo_url ?? null,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "user_id" }
+        { onConflict: "user_id" },
       )
     } catch {}
 
