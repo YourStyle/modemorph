@@ -51,6 +51,7 @@
     "crypto": "latest",
     "date-fns": "latest",
     "embla-carousel-react": "latest",
+    "eruda": "latest",
     "heic2any": "latest",
     "input-otp": "latest",
     "lucide-react": "^0.454.0",
