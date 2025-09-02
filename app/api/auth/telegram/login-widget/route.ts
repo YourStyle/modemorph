@@ -56,13 +56,12 @@ async function findUserByEmail(admin: ReturnType<typeof createClient>, email: st
 
 export async function POST(req: NextRequest) {
   try {
-    // 1) Проверка env (важно: используем SUPABASE_SERVICE_ROLE, а не *_KEY)
     requireEnv(
       "TELEGRAM_BOT_TOKEN",
       "TELEGRAM_PEPPER",
       "SUPABASE_URL",
       "SUPABASE_ANON_KEY",
-      "SUPABASE_SERVICE_ROLE",
+      "SUPABASE_SERVICE_ROLE_KEY",
     )
 
     // 2) Парсинг тела
