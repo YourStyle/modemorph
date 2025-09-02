@@ -1,5 +1,11 @@
 // app/api/auth/telegram/miniapp/route.ts
-// Верификация Telegram Mini App initData по raw-строке, создание/вход в Supabase.
+// Верификация Telegram Mini App initData с «двойным» построением data_check_string:
+// 1) decoded-вариант (RFC3986, с заменой + → пробел) — это каноничный путь,
+// 2) raw-вариант (без декодинга) — на случай несовпадений из-за экзотичных клиентов.
+// Для помощи в дебаге в non-production режиме возвращаем вычисленные HMAC’ы (без секретов).
+// После успешной верификации — создание/вход в Supabase и апдейт профиля.
+//
+// ВНИМАНИЕ: в production не логируйте и не возвращайте отладочные поля.
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,8 +14,9 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createClient } from "@/lib/supabase/server";
 
-// --- helpers ---
+// ====================== helpers ======================
 
+// Требуем обязательные переменные окружения
 function requireEnv(...keys: string[]) {
   const missing = keys.filter((k) => !process.env[k]);
   if (missing.length) throw new Error(`Missing env: ${missing.join(", ")}`);
@@ -19,88 +26,136 @@ function requireEnvAtLeastOne(...keys: string[]) {
     throw new Error(`Missing env: one of [${keys.join(", ")}]`);
   }
 }
+
+// TTL для auth_date
 function isFreshUnix(authDate: number, maxAgeSec = 24 * 60 * 60) {
   const now = Math.floor(Date.now() / 1000);
   return authDate > 0 && now - authDate <= maxAgeSec;
 }
+
+// Детерминированный пароль из telegram_id + PEPPER
 function derivedPassword(telegramId: string, pepper: string) {
   return crypto.createHmac("sha256", pepper).update(telegramId).digest("hex");
 }
 
-/**
- * Корректная проверка WebApp initData по raw-строке:
- * 1) Берём initData как есть (raw).
- * 2) Удаляем `hash` (и возможный `signature`).
- * 3) Сортируем пары по ключу.
- * 4) Собираем data_check_string как "k=v" с '\n' между.
- * 5) secret_key = HMAC_SHA256(key="WebAppData", data=BOT_TOKEN)
- * 6) check_hash = HMAC_SHA256(key=secret_key, data=data_check_string)
- */
-function verifyMiniAppInitDataRaw(rawInitData: string, botToken: string): { ok: boolean; reason?: string } {
-  try {
-    // Разбиваем на пары в сыром виде, без декодинга.
-    const parts = rawInitData.split("&").filter(Boolean);
-
-    // Извлекаем и удаляем hash
-    const hashIdx = parts.findIndex((p) => p.startsWith("hash="));
-    if (hashIdx < 0) return { ok: false, reason: "hash missing" };
-    const receivedHash = parts[hashIdx].slice("hash=".length);
-    parts.splice(hashIdx, 1);
-
-    // Игнорируем возможный 'signature=' из некоторых клиентов
-    const sigIdx = parts.findIndex((p) => p.startsWith("signature="));
-    if (sigIdx >= 0) parts.splice(sigIdx, 1);
-
-    // TTL проверим отдельно из распарсенной версии
-    const sp = new URLSearchParams(rawInitData);
-    const authDate = Number(sp.get("auth_date") || 0);
-    if (!isFreshUnix(authDate)) return { ok: false, reason: "expired" };
-
-    // Сортировка по ключу
-    parts.sort((a, b) => {
-      const [ka] = a.split("=", 1);
-      const [kb] = b.split("=", 1);
-      return ka.localeCompare(kb);
-    });
-
-    // data_check_string: join по '\n' БЕЗ декодинга
-    const dataCheckString = parts.join("\n");
-
-    // secret_key = HMAC_SHA256(key="WebAppData", data=BOT_TOKEN)
-    const secretKey = crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
-
-    // check_hash = HMAC_SHA256(key=secret_key, data=data_check_string)
-    const computed = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
-
-    // Сравнение безопасно
-    const ok =
-      receivedHash.length === computed.length &&
-      crypto.timingSafeEqual(Buffer.from(computed, "hex"), Buffer.from(receivedHash, "hex"));
-
-    return ok ? { ok: true } : { ok: false, reason: "hmac mismatch" };
-  } catch {
-    return { ok: false, reason: "exception" };
-  }
+// HMAC(secret, data) → hex
+function hmacHex(secret: Buffer, data: string) {
+  return crypto.createHmac("sha256", secret).update(data).digest("hex");
 }
 
-// Точный поиск пользователя по email через REST Admin без пагинации
+// Секрет для MiniApp: secret_key = HMAC_SHA256(key="WebAppData", data=BOT_TOKEN)
+function miniAppSecret(botToken: string) {
+  return crypto.createHmac("sha256", "WebAppData").update(botToken).digest();
+}
+
+// Секрет Login Widget (для сравнения/диагностики): secret = SHA256(bot_token)
+function widgetSecret(botToken: string) {
+  return crypto.createHash("sha256").update(botToken).digest();
+}
+
+// Построение data_check_string (decoded-вариант): RFC3986 decode + замена '+' → ' '
+function buildDataCheckStringDecoded(raw: string) {
+  const pairs = raw.split("&").filter(Boolean);
+  const items: Array<[string, string]> = [];
+
+  for (const p of pairs) {
+    const eq = p.indexOf("=");
+    const kRaw = eq >= 0 ? p.slice(0, eq) : p;
+    const vRaw = eq >= 0 ? p.slice(eq + 1) : "";
+
+    const k = decodeURIComponent(kRaw.replace(/\+/g, "%20"));
+    const v = decodeURIComponent(vRaw.replace(/\+/g, "%20"));
+    if (k === "hash" || k === "signature") continue;
+
+    items.push([k, v]);
+  }
+
+  items.sort(([a], [b]) => a.localeCompare(b));
+  return items.map(([k, v]) => `${k}=${v}`).join("\n");
+}
+
+// Построение data_check_string (raw-вариант): без декодинга, как есть
+function buildDataCheckStringRaw(raw: string) {
+  const parts = raw.split("&").filter(Boolean);
+  // Удаляем hash/signature
+  const filtered = parts.filter((p) => !p.startsWith("hash=") && !p.startsWith("signature="));
+  // Сортируем по имени ключа (до первого '=')
+  filtered.sort((a, b) => {
+    const ka = a.split("=", 1)[0];
+    const kb = b.split("=", 1)[0];
+    return ka.localeCompare(kb);
+  });
+  return filtered.join("\n");
+}
+
+// Универсальная проверка initData c диагностикой
+function verifyInitDataWithDiagnostics(rawInitData: string, botToken: string) {
+  const url = new URLSearchParams(rawInitData);
+  const receivedHash = url.get("hash") || "";
+
+  const authDate = Number(url.get("auth_date") || 0);
+  if (!isFreshUnix(authDate)) return { ok: false, reason: "expired" as const };
+
+  const secretMini = miniAppSecret(botToken);
+  const secretWidget = widgetSecret(botToken);
+
+  // decoded-путь (каноничный)
+  const dcsDecoded = buildDataCheckStringDecoded(rawInitData);
+  const hDecodedMini = hmacHex(secretMini, dcsDecoded);
+  const hDecodedWidget = hmacHex(secretWidget, dcsDecoded);
+
+  // raw-путь (на случай нестандартной передачи)
+  const dcsRaw = buildDataCheckStringRaw(rawInitData);
+  const hRawMini = hmacHex(secretMini, dcsRaw);
+  const hRawWidget = hmacHex(secretWidget, dcsRaw);
+
+  // Сравнение по MiniApp-секрету (допускаем decoded и raw)
+  const okMiniDecoded =
+    receivedHash.length === hDecodedMini.length &&
+    crypto.timingSafeEqual(Buffer.from(hDecodedMini, "hex"), Buffer.from(receivedHash, "hex"));
+  const okMiniRaw =
+    receivedHash.length === hRawMini.length &&
+    crypto.timingSafeEqual(Buffer.from(hRawMini, "hex"), Buffer.from(receivedHash, "hex"));
+
+  // Возвращаем результат + диагностические вычисления (для dev)
+  const ok = okMiniDecoded || okMiniRaw;
+  const reason = ok ? undefined : ("hmac mismatch" as const);
+
+  return {
+    ok,
+    reason,
+    diag: {
+      receivedHash,
+      // Ниже поля только для локального дебага. В проде не возвращайте!
+      hDecodedMini,
+      hRawMini,
+      hDecodedWidget,
+      hRawWidget,
+      dcsDecodedPreview: dcsDecoded.slice(0, 280),
+      dcsRawPreview: dcsRaw.slice(0, 280),
+      used: okMiniDecoded ? "decoded+Mini" : okMiniRaw ? "raw+Mini" : "none",
+    },
+  };
+}
+
+// Поиск пользователя по email через REST Admin (точный фильтр)
 async function getUserIdByEmailREST(supabaseUrl: string, serviceRole: string, email: string): Promise<string | null> {
   const url = `${supabaseUrl.replace(/\/+$/, "")}/auth/v1/admin/users?email=${encodeURIComponent(email)}`;
   const resp = await fetch(url, {
     method: "GET",
     headers: { apikey: serviceRole, Authorization: `Bearer ${serviceRole}` },
   });
+  if (resp.status === 404) return null;
   if (!resp.ok) {
-    if (resp.status === 404) return null;
-    const txt = await resp.text().catch(() => "");
-    throw new Error(`Admin REST get by email failed: ${resp.status} ${txt}`);
+    const t = await resp.text().catch(() => "");
+    throw new Error(`Admin REST failed: ${resp.status} ${t}`);
   }
-  const json = await resp.json().catch(() => null);
-  const user = Array.isArray(json) ? json[0] : json;
+  const js = await resp.json().catch(() => null);
+  const user = Array.isArray(js) ? js[0] : js;
   return user?.id ?? null;
 }
 
-// --- handler ---
+// ====================== handler ======================
 
 export async function POST(req: NextRequest) {
   try {
@@ -111,20 +166,28 @@ export async function POST(req: NextRequest) {
     const pepper = process.env.TELEGRAM_PEPPER!;
     const supabaseUrl = process.env.SUPABASE_URL!;
     const serviceRole = process.env.SUPABASE_SERVICE_ROLE ?? process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const isDev = process.env.NODE_ENV !== "production";
 
+    // Ждём: initData (raw-строка), initDataUnsafe (необязательно — для удобства извлечения user)
     const { initData, initDataUnsafe } = await req.json();
 
     if (typeof initData !== "string" || !initData) {
       return NextResponse.json({ error: "Bad payload: initData required" }, { status: 400 });
     }
 
-    // КРИТИЧЕСКОЕ место: валидация по RAW initData
-    const v = verifyMiniAppInitDataRaw(initData, botToken);
+    // Верификация с диагностикой
+    const v = verifyInitDataWithDiagnostics(initData, botToken);
     if (!v.ok) {
-      return NextResponse.json({ error: "Invalid initData", reason: v.reason ?? "unknown" }, { status: 401 });
+      // В режиме разработки возвращаем вычисленные HMAC’ы, чтобы сравнить глазами.
+      return NextResponse.json(
+        isDev
+          ? { error: "Invalid initData", reason: v.reason, diag: v.diag }
+          : { error: "Invalid initData", reason: v.reason },
+        { status: 401 },
+      );
     }
 
-    // Достаём user (из unsafe объекта либо парсим из raw)
+    // Извлекаем user (предпочтительно из unsafe)
     let tUser:
       | { id: number | string; first_name?: string; last_name?: string; username?: string; photo_url?: string }
       | null = null;
@@ -137,10 +200,11 @@ export async function POST(req: NextRequest) {
       if (userJson) {
         try {
           tUser = JSON.parse(userJson);
-        } catch {}
+        } catch {
+          tUser = null;
+        }
       }
     }
-
     if (!tUser?.id) {
       return NextResponse.json({ error: "User not found in initData" }, { status: 400 });
     }
@@ -148,18 +212,18 @@ export async function POST(req: NextRequest) {
     const email = `${String(tUser.id)}@telegram.local`;
     const password = derivedPassword(String(tUser.id), pepper);
 
-    const supabase = createClient();           // anon
+    const supabase = createClient(); // anon
     const admin = createClient({ role: "service" }); // service
 
-    // Пробуем sign-in
+    // 1) Пробуем вход
     {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (data?.session && !error) return NextResponse.json({ success: true });
     }
 
-    // Создание
+    // 2) Создаём пользователя
     const fullName =
-      [tUser.first_name, tUser.last_name].filter(Boolean).join(" ").trim() || tUser.username || "";
+      [tUser.first_name, tUser.last_name].filter(Boolean).join(" ").trim() || tUser.username || `tg_${tUser.id}`;
     const avatarUrl = tUser.photo_url || null;
 
     const { data: created, error: createErr } = await (admin as any).auth.admin.createUser({
@@ -180,7 +244,11 @@ export async function POST(req: NextRequest) {
 
     if (!createErr && created?.user?.id) {
       const uid = created.user.id as string;
-      await (admin as any).from("user_profiles").update({ full_name: fullName || null, avatar_url: avatarUrl }).eq("user_id", uid);
+      await (admin as any)
+        .from("user_profiles")
+        .update({ full_name: fullName || null, avatar_url: avatarUrl })
+        .eq("user_id", uid);
+
       const retry = await supabase.auth.signInWithPassword({ email, password });
       if (retry.error || !retry.data?.session) {
         return NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 });
@@ -188,7 +256,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // Конфликт — найдём по email и обновим пароль
+    // 3) Конфликт: ищем по email и обновляем пароль
     const userId = await getUserIdByEmailREST(supabaseUrl, serviceRole, email);
     if (!userId) {
       return NextResponse.json(
@@ -202,7 +270,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: upd.error?.message || "Password update failed" }, { status: 500 });
     }
 
-    await (admin as any).from("user_profiles").update({ full_name: fullName || null, avatar_url: avatarUrl }).eq("user_id", userId);
+    await (admin as any)
+      .from("user_profiles")
+      .update({ full_name: fullName || null, avatar_url: avatarUrl })
+      .eq("user_id", userId);
 
     const retry2 = await supabase.auth.signInWithPassword({ email, password });
     if (retry2.error || !retry2.data?.session) {
