@@ -1,7 +1,6 @@
 // components/MiniAppRegistrationGate.tsx
-// Добавляет: (1) детект Telegram Mini App, (2) отложенный редирект на мини-регистрацию,
-// (3) фиксированный debug-виджет со статусами (вкл: NEXT_PUBLIC_TMA_DEBUG=1 или ?tma_debug=1),
-// (4) referral больше НЕ обязателен.
+// Детект Telegram Mini App ТОЛЬКО когда есть реальное initData из Telegram,
+// плюс фиксированный debug-виджет. referral не обязателен.
 
 "use client"
 
@@ -14,20 +13,46 @@ declare global {
     Telegram?: {
       WebApp?: {
         platform?: string
-        colorScheme?: string
-        themeParams?: Record<string, unknown>
         version?: string
+        colorScheme?: string
         initData?: string
-        initDataUnsafe?: Record<string, unknown>
-        isExpanded?: boolean
+        initDataUnsafe?: Record<string, any>
         ready: () => void
-        expand: () => void
-        enableClosingConfirmation?: () => void
-        setHeaderColor?: (colorKeyOrHex: string) => void
-        setBackgroundColor?: (hex: string) => void
-        viewportStableHeight?: number
+        expand?: () => void
+        setHeaderColor?: (c: string) => void
+        setBackgroundColor?: (c: string) => void
       }
     }
+  }
+}
+
+function isRunningInTMA(): { ok: boolean; why: string; details: Record<string, any> } {
+  const w = typeof window !== "undefined" ? window : ({} as any)
+  const tg = w.Telegram?.WebApp
+  const ua = (w.navigator?.userAgent || "").toLowerCase()
+
+  const exists = !!tg
+  const initData = (tg?.initData || "").trim()
+  const hasInitData = initData.length > 0
+  const hasSignedUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
+  const platformOk = !!tg?.platform && tg!.platform !== "unknown"
+
+  // ТОЛЬКО реальное initData + user/query_id считаем Mini App
+  const ok = exists && hasInitData && hasSignedUser && platformOk
+
+  return {
+    ok,
+    why: ok
+      ? "tg+initData+user+platform"
+      : `exists=${exists} initData=${hasInitData} userOrQuery=${hasSignedUser} platformOk=${platformOk}`,
+    details: {
+      exists,
+      hasInitData,
+      hasSignedUser,
+      platform: tg?.platform ?? "n/a",
+      version: tg?.version ?? "n/a",
+      ua,
+    },
   }
 }
 
@@ -40,104 +65,58 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const supabase = useMemo(() => createClient(), [])
   const [ready, setReady] = useState(false)
 
-  // --- Debug state (виджет) ---
-  const [debugVisible, setDebugVisible] = useState(false)
-  const [debug, setDebug] = useState<{
-    isMiniApp: boolean
-    platform?: string
-    colorScheme?: string
-    version?: string
-    initDataPresent: boolean
-    userId?: string | null
-    profileOk?: boolean
-    profileMissing?: string[]
-  }>({ isMiniApp: false, initDataPresent: false })
+  const [debugOn, setDebugOn] = useState(false)
+  const [dbg, setDbg] = useState<any>({})
 
   useEffect(() => {
-    // Включение debug-виджета: env или query (?tma_debug=1)
-    const fromEnv = (process.env.NEXT_PUBLIC_TMA_DEBUG || "").toString() === "1"
-    const fromQuery = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tma_debug") === "1"
-    setDebugVisible(fromEnv || fromQuery)
+    const env = (process.env.NEXT_PUBLIC_TMA_DEBUG || "") === "1"
+    const q = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tma_debug") === "1"
+    setDebugOn(env || q)
   }, [])
 
   useEffect(() => {
-    async function check() {
-      const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
-      const isMiniApp = !!tg
+    async function run() {
+      const d = isRunningInTMA()
+      setDbg((p: any) => ({ ...p, detect: d }))
 
-      // Базовая инициализация Mini App (безопасна при повторных вызовах)
-      if (isMiniApp) {
-        try {
-          tg!.ready()
-          tg!.expand?.()
-          tg!.setHeaderColor?.(tg!.colorScheme === "dark" ? "secondary_bg_color" : "#ffffff")
-        } catch {}
-      }
-
-      // Для debug-виджета пока нет данных о пользователе/профиле
-      setDebug((prev) => ({
-        ...prev,
-        isMiniApp,
-        platform: tg?.platform,
-        colorScheme: tg?.colorScheme,
-        version: tg?.version,
-        initDataPresent: !!tg?.initData || !!tg?.initDataUnsafe,
-      }))
-
-      // Если открыто НЕ в Mini App — просто рендерим приложение
-      if (!isMiniApp) {
+      if (!d.ok) {
         setReady(true)
         return
       }
 
-      // Получаем текущую сессию пользователя
-      const { data: { user } } = await supabase.auth.getUser()
-      setDebug((prev) => ({ ...prev, userId: user?.id ?? null }))
+      try {
+        window.Telegram?.WebApp?.ready()
+        window.Telegram?.WebApp?.expand?.()
+        window.Telegram?.WebApp?.setHeaderColor?.(
+          window.Telegram?.WebApp?.colorScheme === "dark" ? "secondary_bg_color" : "#ffffff"
+        )
+      } catch {}
 
-      // Если не авторизован — пропускаем (пусть логика входа выполнится где-то ещё)
+      const { data: { user } } = await supabase.auth.getUser()
+      setDbg((p: any) => ({ ...p, userId: user?.id ?? null }))
+
       if (!user) {
         setReady(true)
         return
       }
 
-      // Считываем профиль пользователя
       const { data: profile, error } = await supabase
         .from("user_profiles")
-        .select(
-          // referral не обязателен
-          "gender, height, weight, top_size, bottom_size, shoe_size"
-        )
+        .select("gender,height,weight,top_size,bottom_size,shoe_size")
         .eq("user_id", user.id)
         .single()
 
-      // Определяем «обязательные» поля профиля для мини-регистрации
-      const required: Array<keyof typeof profile> = [
-        "gender",
-        "height",
-        "weight",
-        "top_size",
-        "bottom_size",
-        "shoe_size",
-      ] as any
-
       const missing: string[] = []
-      if (!error && profile) {
-        for (const k of required) {
-          const v = (profile as any)?.[k]
-          if (v === null || v === undefined || v === "") missing.push(k as string)
-        }
+      if (error || !profile) {
+        missing.push("gender","height","weight","top_size","bottom_size","shoe_size")
       } else {
-        // Если селект вернул error/empty — считаем, что все обязательные поля отсутствуют
-        missing.push(...(required as string[]))
+        for (const k of ["gender","height","weight","top_size","bottom_size","shoe_size"]) {
+          const v = (profile as any)[k]
+          if (v === null || v === undefined || v === "") missing.push(k)
+        }
       }
+      setDbg((p: any) => ({ ...p, profileMissing: missing }))
 
-      setDebug((prev) => ({
-        ...prev,
-        profileOk: missing.length === 0,
-        profileMissing: missing,
-      }))
-
-      // Редирект в мини-регистрацию, только если профиль неполный
       if (missing.length > 0) {
         router.replace("/auth/mini-registration")
         return
@@ -145,35 +124,31 @@ export default function MiniAppRegistrationGate({ children }: Props) {
 
       setReady(true)
     }
+    run()
+  }, [router, supabase])
 
-    check()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router])
-
-  // Фиксированный debug-виджет (показывается поверх всего при включённом флаге)
-  const DebugWidget = () =>
-    !debugVisible ? null : (
+  const Debug = () =>
+    !debugOn ? null : (
       <div
         style={{
           position: "fixed",
           right: 12,
           bottom: 12,
           zIndex: 9999,
-          maxWidth: 320,
+          maxWidth: 340,
           fontSize: 12,
           lineHeight: 1.35,
-          background: "rgba(0,0,0,0.75)",
+          background: "rgba(0,0,0,0.78)",
           color: "#fff",
           borderRadius: 12,
           padding: "10px 12px",
           boxShadow: "0 6px 18px rgba(0,0,0,0.4)",
-          backdropFilter: "blur(2px)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 6 }}>
           <strong>TMA Debug</strong>
           <button
-            onClick={() => setDebugVisible(false)}
+            onClick={() => setDebugOn(false)}
             style={{
               background: "transparent",
               border: "1px solid rgba(255,255,255,0.25)",
@@ -189,33 +164,25 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         </div>
 
         <div style={{ display: "grid", rowGap: 4 }}>
-          <div>isMiniApp: <b>{String(debug.isMiniApp)}</b></div>
-          <div>platform: <b>{debug.platform || "-"}</b></div>
-          <div>colorScheme: <b>{debug.colorScheme || "-"}</b></div>
-          <div>version: <b>{debug.version || "-"}</b></div>
-          <div>initData: <b>{debug.initDataPresent ? "present" : "absent"}</b></div>
-          <div>userId: <b>{debug.userId || "-"}</b></div>
-          <div>profileOk: <b>{debug.profileOk === undefined ? "-" : String(debug.profileOk)}</b></div>
-          {!!debug.profileMissing?.length && (
-            <div>missing: <b>{debug.profileMissing.join(", ")}</b></div>
+          <div>ok: <b>{String(dbg.detect?.ok)}</b></div>
+          <div>why: <b>{dbg.detect?.why || "-"}</b></div>
+          <div>platform: <b>{dbg.detect?.details?.platform || "-"}</b></div>
+          <div>version: <b>{dbg.detect?.details?.version || "-"}</b></div>
+          <div>hasInitData: <b>{String(dbg.detect?.details?.hasInitData)}</b></div>
+          <div>hasSignedUser: <b>{String(dbg.detect?.details?.hasSignedUser)}</b></div>
+          <div>userId: <b>{dbg.userId ?? "-"}</b></div>
+          {!!dbg.profileMissing?.length && (
+            <div>profileMissing: <b>{dbg.profileMissing.join(", ")}</b></div>
           )}
         </div>
       </div>
     )
 
-  if (!ready) {
-    // На время проверки можно (по желанию) вернуть спиннер
-    return (
-      <>
-        <DebugWidget />
-      </>
-    )
-  }
-
+  if (!ready) return <Debug />
   return (
     <>
       {children}
-      <DebugWidget />
+      <Debug />
     </>
   )
 }

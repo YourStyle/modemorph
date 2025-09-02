@@ -24,7 +24,7 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body className={inter.className}>
-      <Script
+        <Script
           src="https://telegram.org/js/telegram-web-app.js"
           strategy="beforeInteractive"
         />
