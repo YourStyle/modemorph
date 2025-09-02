@@ -35,7 +35,7 @@ export async function tmaHandshake(): Promise<User | null> {
     const res = await fetch("/api/auth/telegram/miniapp", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ initData, initDataUnsafe }),
+      body: JSON.stringify({ initData }),
       credentials: "include",
     })
     if (!res.ok) return null

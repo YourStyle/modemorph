@@ -1,6 +1,4 @@
 // app/api/auth/telegram/miniapp/route.ts
-// Обмен initData Telegram Mini App → Supabase-сессия (создание/вход + метаданные).
-
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
@@ -12,21 +10,48 @@ function requireEnv(...keys: string[]) {
   const missing = keys.filter(k => !process.env[k])
   if (missing.length) throw new Error(`Missing env: ${missing.join(", ")}`)
 }
+function isFresh(authDate: number, maxAgeSec = 24 * 60 * 60) {
+  const now = Math.floor(Date.now() / 1000)
+  return authDate > 0 && (now - authDate) <= maxAgeSec
+}
 
-// Проверка подписи initData (сырой querystring), секрет = SHA256(botToken)
-function verifyInitData(raw: string, botToken: string) {
-  const url = new URL("https://dummy.local/?" + raw)             // парсим как query
-  const params = Array.from(url.searchParams.entries())
+type ParsedInit = {
+  dataCheckString: string
+  hash: string
+  authDate: number
+  user: any | null
+}
+
+function parseInitData(raw: string): ParsedInit {
+  // НИЧЕГО не трогаем кроме парсинга query — важно сохранить точные значения
+  const url = new URL("https://dummy.local/?" + raw)
+  const entries = Array.from(url.searchParams.entries())
+
   const hash = url.searchParams.get("hash") || ""
-  const dataPairs = params
+  const authDate = Number(url.searchParams.get("auth_date") || "0")
+
+  // user — это JSON-строка в query; берём её из initData, а не из тела запроса
+  const userStr = url.searchParams.get("user") || ""
+  let user: any = null
+  try { user = userStr ? JSON.parse(userStr) : null } catch {}
+
+  const dataCheckString = entries
     .filter(([k]) => k !== "hash")
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .sort(([a], [b]) => a.localeCompare(b))
     .map(([k, v]) => `${k}=${v}`)
     .join("\n")
 
-  const secret = crypto.createHash("sha256").update(botToken).digest()
-  const hmac = crypto.createHmac("sha256", secret).update(dataPairs).digest("hex")
-  return hmac === hash
+  return { dataCheckString, hash, authDate, user }
+}
+
+function verifyInitData(raw: string, botToken: string) {
+  const { dataCheckString, hash, authDate, user } = parseInitData(raw)
+
+  // ВАЖНО: секрет для Mini Apps — HMAC-SHA256(botToken, key="WebAppData")
+  const secret = crypto.createHmac("sha256", "WebAppData").update(botToken).digest()
+  const hmac = crypto.createHmac("sha256", secret).update(dataCheckString).digest("hex")
+
+  return { ok: hmac === hash, authDate, user }
 }
 
 function derivedPassword(telegramId: string, pepper: string) {
@@ -40,18 +65,16 @@ export async function POST(req: NextRequest) {
       throw new Error("Missing env: SUPABASE_SERVICE_ROLE or SUPABASE_SERVICE_ROLE_KEY")
     }
 
-    // Принимаем либо raw initData, либо initDataUnsafe (как объект)
     const body = await req.json().catch(() => ({}))
     const rawInitData: string = body?.initData || ""
-    const unsafe: any = body?.initDataUnsafe || null
 
-    // Верификация подписи
-    if (!rawInitData || !verifyInitData(rawInitData, process.env.TELEGRAM_BOT_TOKEN!)) {
-      return NextResponse.json({ error: "Invalid initData" }, { status: 401 })
-    }
+    // 1) Верификация подписи + TTL
+    const { ok, authDate, user: initUser } = verifyInitData(rawInitData, process.env.TELEGRAM_BOT_TOKEN!)
+    if (!ok) return NextResponse.json({ error: "Invalid initData" }, { status: 401 })
+    if (!isFresh(authDate)) return NextResponse.json({ error: "Init data expired" }, { status: 401 })
 
-    // Достаём полезные поля пользователя
-    const u = unsafe?.user || {}
+    // 2) Извлекаем пользователя из верифицированного initData
+    const u = initUser || {}
     const tgId = String(u.id || "")
     if (!tgId) return NextResponse.json({ error: "No user in initData" }, { status: 400 })
 
@@ -73,16 +96,14 @@ export async function POST(req: NextRequest) {
       full_name: fullName || null,
     }
 
-    // anon-клиент — для входа
+    // anon-клиент — для входа; service — для админ операций
     const supabase = createClient()
-    // service-клиент — для операций с пользователями и upsert профиля
     const admin = createClient({ role: "service" })
 
-    // Пытаемся войти, если пользователь уже корректно настроен
+    // 3) Быстрый вход, если учётка уже согласована
     {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (!error && data?.session) {
-        // апсерт профиля «на всякий случай»
         try {
           await (admin as any).from("user_profiles").upsert(
             {
@@ -99,7 +120,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Создание пользователя (если нет) с метаданными
+    // 4) Создаём пользователя (или находим и обновляем)
     const { data: created, error: createErr } = await (admin as any).auth.admin.createUser({
       email,
       password,
@@ -107,13 +128,10 @@ export async function POST(req: NextRequest) {
       user_metadata: metadata,
     })
 
-    if (createErr && createErr.status !== 422 /* not "already registered" */) {
-      return NextResponse.json({ error: createErr.message || "createUser failed" }, { status: 500 })
-    }
-
-    const userId =
+    let userId =
       created?.user?.id ??
       (await (async () => {
+        if (createErr && createErr.status !== 422) return null
         const url = `${process.env.SUPABASE_URL!.replace(/\/+$/, "")}/auth/v1/admin/users?email=${encodeURIComponent(email)}`
         const serviceRole = process.env.SUPABASE_SERVICE_ROLE ?? process.env.SUPABASE_SERVICE_ROLE_KEY!
         const resp = await fetch(url, { headers: { apikey: serviceRole, Authorization: `Bearer ${serviceRole}` } })
@@ -127,13 +145,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User lookup failed" }, { status: 500 })
     }
 
-    // Обновляем метаданные и гарантируем пароль
     const upd = await (admin as any).auth.admin.updateUserById(userId, { password, user_metadata: metadata })
     if (upd?.error) {
       return NextResponse.json({ error: upd.error?.message || "updateUser failed" }, { status: 500 })
     }
 
-    // Апсерт профиля
     try {
       await (admin as any).from("user_profiles").upsert(
         {
@@ -147,7 +163,6 @@ export async function POST(req: NextRequest) {
       )
     } catch {}
 
-    // Вход и установка cookie
     const retry = await supabase.auth.signInWithPassword({ email, password })
     if (retry.error || !retry.data?.session) {
       return NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 })
