@@ -1,48 +1,48 @@
 // lib/tma/handshake.ts
-// Унифицированный обмен initData → Supabase-сессия. Возвращает актуального user или null.
+// Обновление: если API вернул session, устанавливаем её на клиенте сразу.
 
 import { createClient } from "@/lib/supabase/client"
 
 declare global {
   interface Window {
-    Telegram?: {
-      WebApp?: {
-        initData?: string
-        initDataUnsafe?: Record<string, any>
-      }
-    }
+    Telegram?: { WebApp?: { initData?: string; initDataUnsafe?: Record<string, any> } }
   }
 }
 
-export async function tmaHandshake(): Promise<import("@supabase/supabase-js").User | null> {
+export async function tmaHandshake() {
   const supabase = createClient()
 
-  // 1) Если уже есть пользователь — просто вернём
+  // Уже авторизован
   try {
     const { data } = await supabase.auth.getUser()
     if (data.user) return data.user
   } catch {}
 
-  // 2) Иначе пытаемся обменять initData на сессию
   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
   const initData = tg?.initData || ""
-  const initDataUnsafe = tg?.initDataUnsafe || {}
-
   if (!initData) return null
 
   try {
     const res = await fetch("/api/auth/telegram/miniapp", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ initData, initDataUnsafe }),
+      body: JSON.stringify({ initData }),
       credentials: "include",
     })
     if (!res.ok) return null
+
+    const js = await res.json().catch(() => ({}))
+    if (js?.session?.access_token && js?.session?.refresh_token) {
+      // Проставляем сессию в клиентском supabase
+      await supabase.auth.setSession({
+        access_token: js.session.access_token,
+        refresh_token: js.session.refresh_token,
+      })
+    }
   } catch {
     return null
   }
 
-  // 3) Повторно читаем пользователя
   try {
     const { data } = await supabase.auth.getUser()
     return data.user ?? null
