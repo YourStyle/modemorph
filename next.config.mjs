@@ -1,15 +1,29 @@
 /** @type {import('next').NextConfig} */
-// Добавляем CSP/headers для Telegram Login Widget + сохраняем текущие опции.
+// CSP с учётом dev-режима: в development добавляем 'unsafe-eval' (и 'wasm-unsafe-eval'),
+// иначе Next/React dev overlay и sourcemaps ломаются под жёстким CSP.
+
 const isProd = process.env.NODE_ENV === "production"
+const isDev = !isProd
+
+const scriptSrc = [
+  "'self'",
+  "'unsafe-inline'",
+  "https://telegram.org",
+  // Разрешаем eval ТОЛЬКО в dev-режиме (для next dev overlay / sourcemaps)
+  isDev ? "'unsafe-eval' 'wasm-unsafe-eval'" : "",
+].filter(Boolean).join(" ")
 
 const csp = [
   "default-src 'self'",
-  "img-src 'self' data: blob: https://telegram.org https://oauth.telegram.org",
+  "base-uri 'self'",
+  "object-src 'none'",
+  `script-src ${scriptSrc}`,
   "style-src 'self' 'unsafe-inline' https://telegram.org",
+  "img-src 'self' data: blob: https://telegram.org https://oauth.telegram.org",
   "font-src 'self' data: https://telegram.org",
-  "script-src 'self' 'unsafe-inline' https://telegram.org",
   "connect-src 'self' https://telegram.org https://oauth.telegram.org",
   "frame-src 'self' https://telegram.org https://oauth.telegram.org",
+  "worker-src 'self' blob:",
 ].join("; ")
 
 const nextConfig = {
@@ -22,9 +36,7 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // В проде отдаем заголовки, чтобы не блокировался iframe/скрипт Telegram
   async headers() {
-    if (!isProd) return []
     return [
       {
         source: "/:path*",
