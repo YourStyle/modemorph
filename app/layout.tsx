@@ -8,7 +8,8 @@ import { Toaster } from "@/components/ui/toaster"
 import { SelectedItemsProvider } from "@/contexts/selected-items-context"
 import { AuthProvider } from "@/contexts/auth-context"
 import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
-import ErudaConsole from "@/components/eruda-console" // Added Eruda console import for mobile debugging
+import ErudaConsole from "@/components/eruda-console"
+import GlobalErrorWire from "@/components/GlobalErrorWire"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -32,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       {/* высота берётся из переменных, которые проставляет официальный скрипт */}
       <body className={`${inter.className} tma-root`}>
         <ErudaConsole />
+        <GlobalErrorWire />
         <AuthProvider>
           <SelectedItemsProvider>
             <MiniAppRegistrationGate>{children}</MiniAppRegistrationGate>

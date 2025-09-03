@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ Analysis completed:", analysisResult)
 
-    // Сохраняем результаты в базу данных
+    // Сохран��ем результаты в базу данных
     const itemsToInsert = analysisResult.items.map((item) => ({
       user_id: userId,
       item_name: item.name,
