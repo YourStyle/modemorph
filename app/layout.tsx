@@ -7,9 +7,7 @@ import "./tma.css" // см. блок CSS ниже
 import { Toaster } from "@/components/ui/toaster"
 import { SelectedItemsProvider } from "@/contexts/selected-items-context"
 import { AuthProvider } from "@/contexts/auth-context"
-// import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
-// import ErudaConsole from "@/components/eruda-console"
-// import GlobalErrorWire from "@/components/GlobalErrorWire"
+import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -34,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.className} tma-root`}>
         <AuthProvider>
           <SelectedItemsProvider>
-            {children}
+            <MiniAppRegistrationGate>{children}</MiniAppRegistrationGate>
             <Toaster />
           </SelectedItemsProvider>
         </AuthProvider>
