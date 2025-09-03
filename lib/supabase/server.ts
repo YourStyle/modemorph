@@ -5,25 +5,43 @@ import { createClient as createAdminClient } from "@supabase/supabase-js"
 
 type Role = "anon" | "service"
 
-function getEnvOrThrow(name: string) {
+function must(name: string) {
   const v = process.env[name]
   if (!v) throw new Error(`Missing env: ${name}`)
   return v
 }
 
-export function createClient(opts?: { role?: Role }) {
-  // ВАЖНО: берём ровно те же значения везде (клиент/сервер)
-  const url = getEnvOrThrow("NEXT_PUBLIC_SUPABASE_URL")
-  const anonKey = getEnvOrThrow("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+export function isSupabaseConfigured(): boolean {
+  try {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  // Для сервиса — отдельный админ-клиент (без куки)
+    return !!(url && anonKey && url.trim() && anonKey.trim())
+  } catch (error) {
+    return false
+  }
+}
+
+export function createClient(opts?: { role?: Role }) {
+  const url = must("NEXT_PUBLIC_SUPABASE_URL")
+  const anonKey = must("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
   if (opts?.role === "service") {
-    const serviceKey = getEnvOrThrow("SUPABASE_SERVICE_ROLE_KEY")
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!serviceKey) throw new Error("Missing env: SUPABASE_SERVICE_ROLE or SUPABASE_SERVICE_ROLE_KEY")
     return createAdminClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   }
 
   const cookieStore = cookies()
   const hdrs = headers()
+  const cookieDomain = ".modemorph.ru"
+  const force: Partial<CookieOptions> = {
+    // В проде:
+    sameSite: "none",
+    secure: true,
+    domain: cookieDomain,
+    path: "/",
+  }
 
   return createServerClient(url, anonKey, {
     cookies: {
@@ -31,10 +49,11 @@ export function createClient(opts?: { role?: Role }) {
         return cookieStore.get(name)?.value
       },
       set(name, value, options: CookieOptions) {
-        cookieStore.set({ name, value, ...options })
+        // Принудительно навешиваем флаги для 3rd-party контекста
+        cookieStore.set({ name, value, ...options, ...force })
       },
       remove(name, options: CookieOptions) {
-        cookieStore.set({ name, value: "", ...options })
+        cookieStore.set({ name, value: "", ...options, ...force })
       },
     },
     headers: {
@@ -42,14 +61,4 @@ export function createClient(opts?: { role?: Role }) {
       "user-agent": hdrs.get("user-agent") ?? undefined,
     },
   })
-}
-
-export function isSupabaseConfigured(): boolean {
-  try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    return !!(url && anonKey)
-  } catch {
-    return false
-  }
 }
