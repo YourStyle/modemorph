@@ -64,8 +64,8 @@ function derivedPassword(telegramId: string, pepper: string) {
 export async function POST(req: NextRequest) {
   try {
     requireEnv("TELEGRAM_BOT_TOKEN", "TELEGRAM_PEPPER", "SUPABASE_URL", "SUPABASE_ANON_KEY")
-    if (!process.env.SUPABASE_SERVICE_ROLE && !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error("Missing env: SUPABASE_SERVICE_ROLE or SUPABASE_SERVICE_ROLE_KEY")
+    if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY")
     }
 
     const body = await req.json().catch(() => ({}))

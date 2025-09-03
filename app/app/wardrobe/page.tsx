@@ -497,7 +497,7 @@ export default function WardrobePage() {
                 </div>
               )}
 
-              {/* Кнопка показать/скрыть все под сеткой */}
+              {/* Кнопка показать/с��рыть все под сеткой */}
               {basicItems.length > 12 && (
                 <div className="flex justify-center mt-6">
                   <Button
