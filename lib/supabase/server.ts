@@ -18,7 +18,7 @@ export function createClient(opts?: { role?: Role }) {
 
   // Для сервиса — отдельный админ-клиент (без куки)
   if (opts?.role === "service") {
-    const serviceKey = getEnvOrThrow("SUPABASE_SERVICE_ROLE") || getEnvOrThrow("SUPABASE_SERVICE_ROLE_KEY")
+    const serviceKey = getEnvOrThrow("SUPABASE_SERVICE_ROLE_KEY")
     return createAdminClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   }
 
