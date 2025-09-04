@@ -124,12 +124,6 @@ export async function POST(req: NextRequest) {
     // anon — для входа (кука); service — для админ-операций
     const supabase = createClient()
     const admin = createClient({ role: "service" })
-
-    // (не обязательно, но безопасно) локально завершим любую сессию,
-    // если helper/клиентское logout не успели или запрос пришёл напрямую
-    try { await supabase.auth.signOut({ scope: "local" }) } catch {}
-
-    // 3) быстрый вход
     {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (!error && data?.session) {
