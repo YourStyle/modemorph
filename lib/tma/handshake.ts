@@ -23,6 +23,9 @@ export async function tmaHandshake(): Promise<User | null> {
   const initData = tg?.initData || ""
   if (!initData) return null
 
+  await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+
+
   try {
     const res = await fetch("/api/auth/telegram/miniapp", {
       method: "POST",
