@@ -118,8 +118,6 @@ export async function POST(req: NextRequest) {
       full_name: fullName || null,
     }
 
-    // anon — для входа (кука); service — для админ-операций
-    const supabase = createClient()
     const admin = createClient({ role: "service" })
 
     // 3) быстрый вход
