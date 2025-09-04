@@ -52,21 +52,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Жёсткий выход + редирект на /auth/login?next=...
   const hardLogout = async () => {
-    if (redirectingRef.current) return;
-    redirectingRef.current = true;
-
-    try {
-      await supabase.auth.signOut();
-    } catch {}
-
-    // Чистим локальный токен Supabase (на всякий случай)
-    try {
-      const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-      const ref = url?.split("//")[1]?.split(".")[0];
-      if (ref) localStorage.removeItem(`sb-${ref}-auth-token`);
-    } catch {}
-
-    setUser(null);
+    if (redirectingRef.current) return
+      redirectingRef.current = true
+      try { await fetch("/api/auth/signout", { method: "POST", credentials: "include" }) } catch {}
+      setUser(null)
 
     if (!onAuthPage() && typeof window !== "undefined") {
       const next = window.location.pathname + window.location.search;
@@ -97,48 +86,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Первичная загрузка пользователя
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        if (!error) {
-          setUser(data.user ?? null);
-          // Любой успешный getUser сбрасывает серию 401
-          resetUnauthorizedSeries();
-        } else {
-          const msg = (error.message || "").toLowerCase();
-          const tokenBroken =
-            msg.includes("refresh_token_not_found") ||
-            msg.includes("invalid refresh token") ||
-            msg.includes("jwt") ||
-            msg.includes("jws");
-          if (tokenBroken) {
-            // Битый токен — сразу чистим и ведём на логин
-            await hardLogout();
-            return;
-          }
-          setUser(null);
+    useEffect(() => {
+      const init = async () => {
+        try {
+          const res = await fetch("/api/auth/me", { credentials: "include" })
+          const json = await res.json().catch(() => null)
+          setUser(json?.user ?? null)        // это уже user из куки-сессии
+          resetUnauthorizedSeries()
+        } catch {
+          setUser(null)
+        } finally {
+          setLoading(false)
         }
-      } catch {
-        // Непредвиденная ошибка чтения — не редиректим немедленно, просто сбрасываем user
-        setUser(null);
-      } finally {
-        setLoading(false);
       }
-    };
-    init();
-
-    // Слушаем изменения сессии Supabase
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
-      setUser(session?.user ?? null);
-      redirectingRef.current = false;
-      // Любое валидное состояние сбрасывает серию 401
-      resetUnauthorizedSeries();
-    });
-
-    return () => sub.subscription.unsubscribe();
-  }, [supabase]);
+      init()
+    }, [])
 
   // ВНИМАНИЕ: Предыдущий «фолбэк-редирект при !user» УДАЛЁН.
   // Теперь вход на /auth/login происходит ТОЛЬКО через hardLogout, который вызывается

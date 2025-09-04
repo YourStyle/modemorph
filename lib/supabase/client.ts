@@ -5,18 +5,18 @@ let supabaseInstance: ReturnType<typeof createBrowserClient<Database>> | null = 
 
 export function createClient() {
   if (!supabaseInstance) {
-    supabaseInstance = createBrowserClient<Database>(
+    supabaseInstance = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         auth: {
-          storage: typeof window !== "undefined" ? window.localStorage : undefined,
-          autoRefreshToken: true,
-          persistSession: true,
-          detectSessionInUrl: true,
-          flowType: "pkce",
+          // ✦ Не держим сессию в localStorage
+          persistSession: false,
+          autoRefreshToken: false,
+          detectSessionInUrl: false,
+          storage: undefined,
         },
-      },
+      }
     )
   }
   return supabaseInstance
