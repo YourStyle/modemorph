@@ -253,7 +253,7 @@ export function TopNavigation() {
     return (
       <>
         <div
-          className="fixed inset-x-0 top-0 z-40 bg-background shadow-sm"
+          className="fixed inset-x-0 top-0 z-40 bg-background"
           // высота = safe-area + наш запас; Telegram X не перекроем, он вне webview
           style={{ height: "calc(env(safe-area-inset-top, 0px) + 90px)", pointerEvents: "auto" }}
         />

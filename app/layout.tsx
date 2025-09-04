@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { SelectedItemsProvider } from "@/contexts/selected-items-context"
 import { AuthProvider } from "@/contexts/auth-context"
 import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
+import TmaBodyClass from "@/components/TmaBodyClass"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -18,22 +19,6 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    const tg = (typeof window !== "undefined" ? (window as any).Telegram?.WebApp : undefined)
-
-    const hasInit = !!tg?.initData && String(tg.initData).trim().length > 0
-    const hasUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
-    const platformOk = !!tg?.platform && tg.platform !== "unknown"
-
-    const inTma = Boolean(tg) && hasInit && hasUser && platformOk
-
-    if (inTma) document.body.classList.add("tma-root")
-    else document.body.classList.remove("tma-root")
-
-    return () => {
-      document.body.classList.remove("tma-root")
-    }
-  }, [])
 
 
   return (
@@ -48,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       {/* высота берётся из переменных, которые проставляет официальный скрипт */}
       <body className={`${inter.className}`}>
+        <TmaBodyClass />
         <AuthProvider>
           <SelectedItemsProvider>
             <MiniAppRegistrationGate>{children}</MiniAppRegistrationGate>
