@@ -253,7 +253,7 @@ export function TopNavigation() {
     return (
       <>
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
-          <div className="mt-[70px] pointer-events-auto">
+          <div className="mt-[90px] pointer-events-auto">
             <button
               onClick={handleProfileClick}
               className="flex items-center gap-2 rounded-full px-4 py-2 bg-background/80 backdrop-blur text-foreground shadow-md"

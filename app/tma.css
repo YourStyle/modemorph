@@ -5,6 +5,7 @@
   min-height: var(--tg-viewport-stable-height, 100svh);
   background: var(--tg-theme-bg-color, #fff);
   padding-bottom: var(--tma-safe, 0px);
+  padding-top: 90px;
 }
 
 /* Отладочный виджет */

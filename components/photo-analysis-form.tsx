@@ -1,19 +1,26 @@
 "use client"
 
 import type React from "react"
-import { RotateCcw } from "lucide-react"
-
-import { useState, useRef, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Upload, X, Loader2, Check, Plus, AlertCircle } from "lucide-react"
 import { AIAssistantLoader } from "@/components/ai-assistant-loader"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { PhotoRegenerationModal } from "./photo-regeneration-modal"
 
+/*
+ * This file defines the PhotoAnalysisForm component, which allows the user to
+ * upload one or two photos of clothing and sends them to an AI service for
+ * analysis. While analysis is running, a smooth progress bar with
+ * inspirational quotes is shown. Once analysis completes, the results are
+ * displayed and can be saved to the user's wardrobe.
+ */
+
+// Types for AI responses and uploaded photos. These match the original
+// definitions from the upstream project.
 interface ResponseItem {
   index: number
   basic_item_id: number | null
@@ -65,168 +72,198 @@ interface PhotoAnalysisResult {
 interface PhotoAnalysisFormProps {
   initialPhotos?: UploadedPhoto[]
   onSuccess?: (payload?: {
-    items: ItemWithImage[]  
-    photos: UploadedPhoto[]   
-    analysisResults: PhotoAnalysisResult[] 
+    items: ItemWithImage[]
+    photos: UploadedPhoto[]
+    analysisResults: PhotoAnalysisResult[]
   }) => void
   onReset?: () => void
 }
 
 export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: PhotoAnalysisFormProps) {
+  // Selected photos for analysis
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
+  // Whether analysis is currently running
   const [loading, setLoading] = useState(false)
+  // Progress value (0–100)
   const [progress, setProgress] = useState(0)
+  // Text describing current progress stage
   const [progressText, setProgressText] = useState("")
+  // Flattened list of all items found
   const [results, setResults] = useState<ItemWithImage[]>([])
+  // Per-photo analysis result objects
   const [analysisResults, setAnalysisResults] = useState<PhotoAnalysisResult[]>([])
+  // Any error message to display
   const [error, setError] = useState<string | null>(null)
+  // Whether the user has already run analysis at least once
   const [hasAnalyzed, setHasAnalyzed] = useState(false)
+  // Whether reanalysis is needed after changing photos
   const [needsReanalysis, setNeedsReanalysis] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  // Ref to the hidden file input element
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  // Regeneration modal state
   const [showRegenerationModal, setShowRegenerationModal] = useState(false)
   const [isFirstTimeRegeneration, setIsFirstTimeRegeneration] = useState(true)
-  const [quoteIndex, setQuoteIndex] = useState(0);
-  const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Автоматически запускаем анализ если есть начальные фото
+  // Quotes shown above the progress bar while analysis runs
+  const quotes = [
+    { text: "Мода проходит, стиль остаётся", author: "Коко Шанель" },
+    { text: "Мода проходит, стиль вечен", author: "Ив Сен-Лоран" },
+    { text: "Элегантность — это не быть замеченным, а быть запомненным", author: "Джорджио Армани" },
+    { text: "То, что вы носите, — это то, как вы представляете себя миру… Мода — мгновенный язык", author: "Миучча Прада" },
+    { text: "Не гонитесь за трендами. Не позволяйте моде владеть вами, решайте сами, кто вы и что хотите выразить своим обликом", author: "Джанни Версаче" },
+    { text: "Счастье — секрет любой красоты. Нет красоты привлекательной без счастья", author: "Кристиан Диор" },
+    { text: "Стиль — очень личное. Он не связан с модой. Мода быстро проходит. Стиль — навсегда", author: "Ральф Лорен" },
+    { text: "Хорошо одеваться — это форма хороших манер", author: "Том Форд" },
+    { text: "Стиль — это способ сказать, кто вы, не произнося ни слова", author: "Рейчел Зои" },
+  ]
+  const [quoteIndex, setQuoteIndex] = useState(0)
+  // Interval refs for rotating quotes and smooth progress updates
+  const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Automatically start analysis when initialPhotos are provided
   useEffect(() => {
     if (initialPhotos && initialPhotos.length > 0 && !hasAnalyzed) {
-      // Ограничиваем до 2 фото
       const limitedPhotos = initialPhotos.slice(0, 2)
       setSelectedFiles(limitedPhotos)
       handleAnalyze(limitedPhotos)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPhotos])
 
+  // Rotate quotes every 5 seconds while loading
+  useEffect(() => {
+    if (loading) {
+      quoteTimerRef.current = setInterval(() => {
+        setQuoteIndex((prev) => (prev + 1) % quotes.length)
+      }, 5000)
+    } else {
+      if (quoteTimerRef.current) {
+        clearInterval(quoteTimerRef.current)
+        quoteTimerRef.current = null
+      }
+      setQuoteIndex(0)
+    }
+    return () => {
+      if (quoteTimerRef.current) {
+        clearInterval(quoteTimerRef.current)
+        quoteTimerRef.current = null
+      }
+    }
+  }, [loading, quotes.length])
+
+  // Clean up progress timer on component unmount
+  useEffect(() => {
+    return () => {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current)
+        progressTimerRef.current = null
+      }
+    }
+  }, [])
+
+  // Handler for selecting files from the hidden input
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length === 0) return
-
-    // Ограничиваем общее количество фото до 2
+    // Limit to 2 files total
     const remainingSlots = 2 - selectedFiles.length
     const filesToAdd = files.slice(0, remainingSlots)
-
     if (filesToAdd.length === 0) {
       setError("Максимум 2 фото для анализа")
       return
     }
-
     const newPhotos: UploadedPhoto[] = filesToAdd.map((file) => ({
       file,
       preview: URL.createObjectURL(file),
       id: Math.random().toString(36).substr(2, 9),
     }))
-
     setSelectedFiles((prev) => [...prev, ...newPhotos])
-
-    // Если уже были результаты, показываем что нужен повторный анализ
     if (results.length > 0) {
       setNeedsReanalysis(true)
     }
-
     setError(null)
-
-    // Очищаем input для возможности повторного выбора тех же файлов
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
   }
 
+  // Remove an uploaded photo
   const removePhoto = (id: string) => {
     setSelectedFiles((prev) => {
-      const photoToRemove = prev.find((p) => p.id === id)
-      if (photoToRemove) {
-        URL.revokeObjectURL(photoToRemove.preview)
+      const toRemove = prev.find((p) => p.id === id)
+      if (toRemove) {
+        URL.revokeObjectURL(toRemove.preview)
       }
-      const newFiles = prev.filter((p) => p.id !== id)
-
-      // Если удалили все фото, полностью сбрасываем состояние
-      if (newFiles.length === 0) {
+      const remaining = prev.filter((p) => p.id !== id)
+      if (remaining.length === 0) {
         setResults([])
         setAnalysisResults([])
         setHasAnalyzed(false)
         setNeedsReanalysis(false)
         setError(null)
-        setLoading(false) // Важно: останавливаем загрузку
+        setLoading(false)
         setProgress(0)
         setProgressText("")
       } else if (results.length > 0) {
-        // Если есть результаты и остались фото, нужен повторный анализ
         setNeedsReanalysis(true)
       }
-
-      return newFiles
+      return remaining
     })
   }
 
+  // Download an image from a URL and re-upload it to our storage
   const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
     try {
-      // Скачиваем изображение
       const response = await fetch(imageUrl)
       if (!response.ok) {
         throw new Error("Failed to download image")
       }
-
       const blob = await response.blob()
       const file = new File([blob], "image.jpg", { type: blob.type })
-
-      // Загружаем в blob storage
       const formData = new FormData()
       formData.append("file", file)
-
       const uploadResponse = await fetch("/api/upload-image", {
         method: "POST",
         body: formData,
       })
-
       if (!uploadResponse.ok) {
         throw new Error("Failed to upload image")
       }
-
       const { url } = await uploadResponse.json()
       return url
     } catch (error) {
       console.error("Error downloading and uploading image:", error)
       throw error
-  }
+    }
   }
 
-
+  // Load images for each item returned by the AI
   const loadBasicItemImages = async (items: ResponseItem[]): Promise<ItemWithImage[]> => {
-        const jobs = items.map(async (item) => {
-          let finalImageUrl = item.image_url || item.img_url
-
-          try {
-            // Если есть внешний img_url — скачиваем и заливаем В ПАРАЛЛЕЛЬ с остальными
-            if (item.img_url && !item.image_url) {
-              finalImageUrl = await downloadAndUploadImage(item.img_url)
-            }
-            // Если есть basic_item_id — тащим картинку базовой вещи
-            else if (item.basic_item_id && !finalImageUrl) {
-              const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
-              if (response.ok) {
-                const basicItem = await response.json()
-                finalImageUrl = basicItem.image_url
-              }
-            }
-          } catch (e) {
-            console.error("Error loading image for item:", item.item_name, e)
+    const jobs = items.map(async (item) => {
+      let finalImageUrl = item.image_url || item.img_url
+      try {
+        if (item.img_url && !item.image_url) {
+          finalImageUrl = await downloadAndUploadImage(item.img_url)
+        } else if (item.basic_item_id && !finalImageUrl) {
+          const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
+          if (response.ok) {
+            const basicItem = await response.json()
+            finalImageUrl = basicItem.image_url
           }
-
-          return { ...item, finalImageUrl }
-        })
-
-        const settled = await Promise.allSettled(jobs)
-
-        // Возвращаем, даже если часть джоб упала — без краша всего результата
-        return settled.map((s, i) =>
-          s.status === "fulfilled"
-            ? s.value
-            : { ...items[i], finalImageUrl: items[i].image_url || items[i].img_url },
-        )
+        }
+      } catch (e) {
+        console.error("Error loading image for item:", item.item_name, e)
+      }
+      return { ...item, finalImageUrl }
+    })
+    const settled = await Promise.allSettled(jobs)
+    return settled.map((s, i) =>
+      s.status === "fulfilled" ? s.value : { ...items[i], finalImageUrl: items[i].image_url || items[i].img_url },
+    )
   }
 
+  // Retrieve the current user's auth token from Supabase
   const getAuthToken = async () => {
     const supabase = createClient()
     const {
@@ -235,20 +272,15 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     return session?.access_token
   }
 
+  // Send a single photo to the AI for analysis
   const analyzePhoto = async (file: File): Promise<PhotoAnalysisResult> => {
     const formData = new FormData()
     formData.append("image", file)
-
-    // Используем переменную окружения для AI API
     const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
-
-    // Добавляем таймаут и улучшенную обработку ошибок
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 минуты
-
+    const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minutes
     try {
       const authToken = await getAuthToken()
-
       const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
         method: "POST",
         body: formData,
@@ -258,9 +290,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
       })
-
       clearTimeout(timeoutId)
-
       if (!response.ok) {
         const errorText = await response.text()
         console.error("AI API Error Response:", errorText)
@@ -271,41 +301,35 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           fileName: file.name,
         }
       }
-
       const data = await response.json()
-      console.log("AI Response:", data)
-
-      // Проверяем, является ли ответ массивом с отклонением
+      // Handle rejection format
       if (Array.isArray(data) && data.length > 0 && data[0].acceptable === false) {
-        const rejectedItem = data[0] as RejectedPhoto
+        const rejected = data[0] as RejectedPhoto
         return {
           success: false,
           items: [],
-          rejectionReason: rejectedItem.reason,
+          rejectionReason: rejected.reason,
           fileName: file.name,
         }
       }
-
-      // Проверяем, является ли ответ массивом с вещами
+      // Handle items format
       if (Array.isArray(data) && data.length > 0 && data[0].item_name) {
-        const itemsWithImages = await loadBasicItemImages(data)
+        const itemsWithImages = await loadBasicItemImages(data as ResponseItem[])
         return {
           success: true,
           items: itemsWithImages,
           fileName: file.name,
         }
       }
-
-      // Если ответ не подходит ни под один формат
+      // Unknown format
       return {
         success: false,
         items: [],
         error: "Не удалось найти вещи на изображении",
         fileName: file.name,
       }
-    } catch (error) {
+    } catch (error: any) {
       clearTimeout(timeoutId)
-
       if (error.name === "AbortError") {
         return {
           success: false,
@@ -314,7 +338,6 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           fileName: file.name,
         }
       }
-
       console.error("AI Analysis Error:", error)
       return {
         success: false,
@@ -325,101 +348,109 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     }
   }
 
-  useEffect(() => {
-    if (loading) {
-      quoteTimerRef.current = setInterval(() => {
-        setQuoteIndex(prev => (prev + 1) % quotes.length);
-      }, 5000);
-    } else {
-      if (quoteTimerRef.current) clearInterval(quoteTimerRef.current);
-      setQuoteIndex(0);
-    }
-    return () => {
-      if (quoteTimerRef.current) clearInterval(quoteTimerRef.current);
-    };
-  }, [loading]);
-
+  // Main handler that analyzes all selected photos
   const handleAnalyze = async (photosToAnalyze?: UploadedPhoto[]) => {
-        const photos = photosToAnalyze || selectedFiles
-        if (photos.length === 0) return
-
-        setLoading(true)
-        setError(null)
-        setHasAnalyzed(true)
-        setNeedsReanalysis(false)
-        setResults([])
-        setAnalysisResults([])
-        setProgress(10)
-        setProgressText(`Анализируем ${photos.length} фото `)
-
+    const photos = photosToAnalyze || selectedFiles
+    if (photos.length === 0) return
+    setLoading(true)
+    setError(null)
+    setHasAnalyzed(true)
+    setNeedsReanalysis(false)
+    setResults([])
+    setAnalysisResults([])
+    setProgress(10)
+    setProgressText(`Анализируем ${photos.length} фото `)
+    try {
+      const total = photos.length
+      // Use 75 so that progress grows smoothly to 85%
+      const step = 75 / total
+      let done = 0
+      // Smooth progress timer: 1 min per photo, 1.5 min for two
+      const duration = total === 1 ? 60000 : 90000
+      const startTime = Date.now()
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current)
+        progressTimerRef.current = null
+      }
+      progressTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime
+        const fraction = Math.min(elapsed / duration, 1)
+        const target = 10 + fraction * 75
+        setProgress((prev) => (target > prev ? target : prev))
+        if (elapsed >= duration && progressTimerRef.current) {
+          clearInterval(progressTimerRef.current)
+          progressTimerRef.current = null
+        }
+      }, 200)
+      // Analyze all photos in parallel
+      const tasks = photos.map(({ file }) =>
+        analyzePhoto(file).finally(() => {
+          done += 1
+          // Ensure progress never decreases and caps at 85
+          setProgress((prev) => {
+            const tentative = 10 + done * step
+            const clamped = Math.min(tentative, 85)
+            return clamped > prev ? clamped : prev
+          })
+          setProgressText(`Готово ${done} из ${total}`)
+        }),
+      )
+      const settled = await Promise.allSettled(tasks)
+      const analysisResults: PhotoAnalysisResult[] = settled.map((s, idx) =>
+        s.status === "fulfilled"
+          ? (s.value as PhotoAnalysisResult)
+          : {
+              success: false,
+              items: [],
+              error: "Ошибка анализа",
+              fileName: photos[idx].file.name,
+            },
+      )
+      // Stop timer and finish progress
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current)
+        progressTimerRef.current = null
+      }
+      setProgress(90)
+      setProgressText("Собираем результаты...")
+      const allSuccessfulItems = analysisResults.flatMap((r) => (r.success ? r.items : []))
+      const failedAnalyses = analysisResults.filter((r) => !r.success)
+      setResults(allSuccessfulItems)
+      setAnalysisResults(analysisResults)
+      if (allSuccessfulItems.length > 0) {
         try {
-          const total = photos.length
-          const step = 60 / total
-          let done = 0
-
-          // Запускаем все анализы параллельно; каждый завершившийся двигает прогресс
-          const tasks = photos.map(({ file }) =>
-            analyzePhoto(file).finally(() => {
-              done += 1
-              setProgress((prev) => Math.min(10 + done * step, 85))
-              setProgressText(`Готово ${done} из ${total}`)
-            }),
-          )
-
-          const settled = await Promise.allSettled(tasks)
-
-          const analysisResults: PhotoAnalysisResult[] = settled.map((s, idx) =>
-            s.status === "fulfilled"
-              ? s.value
-              : {
-                  success: false,
-                  items: [],
-                  error: "Ошибка анализа",
-                  fileName: photos[idx].file.name,
-                },
-          )
-
-          setProgress(90)
-          setProgressText("Собираем результаты...")
-
-          const allSuccessfulItems = analysisResults.flatMap((r) => (r.success ? r.items : []))
-          const failedAnalyses = analysisResults.filter((r) => !r.success)
-
-          setResults(allSuccessfulItems)
-          setAnalysisResults(analysisResults)
-
-          if (allSuccessfulItems.length > 0) {
-            try {
-              onSuccess?.({ items: allSuccessfulItems, photos, analysisResults })
-            } catch {}
-          }
-
-          if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {
-            setError("Не удалось проанализировать ни одно изображение")
-          }
-
-          setProgress(100)
-          setProgressText("Готово!")
-
-          setTimeout(() => {
-            setLoading(false)
-            setProgress(0)
-            setProgressText("")
-          }, 800)
-        } catch (error) {
-          console.error("Analysis error:", error)
-          setError("Произошла ошибка при анализе фото")
-          setLoading(false)
-          setProgress(0)
-          setProgressText("")
+          onSuccess?.({ items: allSuccessfulItems, photos, analysisResults })
+        } catch {
+          /* noop */
         }
       }
+      if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {
+        setError("Не удалось проанализировать ни одно изображение")
+      }
+      setProgress(100)
+      setProgressText("Готово!")
+      setTimeout(() => {
+        setLoading(false)
+        setProgress(0)
+        setProgressText("")
+      }, 800)
+    } catch (err) {
+      console.error("Analysis error:", err)
+      setError("Произошла ошибка при анализе фото")
+      setLoading(false)
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current)
+        progressTimerRef.current = null
+      }
+      setProgress(0)
+      setProgressText("")
+    }
+  }
 
+  // Save a single item to the user's wardrobe
   const handleSaveItem = async (item: ItemWithImage, index: number) => {
     try {
-      // Обновляем состояние - показываем что добавляем
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: true } : r)))
-
       const itemData = {
         item_name: item.item_name,
         material: item.material,
@@ -431,7 +462,6 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         image_url: item.finalImageUrl,
         basic_item_id: item.basic_item_id,
       }
-
       const response = await fetch("/api/wardrobe-user-items", {
         method: "POST",
         headers: {
@@ -439,53 +469,42 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         },
         body: JSON.stringify(itemData),
       })
-
       if (!response.ok) {
         throw new Error("Ошибка сохранения вещи")
       }
-
-      // Обновляем состояние - показываем что добавлено
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false, isAdded: true } : r)))
     } catch (error) {
       console.error("Error saving item:", error)
-      // Сбрасываем состояние при ошибке
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false } : r)))
     }
   }
 
+  // Clear all state and start over
   const handleClear = () => {
-    // Освобождаем URL объекты
     selectedFiles.forEach((photo) => {
       URL.revokeObjectURL(photo.preview)
     })
-
-    // Полностью сбрасываем все состояния
     setSelectedFiles([])
     setResults([])
     setAnalysisResults([])
     setError(null)
     setHasAnalyzed(false)
-    setLoading(false) // Важно: останавливаем загрузку
+    setLoading(false)
     setNeedsReanalysis(false)
     setProgress(0)
     setProgressText("")
-
-    // Очищаем input
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
-
-    // Вызываем callback для родительского компонента
     onReset?.()
   }
 
+  // Regenerate an image through the AI service
   const handleRegenerate = async (file: File) => {
     const formData = new FormData()
     formData.append("image", file)
-
     const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
     const authToken = await getAuthToken()
-
     const response = await fetch(`${aiApiUrl}/regenerate`, {
       method: "POST",
       body: formData,
@@ -494,14 +513,11 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         ...(authToken && { Authorization: `Bearer ${authToken}` }),
       },
     })
-
     if (!response.ok) {
       throw new Error("Regeneration failed")
     }
-
     const blob = await response.blob()
     const imageUrl = URL.createObjectURL(blob)
-
     return {
       imageUrl,
       item_name: "Улучшенная вещь",
@@ -514,17 +530,15 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
 
   const openRegenerationModal = () => {
     setShowRegenerationModal(true)
-    // Check if user has used regeneration before (could be stored in localStorage)
-    const hasUsedRegeneration = localStorage.getItem("hasUsedRegeneration")
-    setIsFirstTimeRegeneration(!hasUsedRegeneration)
+    const hasUsed = localStorage.getItem("hasUsedRegeneration")
+    setIsFirstTimeRegeneration(!hasUsed)
   }
-
   const closeRegenerationModal = () => {
     setShowRegenerationModal(false)
-    // Mark that user has used regeneration
     localStorage.setItem("hasUsedRegeneration", "true")
   }
 
+  // The loader displayed while analysis runs
   const ProgressLoader = () => (
     <div className="flex flex-col items-center space-y-4 py-6">
       <div className="text-center">
@@ -551,252 +565,151 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         </div>
       </div>
     </div>
-  );
+  )
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="space-y-4 p-4">
-        {/* Header with Clear Button - показываем только если есть результаты или фото */}
-        {(hasAnalyzed || selectedFiles.length > 0) && !loading && (
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-semibold text-white">
-              {selectedFiles.length > 0 ? "Анализ фото" : "Результаты анализа"}
-            </h3>
-            <Button variant="outline" size="sm" onClick={handleClear}>
-              <X className="h-3 w-3 mr-1" />
-              Очистить
+    <div className="space-y-6">
+      {/* Header with clear button */}
+      {(hasAnalyzed || selectedFiles.length > 0) && !loading && (
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">
+            {selectedFiles.length > 0 ? "Анализ фото" : "Результаты анализа"}
+          </h2>
+          <Button variant="outline" size="sm" onClick={handleClear}>Очистить</Button>
+        </div>
+      )}
+      {/* Photos section */}
+      {selectedFiles.length > 0 && !loading && (
+        <div className="space-y-4">
+          <p className="font-medium">Загруженные фото ({selectedFiles.length})</p>
+          <div className="grid grid-cols-2 gap-4">
+            {selectedFiles.map((photo) => (
+              <div key={photo.id} className="relative border rounded-md overflow-hidden">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.preview}
+                  alt="Предпросмотр"
+                  className="w-full h-40 object-cover"
+                  onError={() => {
+                    console.error("Image load error")
+                    removePhoto(photo.id)
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => removePhoto(photo.id)}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+          {selectedFiles.length < 2 && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Plus className="w-4 h-4 mr-2" /> Добавить еще
             </Button>
-          </div>
-        )}
-
-        {/* Photos Section - показываем только если есть фото и не загружаем */}
-        {selectedFiles.length > 0 && !loading && (
-          <Card>
-            <CardContent className="p-4">
-              <div className="space-y-3">
-                <h4 className="text-sm font-medium">Загруженные фото ({selectedFiles.length})</h4>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {selectedFiles.map((photo) => (
-                    <div key={photo.id} className="relative group">
-                      <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                        <img
-                          src={photo.preview || "/placeholder.svg"}
-                          alt="Preview"
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            console.error("Image load error:", e)
-                            // Удаляем фото с битой ссылкой
-                            removePhoto(photo.id)
-                          }}
-                        />
-                      </div>
-                      <button
-                        onClick={() => removePhoto(photo.id)}
-                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-
-                  {/* Add More Button - показываем только если меньше 2 фото */}
-                  {selectedFiles.length < 2 && (
-                    <div className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/heic,image/heif,image/heic-sequence,image/jpeg,image/jpg,image/webp,image/png"
-                        onChange={handleFileSelect}
-                        className="hidden"
-                        multiple
-                      />
-                      <label
-                        htmlFor="file-upload"
-                        className="cursor-pointer flex flex-col items-center justify-center space-y-1 p-4 text-center"
-                        onClick={() => fileInputRef.current?.click()}
-                      >
-                        <Plus className="h-6 w-6 text-gray-400" />
-                        <span className="text-xs text-gray-600">Добавить еще</span>
-                      </label>
-                    </div>
-                  )}
-                </div>
-
-                {/* Кнопка анализа - показываем если не анализировали или нужен повторный анализ */}
-                {(!hasAnalyzed || needsReanalysis) && selectedFiles.length > 0 && (
-                  <Button onClick={() => handleAnalyze()} disabled={loading} className="w-full" size="sm">
-                    {loading ? (
-                      <>
-                        <Loader2 className="h-3 w-3 mr-2 animate-spin" />
-                        Анализируем...
-                      </>
-                    ) : (
-                      `Найти вещи на ${selectedFiles.length} ${selectedFiles.length === 1 ? "фото" : "фото"}`
-                    )}
-                  </Button>
-                )}
-
-                {error && <div className="text-red-600 text-xs bg-red-50 p-2 rounded-lg">{error}</div>}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Upload Section - показываем только если нет фото и не загружаем */}
-        {selectedFiles.length === 0 && !loading && (
-          <Card>
-            <CardContent className="p-4">
-              <div className="space-y-3">
-                <h3 className="text-base font-semibold">Загрузить фото одежды</h3>
-                <p className="text-xs text-gray-500">Максимум 2 фото для анализа</p>
-
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/heic,image/heif,image/heic-sequence,image/jpeg,image/jpg,image/webp,image/png"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    multiple
-                  />
-                  <label
-                    htmlFor="file-upload"
-                    className="cursor-pointer flex flex-col items-center justify-center space-y-2"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload className="h-6 w-6 text-gray-400" />
-                    <span className="text-xs text-gray-600 text-center">
-                      Нажмите для выбора фото
-                      <br />
-                      <span className="text-gray-500">HEIC, JPEG, JPG, WebP, PNG</span>
-                    </span>
-                  </label>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Loading Section - показываем только когда идет загрузка */}
-        {loading && <ProgressLoader />}
-
-        {/* Analysis Results Section - показываем ошибки и отклонения */}
-        {!loading && hasAnalyzed && analysisResults.length > 0 && (
-          <div className="space-y-3">
-            {analysisResults.some((result) => !result.success) && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-white">Проблемы с анализом</h4>
-                {analysisResults.map((result, index) => {
-                  if (result.success) return null
-
-                  return (
-                    <Card key={index} className="border-orange-200 bg-orange-50">
-                      <CardContent className="p-3">
-                        <div className="flex items-start gap-2">
-                          <AlertCircle className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-orange-800">
-                              Фото #{index + 1}: {result.fileName}
-                            </p>
-                            <p className="text-xs text-orange-600 mt-1">{result.rejectionReason || result.error}</p>
-                            {result.rejectionReason && (
-                              <p className="text-xs text-orange-500 mt-1">Попробуйте загрузить другое изображение</p>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Results Section - показываем только если есть результаты и не загружаем */}
-        {!loading && results.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="text-base font-semibold text-white">Найденные вещи ({results.length})</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-              {results.map((item, index) => (
-                <Card key={index} className="overflow-hidden">
-                  <CardContent className="p-3">
-                    {/* Изображение */}
-                    <div className="aspect-square mb-3 bg-gray-50 rounded-lg overflow-hidden relative">
-                      {item.finalImageUrl ? (
-                        <Image
-                          src={item.finalImageUrl || "/placeholder.svg"}
-                          alt={item.item_name}
-                          fill
-                          className="object-cover"
-                          sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <span className="text-3xl">👕</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Информация */}
-                    <div className="space-y-2">
-                      <h4 className="font-medium text-sm line-clamp-2 min-h-[2.5rem]">{item.item_name}</h4>
-
-                      <div className="flex flex-wrap gap-1">
-                        {item.basic_item_id && (
-                          <Badge variant="default" className="text-xs px-1 py-0">
-                            Базовая
-                          </Badge>
-                        )}
-                        <Badge variant="secondary" className="text-xs px-1 py-0">
-                          {item.material}
-                        </Badge>
-                        {item.shade && (
-                          <Badge variant="outline" className="text-xs px-1 py-0">
-                            {item.shade}
-                          </Badge>
-                        )}
-                      </div>
-
-                      <Button
-                        onClick={() => handleSaveItem(item, index)}
-                        disabled={item.isAdding || item.isAdded}
-                        className="w-full h-8 text-xs"
-                        variant={item.isAdded ? "secondary" : "default"}
-                        size="sm"
-                      >
-                        {item.isAdding ? (
-                          <>
-                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                            Добавляем...
-                          </>
-                        ) : item.isAdded ? (
-                          <>
-                            <Check className="h-3 w-3 mr-1" />
-                            Добавлено
-                          </>
-                        ) : (
-                          "Добавить"
-                        )}
-                      </Button>
-
-                      {/* Regeneration Button */}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+          )}
+          {(!hasAnalyzed || needsReanalysis) && selectedFiles.length > 0 && (
+            <Button type="button" onClick={() => handleAnalyze()} disabled={loading} className="w-full" size="sm">
+              {loading ? "Анализируем..." : `Найти вещи на ${selectedFiles.length} ${selectedFiles.length === 1 ? "фото" : "фото"}`}
+            </Button>
+          )}
+          {error && (
+            <div className="text-red-600 text-sm flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" /> {error}
             </div>
-          </div>
-        )}
-
-        {/* Regeneration Modal */}
+          )}
+        </div>
+      )}
+      {/* Upload section */}
+      {selectedFiles.length === 0 && !loading && (
+        <div className="flex flex-col items-center justify-center space-y-4 p-8 border rounded-md">
+          <Upload className="w-8 h-8 text-gray-500" />
+          <p className="font-medium">Загрузить фото одежды</p>
+          <p className="text-sm text-gray-500">Максимум 2 фото для анализа</p>
+          <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+            <Plus className="w-4 h-4 mr-2" /> Нажмите для выбора фото
+          </Button>
+          <p className="text-xs text-gray-400">HEIC, JPEG, JPG, WebP, PNG</p>
+        </div>
+      )}
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        multiple
+        onChange={handleFileSelect}
+      />
+      {/* Loading section */}
+      {loading && <ProgressLoader />}
+      {/* Error and rejection messages after analysis */}
+      {!loading && hasAnalyzed && analysisResults.some((r) => !r.success) && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-lg">Проблемы с анализом</h3>
+          {analysisResults.map((result, index) => {
+            if (result.success) return null
+            return (
+              <div key={index} className="border rounded-md p-4">
+                <p className="font-medium">Фото #{index + 1}: {result.fileName}</p>
+                <p className="text-sm text-red-600">{result.rejectionReason || result.error}</p>
+                {result.rejectionReason && <p className="text-sm text-gray-500">Попробуйте загрузить другое изображение</p>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+      {/* Results section */}
+      {!loading && results.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="font-semibold text-lg">Найденные вещи ({results.length})</h3>
+          {results.map((item, index) => (
+            <Card key={index} className="overflow-hidden">
+              <CardContent className="flex flex-col sm:flex-row gap-4 p-4">
+                {/* Image */}
+                {item.finalImageUrl ? (
+                  <Image src={item.finalImageUrl} alt={item.item_name} width={100} height={100} className="rounded-md object-cover" />
+                ) : (
+                  <div className="w-24 h-24 bg-gray-100 rounded-md flex items-center justify-center text-3xl">👕</div>
+                )}
+                {/* Info */}
+                <div className="flex-1 space-y-2">
+                  <p className="font-semibold">{item.item_name}</p>
+                  {item.basic_item_id && <Badge>Базовая</Badge>}
+                  <p className="text-sm">{item.material}</p>
+                  {item.shade && <p className="text-sm text-gray-500">{item.shade}</p>}
+                </div>
+                {/* Actions */}
+                <div className="flex flex-col gap-2 items-stretch">
+                  <Button
+                    onClick={() => handleSaveItem(item, index)}
+                    disabled={item.isAdding || item.isAdded}
+                    variant={item.isAdded ? "secondary" : "default"}
+                    size="sm"
+                    className="w-full"
+                  >
+                    {item.isAdding ? "Добавляем..." : item.isAdded ? "Добавлено" : "Добавить"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+      {/* Regeneration modal */}
+      {showRegenerationModal && (
         <PhotoRegenerationModal
           isOpen={showRegenerationModal}
-          onClose={closeRegenerationModal}
-          onRegenerate={handleRegenerate}
           isFirstTime={isFirstTimeRegeneration}
+          onClose={closeRegenerationModal}
         />
-      </div>
+      )}
     </div>
   )
 }
