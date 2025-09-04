@@ -19,7 +19,7 @@ export async function tmaHandshake(): Promise<User | null> {
   const supabase = createClient()
 
   // 1) Если уже есть пользователь — просто вернём
-   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
+  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
   const initData = tg?.initData || ""
   if (!initData) return null
 
