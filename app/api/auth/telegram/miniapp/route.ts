@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic"
 import { type NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@/lib/supabase/server"
+import { attachSupabaseCookieClears } from "@/lib/clear-supabase-cookies"
 
 function requireEnv(...keys: string[]) {
   const miss = keys.filter(k => !process.env[k])
@@ -62,25 +63,33 @@ function derivedPassword(telegramId: string, pepper: string) {
 }
 
 export async function POST(req: NextRequest) {
+  let bootstrap = attachSupabaseCookieClears(NextResponse.json({ bootstrap: true }))
+  
   try {
     requireEnv("TELEGRAM_BOT_TOKEN", "TELEGRAM_PEPPER", "SUPABASE_URL", "SUPABASE_ANON_KEY")
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY")
+      const res = attachSupabaseCookieClears(NextResponse.json({ error: "Missing env: SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 }))
+      return res
     }
 
     const body = await req.json().catch(() => ({}))
     const rawInitData: string = body?.initData || ""
-    if (!rawInitData) return NextResponse.json({ error: "No initData" }, { status: 400 })
+    if (!rawInitData) {
+      const res = attachSupabaseCookieClears(NextResponse.json({ error: "No initData" }, { status: 400 }))
+      return res
+    }
 
     // 1) verify + TTL
     const { ok, authDate, user: initUser } = verifyInitData(rawInitData, process.env.TELEGRAM_BOT_TOKEN!)
-    if (!ok) return NextResponse.json({ error: "Invalid initData" }, { status: 401 })
-    if (!isFresh(authDate)) return NextResponse.json({ error: "Init data expired" }, { status: 401 })
+    if (!ok)  return attachSupabaseCookieClears(NextResponse.json({ error: "Invalid initData" }, { status: 401 }))
+    if (!isFresh(authDate)) return attachSupabaseCookieClears(NextResponse.json({ error: "Init data expired" }, { status: 401 }))
+
 
     // 2) user из проверенного initData
     const u = initUser || {}
     const tgId = String(u.id || "")
-    if (!tgId) return NextResponse.json({ error: "No user in initData" }, { status: 400 })
+    if (!tgId) return attachSupabaseCookieClears(NextResponse.json({ error: "No user in initData" }, { status: 400 }))
+
 
     const email = `${tgId}@telegram.local`
     const password = derivedPassword(tgId, process.env.TELEGRAM_PEPPER!)
@@ -114,8 +123,11 @@ export async function POST(req: NextRequest) {
           { onConflict: "user_id" }
         )
         // не молчим о серверной ошибке
-        if (upErr) return NextResponse.json({ error: `profile upsert failed: ${upErr.message}` }, { status: 500 })
-        return NextResponse.json({ success: true })
+               if (upErr) {
+          // даже при ошибке профиля вернём Set-Cookie с чисткой и текстом ошибки
+          return attachSupabaseCookieClears(NextResponse.json({ error: `profile upsert failed: ${upErr.message}` }, { status: 500 }))
+        }
+        return attachSupabaseCookieClears(NextResponse.json({ success: true }))
       }
     }
 
@@ -137,16 +149,22 @@ export async function POST(req: NextRequest) {
         return obj?.id ?? null
       })())
 
-    if (!userId) return NextResponse.json({ error: "User lookup failed" }, { status: 500 })
+    if (!userId) return attachSupabaseCookieClears(NextResponse.json({ error: "User lookup failed" }, { status: 500 }))
 
     const upd = await (admin as any).auth.admin.updateUserById(userId, { password, user_metadata: metadata })
     if ((upd as any)?.error) {
-      return NextResponse.json({ error: (upd as any).error?.message || "updateUser failed" }, { status: 500 })
+      return attachSupabaseCookieClears(NextResponse.json({ error: (upd as any).error?.message || "updateUser failed" }, { status: 500 }))
     }
 
-    const { error: upErr2 } = await (admin as any).from("user_profiles").upsert(
+    const retry = await supabase.auth.signInWithPassword({ email, password })
+    if (retry.error || !retry.data?.session) {
+      return attachSupabaseCookieClears(NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 }))
+    }
+
+    const uid2 = retry.data.user?.id ?? retry.data.session?.user?.id
+    const { error: upErr2 } = await supabase.from("user_profiles").upsert(
       {
-        user_id: userId,
+        user_id: uid2,
         is_admin: false,
         full_name: fullName,
         avatar_url: u.photo_url ?? null,
@@ -154,15 +172,10 @@ export async function POST(req: NextRequest) {
       },
       { onConflict: "user_id" }
     )
-    if (upErr2) return NextResponse.json({ error: `profile upsert failed: ${upErr2.message}` }, { status: 500 })
+    if (upErr2) return attachSupabaseCookieClears(NextResponse.json({ error: `profile upsert failed: ${upErr2.message}` }, { status: 500 }))
 
-    const retry = await supabase.auth.signInWithPassword({ email, password })
-    if (retry.error || !retry.data?.session) {
-      return NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 })
-    }
-
-    return NextResponse.json({ success: true })
+    return attachSupabaseCookieClears(NextResponse.json({ success: true }))
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 })
+    return attachSupabaseCookieClears(NextResponse.json({ error: e?.message || "Server error" }, { status: 500 }))
   }
 }
