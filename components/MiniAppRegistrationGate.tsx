@@ -55,21 +55,14 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const supabase = useMemo(() => createClient(), [])
   const [ready, setReady] = useState(false)
 
-  // debug
-  const [dbgOn, setDbgOn] = useState(false)
-  const [status, setStatus] = useState({
-    isMiniApp: false,
-    fullscreenRequested: false,
-    fullscreenGranted: false,
-    platform: "-",
-    version: "-",
+  const [status, setStatus] = useState({ 
+    isMiniApp: false, 
+    fullscreenRequested: false, 
+    fullscreenGranted: false, 
+    platform: "-", 
+    version: "-", 
   })
 
-  useEffect(() => {
-    const env = (process.env.NEXT_PUBLIC_TMA_DEBUG || "") === "1"
-    const q = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tma_debug") === "1"
-    setDbgOn(env || q)
-  }, [])
 
   const fsTried = useRef(false)
   const askFullscreen = (tg: NonNullable<typeof window.Telegram>["WebApp"]) => {
@@ -136,34 +129,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     }
   }, [router, supabase, pathname])
 
-  const Debug = () =>
-    !dbgOn ? null : (
-      <div className="tma-debug">
-        <div className="tma-debug__row">
-          <b>TMA Debug</b>
-          <button className="tma-debug__btn" onClick={() => setDbgOn(false)}>
-            hide
-          </button>
-        </div>
-        <div className="tma-debug__grid">
-          <div>
-            isMiniApp: <b>{String(status.isMiniApp)}</b>
-          </div>
-          <div>
-            platform: <b>{status.platform}</b>
-          </div>
-          <div>
-            version: <b>{status.version}</b>
-          </div>
-          <div>
-            fullscreenRequested: <b>{String(status.fullscreenRequested)}</b>
-          </div>
-          <div>
-            fullscreenGranted: <b>{String(status.fullscreenGranted)}</b>
-          </div>
-        </div>
-      </div>
-    )
 
   if (!ready) {
     return (
@@ -175,7 +140,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   return (
     <>
       {children}
-      <Debug />
     </>
   )
 }

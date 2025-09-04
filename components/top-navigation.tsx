@@ -29,6 +29,8 @@ export function TopNavigation() {
   const [weatherLoading, setWeatherLoading] = useState(true)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
 
+  const [isTmaIos, setIsTmaIos] = useState(false)
+
   const supabase = createClient()
 
   useEffect(() => {
@@ -41,6 +43,29 @@ export function TopNavigation() {
     loadUserProfile()
     loadWeather()
   }, [])
+
+  useEffect(() => {
+    try {
+      const tg = typeof window !== "undefined"
+        ? (window as any).Telegram?.WebApp
+        : undefined
+      const hasInit =
+        !!tg?.initData && String(tg.initData).trim().length > 0
+      const hasUser =
+        !!tg?.initDataUnsafe?.user?.id ||
+        !!tg?.initDataUnsafe?.query_id
+      const platform = String(tg?.platform || "").toLowerCase()
+      const inTma =
+        hasInit && hasUser && platform && platform !== "unknown"
+      const isIos = /ios/.test(platform)
+      if (inTma && isIos) {
+        setIsTmaIos(true)
+      }
+    } catch {
+      // игнорируем ошибки определения
+    }
+  }, [])
+
 
   const updateDateTime = () => {
     const now = new Date()
@@ -222,6 +247,59 @@ export function TopNavigation() {
 
   const handleProfileClick = () => {
     setIsProfileSheetOpen(true)
+  }
+
+    if (isTmaIos) {
+    return (
+      <>
+        <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
+          <div className="mt-[70px] pointer-events-auto">
+            <button
+              onClick={handleProfileClick}
+              className="flex items-center gap-2 rounded-full px-4 py-2 bg-background/80 backdrop-blur text-foreground shadow-md"
+            >
+              {/* Дата */}
+              <span className="text-sm font-medium whitespace-nowrap">
+                {currentDate}
+              </span>
+              {/* Компактная погода: отображать только после загрузки */}
+              {weather && !weatherLoading && (
+                <>
+                  <span className="text-sm">{weather.icon}</span>
+                  <span className="text-sm font-medium whitespace-nowrap">
+                    {weather.temperature}°C
+                  </span>
+                </>
+              )}
+              {/* Время */}
+              <span className="text-sm font-medium whitespace-nowrap">
+                {currentTime}
+              </span>
+              {/* Аватар профиля */}
+              {profile && (
+                <Avatar className="w-6 h-6 ml-2">
+                  <AvatarImage
+                    src={profile.avatar_url ?? undefined}
+                    alt={profile.full_name ?? "User"}
+                  />
+                  <AvatarFallback>
+                    {profile.full_name
+                      ? profile.full_name.charAt(0).toUpperCase()
+                      : "U"}
+                  </AvatarFallback>
+                </Avatar>
+              )}
+            </button>
+          </div>
+        </div>
+        {/* Существующий лист профиля для настроек пользователя */}
+        <UserProfileSheet
+          open={isProfileSheetOpen}
+          onOpenChange={setIsProfileSheetOpen}
+          onSignOut={handleSignOut}
+        />
+      </>
+    )
   }
 
   return (

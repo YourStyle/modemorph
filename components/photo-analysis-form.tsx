@@ -85,6 +85,9 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [showRegenerationModal, setShowRegenerationModal] = useState(false)
   const [isFirstTimeRegeneration, setIsFirstTimeRegeneration] = useState(true)
+  const [quoteIndex, setQuoteIndex] = useState(0);
+  const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Автоматически запускаем анализ если есть начальные фото
   useEffect(() => {
@@ -322,6 +325,20 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     }
   }
 
+  useEffect(() => {
+    if (loading) {
+      quoteTimerRef.current = setInterval(() => {
+        setQuoteIndex(prev => (prev + 1) % quotes.length);
+      }, 5000);
+    } else {
+      if (quoteTimerRef.current) clearInterval(quoteTimerRef.current);
+      setQuoteIndex(0);
+    }
+    return () => {
+      if (quoteTimerRef.current) clearInterval(quoteTimerRef.current);
+    };
+  }, [loading]);
+
   const handleAnalyze = async (photosToAnalyze?: UploadedPhoto[]) => {
         const photos = photosToAnalyze || selectedFiles
         if (photos.length === 0) return
@@ -509,38 +526,32 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   }
 
   const ProgressLoader = () => (
-    <div className="space-y-6">
-      <div className="text-center py-6">
-        <div className="flex justify-center mb-4">
-          <AIAssistantLoader size={48} />
-        </div>
-        <h3 className="text-lg font-semibold text-white mb-2">ИИ анализирует ваши фото</h3>
-        <p className="text-gray-400 text-sm mb-4">
+    <div className="flex flex-col items-center space-y-4 py-6">
+      <div className="text-center">
+        <h2 className="text-lg font-semibold">ИИ анализирует ваши фото</h2>
+        <p className="text-sm text-gray-500">
           Наш искусственный интеллект распознает одежду на изображениях
-          <br />и подберет подходящие вещи для вашего гардероба
+          и подберет подходящие вещи для вашего гардероба
         </p>
-
-        {/* Прогресс бар с градиентом */}
-        <div className="w-full max-w-md mx-auto space-y-3">
-          <div className="relative">
-            <Progress value={progress} className="h-3 bg-gray-700" />
-            <div
-              className="absolute top-0 left-0 h-3 rounded-full transition-all duration-500 ease-out"
-              style={{
-                width: `${progress}%`,
-                background: "linear-gradient(90deg, #8B5CF6 0%, #A855F7 25%, #C084FC 50%, #E879F9 75%, #F0ABFC 100%)",
-              }}
-            />
-          </div>
-
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-gray-400">{progressText}</span>
-            <span className="text-white font-medium">{Math.round(progress)}%</span>
-          </div>
+      </div>
+      <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md max-w-md w-full text-center shadow">
+        <p className="italic">"{quotes[quoteIndex].text}"</p>
+        <p className="mt-2 font-medium">— {quotes[quoteIndex].author}</p>
+      </div>
+      <div className="w-full">
+        <div className="relative h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-all"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+        <div className="flex justify-between text-xs mt-2">
+          <span>{progressText}</span>
+          <span>{Math.round(progress)}%</span>
         </div>
       </div>
     </div>
-  )
+  );
 
   return (
     <div className="h-full overflow-y-auto">
