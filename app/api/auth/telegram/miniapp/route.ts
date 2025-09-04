@@ -23,28 +23,6 @@ type ParsedInit = {
   user: any | null
 }
 
-
-function serverSupabase() {
-  const cookieStore = cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get: (name: string) => cookieStore.get(name)?.value,
-        set: (name: string, value: string, options: CookieOptions) =>
-          cookieStore.set({ name, value, ...options }),
-        remove: (name: string, options: CookieOptions) =>
-          cookieStore.set({ name, value: "", ...options }),
-      },
-      cookieOptions: {
-        domain: ".modemorph.ru",
-        name: "sb", sameSite: "none",
-      },
-    }
-  )
-}
-
 function parseInitData(raw: string): ParsedInit {
   const url = new URL("https://dummy.local/?" + raw)
   const entries = Array.from(url.searchParams.entries())
@@ -84,7 +62,6 @@ function derivedPassword(telegramId: string, pepper: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = serverSupabase()
   try {
     requireEnv("TELEGRAM_BOT_TOKEN", "TELEGRAM_PEPPER", "SUPABASE_URL", "SUPABASE_ANON_KEY")
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -118,6 +95,8 @@ export async function POST(req: NextRequest) {
       full_name: fullName || null,
     }
 
+    // anon — для входа (кука); service — для админ-операций
+    const supabase = createClient()
     const admin = createClient({ role: "service" })
 
     // 3) быстрый вход
