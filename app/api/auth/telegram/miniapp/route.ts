@@ -124,6 +124,8 @@ export async function POST(req: NextRequest) {
     // anon — для входа (кука); service — для админ-операций
     const supabase = createClient()
     const admin = createClient({ role: "service" })
+
+    try { await supabase.auth.signOut({ scope: "local" }) } catch {}
     {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (!error && data?.session) {
