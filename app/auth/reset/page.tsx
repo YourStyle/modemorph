@@ -2,8 +2,6 @@
 import type React from "react"
 import { useState } from "react"
 
-export const dynamic = "force-dynamic"
-
 export default function ResetPage() {
   const [email, setEmail] = useState("")
   const [sent, setSent] = useState(false)
