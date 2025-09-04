@@ -1,6 +1,4 @@
 // lib/tma/handshake.ts
-// Унифицированный обмен initData → Supabase-сессия. Возвращает актуального user или null.
-
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 
@@ -9,7 +7,7 @@ declare global {
     Telegram?: {
       WebApp?: {
         initData?: string
-        initDataUnsafe?: Record<string, any>
+        initDataUnsafe?: { user?: { id?: number } } & Record<string, any>
       }
     }
   }
@@ -18,15 +16,39 @@ declare global {
 export async function tmaHandshake(): Promise<User | null> {
   const supabase = createClient()
 
-  // 1) Если уже есть пользователь — просто вернём
-   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
+  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
   const initData = tg?.initData || ""
-  if (!initData) return null
+  const tgUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null
+  if (!initData || !tgUserId) {
+    // Вне TMA или нет пользователя — просто вернём текущего юзера (если есть)
+    try { return (await supabase.auth.getUser()).data.user ?? null } catch { return null }
+  }
 
-  await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
-
-
+  // 1) Если уже есть пользователь и он тот же, что в TMA — ничего не делаем
   try {
+    const { data } = await supabase.auth.getUser()
+    const current = data.user
+    const currentTgId = current?.user_metadata?.telegram_id || current?.app_metadata?.telegram_id
+    if (current && String(currentTgId || "") === tgUserId) {
+      return current
+    }
+  } catch {}
+
+  // 2) Решаем, нужно ли принудительно чистить куки
+  // Делать logout только ОДИН раз за жизненный цикл вкладки ИЛИ при конфликте пользователей
+  const onceFlag = "tma:booted"
+  const alreadyBooted = typeof sessionStorage !== "undefined" && sessionStorage.getItem(onceFlag) === "1"
+
+  // Логаутим если:
+  //  - есть конфликт пользователя (current != tgUserId), ИЛИ
+  //  - это первый визит в TMA в этой вкладке (ещё не booted)
+  if (!alreadyBooted) {
+    try { await fetch("/api/auth/logout", { method: "POST", credentials: "include" }) } catch {}
+    try { sessionStorage.setItem(onceFlag, "1") } catch {}
+  }
+
+  // 3) Обмен initData на сессию
+  const tryExchange = async () => {
     const res = await fetch("/api/auth/telegram/miniapp", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -34,11 +56,15 @@ export async function tmaHandshake(): Promise<User | null> {
       credentials: "include",
     })
     if (!res.ok) return null
-  } catch {
-    return null
+    // читаем текущего пользователя из supabase после обмена
+    try { return (await supabase.auth.getUser()).data.user ?? null } catch { return null }
   }
 
-  // 3) Повторно читаем пользователя
-  const me = await fetch("/api/auth/me", { credentials: "include" }).then(r => r.ok ? r.json() : null)
-  return me?.user ?? null
+  let user = await tryExchange()
+  if (user) return user
+
+  // 4) Если не получилось — ОДНОКРАТНО пробуем: logout → повторная попытка
+  try { await fetch("/api/auth/logout", { method: "POST", credentials: "include" }) } catch {}
+  user = await tryExchange()
+  return user
 }
