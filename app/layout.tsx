@@ -18,6 +18,24 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    const tg = (typeof window !== "undefined" ? (window as any).Telegram?.WebApp : undefined)
+
+    const hasInit = !!tg?.initData && String(tg.initData).trim().length > 0
+    const hasUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
+    const platformOk = !!tg?.platform && tg.platform !== "unknown"
+
+    const inTma = Boolean(tg) && hasInit && hasUser && platformOk
+
+    if (inTma) document.body.classList.add("tma-root")
+    else document.body.classList.remove("tma-root")
+
+    return () => {
+      document.body.classList.remove("tma-root")
+    }
+  }, [])
+
+
   return (
     <html lang="ru">
       <head>
@@ -29,7 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
       {/* высота берётся из переменных, которые проставляет официальный скрипт */}
-      <body className={`${inter.className} tma-root`}>
+      <body className={`${inter.className}`}>
         <AuthProvider>
           <SelectedItemsProvider>
             <MiniAppRegistrationGate>{children}</MiniAppRegistrationGate>
