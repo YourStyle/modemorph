@@ -1,4 +1,6 @@
 // lib/tma/handshake.ts
+// Унифицированный обмен initData → Supabase-сессия. Возвращает актуального user или null.
+
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
 
@@ -7,62 +9,33 @@ declare global {
     Telegram?: {
       WebApp?: {
         initData?: string
-        initDataUnsafe?: { user?: { id?: number } } & Record<string, any>
+        initDataUnsafe?: Record<string, any>
       }
     }
   }
 }
 
-function clearSbLocalStorage() {
+export async function tmaHandshake(): Promise<User | null> {
+  const supabase = createClient()
+
+  // 1) Если уже есть пользователь — просто вернём
+   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
+  const initData = tg?.initData || ""
+  if (!initData) return null
+
   try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const ref = url?.split("//")[1]?.split(".")[0];
-    if (ref) localStorage.removeItem(`sb-${ref}-auth-token`);
-  } catch {}
-}
-
-export async function tmaHandshake() {
-  const supabase = createClient();
-  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined;
-  const initData = tg?.initData || "";
-  if (!initData) return (await supabase.auth.getUser()).data.user ?? null;
-
-  // Одноразовый чистый старт этой вкладки (см. флаг)
-  const BOOT = "tma:booted";
-  if (sessionStorage.getItem(BOOT) !== "1") {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
-    clearSbLocalStorage(); // ← ВАЖНО
-    sessionStorage.setItem(BOOT, "1");
-  }
-
-  // Обмен initData → сессия
-  const res = await fetch("/api/auth/telegram/miniapp", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ initData }),
-    credentials: "include",
-  });
-  if (!res.ok) return null;
-
-  // Считываем пользователя (это подтянет актуальную сессию в supabase-js)
-  const { data, error } = await supabase.auth.getUser();
-  if (!error) return data.user ?? null;
-
-  // Фолбэк на случай «битой» локалки
-  const msg = (error.message || "").toLowerCase();
-  if (msg.includes("refresh_token_not_found") || msg.includes("invalid refresh token")) {
-    // полный сброс и одна повторная попытка
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
-    clearSbLocalStorage();
-    const res2 = await fetch("/api/auth/telegram/miniapp", {
+    const res = await fetch("/api/auth/telegram/miniapp", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ initData }),
       credentials: "include",
-    });
-    if (!res2.ok) return null;
-    return (await supabase.auth.getUser()).data.user ?? null;
+    })
+    if (!res.ok) return null
+  } catch {
+    return null
   }
 
-  return null;
+  // 3) Повторно читаем пользователя
+  const me = await fetch("/api/auth/me", { credentials: "include" }).then(r => r.ok ? r.json() : null)
+  return me?.user ?? null
 }

@@ -5,7 +5,6 @@ export const dynamic = "force-dynamic"
 import { type NextRequest, NextResponse } from "next/server"
 import crypto from "crypto"
 import { createClient } from "@/lib/supabase/server"
-import { attachSupabaseCookieClears, guessCookieDomain } from "@/lib/clear-supabase-cookies"
 
 function requireEnv(...keys: string[]) {
   const miss = keys.filter(k => !process.env[k])
@@ -63,50 +62,25 @@ function derivedPassword(telegramId: string, pepper: string) {
 }
 
 export async function POST(req: NextRequest) {
-  const cookieDomain = guessCookieDomain(req.headers.get("host") || undefined)
-
   try {
     requireEnv("TELEGRAM_BOT_TOKEN", "TELEGRAM_PEPPER", "SUPABASE_URL", "SUPABASE_ANON_KEY")
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      return attachSupabaseCookieClears(
-        NextResponse.json({ error: "Missing env: SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 }),
-        { domain: cookieDomain }
-      )
+      throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY")
     }
 
     const body = await req.json().catch(() => ({}))
     const rawInitData: string = body?.initData || ""
-    if (!rawInitData) {
-      return attachSupabaseCookieClears(
-        NextResponse.json({ error: "No initData" }, { status: 400 }),
-        { domain: cookieDomain }
-      )
-    }
+    if (!rawInitData) return NextResponse.json({ error: "No initData" }, { status: 400 })
 
     // 1) verify + TTL
     const { ok, authDate, user: initUser } = verifyInitData(rawInitData, process.env.TELEGRAM_BOT_TOKEN!)
-    if (!ok) {
-      return attachSupabaseCookieClears(
-        NextResponse.json({ error: "Invalid initData" }, { status: 401 }),
-        { domain: cookieDomain }
-      )
-    }
-    if (!isFresh(authDate)) {
-      return attachSupabaseCookieClears(
-        NextResponse.json({ error: "Init data expired" }, { status: 401 }),
-        { domain: cookieDomain }
-      )
-    }
+    if (!ok) return NextResponse.json({ error: "Invalid initData" }, { status: 401 })
+    if (!isFresh(authDate)) return NextResponse.json({ error: "Init data expired" }, { status: 401 })
 
     // 2) user из проверенного initData
     const u = initUser || {}
     const tgId = String(u.id || "")
-    if (!tgId) {
-      return attachSupabaseCookieClears(
-        NextResponse.json({ error: "No user in initData" }, { status: 400 }),
-        { domain: cookieDomain }
-      )
-    }
+    if (!tgId) return NextResponse.json({ error: "No user in initData" }, { status: 400 })
 
     const email = `${tgId}@telegram.local`
     const password = derivedPassword(tgId, process.env.TELEGRAM_PEPPER!)
@@ -125,15 +99,13 @@ export async function POST(req: NextRequest) {
     const supabase = createClient()
     const admin = createClient({ role: "service" })
 
-    try { await supabase.auth.signOut({ scope: "local" }) } catch {}
+    // 3) быстрый вход
     {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (!error && data?.session) {
-        const uid = data.user?.id ?? data.session?.user?.id
-        // Профиль пишем пользовательской сессией, чтобы не биться о RLS/триггеры
-        const { error: upErr } = await supabase.from("user_profiles").upsert(
+        const { error: upErr } = await (admin as any).from("user_profiles").upsert(
           {
-            user_id: uid,
+            user_id: data.user?.id ?? data.session?.user?.id,
             is_admin: false,
             full_name: fullName,
             avatar_url: u.photo_url ?? null,
@@ -141,14 +113,13 @@ export async function POST(req: NextRequest) {
           },
           { onConflict: "user_id" }
         )
-        if (upErr) {
-          return NextResponse.json({ error: `profile upsert failed: ${upErr.message}` }, { status: 500 })
-        }
+        // не молчим о серверной ошибке
+        if (upErr) return NextResponse.json({ error: `profile upsert failed: ${upErr.message}` }, { status: 500 })
         return NextResponse.json({ success: true })
       }
     }
 
-    // 4) создать/обновить пользователя (через service)
+    // 4) создать/обновить пользователя
     const { data: created, error: createErr } = await (admin as any).auth.admin.createUser({
       email, password, email_confirm: true, user_metadata: metadata,
     })
@@ -166,25 +137,16 @@ export async function POST(req: NextRequest) {
         return obj?.id ?? null
       })())
 
-    if (!userId) {
-      return NextResponse.json({ error: "User lookup failed" }, { status: 500 })
-    }
+    if (!userId) return NextResponse.json({ error: "User lookup failed" }, { status: 500 })
 
     const upd = await (admin as any).auth.admin.updateUserById(userId, { password, user_metadata: metadata })
     if ((upd as any)?.error) {
       return NextResponse.json({ error: (upd as any).error?.message || "updateUser failed" }, { status: 500 })
     }
 
-    // повторный вход — уже пользовательской сессией
-    const retry = await supabase.auth.signInWithPassword({ email, password })
-    if (retry.error || !retry.data?.session) {
-      return NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 })
-    }
-
-    const uid2 = retry.data.user?.id ?? retry.data.session?.user?.id
-    const { error: upErr2 } = await supabase.from("user_profiles").upsert(
+    const { error: upErr2 } = await (admin as any).from("user_profiles").upsert(
       {
-        user_id: uid2,
+        user_id: userId,
         is_admin: false,
         full_name: fullName,
         avatar_url: u.photo_url ?? null,
@@ -192,8 +154,11 @@ export async function POST(req: NextRequest) {
       },
       { onConflict: "user_id" }
     )
-    if (upErr2) {
-      return NextResponse.json({ error: `profile upsert failed: ${upErr2.message}` }, { status: 500 })
+    if (upErr2) return NextResponse.json({ error: `profile upsert failed: ${upErr2.message}` }, { status: 500 })
+
+    const retry = await supabase.auth.signInWithPassword({ email, password })
+    if (retry.error || !retry.data?.session) {
+      return NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 })
     }
 
     return NextResponse.json({ success: true })
