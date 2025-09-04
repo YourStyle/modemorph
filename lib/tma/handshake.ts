@@ -13,58 +13,56 @@ declare global {
   }
 }
 
-export async function tmaHandshake(): Promise<User | null> {
-  const supabase = createClient()
-
-  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
-  const initData = tg?.initData || ""
-  const tgUserId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : null
-  if (!initData || !tgUserId) {
-    // Вне TMA или нет пользователя — просто вернём текущего юзера (если есть)
-    try { return (await supabase.auth.getUser()).data.user ?? null } catch { return null }
-  }
-
-  // 1) Если уже есть пользователь и он тот же, что в TMA — ничего не делаем
+function clearSbLocalStorage() {
   try {
-    const { data } = await supabase.auth.getUser()
-    const current = data.user
-    const currentTgId = current?.user_metadata?.telegram_id || current?.app_metadata?.telegram_id
-    if (current && String(currentTgId || "") === tgUserId) {
-      return current
-    }
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const ref = url?.split("//")[1]?.split(".")[0];
+    if (ref) localStorage.removeItem(`sb-${ref}-auth-token`);
   } catch {}
+}
 
-  // 2) Решаем, нужно ли принудительно чистить куки
-  // Делать logout только ОДИН раз за жизненный цикл вкладки ИЛИ при конфликте пользователей
-  const onceFlag = "tma:booted"
-  const alreadyBooted = typeof sessionStorage !== "undefined" && sessionStorage.getItem(onceFlag) === "1"
+export async function tmaHandshake() {
+  const supabase = createClient();
+  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined;
+  const initData = tg?.initData || "";
+  if (!initData) return (await supabase.auth.getUser()).data.user ?? null;
 
-  // Логаутим если:
-  //  - есть конфликт пользователя (current != tgUserId), ИЛИ
-  //  - это первый визит в TMA в этой вкладке (ещё не booted)
-  if (!alreadyBooted) {
-    try { await fetch("/api/auth/logout", { method: "POST", credentials: "include" }) } catch {}
-    try { sessionStorage.setItem(onceFlag, "1") } catch {}
+  // Одноразовый чистый старт этой вкладки (см. флаг)
+  const BOOT = "tma:booted";
+  if (sessionStorage.getItem(BOOT) !== "1") {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    clearSbLocalStorage(); // ← ВАЖНО
+    sessionStorage.setItem(BOOT, "1");
   }
 
-  // 3) Обмен initData на сессию
-  const tryExchange = async () => {
-    const res = await fetch("/api/auth/telegram/miniapp", {
+  // Обмен initData → сессия
+  const res = await fetch("/api/auth/telegram/miniapp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ initData }),
+    credentials: "include",
+  });
+  if (!res.ok) return null;
+
+  // Считываем пользователя (это подтянет актуальную сессию в supabase-js)
+  const { data, error } = await supabase.auth.getUser();
+  if (!error) return data.user ?? null;
+
+  // Фолбэк на случай «битой» локалки
+  const msg = (error.message || "").toLowerCase();
+  if (msg.includes("refresh_token_not_found") || msg.includes("invalid refresh token")) {
+    // полный сброс и одна повторная попытка
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    clearSbLocalStorage();
+    const res2 = await fetch("/api/auth/telegram/miniapp", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ initData }),
       credentials: "include",
-    })
-    if (!res.ok) return null
-    // читаем текущего пользователя из supabase после обмена
-    try { return (await supabase.auth.getUser()).data.user ?? null } catch { return null }
+    });
+    if (!res2.ok) return null;
+    return (await supabase.auth.getUser()).data.user ?? null;
   }
 
-  let user = await tryExchange()
-  if (user) return user
-
-  // 4) Если не получилось — ОДНОКРАТНО пробуем: logout → повторная попытка
-  try { await fetch("/api/auth/logout", { method: "POST", credentials: "include" }) } catch {}
-  user = await tryExchange()
-  return user
+  return null;
 }
