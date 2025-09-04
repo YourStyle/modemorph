@@ -1,5 +1,6 @@
 // app/auth/reset/page.tsx — форма запроса письма на сброс
 "use client"
+import type React from "react"
 import { useState } from "react"
 
 export default function ResetPage() {
