@@ -10,17 +10,8 @@ import { AIAssistantLoader } from "@/components/ai-assistant-loader"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { PhotoRegenerationModal } from "./photo-regeneration-modal"
+import FallingObjectsGame from "@/components/falling-objects-game"
 
-/*
- * This file defines the PhotoAnalysisForm component, which allows the user to
- * upload one or two photos of clothing and sends them to an AI service for
- * analysis. While analysis is running, a smooth progress bar with
- * inspirational quotes is shown. Once analysis completes, the results are
- * displayed and can be saved to the user's wardrobe.
- */
-
-// Types for AI responses and uploaded photos. These match the original
-// definitions from the upstream project.
 interface ResponseItem {
   index: number
   basic_item_id: number | null
@@ -79,30 +70,34 @@ interface PhotoAnalysisFormProps {
   onReset?: () => void
 }
 
+type ViewMode = "choose" | "quotes" | "game" | null
+
 export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: PhotoAnalysisFormProps) {
-  // Selected photos for analysis
+
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
-  // Whether analysis is currently running
+
   const [loading, setLoading] = useState(false)
-  // Progress value (0–100)
+
   const [progress, setProgress] = useState(0)
-  // Text describing current progress stage
+
   const [progressText, setProgressText] = useState("")
-  // Flattened list of all items found
+
   const [results, setResults] = useState<ItemWithImage[]>([])
-  // Per-photo analysis result objects
+
   const [analysisResults, setAnalysisResults] = useState<PhotoAnalysisResult[]>([])
-  // Any error message to display
+  
   const [error, setError] = useState<string | null>(null)
-  // Whether the user has already run analysis at least once
+
   const [hasAnalyzed, setHasAnalyzed] = useState(false)
-  // Whether reanalysis is needed after changing photos
+
   const [needsReanalysis, setNeedsReanalysis] = useState(false)
-  // Ref to the hidden file input element
+  
   const fileInputRef = useRef<HTMLInputElement | null>(null)
-  // Regeneration modal state
+
   const [showRegenerationModal, setShowRegenerationModal] = useState(false)
   const [isFirstTimeRegeneration, setIsFirstTimeRegeneration] = useState(true)
+  const [viewMode, setViewMode] = useState<ViewMode>(null)
+  const GAME_AREA_HEIGHT = 300 
 
   // Quotes shown above the progress bar while analysis runs
   const quotes = [
@@ -121,7 +116,13 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Automatically start analysis when initialPhotos are provided
+  
+  useEffect(() => {
+    if (loading && viewMode === null) {
+      setViewMode("choose")
+    }
+  }, [loading, viewMode])
+
   useEffect(() => {
     if (initialPhotos && initialPhotos.length > 0 && !hasAnalyzed) {
       const limitedPhotos = initialPhotos.slice(0, 2)
@@ -539,33 +540,104 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   }
 
   // The loader displayed while analysis runs
-  const ProgressLoader = () => (
-    <div className="flex flex-col items-center space-y-4 py-6">
-      <div className="text-center">
-        <h2 className="text-lg font-semibold">ИИ анализирует ваши фото</h2>
-        <p className="text-sm text-gray-500">
-          Наш искусственный интеллект распознает одежду на изображениях
-          и подберет подходящие вещи для вашего гардероба
-        </p>
+   const LoadingExperience = () => {
+    // «контентная» обёртка одинаковой высоты/ширины
+    const Shell: React.FC<React.PropsWithChildren> = ({ children }) => (
+      <div
+        className="w-full max-w-sm mx-auto rounded-xl border border-white/10 bg-white/5 dark:bg-white/5 p-4 flex items-center justify-center"
+        style={{ height: `${GAME_AREA_HEIGHT}px` }}
+      >
+        {children}
       </div>
-      <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md max-w-md w-full text-center shadow">
-        <p className="italic">"{quotes[quoteIndex].text}"</p>
-        <p className="mt-2 font-medium">— {quotes[quoteIndex].author}</p>
-      </div>
-      <div className="w-full">
+    )
+
+    // блок прогресса — всегда ниже
+    const ProgressBlock = () => (
+      <div className="w-full max-w-sm mx-auto mt-4">
         <div className="relative h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
           <div
-            className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-all"
+            className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-[width] duration-200"
             style={{ width: `${progress}%` }}
           />
         </div>
-        <div className="flex justify-between text-xs mt-2">
+        <div className="flex justify-between text-xs mt-2 text-neutral-400">
           <span>{progressText}</span>
           <span>{Math.round(progress)}%</span>
         </div>
       </div>
-    </div>
-  )
+    )
+
+    if (viewMode === "choose") {
+      return (
+        <>
+          <Shell>
+            <div className="w-full space-y-3 text-center">
+              <p className="text-sm text-neutral-300">
+                Пока ИИ работает, выберите, что показать:
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Button className="h-11 rounded-xl" onClick={() => setViewMode("quotes")}>
+                  Посмотреть цитаты
+                </Button>
+                <Button className="h-11 rounded-xl" variant="secondary" onClick={() => setViewMode("game")}>
+                  Сыграть в игру
+                </Button>
+              </div>
+            </div>
+          </Shell>
+          <ProgressBlock />
+        </>
+      )
+    }
+
+    if (viewMode === "quotes") {
+      return (
+        <>
+          <Shell>
+            <div className="text-center max-w-md w-full">
+              <h2 className="text-lg font-semibold mb-2">ИИ анализирует ваши фото</h2>
+              <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md w-full text-center shadow">
+                <p className="italic">"{quotes[quoteIndex].text}"</p>
+                <p className="mt-2 font-medium">— {quotes[quoteIndex].author}</p>
+              </div>
+              <p className="mt-3 text-xs text-neutral-400">
+                Можно переключиться на игру в любой момент
+              </p>
+              <div className="mt-3">
+                <Button variant="outline" size="sm" onClick={() => setViewMode("game")}>
+                  Переключиться на игру
+                </Button>
+              </div>
+            </div>
+          </Shell>
+          <ProgressBlock />
+        </>
+      )
+    }
+
+    if (viewMode === "game") {
+      return (
+        <>
+          <Shell>
+            <FallingObjectsGame
+              analysisDone={progress >= 100}         // когда анализ завершился — игра получит сигнал
+              onRequestFinish={() => {
+                // пользователь согласился завершить игру досрочно — скрываем игру,
+                // чтобы сразу показать результаты под формой
+                setViewMode(null)
+              }}
+              onSwitchToQuotes={() => setViewMode("quotes")}
+            />
+          </Shell>
+          <ProgressBlock />
+        </>
+      )
+    }
+
+    // safety: если режим неожиданно null — показываем выбор
+    setViewMode("choose")
+    return null
+  }
 
   return (
     <div className="space-y-6">
@@ -648,7 +720,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         onChange={handleFileSelect}
       />
       {/* Loading section */}
-      {loading && <ProgressLoader />}
+      {loading && <LoadingExperience />}
       {/* Error and rejection messages after analysis */}
       {!loading && hasAnalyzed && analysisResults.some((r) => !r.success) && (
         <div className="space-y-4">

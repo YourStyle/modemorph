@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Camera } from "lucide-react"
@@ -70,7 +69,7 @@ export function AddToClosetSheet({
     fileInput.click()
   }
 
-  // ⚠️ Больше НЕ закрываем шторку по успешному анализу — отдаём данные наверх, пусть родитель решит.
+  // ⚠️ Не закрываем шторку по успешному анализу — отдаём данные наверх
   const handleAnalysisSuccess = (payload?: AnalysisSuccessPayload) => {
     if (!payload) return
     onAnalysisSuccess?.({ ...payload, batchId: batchIdRef.current })
@@ -91,10 +90,14 @@ export function AddToClosetSheet({
   if (showAnalysisForm || (initialPhotos && initialPhotos.length > 0)) {
     return (
       <CommonSheet isOpen={isOpen} onClose={handleClose} backgroundColor="dark">
-        <div className="h-[calc(90vh-120px)] overflow-hidden">
+        {/* скролл контейнер, стабильный скроллбар, хороший контраст текста */}
+        <div
+          className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 text-neutral-100"
+          style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
+        >
           <PhotoAnalysisForm
             initialPhotos={selectedFiles.length > 0 ? selectedFiles : initialPhotos}
-            onSuccess={handleAnalysisSuccess}   // ← прокидываем payload наверх
+            onSuccess={handleAnalysisSuccess}
             onReset={handleReset}
           />
         </div>
@@ -104,14 +107,16 @@ export function AddToClosetSheet({
 
   return (
     <CommonSheet isOpen={isOpen} onClose={onClose} title="Добавить в гардероб" backgroundColor="dark">
-      <div className="space-y-6">
+      <div className="space-y-6 text-neutral-100">
         <div className="text-center">
-          <p className="text-gray-300 text-sm">Сфотографируйте вещь или загрузите фото из галереи</p>
+          <p className="text-sm text-neutral-300">Сфотографируйте вещь или загрузите фото из галереи</p>
         </div>
 
         <Button
+          type="button"
+          aria-label="Загрузить фото вещей"
           onClick={handlePhotoUpload}
-          className="w-full bg-white text-gray-900 hover:bg-gray-100 h-14 rounded-2xl text-base font-medium"
+          className="w-full bg-white text-neutral-900 hover:bg-neutral-100 h-14 rounded-2xl text-base font-medium"
         >
           <Camera className="w-5 h-5 mr-3" />
           Найти вещи на фото

@@ -28,6 +28,7 @@ export function TopNavigation() {
   const [currentDate, setCurrentDate] = useState("")
   const [weatherLoading, setWeatherLoading] = useState(true)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
+  const [weekdayShort, setWeekdayShort] = useState("")
 
   const [isTmaIos, setIsTmaIos] = useState(false)
 
@@ -36,6 +37,13 @@ export function TopNavigation() {
   useEffect(() => {
     updateDateTime()
     const interval = setInterval(updateDateTime, 1000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    updateWeekday()
+    // обновлять раз в час достаточно, но можно и реже.
+    const interval = setInterval(updateWeekday, 60 * 60 * 1000)
     return () => clearInterval(interval)
   }, [])
 
@@ -83,6 +91,17 @@ export function TopNavigation() {
 
     setCurrentTime(now.toLocaleTimeString("ru-RU", timeOptions))
     setCurrentDate(now.toLocaleDateString("ru-RU", dateOptions))
+  }
+
+  const updateWeekday = () => {
+    const now = new Date()
+    // ru-RU, короткий день недели. Часто даёт "пн", "вт", "ср" с точкой у некоторых локалей,
+    // уберём точку и сделаем первую букву заглавной.
+    const raw = now
+      .toLocaleDateString("ru-RU", { weekday: "short", timeZone: "Europe/Moscow" })
+      .replace(".", "")
+    const pretty = raw.charAt(0).toUpperCase() + raw.slice(1)
+    setWeekdayShort(pretty)
   }
 
   const loadUserProfile = async () => {
@@ -249,45 +268,40 @@ export function TopNavigation() {
     setIsProfileSheetOpen(true)
   }
 
-    if (isTmaIos) {
+  if (isTmaIos) {
     return (
       <>
         <div
           className="fixed inset-x-0 top-0 z-40 bg-background"
-          // высота = safe-area + наш запас; Telegram X не перекроем, он вне webview
           style={{ height: "calc(env(safe-area-inset-top, 0px) + 90px)", pointerEvents: "auto" }}
         />
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
           <div className="mt-[95px] pointer-events-auto">
             <button
               onClick={handleProfileClick}
-              className="flex items-center gap-2 rounded-full px-4 py-2 bg-background/80 backdrop-blur text-foreground shadow-md"
+              className="flex items-center gap-2 rounded-full px-3 py-1.5 bg-background/80 backdrop-blur text-foreground shadow-md"
             >
-              {/* Дата */}
-              <span className="text-sm font-medium whitespace-nowrap">
-                {currentDate}
+              {/* Только короткий день недели, меньше шрифт */}
+              <span className="text-xs font-medium whitespace-nowrap">
+                {weekdayShort}
               </span>
-              {/* Компактная погода: отображать только после загрузки */}
+
+              {/* Компактная погода: без времени, маленький текст */}
               {weather && !weatherLoading && (
-                <>
-                  <span className="text-sm">{weather.icon}</span>
-                  <span className="text-sm font-medium whitespace-nowrap">
-                    {weather.temperature}°C
-                  </span>
-                </>
+                <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap">
+                  <span>{weather.icon}</span>
+                  <span>{weather.temperature}°C</span>
+                </span>
               )}
-              {/* Время */}
-              <span className="text-sm font-medium whitespace-nowrap">
-                {currentTime}
-              </span>
-              {/* Аватар профиля */}
+
+              {/* Аватар профиля, ещё чуть компактнее */}
               {profile && (
-                <Avatar className="w-6 h-6 ml-2">
+                <Avatar className="w-5 h-5 ml-1">
                   <AvatarImage
                     src={profile.avatar_url ?? undefined}
                     alt={profile.full_name ?? "User"}
                   />
-                  <AvatarFallback>
+                  <AvatarFallback className="text-[10px]">
                     {profile.full_name
                       ? profile.full_name.charAt(0).toUpperCase()
                       : "U"}
@@ -297,10 +311,11 @@ export function TopNavigation() {
             </button>
           </div>
         </div>
-        {/* Существующий лист профиля для настроек пользователя */}
+
+        {/* ВАЖНО: унифицируем пропсы под isOpen/onClose */}
         <UserProfileSheet
-          open={isProfileSheetOpen}
-          onOpenChange={setIsProfileSheetOpen}
+          isOpen={isProfileSheetOpen}
+          onClose={() => setIsProfileSheetOpen(false)}
           onSignOut={handleSignOut}
         />
       </>
