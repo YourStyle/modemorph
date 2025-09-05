@@ -273,7 +273,7 @@ export function TopNavigation() {
       <>
         <div
           className="fixed inset-x-0 top-0 z-40 bg-background"
-          style={{ height: "calc(env(safe-area-inset-top, 0px) + 90px)", pointerEvents: "auto" }}
+          style={{ height: "calc(env(safe-area-inset-top, 0px) + 20px)", pointerEvents: "auto" }}
         />
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
           <div className="mt-[95px] pointer-events-auto">
