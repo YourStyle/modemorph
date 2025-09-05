@@ -590,11 +590,11 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <Button className="h-11 rounded-xl"
-                  onPointerUp={pickGame}>
+                  onClikck={pickGame}>
                   Сыграть в игру
                 </Button>
                 <Button className="h-11 rounded-xl" variant="secondary"
-                  onPointerUp={pickQuotes}>
+                  onClikck={pickQuotes}>
                   Посмотреть цитаты
                 </Button>
               </div>
@@ -619,7 +619,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                 Можно переключиться на игру в любой момент
               </p>
               <div className="mt-3">
-                <Button variant="outline" size="sm" onPointerUp={pickGame}>
+                <Button variant="outline" size="sm" onClikck={pickGame}>
                 Переключиться на игру
               </Button>
               </div>
