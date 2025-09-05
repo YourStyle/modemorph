@@ -96,6 +96,97 @@ const ProgressBlock: React.FC<{ progress: number; progressText: string }> = ({ p
   </div>
 )
 
+// ==== вне PhotoAnalysisForm (на уровне файла) ====
+type ViewMode = "choose" | "quotes" | "game" | null
+
+const GameShell: React.FC<React.PropsWithChildren<{ height: number }>> = ({ children, height }) => (
+  <div className="w-full rounded-xl border border-white/10 bg-white/5 flex items-center justify-center" style={{ height }}>
+    {children}
+  </div>
+)
+
+const ProgressBlock: React.FC<{ progress: number; text: string }> = ({ progress, text }) => (
+  <div className="w-full max-w-sm mx-auto mt-4">
+    <div className="relative h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+      <div className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-[width] duration-200" style={{ width: `${progress}%` }} />
+    </div>
+    <div className="flex justify-between text-xs mt-2 text-neutral-400">
+      <span>{text}</span>
+      <span>{Math.round(progress)}%</span>
+    </div>
+  </div>
+)
+
+type LoadingExperienceProps = {
+  viewMode: ViewMode
+  setViewMode: (m: ViewMode) => void
+  gameHeight: number
+  quotes: { text: string; author: string }[]
+  quoteIndex: number
+  progress: number
+  progressText: string
+}
+
+const LoadingExperience: React.FC<LoadingExperienceProps> = ({
+  viewMode, setViewMode, gameHeight, quotes, quoteIndex, progress, progressText,
+}) => {
+  const pickGame = () => setViewMode("game")
+  const pickQuotes = () => setViewMode("quotes")
+
+  if (viewMode === null || viewMode === "choose") {
+    return (
+      <>
+        <GameShell height={gameHeight}>
+          <div className="w-full px-4 sm:px-6 max-w-2xl mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
+            <p className="text-sm text-neutral-300 mb-3">Пока ИИ работает, выберите, что показать:</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button className="h-11 rounded-xl bg-primary text-white px-4" onPointerUp={pickGame}>Сыграть в игру</button>
+              <button className="h-11 rounded-xl border px-4" onPointerUp={pickQuotes}>Посмотреть цитаты</button>
+            </div>
+          </div>
+        </GameShell>
+        <ProgressBlock progress={progress} text={progressText} />
+      </>
+    )
+  }
+
+  if (viewMode === "quotes") {
+    return (
+      <>
+        <GameShell height={gameHeight}>
+          <div className="text-center max-w-md w-full">
+            <h2 className="text-lg font-semibold mb-2">ИИ анализирует ваши фото</h2>
+            <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md w-full text-center shadow">
+              <p className="italic">"{quotes[quoteIndex].text}"</p>
+              <p className="mt-2 font-medium">— {quotes[quoteIndex].author}</p>
+            </div>
+            <p className="mt-3 text-xs text-neutral-400">Можно переключиться на игру в любой момент</p>
+            <div className="mt-3">
+              <button className="border rounded px-3 py-1" onPointerUp={pickGame}>Переключиться на игру</button>
+            </div>
+          </div>
+        </GameShell>
+        <ProgressBlock progress={progress} text={progressText} />
+      </>
+    )
+  }
+
+  // game
+  return (
+    <>
+      <GameShell height={gameHeight}>
+        <FallingObjectsGame
+          analysisDone={progress >= 100}
+          onRequestFinish={() => setViewMode(null)}
+          onRequestReturnToPicker={() => setViewMode("choose")}
+        />
+      </GameShell>
+      <ProgressBlock progress={progress} text={progressText} />
+    </>
+  )
+}
+
+
 export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: PhotoAnalysisFormProps) {
 
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
@@ -578,77 +669,6 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     localStorage.setItem("hasUsedRegeneration", "true")
   }
 
-  // The loader displayed while analysis runs
-   const LoadingExperience = () => {
-    if (viewMode === "choose") {
-      return (
-        <>
-          <GameShell height={GAME_AREA_HEIGHT}>
-            <div className="w-full px-4 sm:px-6 max-w-2xl mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
-              <p className="text-sm text-neutral-300 mb-3">
-                Пока ИИ работает, выберите, что показать:
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Button className="h-11 rounded-xl"
-                  onClikck={pickGame}>
-                  Сыграть в игру
-                </Button>
-                <Button className="h-11 rounded-xl" variant="secondary"
-                  onClikck={pickQuotes}>
-                  Посмотреть цитаты
-                </Button>
-              </div>
-            </div>
-          </GameShell>
-        
-        </>
-      )
-    }
-
-    if (viewMode === "quotes") {
-      return (
-        <>
-          <GameShell height={GAME_AREA_HEIGHT}>
-            <div className="text-center max-w-md w-full">
-              <h2 className="text-lg font-semibold mb-2">ИИ анализирует ваши фото</h2>
-              <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md w-full text-center shadow">
-                <p className="italic">"{quotes[quoteIndex].text}"</p>
-                <p className="mt-2 font-medium">— {quotes[quoteIndex].author}</p>
-              </div>
-              <p className="mt-3 text-xs text-neutral-400">
-                Можно переключиться на игру в любой момент
-              </p>
-              <div className="mt-3">
-                <Button variant="outline" size="sm" onClikck={pickGame}>
-                Переключиться на игру
-              </Button>
-              </div>
-            </div>
-          </GameShell>
-        
-        </>
-      )
-    }
-
-    if (viewMode === "game") {
-      return (
-        <>
-          <GameShell height={GAME_AREA_HEIGHT}>
-            <FallingObjectsGame
-              analysisDone={progress >= 100}
-              onRequestFinish={() => {
-                setViewMode(null)
-              }}
-              onRequestReturnToPicker={() => setViewMode("choose")}
-            />
-          </GameShell>
-          
-        </>
-      )
-    }
-
-    return null
-  }
 
   return (
     <div className="space-y-6">
@@ -731,7 +751,17 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         onChange={handleFileSelect}
       />
       {/* Loading section */}
-      {loading && <LoadingExperience />}
+      {loading && (
+          <LoadingExperience
+            viewMode={viewMode}
+            setViewMode={setViewMode}
+            gameHeight={GAME_AREA_HEIGHT}
+            quotes={quotes}
+            quoteIndex={quoteIndex}
+            progress={progress}
+            progressText={progressText}
+          />
+        )}
       {/* Error and rejection messages after analysis */}
       {!loading && hasAnalyzed && analysisResults.some((r) => !r.success) && (
         <div className="space-y-4">
