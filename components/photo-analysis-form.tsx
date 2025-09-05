@@ -11,6 +11,7 @@ import Image from "next/image"
 import {createClient} from "@/lib/supabase/client"
 import {PhotoRegenerationModal} from "./photo-regeneration-modal"
 import FallingObjectsGame from "@/components/falling-objects-game"
+import QuoteCard from "@/components/quote-card"
 
 interface ResponseItem {
     index: number

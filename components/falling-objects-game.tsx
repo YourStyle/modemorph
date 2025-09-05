@@ -235,7 +235,7 @@ export default function FallingObjectsGame({
     <div className="w-full">
       {!gameStarted ? (
         <div
-          className="rounded-xl border border-purple-200/50 bg-gradient-to-b from-purple-100/50 to-pink-100/50 flex items-center justify-center text-center p-6"
+          className="rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center text-center p-6"
           style={{ height: `${GAME_HEIGHT}px`, touchAction: "manipulation" }}
         >
           <div className="space-y-4 w-full max-w-md mx-auto">
@@ -263,7 +263,7 @@ export default function FallingObjectsGame({
       ) : (
         <div
           ref={gameAreaRef}
-          className="relative bg-gradient-to-b from-purple-100/50 to-pink-100/50 rounded-xl overflow-hidden cursor-none select-none border border-purple-200/50"
+          className="relative bg-gradient-to-b from-purple-200/80 to-pink-200/80 rounded-xl overflow-hidden cursor-none select-none border border-purple-200/50"
           style={{ height: `${GAME_HEIGHT}px`,touchAction: "none" }}
         >
           <div className="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
