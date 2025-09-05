@@ -104,4 +104,12 @@ body {
   }
 }
 
+@keyframes fade-in-up {
+  0%   { opacity: 1; transform: translate(-50%, -50%) translateY(0)   scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) translateY(-20px) scale(1.2); }
+}
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
 /* TMA styles have been removed and moved to app/tma.css */

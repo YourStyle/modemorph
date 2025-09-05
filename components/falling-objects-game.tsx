@@ -120,76 +120,70 @@ export default function FallingObjectsGame({
     return Math.abs(objectCenterX - basketCenterX) < basketHalfWidth && object.y > 80 && object.y < 95
   }, [])
 
-  const gameLoop = useCallback(
-    (timestamp: number) => {
-      if (!gameStarted || gameOver) return
+  const gameLoop = useCallback((timestamp: number) => {
+  if (!gameStarted || gameOver) return;
 
-      // Ограничение FPS
-      if (timestamp - lastUpdateRef.current < FRAME_TIME) {
-        animationRef.current = requestAnimationFrame(gameLoop)
-        return
+  if (timestamp - lastUpdateRef.current < FRAME_TIME) {
+    animationRef.current = requestAnimationFrame(gameLoop);
+    return;
+  }
+  lastUpdateRef.current = timestamp;
+
+  if (timestamp - lastSpawnRef.current > SPAWN_INTERVAL) {
+    spawnObject();
+    lastSpawnRef.current = timestamp;
+  }
+
+  setFallingObjects((prev) => {
+    if (prev.length === 0) return prev;
+
+    const updated = prev.map((obj) => ({ ...obj, y: obj.y + FALL_SPEED }));
+    const remaining: FallingObject[] = [];
+    let scoreIncrease = 0;
+    let missedCount = 0;
+    const newCollected: CollectedObject[] = [];
+
+    updated.forEach((obj) => {
+      if (checkCollision(obj)) {
+        scoreIncrease += obj.points;
+        newCollected.push({
+          id: obj.id,
+          x: basketXRef.current, // ← ключевая замена
+          y: 80,
+          emoji: obj.emoji,
+          points: obj.points,
+        });
+      } else if (obj.y > 105) {
+        missedCount++;
+      } else {
+        remaining.push(obj);
       }
-      lastUpdateRef.current = timestamp
+    });
 
-      if (timestamp - lastSpawnRef.current > SPAWN_INTERVAL) {
-        spawnObject()
-        lastSpawnRef.current = timestamp
-      }
+    if (scoreIncrease > 0) {
+      setScore((prev) => prev + scoreIncrease);
+      setCollectedObjects((prev) => [...prev, ...newCollected]);
+      // оставить таймер можно, он не вызывает перерисовку <style>
+      setTimeout(() => {
+        setCollectedObjects((prev) =>
+          prev.filter((collected) => !newCollected.some((nc) => nc.id === collected.id)),
+        );
+      }, 800);
+    }
 
-      setFallingObjects((prev) => {
-        if (prev.length === 0) return prev
+    if (missedCount > 0) {
+      setMissedObjects((prev) => {
+        const newMissed = prev + missedCount;
+        if (newMissed >= MAX_MISSED) setGameOver(true);
+        return newMissed;
+      });
+    }
 
-        const updated = prev.map((obj) => ({ ...obj, y: obj.y + FALL_SPEED }))
-        const remaining: FallingObject[] = []
-        let scoreIncrease = 0
-        let missedCount = 0
-        const newCollected: CollectedObject[] = []
+    return remaining;
+  });
 
-        updated.forEach((obj) => {
-          if (checkCollision(obj)) {
-            scoreIncrease += obj.points
-            newCollected.push({
-              id: obj.id,
-              x: basketX,
-              y: 80,
-              emoji: obj.emoji,
-              points: obj.points,
-            })
-          } else if (obj.y > 105) {
-            missedCount++
-          } else {
-            remaining.push(obj)
-          }
-        })
-
-        // Батчинг обновлений состояния
-        if (scoreIncrease > 0) {
-          setScore((prev) => prev + scoreIncrease)
-          setCollectedObjects((prev) => [...prev, ...newCollected])
-          setTimeout(() => {
-            setCollectedObjects((prev) =>
-              prev.filter((collected) => !newCollected.some((nc) => nc.id === collected.id)),
-            )
-          }, 800)
-        }
-
-        if (missedCount > 0) {
-          setMissedObjects((prev) => {
-            const newMissed = prev + missedCount
-            if (newMissed >= MAX_MISSED) {
-              setGameOver(true)
-            }
-            return newMissed
-          })
-        }
-
-        return remaining
-      })
-
-      animationRef.current = requestAnimationFrame(gameLoop)
-    },
-    [gameStarted, gameOver, spawnObject, checkCollision, basketX],
-  )
+  animationRef.current = requestAnimationFrame(gameLoop);
+}, [gameStarted, gameOver, spawnObject, checkCollision]); 
 
   const startGame = () => {
     setScore(0)
@@ -322,12 +316,11 @@ export default function FallingObjectsGame({
           {collectedObjects.map((obj) => (
             <div
               key={`collected-${obj.id}`}
-              className="absolute text-sm font-bold text-purple-600 animate-pulse"
+              className="absolute text-sm font-bold text-purple-600 animate-fade-in-up"
               style={{
-                left: `${obj.x}%`,
-                top: `${obj.y}%`,
-                transform: "translate(-50%, -50%)",
-                animation: "fadeInUp 0.8s ease-out forwards",
+                  left: `${obj.x}%`,
+                  top: `${obj.y}%`,
+                  transform: "translate(-50%, -50%)",
               }}
             >
               +{obj.points}
@@ -392,18 +385,6 @@ export default function FallingObjectsGame({
         </div>
       )}
 
-      <style jsx>{`
-        @keyframes fadeInUp {
-          0% {
-            opacity: 1;
-            transform: translate(-50%, -50%) translateY(0) scale(1);
-          }
-          100% {
-            opacity: 0;
-            transform: translate(-50%, -50%) translateY(-20px) scale(1.2);
-          }
-        }
-      `}</style>
     </div>
   )
 }
