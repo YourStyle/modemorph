@@ -72,6 +72,30 @@ interface PhotoAnalysisFormProps {
 
 type ViewMode = "choose" | "quotes" | "game" | null
 
+const GameShell: React.FC<React.PropsWithChildren<{ height: number }>> = ({ children, height }) => (
+  <div
+    className="w-full rounded-xl border border-white/10 bg-white/5 flex items-center justify-center"
+    style={{ height: `${height}px` }}
+  >
+    {children}
+  </div>
+)
+
+const ProgressBlock: React.FC<{ progress: number; progressText: string }> = ({ progress, progressText }) => (
+  <div className="w-full max-w-sm mx-auto mt-4">
+    <div className="relative h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+      <div
+        className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-[width] duration-200"
+        style={{ width: `${progress}%` }}
+      />
+    </div>
+    <div className="flex justify-between text-xs mt-2 text-neutral-400">
+      <span>{progressText}</span>
+      <span>{Math.round(progress)}%</span>
+    </div>
+  </div>
+)
+
 export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: PhotoAnalysisFormProps) {
 
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
@@ -556,36 +580,10 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
 
   // The loader displayed while analysis runs
    const LoadingExperience = () => {
-    // «контентная» обёртка одинаковой высоты/ширины
-    const Shell: React.FC<React.PropsWithChildren> = ({ children }) => (
-      <div
-        className="w-full rounded-xl border border-white/10 bg-white/5 flex items-center justify-center"
-        style={{ height: `${GAME_AREA_HEIGHT}px` }}
-      >
-        {children}
-      </div>
-    )
-
-    // блок прогресса — всегда ниже
-    const ProgressBlock = () => (
-      <div className="w-full max-w-sm mx-auto mt-4">
-        <div className="relative h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div
-            className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-[width] duration-200"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-        <div className="flex justify-between text-xs mt-2 text-neutral-400">
-          <span>{progressText}</span>
-          <span>{Math.round(progress)}%</span>
-        </div>
-      </div>
-    )
-
     if (viewMode === "choose") {
       return (
         <>
-          <Shell>
+          <GameShell height={GAME_AREA_HEIGHT}>
             <div className="w-full px-4 sm:px-6 max-w-2xl mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
               <p className="text-sm text-neutral-300 mb-3">
                 Пока ИИ работает, выберите, что показать:
@@ -601,8 +599,8 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                 </Button>
               </div>
             </div>
-          </Shell>
-          <ProgressBlock />
+          </GameShell>
+          <ProgressBlock progress={progress} progressText={progressText} />
         </>
       )
     }
@@ -610,7 +608,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     if (viewMode === "quotes") {
       return (
         <>
-          <Shell>
+          <GameShell height={GAME_AREA_HEIGHT}>
             <div className="text-center max-w-md w-full">
               <h2 className="text-lg font-semibold mb-2">ИИ анализирует ваши фото</h2>
               <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md w-full text-center shadow">
@@ -626,8 +624,8 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
               </Button>
               </div>
             </div>
-          </Shell>
-          <ProgressBlock />
+          </GameShell>
+          <ProgressBlock progress={progress} progressText={progressText} />
         </>
       )
     }
@@ -635,7 +633,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     if (viewMode === "game") {
       return (
         <>
-          <Shell>
+          <GameShell height={GAME_AREA_HEIGHT}>
             <FallingObjectsGame
               analysisDone={progress >= 100}
               onRequestFinish={() => {
@@ -643,14 +641,12 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
               }}
               onRequestReturnToPicker={() => setViewMode("choose")}
             />
-          </Shell>
-          <ProgressBlock />
+          </GameShell>
+          <ProgressBlock progress={progress} progressText={progressText} />
         </>
       )
     }
 
-    // safety: если режим неожиданно null — показываем выбор
-    setViewMode("choose")
     return null
   }
 

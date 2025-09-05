@@ -220,7 +220,7 @@ export default function FallingObjectsGame({
 
   useEffect(() => {
     const gameArea = gameAreaRef.current
-    if (!gameArea) return
+    if (!gameArea || !gameStarted || gameOver) return
 
     gameArea.addEventListener("mousemove", handleMouseMove)
     gameArea.addEventListener("touchmove", handleTouchMove, { passive: false })
@@ -229,7 +229,7 @@ export default function FallingObjectsGame({
       gameArea.removeEventListener("mousemove", handleMouseMove)
       gameArea.removeEventListener("touchmove", handleTouchMove)
     }
-  }, [handleMouseMove, handleTouchMove])
+  }, [gameStarted, gameOver, handleMouseMove, handleTouchMove])
 
   return (
     <div className="w-full">
