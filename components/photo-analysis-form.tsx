@@ -658,7 +658,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           <h2 className="text-xl font-semibold">
             {selectedFiles.length > 0 ? "Анализ фото" : "Результаты анализа"}
           </h2>
-          <Button variant="outline" size="sm" onClick={handleClear}>Очистить</Button>
+          <Button variant="default" size="sm" onClick={handleClear}>Очистить</Button>
         </div>
       )}
       {/* Photos section */}
@@ -667,7 +667,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           <p className="font-medium">Загруженные фото ({selectedFiles.length})</p>
           <div className="grid grid-cols-2 gap-4">
             {selectedFiles.map((photo) => (
-              <div key={photo.id} className="relative border rounded-md overflow-hidden">
+              <div key={photo.id} className="relative border rounded-md">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={photo.preview}
@@ -691,7 +691,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
           {selectedFiles.length < 2 && (
             <Button
               type="button"
-              variant="outline"
+              variant="default"
               onClick={() => fileInputRef.current?.click()}
             >
               <Plus className="w-4 h-4 mr-2" /> Добавить еще
