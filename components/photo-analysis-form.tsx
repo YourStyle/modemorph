@@ -97,6 +97,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   const [showRegenerationModal, setShowRegenerationModal] = useState(false)
   const [isFirstTimeRegeneration, setIsFirstTimeRegeneration] = useState(true)
   const [viewMode, setViewMode] = useState<ViewMode>(null)
+  const [isTransitioning, setIsTransitioning] = useState(false)
   const GAME_AREA_HEIGHT = 300 
 
   // Quotes shown above the progress bar while analysis runs
@@ -116,6 +117,20 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
   const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+
+  const pickQuotes = () => {
+      if (isTransitioning) return
+      setIsTransitioning(true)
+      setViewMode("quotes")
+      setTimeout(() => setIsTransitioning(false), 200)
+  }
+
+  const pickGame = () => {
+      if (isTransitioning) return
+      setIsTransitioning(true)
+      setViewMode("game")
+      setTimeout(() => setIsTransitioning(false), 200)
+  }
   
   useEffect(() => {
     if (loading && viewMode === null) {
@@ -544,7 +559,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
     // «контентная» обёртка одинаковой высоты/ширины
     const Shell: React.FC<React.PropsWithChildren> = ({ children }) => (
       <div
-        className="w-full max-w-sm mx-auto rounded-xl border border-white/10 bg-white/5 dark:bg-white/5 p-4 flex items-center justify-center"
+        className="w-full rounded-xl border border-white/10 bg-white/5 flex items-center justify-center"
         style={{ height: `${GAME_AREA_HEIGHT}px` }}
       >
         {children}
@@ -571,16 +586,18 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
       return (
         <>
           <Shell>
-            <div className="w-full space-y-3 text-center">
-              <p className="text-sm text-neutral-300">
+            <div className="w-full px-4 sm:px-6 max-w-2xl mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
+              <p className="text-sm text-neutral-300 mb-3">
                 Пока ИИ работает, выберите, что показать:
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Button className="h-11 rounded-xl" onClick={() => setViewMode("quotes")}>
-                  Посмотреть цитаты
-                </Button>
-                <Button className="h-11 rounded-xl" variant="secondary" onClick={() => setViewMode("game")}>
+                <Button className="h-11 rounded-xl"
+                  onPointerUp={pickGame}>
                   Сыграть в игру
+                </Button>
+                <Button className="h-11 rounded-xl" variant="secondary"
+                  onPointerUp={pickQuotes}>
+                  Посмотреть цитаты
                 </Button>
               </div>
             </div>
@@ -604,9 +621,9 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
                 Можно переключиться на игру в любой момент
               </p>
               <div className="mt-3">
-                <Button variant="outline" size="sm" onClick={() => setViewMode("game")}>
-                  Переключиться на игру
-                </Button>
+                <Button variant="outline" size="sm" onPointerUp={pickGame}>
+                Переключиться на игру
+              </Button>
               </div>
             </div>
           </Shell>
@@ -620,13 +637,11 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
         <>
           <Shell>
             <FallingObjectsGame
-              analysisDone={progress >= 100}         // когда анализ завершился — игра получит сигнал
+              analysisDone={progress >= 100}
               onRequestFinish={() => {
-                // пользователь согласился завершить игру досрочно — скрываем игру,
-                // чтобы сразу показать результаты под формой
                 setViewMode(null)
               }}
-              onSwitchToQuotes={() => setViewMode("quotes")}
+              onRequestReturnToPicker={() => setViewMode("choose")}
             />
           </Shell>
           <ProgressBlock />

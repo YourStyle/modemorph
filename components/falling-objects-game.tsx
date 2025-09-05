@@ -32,13 +32,13 @@ const OBJECT_TYPES = [
 type GameProps = {
   analysisDone?: boolean 
   onRequestFinish?: () => void
-  onSwitchToQuotes?: () => void
+  onRequestReturnToPicker?: () => void   
 }
 
 export default function FallingObjectsGame({
   analysisDone = false,
   onRequestFinish,
-  onSwitchToQuotes,
+  onRequestReturnToPicker,
 }: GameProps) {
   const [score, setScore] = useState(0)
   const [gameStarted, setGameStarted] = useState(false)
@@ -65,9 +65,7 @@ export default function FallingObjectsGame({
   const FRAME_TIME = 1000 / TARGET_FPS
 
   useEffect(() => {
-    if (analysisDone && gameStarted && !gameOver) {
-      setShowFinishOverlay(true)
-    }
+    if (analysisDone && gameStarted && !gameOver) setShowFinishOverlay(true)
   }, [analysisDone, gameStarted, gameOver])
 
   const handleMouseMove = useCallback(
@@ -240,28 +238,30 @@ export default function FallingObjectsGame({
   }, [handleMouseMove, handleTouchMove])
 
   return (
-    <div className="w-full max-w-sm">
+    <div className="w-full">
       {!gameStarted ? (
         <div
           className="rounded-xl border border-purple-200/50 bg-gradient-to-b from-purple-100/50 to-pink-100/50 flex items-center justify-center text-center p-6"
-          style={{ height: `${GAME_HEIGHT}px` }}
+          style={{ height: `${GAME_HEIGHT}px`, touchAction: "manipulation" }}
         >
-          <div className="space-y-4 w-full">
-            <p className="text-slate-600 text-balance leading-relaxed">
+          <div className="space-y-4 w-full max-w-md mx-auto">
+            <p className="text-slate-600 leading-relaxed">
               Собирайте модную одежду в корзину! Управляйте мышкой или касанием.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3">
               <button
-                onClick={startGame}
+                onPointerUp={startGame}
                 className="w-full px-6 py-3 bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 border-0"
               >
                 Начать игру
               </button>
+
+              {/* Возврат к выбору (но НЕ показ цитат здесь) */}
               <button
-                onClick={onSwitchToQuotes}
+                onPointerUp={onRequestReturnToPicker}
                 className="w-full px-6 py-3 bg-white hover:bg-slate-50 text-purple-700 font-medium rounded-lg shadow-lg transition-colors duration-200 border"
               >
-                Посмотреть цитаты
+                Назад к выбору
               </button>
             </div>
           </div>
@@ -270,18 +270,37 @@ export default function FallingObjectsGame({
         <div
           ref={gameAreaRef}
           className="relative bg-gradient-to-b from-purple-100/50 to-pink-100/50 rounded-xl overflow-hidden cursor-none select-none border border-purple-200/50"
-          style={{ height: `${GAME_HEIGHT}px` }}
+          style={{ height: `${GAME_HEIGHT}px`,touchAction: "none" }}
         >
           <div className="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
             <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1 shadow-sm">
               <span className="text-sm font-bold text-purple-600">{score}</span>
             </div>
-            <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1 shadow-sm flex items-center gap-1">
-              {[...Array(3)].map((_, i) => (
-                <span key={i} className="text-sm">
-                  {i < MAX_MISSED - missedObjects ? "❤️" : "🤍"}
-                </span>
-              ))}
+
+            <div className="flex items-center gap-2">
+              <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1 shadow-sm flex items-center gap-1">
+                {[...Array(3)].map((_, i) => (
+                  <span key={i} className="text-sm">
+                    {i < MAX_MISSED - missedObjects ? "❤️" : "🤍"}
+                  </span>
+                ))}
+              </div>
+
+              {/* Кнопка завершить/выйти в правом верхнем углу */}
+              <button
+                onPointerUp={onRequestReturnToPicker}
+                title="Вернуться к выбору"
+                className="bg-white/90 hover:bg-white text-purple-700 font-medium rounded-lg shadow-sm px-3 py-1 border transition-colors"
+              >
+                Назад
+              </button>
+              <button
+                onPointerUp={onRequestFinish}
+                title="Завершить игру и показать вещи"
+                className="bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-sm px-3 py-1 border-0 transition-colors"
+              >
+                Завершить
+              </button>
             </div>
           </div>
 
@@ -355,19 +374,16 @@ export default function FallingObjectsGame({
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
-                    onClick={() => {
-                      setShowFinishOverlay(false)
-                      onRequestFinish?.()
-                    }}
-                    className="w-full px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg transition-colors duration-200"
+                    onPointerUp={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
+                    className="w-full px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg transition-colors"
                   >
-                    Да, показать вещи
+                    Да
                   </button>
                   <button
-                    onClick={() => setShowFinishOverlay(false)}
-                    className="w-full px-4 py-2 bg-white hover:bg-slate-50 text-purple-700 font-medium rounded-lg border transition-colors duration-200"
+                    onPointerUp={() => setShowFinishOverlay(false)}
+                    className="w-full px-4 py-2 bg-white hover:bg-slate-50 text-purple-700 font-medium rounded-lg border transition-colors"
                   >
-                    Продолжить игру
+                    Продолжить
                   </button>
                 </div>
               </div>
