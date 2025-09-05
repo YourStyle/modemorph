@@ -12,7 +12,7 @@ export function QuoteCard({
       className={cn(
         "relative rounded-2xl border border-white/10 bg-white/5",
         "px-4 py-3 min-h-[96px]",
-        "text-sm leading-relaxed text-neutral-100",
+        "text-sm leading-relaxed text-black",
         className
       )}
     >

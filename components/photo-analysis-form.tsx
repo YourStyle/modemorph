@@ -152,10 +152,10 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
                 <GameShell height={gameHeight}>
                     <div className="text-center max-w-md w-full">
                         <h2 className="text-lg font-semibold mb-2">ИИ анализирует ваши фото</h2>
-                        <div className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md w-full text-center shadow">
-                            <p className="italic">"{quotes[quoteIndex].text}"</p>
-                            <p className="mt-2 font-medium">— {quotes[quoteIndex].author}</p>
-                        </div>
+                        <QuoteCard className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md w-full text-center shadow">
+                            <p className="italic text-black">"{quotes[quoteIndex].text}"</p>
+                            <p className="mt-2 font-medium text-black">— {quotes[quoteIndex].author}</p>
+                        </QuoteCard>
                         <p className="mt-3 text-xs text-neutral-400">Можно переключиться на игру в любой момент</p>
                         <div className="mt-3">
                             <button className="border rounded px-3 py-1" onPointerUp={pickGame}>Переключиться на игру
@@ -742,7 +742,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
                     <Upload className="w-8 h-8 text-gray-500"/>
                     <p className="font-medium">Загрузить фото одежды</p>
                     <p className="text-sm text-gray-500">Максимум 2 фото для анализа</p>
-                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    <Button type="button" variant="default" onClick={() => fileInputRef.current?.click()}>
                         <Plus className="w-4 h-4 mr-2"/> Нажмите для выбора фото
                     </Button>
                     <p className="text-xs text-gray-400">HEIC, JPEG, JPG, WebP, PNG</p>

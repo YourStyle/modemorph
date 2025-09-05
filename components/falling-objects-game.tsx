@@ -244,7 +244,7 @@ export default function FallingObjectsGame({
             </p>
             <div className="grid grid-cols-1 gap-3">
               <button
-                onClikck={startGame}
+                onClick={startGame}
                 className="w-full px-6 py-3 bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 border-0"
               >
                 Начать игру
@@ -252,7 +252,7 @@ export default function FallingObjectsGame({
 
               {/* Возврат к выбору (но НЕ показ цитат здесь) */}
               <button
-                onClikck={onRequestReturnToPicker}
+                onClick={onRequestReturnToPicker}
                 className="w-full px-6 py-3 bg-white hover:bg-slate-50 text-purple-700 font-medium rounded-lg shadow-lg transition-colors duration-200 border"
               >
                 Назад к выбору
@@ -282,14 +282,14 @@ export default function FallingObjectsGame({
 
               {/* Кнопка завершить/выйти в правом верхнем углу */}
               <button
-                onClikck={onRequestReturnToPicker}
+                onClick={onRequestReturnToPicker}
                 title="Вернуться к выбору"
                 className="bg-white/90 hover:bg-white text-purple-700 font-medium rounded-lg shadow-sm px-3 py-1 border transition-colors"
               >
                 Назад
               </button>
               <button
-                onClikck={onRequestFinish}
+                onClick={onRequestFinish}
                 title="Завершить игру и показать вещи"
                 className="bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-sm px-3 py-1 border-0 transition-colors"
               >
@@ -367,13 +367,13 @@ export default function FallingObjectsGame({
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
-                    onClikck={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
+                    onClick={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
                     className="w-full px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg transition-colors"
                   >
                     Да
                   </button>
                   <button
-                    onClikck={() => setShowFinishOverlay(false)}
+                    onClick={() => setShowFinishOverlay(false)}
                     className="w-full px-4 py-2 bg-white hover:bg-slate-50 text-purple-700 font-medium rounded-lg border transition-colors"
                   >
                     Продолжить
