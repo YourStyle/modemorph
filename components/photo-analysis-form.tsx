@@ -120,6 +120,11 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
     const pickGame = () => setViewMode("game")
     const pickQuotes = () => setViewMode("quotes")
 
+    useEffect(() => {
+      console.log("LoadingExperience MOUNT")
+      return () => console.log("LoadingExperience UNMOUNT")
+    }, [])
+
     if (viewMode === null || viewMode === "choose") {
         return (
             <>
