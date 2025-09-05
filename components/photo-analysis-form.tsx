@@ -600,7 +600,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
               </div>
             </div>
           </GameShell>
-          <ProgressBlock progress={progress} progressText={progressText} />
+        
         </>
       )
     }
@@ -625,7 +625,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
               </div>
             </div>
           </GameShell>
-          <ProgressBlock progress={progress} progressText={progressText} />
+        
         </>
       )
     }
@@ -642,7 +642,7 @@ export function PhotoAnalysisForm({ initialPhotos = [], onSuccess, onReset }: Ph
               onRequestReturnToPicker={() => setViewMode("choose")}
             />
           </GameShell>
-          <ProgressBlock progress={progress} progressText={progressText} />
+          
         </>
       )
     }
