@@ -80,9 +80,7 @@ export default function MiniRegistrationPage() {
     }
   }
 
-  if (!ready) return null
-
-  return (
+  return !ready ? null : (
     <div className="min-h-screen bg-white">
       <main className="mx-auto max-w-md px-6 py-8">
         {/* Progress indicator */}
