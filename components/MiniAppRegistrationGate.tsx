@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { tmaHandshake } from "@/lib/tma/handshake"
 
 declare global {
@@ -63,7 +62,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const pathname = usePathname()
   const onMiniReg = (pathname || "").startsWith("/auth/mini-registration")
 
-  const supabase = useMemo(() => createClient(), [])
   const [ready, setReady] = useState(false)
 
   const [status, setStatus] = useState({ 
@@ -143,7 +141,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     return () => {
       cancelled = true
     }
-  }, [router, supabase, pathname])
+  }, [router, pathname])
 
 
   if (!ready) {

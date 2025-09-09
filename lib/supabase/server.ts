@@ -45,24 +45,12 @@ export function createClient(opts?: { role?: Role }) {
 
   return createServerClient(url, anonKey, {
     cookies: {
-      get(name) {
-        return cookieStore.get(name)?.value
-      },
-      set(name, value, options: CookieOptions) {
-        // Принудительно навешиваем флаги для 3rd-party контекста
+      get(name) { return cookieStore.get(name)?.value },
+      set(name, value, options) {
         cookieStore.set({ name, value, ...options, ...force })
       },
-      remove(name, options: CookieOptions) {
-        cookieStore.set({
-          name,
-          value: "",
-          ...options,
-          sameSite: "none",
-          secure: true,
-          domain: ".modemorph.ru",
-          path: "/",
-          maxAge: 0,           // <-- важно
-        })
+      remove(name, options) {
+        cookieStore.set({ name, value: "", ...options, ...force, maxAge: 0 })
       },
     },
     headers: {

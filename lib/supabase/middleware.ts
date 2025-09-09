@@ -1,17 +1,16 @@
 // middleware.ts
-import { createServerClient } from "@supabase/ssr"
+import { createServerClient, type CookieOptions } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
-import type { CookieOptions } from "@supabase/ssr"
+
+const FORCE: CookieOptions = {
+  sameSite: "none",
+  secure: true,
+  domain: ".modemorph.ru",
+  path: "/",
+}
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request })
-
-  const force: CookieOptions = {
-    sameSite: "none",
-    secure: true,
-    domain: ".modemorph.ru",
-    path: "/",
-  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,17 +21,16 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          // Сначала удалим возможные «host-only» дубликаты,
-          // затем поставим правильные куки с нужными атрибутами.
+          // Удаляем host-only/«левые» варианты и ставим куки с одинаковыми атрибутами
           cookiesToSet.forEach(({ name, value, options }) => {
-            // удалить host-only вариант
+            // снести возможный host-only дубликат
             response.cookies.set(name, "", { path: "/", maxAge: 0 })
-            // поставить нормализованную куку
-            response.cookies.set(name, value, { ...options, ...force })
+            // поставить правильную версию
+            response.cookies.set(name, value, { ...options, ...FORCE })
           })
         },
       },
-    },
+    }
   )
 
   await supabase.auth.getSession()
