@@ -37,7 +37,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             dangerouslySetInnerHTML={{
               __html: `
                 (function(){
-                  const initData = ${JSON.stringify(process.env.NEXT_PUBLIC_TG_MOCK_INIT_DATA)};
+                  const initData = ${process.env.NEXT_PUBLIC_TG_MOCK_INIT_DATA};
                   const params = new URLSearchParams(initData);
                   const unsafe = {};
                   for (const [k,v] of params.entries()) {
