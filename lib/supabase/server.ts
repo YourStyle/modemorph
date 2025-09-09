@@ -53,7 +53,16 @@ export function createClient(opts?: { role?: Role }) {
         cookieStore.set({ name, value, ...options, ...force })
       },
       remove(name, options: CookieOptions) {
-        cookieStore.set({ name, value: "", ...options, ...force })
+        cookieStore.set({
+          name,
+          value: "",
+          ...options,
+          sameSite: "none",
+          secure: true,
+          domain: ".modemorph.ru",
+          path: "/",
+          maxAge: 0,           // <-- важно
+        })
       },
     },
     headers: {

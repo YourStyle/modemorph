@@ -102,24 +102,7 @@ export async function POST(req: NextRequest) {
     const session = await ensureSupabaseUserAndSignIn(admin, anon, tgUser)
 
     // Выставляем auth cookies
-    const res = NextResponse.json({ success: true })
-    // Устанавливаем куки, используя setSession на клиенте предпочтительно; но для SSR — кладём явно
-    res.cookies.set("sb-access-token", session.access_token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: true,
-      path: "/",
-      maxAge: 60 * 60,
-    })
-    res.cookies.set("sb-refresh-token", session.refresh_token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: true,
-      path: "/",
-      maxAge: 60 * 60 * 24 * 30,
-    })
-
-    return res
+    return NextResponse.json({ success: true })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Telegram auth failed" }, { status: 500 })
   }

@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  app:  # PROD
+    profiles: ["prod"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner        # финальный runtime слой (standalone)
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+  app-dev:  # DEV
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev           # отдельная dev-стадия (см. Dockerfile ниже)
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+    command: ["pnpm", "dev"]  # next dev
+    volumes:
+      - .:/app
+      - /app/node_modules     # чтобы не затирать node_modules хостовым томом
+    ports:
+      - "3000:3000"

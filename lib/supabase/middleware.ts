@@ -1,10 +1,17 @@
+// middleware.ts
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
+import type { CookieOptions } from "@supabase/ssr"
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
+  let response = NextResponse.next({ request })
+
+  const force: CookieOptions = {
+    sameSite: "none",
+    secure: true,
+    domain: ".modemorph.ru",
+    path: "/",
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,18 +22,19 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
+          // Сначала удалим возможные «host-only» дубликаты,
+          // затем поставим правильные куки с нужными атрибутами.
+          cookiesToSet.forEach(({ name, value, options }) => {
+            // удалить host-only вариант
+            response.cookies.set(name, "", { path: "/", maxAge: 0 })
+            // поставить нормализованную куку
+            response.cookies.set(name, value, { ...options, ...force })
           })
-          cookiesToSet.forEach(({ name, value, options }) => supabaseResponse.cookies.set(name, value, options))
         },
       },
     },
   )
 
-  // Only refresh session without fetching user data
   await supabase.auth.getSession()
-
-  return supabaseResponse
+  return response
 }
