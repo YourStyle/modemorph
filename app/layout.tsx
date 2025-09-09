@@ -9,6 +9,7 @@ import { SelectedItemsProvider } from "@/contexts/selected-items-context"
 import { AuthProvider } from "@/contexts/auth-context"
 import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
 import TmaBodyClass from "@/components/TmaBodyClass"
+import AppErrorBoundary from "@/components/AppErrorBoundary"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -19,8 +20,6 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-
-
   return (
     <html lang="ru">
       <head>
@@ -33,14 +32,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       {/* высота берётся из переменных, которые проставляет официальный скрипт */}
       <body className={`${inter.className}`}>
-      <AppErrorBoundary>
-        <TmaBodyClass />
-        <AuthProvider>
-          <SelectedItemsProvider>
-            <MiniAppRegistrationGate>{children}</MiniAppRegistrationGate>
-            <Toaster />
-          </SelectedItemsProvider>
-        </AuthProvider>
+        <AppErrorBoundary>
+          <TmaBodyClass />
+          <AuthProvider>
+            <SelectedItemsProvider>
+              <MiniAppRegistrationGate>{children}</MiniAppRegistrationGate>
+              <Toaster />
+            </SelectedItemsProvider>
+          </AuthProvider>
         </AppErrorBoundary>
       </body>
     </html>
