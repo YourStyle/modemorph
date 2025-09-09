@@ -66,15 +66,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const supabase = useMemo(() => createClient(), [])
   const [ready, setReady] = useState(false)
 
-  const [status, setStatus] = useState({ 
-    isMiniApp: false, 
-    fullscreenRequested: false, 
-    fullscreenGranted: false, 
-    platform: "-", 
-    version: "-", 
-  })
-
-
   const fsTried = useRef(false)
   const askFullscreen = (tg: NonNullable<typeof window.Telegram>["WebApp"]) => {
     if (fsTried.current) return
@@ -86,7 +77,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     try {
       tg.expand?.()
     } catch {}
-    setStatus((s) => ({ ...s, fullscreenRequested: true }))
   }
 
   useEffect(() => {
@@ -95,7 +85,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     async function boot() {
       try {
         const { inTMA, tg } = detectTMA()
-        setStatus((s) => ({ ...s, isMiniApp: inTMA, platform: tg?.platform || "-", version: tg?.version || "-" }))
 
         if (!inTMA || !tg) {
           return // outside TMA — просто рендерим контент

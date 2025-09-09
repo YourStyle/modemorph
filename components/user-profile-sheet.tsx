@@ -98,7 +98,6 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         shoe_size: userProfile.shoe_size?.toString() || "",
       })
     } catch (e) {
-      console.error(e)
       toast.error("Ошибка загрузки профиля")
     } finally {
       setIsLoading(false)
@@ -109,8 +108,8 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
     try {
       const res = await fetch("/api/user-subscription", { credentials: "include" })
       if (res.ok) setSubscriptionData(await res.json())
-    } catch (e) {
-      console.error("Error loading subscription data:", e)
+    } catch {
+      // ignore
     }
   }
 
@@ -179,7 +178,6 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
     setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
     toast.success("Аватар успешно обновлён")
   } catch (e: any) {
-    console.error(e)
     toast.error(`Ошибка загрузки аватара: ${e?.message || "Неизвестная ошибка"}`)
   } finally {
     setIsUploadingAvatar(false)
@@ -217,7 +215,6 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
       toast.success("Профиль успешно обновлен")
       loadProfile()
     } catch (e: any) {
-      console.error(e)
       toast.error(`Ошибка сохранения профиля: ${e?.message || "Неизвестная ошибка"}`)
     } finally {
       setIsSaving(false)
@@ -232,8 +229,7 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
       })
       router.push("/auth/login")
       onClose()
-    } catch (e) {
-      console.error(e)
+    } catch {
       toast.error("Ошибка при выходе")
     }
   }

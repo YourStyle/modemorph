@@ -112,7 +112,6 @@ export function TopNavigation() {
       } = await supabase.auth.getUser()
 
       if (userError || !user) {
-        console.error("User not authenticated:", userError)
         return
       }
 
@@ -123,8 +122,6 @@ export function TopNavigation() {
         .single()
 
       if (profileError) {
-        console.error("Profile fetch error:", profileError)
-
         const { data: newProfile, error: createError } = await supabase
           .from("user_profiles")
           .insert({
@@ -135,31 +132,26 @@ export function TopNavigation() {
           .select()
           .single()
 
-        if (createError) {
-          console.error("Profile creation error:", createError)
-        } else {
+        if (!createError) {
           setProfile(newProfile)
         }
       } else {
         setProfile(profileData)
       }
-    } catch (error) {
-      console.error("Error loading user profile:", error)
+    } catch {
+      // ignore
     }
   }
 
   const loadWeather = async () => {
     try {
       setWeatherLoading(true)
-      console.log("Starting weather loading...")
 
       // Сначала пробуем загрузить кэшированную погоду
       try {
-        console.log("Trying to load cached weather...")
         const cachedResponse = await fetch("/api/weather/cached")
         if (cachedResponse.ok) {
           const cachedWeather = await cachedResponse.json()
-          console.log("Cached weather loaded:", cachedWeather)
           setWeather({
             temperature: cachedWeather.temperature,
             description: cachedWeather.description,
@@ -168,36 +160,29 @@ export function TopNavigation() {
           })
           setWeatherLoading(false)
           return
-        } else {
-          console.log("No cached weather available, status:", cachedResponse.status)
         }
-      } catch (error) {
-        console.log("Error loading cached weather:", error)
+      } catch {
+        // ignore cache errors
       }
 
       // Если кэша нет, пытаемся получить геолокацию
       if (navigator.geolocation) {
-        console.log("Requesting geolocation...")
         navigator.geolocation.getCurrentPosition(
           async (position) => {
             const { latitude, longitude } = position.coords
-            console.log("Geolocation obtained:", { latitude, longitude })
             await fetchWeather(latitude, longitude)
           },
-          async (error) => {
-            console.log("Geolocation error:", error)
+          async () => {
             // Fallback на Москву
             await fetchWeather(55.7558, 37.6176)
           },
           { timeout: 5000, maximumAge: 300000 }, // 5 секунд таймаут, кэш 5 минут
         )
       } else {
-        console.log("Geolocation not supported, using Moscow coordinates")
         // Fallback на Москву
         await fetchWeather(55.7558, 37.6176)
       }
-    } catch (error) {
-      console.error("Error loading weather:", error)
+    } catch {
       setWeatherLoading(false)
       // Устанавливаем fallback данные только при критической ошибке
       setWeather({
@@ -211,17 +196,12 @@ export function TopNavigation() {
 
   const fetchWeather = async (lat: number, lon: number) => {
     try {
-      console.log(`Fetching weather for coordinates: ${lat}, ${lon}`)
-
       const url = `/api/weather?lat=${lat}&lon=${lon}`
-      console.log("Weather API URL:", url)
 
       const response = await fetch(url)
-      console.log("Weather API response status:", response.status)
 
       if (response.ok) {
         const weatherData = await response.json()
-        console.log("Weather data received:", weatherData)
 
         setWeather({
           temperature: weatherData.temperature,
@@ -230,9 +210,6 @@ export function TopNavigation() {
           icon: weatherData.icon || "🌤️",
         })
       } else {
-        const errorData = await response.text()
-        console.error("Weather API error:", response.status, errorData)
-
         // Fallback данные при ошибке API
         setWeather({
           temperature: 20,
@@ -241,8 +218,7 @@ export function TopNavigation() {
           icon: "☀️",
         })
       }
-    } catch (error) {
-      console.error("Weather fetch error:", error)
+    } catch {
       // Fallback данные при ошибке сети
       setWeather({
         temperature: 20,
@@ -262,8 +238,8 @@ export function TopNavigation() {
         credentials: "include",
       })
       window.location.href = "/"
-    } catch (error) {
-      console.error("Sign out error:", error)
+    } catch {
+      // ignore
     }
   }
 
