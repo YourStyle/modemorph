@@ -16,10 +16,10 @@ declare global {
         initDataUnsafe?: Record<string, any>
         isExpanded?: boolean
         viewportStableHeight?: number
-
-        // events
+         // events
         onEvent?: (event: string, cb: (...args: any[]) => void) => void
         offEvent?: (event: string, cb: (...args: any[]) => void) => void
+
 
         // lifecycle
         ready: () => void
@@ -29,24 +29,11 @@ declare global {
         setBackgroundColor?: (c: string) => void
         isVersionAtLeast?: (ver: string) => boolean
 
-        // NEW: жесты/закрытие
+         // NEW: жесты/закрытие
         enableClosingConfirmation?: () => void
         disableClosingConfirmation?: () => void
         enableVerticalSwipes?: () => void
         disableVerticalSwipes?: () => void
-
-        // NEW: ярлык на Домой
-        addToHomeScreen?: () => void
-        checkHomeScreenStatus?: (cb?: (status: "unsupported"|"unknown"|"added"|"missed") => void) => void
-
-        // NEW: кнопка «Настройки» в меню мини-аппа
-        SettingsButton?: {
-          show: () => void
-          hide: () => void
-          onClick?: (cb: () => void) => void
-          offClick?: (cb: () => void) => void
-          isVisible?: boolean
-        }
       }
     }
   }
@@ -102,52 +89,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     setStatus((s) => ({ ...s, fullscreenRequested: true }))
   }
 
-    // --- helpers: Add to Home Screen в меню ---
-  function setupAddToHomeInMenu(tg: NonNullable<typeof window.Telegram>["WebApp"]) {
-    if (!tg.isVersionAtLeast?.("8.0")) return () => {} // не поддерживается
-    const clickHandler = () => tg.addToHomeScreen?.()
-
-    const show = () => {
-      try {
-        tg.SettingsButton?.show()
-        tg.SettingsButton?.offClick?.(clickHandler)
-        tg.SettingsButton?.onClick?.(clickHandler)
-      } catch {}
-    }
-    const hide = () => {
-      try {
-        tg.SettingsButton?.offClick?.(clickHandler)
-        tg.SettingsButton?.hide()
-      } catch {}
-    }
-
-    // первичная проверка статуса
-    try {
-      tg.checkHomeScreenStatus?.((s) => {
-        if (s === "added" || s === "unsupported") hide()
-        else show()
-      })
-    } catch { show() }
-
-    // поддерживаем актуальность по событиям клиента
-    const onChecked = (payload: any) => {
-      const s = typeof payload === "string" ? payload : payload?.status
-      if (s === "added" || s === "unsupported") hide()
-      else show()
-    }
-    const onAdded = () => hide()
-
-    tg.onEvent?.("homeScreenChecked", onChecked)
-    tg.onEvent?.("homeScreenAdded", onAdded)
-
-    // cleanup
-    return () => {
-      tg.offEvent?.("homeScreenChecked", onChecked)
-      tg.offEvent?.("homeScreenAdded", onAdded)
-      tg.SettingsButton?.offClick?.(clickHandler)
-    }
-  }
-
   useEffect(() => {
     let cancelled = false
     async function boot() {
@@ -175,9 +116,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
 
         // Подтверждение закрытия
         try { tg.enableClosingConfirmation?.() } catch {}
-
-        // Пункт меню «Добавить на экран Домой»
-        cleanupFns.push(setupAddToHomeInMenu(tg))
 
         // 1) Хэндшейк
         const user = await tmaHandshake()
