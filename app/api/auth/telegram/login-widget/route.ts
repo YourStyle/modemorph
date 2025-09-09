@@ -116,9 +116,9 @@ export async function POST(req: NextRequest) {
     }
 
     // anon-клиент — для входа
-    const supabase = createClient()
+    const supabase = await createClient()
     // service-клиент — для админ-операций и upsert профиля
-    const admin = createClient({ role: "service" })
+    const admin = await createClient({ role: "service" })
 
     // Пробуем мгновенно войти (если учётка уже согласована ранее)
     {

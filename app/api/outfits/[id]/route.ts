@@ -16,7 +16,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
     console.log("Fetching outfit with ID:", id)
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const {
       data: { user },
       error: userError,
@@ -113,7 +113,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const {
       data: { user },
       error: userError,
@@ -190,7 +190,7 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const {
       data: { user },
       error: userError,

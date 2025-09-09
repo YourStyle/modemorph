@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     }
 
     // Получаем текущего пользователя
-    const supabase = createClient()
+    const supabase = await createClient()
     const {
       data: { user },
       error: userError,
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const limit = Number.parseInt(searchParams.get("limit") || "50")
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const {
       data: { user },
       error: userError,
@@ -182,7 +182,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const {
       data: { user },
       error: userError,
@@ -248,7 +248,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const {
       data: { user },
       error: userError,

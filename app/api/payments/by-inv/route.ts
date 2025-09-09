@@ -6,7 +6,7 @@ export async function GET(req: Request) {
   const invId = searchParams.get("invId")
   if (!invId) return NextResponse.json({ error: "invId required" }, { status: 400 })
 
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data, error } = await supabase
     .from("payments")
     .select("id")

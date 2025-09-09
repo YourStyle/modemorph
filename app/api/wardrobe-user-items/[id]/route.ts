@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const itemId = params.id
 
     console.log("Attempting to delete user wardrobe item:", itemId)
@@ -58,7 +58,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const itemId = params.id
     const body = await request.json()
 

@@ -8,7 +8,7 @@ import { User, Mail, Calendar, Shield, LogOut } from "lucide-react"
 import { signOut } from "@/lib/actions"
 
 export default async function ProfilePage() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

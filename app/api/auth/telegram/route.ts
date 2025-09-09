@@ -95,8 +95,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Клиенты Supabase
-    const admin = createClient({ role: "service" }) // createClient должен уметь брать SERVICE_ROLE при role=service
-    const anon = createClient()
+    const admin = await createClient({ role: "service" }) // createClient должен уметь брать SERVICE_ROLE при role=service
+    const anon = await createClient()
 
     // Гарантируем юзера и получаем сессию (access/refresh)
     const session = await ensureSupabaseUserAndSignIn(admin, anon, tgUser)

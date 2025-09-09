@@ -4,7 +4,7 @@ import { BlobMigrationService } from "@/lib/blob-migration"
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Проверяем, что пользователь админ
     const {

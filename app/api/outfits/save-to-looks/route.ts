@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Get current user
     const {

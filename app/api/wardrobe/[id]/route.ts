@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },
@@ -63,7 +63,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },
@@ -112,7 +112,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 // Toggle visibility only
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },
@@ -171,7 +171,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 // Full update for admin edit page
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },

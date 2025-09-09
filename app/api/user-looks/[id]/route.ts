@@ -3,7 +3,7 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },
@@ -39,7 +39,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const {
       data: { user },

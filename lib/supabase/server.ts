@@ -22,7 +22,7 @@ export function isSupabaseConfigured(): boolean {
   }
 }
 
-export function createClient(opts?: { role?: Role }) {
+export async function createClient(opts?: { role?: Role }) {
   const url = must("NEXT_PUBLIC_SUPABASE_URL")
   const anonKey = must("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
@@ -32,8 +32,8 @@ export function createClient(opts?: { role?: Role }) {
     return createAdminClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } })
   }
 
-  const cookieStore = cookies()
-  const hdrs = headers()
+  const cookieStore = await cookies()
+  const hdrs = await headers()
   const cookieDomain = ".modemorph.ru"
   const force: Partial<CookieOptions> = {
     // В проде:
