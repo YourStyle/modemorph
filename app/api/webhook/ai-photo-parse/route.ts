@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Создаем клиент Supabase
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Проверяем существование пользователя
     const { data: user, error: userError } = await supabase.from("profiles").select("id").eq("id", userId).single()

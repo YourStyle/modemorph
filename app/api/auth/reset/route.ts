@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
   try {
     const { email } = await req.json()
     if (!email) return NextResponse.json({ error: "Email required" }, { status: 400 })
-    const supabase = createClient()
+    const supabase = await createClient()
     const redirectTo = process.env.SUPABASE_RESET_REDIRECT!
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
     if (error) throw error

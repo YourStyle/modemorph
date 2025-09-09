@@ -30,7 +30,7 @@ export interface WardrobeItem {
 }
 
 export async function getWardrobeItems(includeHidden = false): Promise<WardrobeItem[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   let query = supabase.from("wardrobe_items").select(`
       *,
@@ -69,7 +69,7 @@ export async function getAllWardrobeItems(): Promise<WardrobeItem[]> {
 }
 
 export async function getWardrobeItemsByBasicType(basicItemId: number, includeHidden = false): Promise<WardrobeItem[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   let query = supabase
     .from("wardrobe_items")
@@ -102,7 +102,7 @@ export async function getWardrobeItemsByBasicType(basicItemId: number, includeHi
 }
 
 export async function searchWardrobeItems(query: string, includeHidden = false): Promise<WardrobeItem[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   let dbQuery = supabase
     .from("wardrobe_items")
@@ -135,7 +135,7 @@ export async function searchWardrobeItems(query: string, includeHidden = false):
 }
 
 export async function getBasicWardrobeItems(includeHidden = false): Promise<WardrobeItem[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   let query = supabase
     .from("wardrobe_items")
@@ -168,7 +168,7 @@ export async function getBasicWardrobeItems(includeHidden = false): Promise<Ward
 }
 
 export async function getWardrobeItemById(id: number): Promise<WardrobeItem | null> {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   const { data, error } = await supabase
     .from("wardrobe_items")

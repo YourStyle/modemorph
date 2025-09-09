@@ -9,7 +9,7 @@ export async function POST(req: Request) {
 
   if (!amount) return NextResponse.json({ success:false, error:"amount required" }, { status:400 })
 
-  const supabase = createServerClient()
+  const supabase = await createServerClient()
   const { data:{ user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ success:false, error:"Unauthorized" }, { status:401 })
 

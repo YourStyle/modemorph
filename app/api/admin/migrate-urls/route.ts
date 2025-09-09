@@ -21,7 +21,7 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     if (!urlMigrationService) {
       urlMigrationService = new UrlMigrationService()

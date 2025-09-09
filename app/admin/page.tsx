@@ -5,7 +5,7 @@ import { Shirt, FolderIcon as Hanger, Plus, TrendingUp, Package, Palette, Zap } 
 import Link from "next/link"
 
 export default async function AdminDashboard() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()

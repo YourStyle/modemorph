@@ -31,7 +31,7 @@ async function expandBasicItem(supabase: any, id: number) {
 
 export async function GET() {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Get the current user
     const {
@@ -106,7 +106,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Get the current user
     const {

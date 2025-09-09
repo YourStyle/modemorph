@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function isUserAdmin(userId?: string): Promise<boolean> {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Если userId не передан, получае�� текущего пользователя
     if (!userId) {
@@ -30,7 +30,7 @@ export async function isUserAdmin(userId?: string): Promise<boolean> {
 
 export async function getUserProfile(userId?: string) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     if (!userId) {
       const {
@@ -56,7 +56,7 @@ export async function getUserProfile(userId?: string) {
 
 export async function createUserProfile(userId: string, isAdmin = false) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { error } = await supabase.from("user_profiles").insert({
       user_id: userId,

@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function GET() {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Проверяем, существует ли колонка is_basic
     const { data: columnExists, error: columnCheckError } = await supabase

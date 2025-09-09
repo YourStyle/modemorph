@@ -30,6 +30,25 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         {/* Telegram WebApp API должен грузиться ДО интерактива */}
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+        {process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_TG_MOCK_INIT_DATA ? (
+          <Script
+            id="mock-telegram-user"
+            strategy="beforeInteractive"
+            dangerouslySetInnerHTML={{
+              __html: `
+                (function(){
+                  const initData = ${JSON.stringify(process.env.NEXT_PUBLIC_TG_MOCK_INIT_DATA)};
+                  const params = new URLSearchParams(initData);
+                  const unsafe = {};
+                  for (const [k,v] of params.entries()) {
+                    unsafe[k] = k === "user" ? JSON.parse(v) : v;
+                  }
+                  window.Telegram = { WebApp: { initData: initData, initDataUnsafe: unsafe } };
+                })();
+              `,
+            }}
+          />
+        ) : null}
       </head>
       {/* высота берётся из переменных, которые проставляет официальный скрипт */}
       <body className={`${inter.className}`}>

@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "ID is required" }, { status: 400 })
     }
 
-    const supabase = createClient()
+    const supabase = await createClient()
 
     // Получаем текущего пользователя
     const {

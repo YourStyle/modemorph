@@ -7,7 +7,7 @@ import Link from "next/link"
 
 export default async function AddWardrobeItemPage() {
   // Проверяем авторизацию
-  const supabase = createClient()
+  const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
