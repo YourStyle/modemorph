@@ -33,6 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       {/* высота берётся из переменных, которые проставляет официальный скрипт */}
       <body className={`${inter.className}`}>
+      <AppErrorBoundary>
         <TmaBodyClass />
         <AuthProvider>
           <SelectedItemsProvider>
@@ -40,6 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Toaster />
           </SelectedItemsProvider>
         </AuthProvider>
+        </AppErrorBoundary>
       </body>
     </html>
   )
