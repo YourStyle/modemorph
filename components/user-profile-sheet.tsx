@@ -226,7 +226,10 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      await fetch("/api/auth/signout", {
+        method: "POST",
+        credentials: "include",
+      })
       router.push("/auth/login")
       onClose()
     } catch (e) {
