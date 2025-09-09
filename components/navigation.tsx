@@ -83,7 +83,10 @@ export function Navigation() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      await fetch("/api/auth/signout", {
+        method: "POST",
+        credentials: "include",
+      })
       router.push("/")
     } catch (error) {
       console.error("Sign out error:", error)

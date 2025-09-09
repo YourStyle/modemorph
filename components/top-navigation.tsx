@@ -257,7 +257,10 @@ export function TopNavigation() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      await fetch("/api/auth/signout", {
+        method: "POST",
+        credentials: "include",
+      })
       window.location.href = "/"
     } catch (error) {
       console.error("Sign out error:", error)
