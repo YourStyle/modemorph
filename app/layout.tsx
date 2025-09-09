@@ -51,7 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         ) : null}
       </head>
       {/* высота берётся из переменных, которые проставляет официальный скрипт */}
-      <body className={`${inter.className}`}>
+      <body className={`${inter.className}`} suppressHydrationWarning>
         <TmaBodyClass />
         <AuthProvider>
           <SelectedItemsProvider>
