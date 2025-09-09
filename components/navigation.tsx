@@ -40,7 +40,6 @@ export function Navigation() {
       } = await supabase.auth.getUser()
 
       if (userError || !user) {
-        console.error("User not authenticated:", userError)
         setLoading(false)
         return
       }
@@ -53,9 +52,6 @@ export function Navigation() {
         .single()
 
       if (profileError) {
-        console.error("Profile fetch error:", profileError)
-
-        // Пытаемся создать профиль если его нет
         const { data: newProfile, error: createError } = await supabase
           .from("profiles")
           .insert({
@@ -66,16 +62,14 @@ export function Navigation() {
           .select()
           .single()
 
-        if (createError) {
-          console.error("Profile creation error:", createError)
-        } else {
+        if (!createError) {
           setProfile(newProfile)
         }
       } else {
         setProfile(profileData)
       }
-    } catch (error) {
-      console.error("Error loading user profile:", error)
+    } catch {
+      // ignore
     } finally {
       setLoading(false)
     }
@@ -83,10 +77,13 @@ export function Navigation() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut()
+      await fetch("/api/auth/signout", {
+        method: "POST",
+        credentials: "include",
+      })
       router.push("/")
-    } catch (error) {
-      console.error("Sign out error:", error)
+    } catch {
+      // ignore
     }
   }
 
