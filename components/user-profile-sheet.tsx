@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CommonSheet } from "./common-sheet"
 import { createClient } from "@/lib/supabase/client"
+import { getUser } from "@/lib/get-user"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { PaywallModal } from "./paywall-modal"
@@ -68,7 +69,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const loadProfile = async () => {
     setIsLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await getUser()
       if (!user) return
       const { data: profileData } = await supabase.from("user_profiles").select("*").eq("user_id", user.id).single()
 

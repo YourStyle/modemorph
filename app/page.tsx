@@ -1,4 +1,6 @@
 import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
+import { getUser } from "@/lib/get-user"
+import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
 import { AnimatedLanding } from "@/components/animated-landing"
 
@@ -16,10 +18,7 @@ export default async function HomePage() {
   }
 
   const supabase = createClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
+  const user = await getUser(cookies().toString())
 
   // Если пользователь авторизован, проверяем его роль и перенаправляем
   if (user) {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { getUser } from "@/lib/get-user"
 import { AIPhotoTest } from "@/components/ai-photo-test"
 import { Loader2 } from "lucide-react"
 
@@ -18,10 +19,7 @@ export default function TestAIWebhookPage() {
 
   const checkAdminAccess = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
+      const user = await getUser()
       if (!user) {
         router.push("/auth/login")
         return

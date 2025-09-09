@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import { getUser } from "@/lib/get-user"
+import { cookies } from "next/headers"
 import { AddWardrobeItemForm } from "@/components/add-wardrobe-item-form"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -8,9 +10,7 @@ import Link from "next/link"
 export default async function AddWardrobeItemPage() {
   // Проверяем авторизацию
   const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getUser(cookies().toString())
 
   if (!user) {
     redirect("/auth/login")

@@ -1,6 +1,8 @@
 import type React from "react"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import { getUser } from "@/lib/get-user"
+import { cookies } from "next/headers"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -25,9 +27,7 @@ export default async function AdminLayout({
   children: React.ReactNode
 }) {
   const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getUser(cookies().toString())
 
   if (!user) {
     redirect("/auth/login")

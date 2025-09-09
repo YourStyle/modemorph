@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { getUser } from "@/lib/get-user"
 import { YandexMigrationCard } from "@/components/yandex-migration-card"
 import { FixCorruptedFilesCard } from "@/components/fix-corrupted-files-card"
 import { Loader2 } from "lucide-react"
@@ -15,10 +16,7 @@ export default function AdminSettingsPage() {
 
   const checkAdminAccess = async () => {
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
+      const user = await getUser()
       if (!user) {
         router.push("/auth/login")
         return

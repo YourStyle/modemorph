@@ -1,14 +1,13 @@
 import { createClient } from "@/lib/supabase/server"
+import { getUser } from "@/lib/get-user"
 
 export async function isUserAdmin(userId?: string): Promise<boolean> {
   try {
     const supabase = createClient()
 
-    // Если userId не передан, получае�� текущего пользователя
+    // Если userId не передан, получаем текущего пользователя
     if (!userId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const user = await getUser()
       if (!user) return false
       userId = user.id
     }
@@ -33,9 +32,7 @@ export async function getUserProfile(userId?: string) {
     const supabase = createClient()
 
     if (!userId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const user = await getUser()
       if (!user) return null
       userId = user.id
     }

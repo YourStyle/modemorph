@@ -1,7 +1,7 @@
 // lib/tma/handshake.ts
 // Унифицированный обмен initData → Supabase-сессия. Возвращает актуального user или null.
 
-import { createClient } from "@/lib/supabase/client"
+import { getUser } from "@/lib/get-user"
 
 declare global {
   interface Window {
@@ -15,12 +15,10 @@ declare global {
 }
 
 export async function tmaHandshake(): Promise<import("@supabase/supabase-js").User | null> {
-  const supabase = createClient()
-
   // 1) Если уже есть пользователь — просто вернём
   try {
-    const { data } = await supabase.auth.getUser()
-    if (data.user) return data.user
+    const user = await getUser()
+    if (user) return user
   } catch {}
 
   // 2) Иначе пытаемся обменять initData на сессию
@@ -44,8 +42,7 @@ export async function tmaHandshake(): Promise<import("@supabase/supabase-js").Us
 
   // 3) Повторно читаем пользователя
   try {
-    const { data } = await supabase.auth.getUser()
-    return data.user ?? null
+    return await getUser()
   } catch {
     return null
   }

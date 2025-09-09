@@ -5,6 +5,7 @@ import { MapPin, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
+import { getUser } from "@/lib/get-user"
 import { UserProfileSheet } from "./user-profile-sheet"
 
 interface WeatherData {
@@ -106,13 +107,9 @@ export function TopNavigation() {
 
   const loadUserProfile = async () => {
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user) {
-        console.error("User not authenticated:", userError)
+      const user = await getUser()
+      if (!user) {
+        console.error("User not authenticated")
         return
       }
 

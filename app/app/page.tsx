@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { getUser } from "@/lib/get-user"
 import { OutfitCard } from "@/components/outfit-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -350,9 +351,7 @@ export default function HomePage() {
         setIsFromCache(false)
 
         const supabase = createClient()
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
+        const user = await getUser()
 
         if (!user) {
           console.error("User not authenticated")
@@ -434,9 +433,7 @@ export default function HomePage() {
     setIsFromCache(false)
     try {
       const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const user = await getUser()
 
       if (!user) {
         console.error("User not authenticated")

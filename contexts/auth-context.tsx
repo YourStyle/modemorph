@@ -6,8 +6,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { getUser } from "@/lib/get-user";
 
 interface AuthContextType {
   user: User | null;
@@ -30,7 +30,6 @@ const UNAUTH_REDIRECT_THRESHOLD = 2;       // после двух подряд 4
 const UNAUTH_WINDOW_MS = 60_000;           // окно (мс), в течение которого учитываются подряд идущие 401
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const supabase = useRef(createClient()).current;
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -112,9 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const { data, error } = await supabase.auth.getUser();
-      if (error) setUser(null);
-      else setUser(data.user ?? null);
+      const user = await getUser();
+      setUser(user);
     } catch {
       setUser(null);
     } finally {

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
+import { getUser } from "@/lib/get-user"
 import { PhotoAnalysisForm } from "@/components/photo-analysis-form"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
 import { PaywallModal } from "@/components/paywall-modal"
@@ -86,9 +87,7 @@ export default function AIAssistantPage() {
   useEffect(() => {
     // Получаем ID пользователя при загрузке
     const getUserId = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      const user = await getUser()
       if (user) {
         setUserId(user.id)
       }
