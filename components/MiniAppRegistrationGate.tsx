@@ -91,6 +91,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
 
   useEffect(() => {
     let cancelled = false
+    let redirecting = false
     async function boot() {
       try {
         const { inTMA, tg } = detectTMA()
@@ -121,21 +122,31 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         const user = await tmaHandshake()
 
         // 2) Если нет пользователя — пускаем на форму ТОЛЬКО если мы не на ней
-        if (!user){ if (!onMiniReg) router.replace("/auth/mini-registration?from=tma"); return }
+        if (!user) {
+          if (!onMiniReg) {
+            redirecting = true
+            router.replace("/auth/mini-registration?from=tma")
+          }
+          return
+        }
 
         // 3) Проверяем профиль
         const prof = await fetch("/api/me/profile", { credentials: "include" }).then(r => r.ok ? r.json() : null)
         const p = prof?.profile
         const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
         const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "")
-        if (missing.length > 0 && !onMiniReg) { router.replace("/auth/mini-registration?from=tma"); return }
+        if (missing.length > 0 && !onMiniReg) {
+          redirecting = true
+          router.replace("/auth/mini-registration?from=tma")
+          return
+        }
 
 
         // 5) Всё ок — пропускаем детей
         return
       } finally {
         // КРИТИЧНО: никогда не держать экран серым
-        if (!cancelled) setReady(true)
+        if (!cancelled && !redirecting) setReady(true)
       }
     }
 
