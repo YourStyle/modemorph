@@ -405,8 +405,8 @@ export default function AIAssistantPage() {
 
       {/* Input Area */}
       <div
-        className="fixed inset-x-0 bottom-[calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 80px)] bg-white border-t border-gray-200"
-        style={{ paddingBottom: "var(--sab, env(safe-area-inset-bottom, 0px))" }}
+        className="fixed inset-x-0 bottom-[100px)] bg-white border-t border-gray-200"
+        style={{ paddingBottom: "10px))" }}
       >
         <div className="pt-4 px-4 max-w-7xl mx-auto">
           <div className="flex space-x-3">
