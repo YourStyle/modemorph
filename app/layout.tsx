@@ -31,8 +31,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
       {/* высота берётся из переменных, которые проставляет официальный скрипт */}
-      <body className={`${inter.className}`} suppressHydrationWarning>
-        <TmaBodyClass />
+      <body className={`${inter.className} bg-gray-50`} suppressHydrationWarning>
+        <TmaBodyClass/>
         <AuthProvider>
           <SelectedItemsProvider>
             <MiniAppRegistrationGate>{children}</MiniAppRegistrationGate>
