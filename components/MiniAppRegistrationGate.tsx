@@ -93,7 +93,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         // init TMA
         try {
           tg.ready()
-          const c = "rgba(249, 250, 251, 0.5)"
+          const c = "#FFFFFF"
           tg.setHeaderColor?.(c)
           tg.setBackgroundColor?.(c)
           document.body.style.backgroundColor = c
