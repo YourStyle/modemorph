@@ -9,7 +9,8 @@ export default function TmaBodyClass() {
     const hasInit   = !!tg?.initData && String(tg.initData).trim().length > 0
     const hasUser   = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
     const platform  = String(tg?.platform || "").toLowerCase()
-    const inTma     = !!tg && hasInit && hasUser && platform !== "unknown"
+    const isDesktop = ["macos", "tdesktop", "web", "weba"].includes(platform)
+    const inTma     = !!tg && hasInit && hasUser && platform !== "unknown" && !isDesktop
 
     if (inTma) document.body.classList.add("tma-root")
     else       document.body.classList.remove("tma-root")
