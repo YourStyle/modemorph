@@ -94,8 +94,9 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         try {
           tg.ready()
           const c = "#FFFFFF"
+          const bgC = "#0e0e10"
           tg.setHeaderColor?.(c)
-          tg.setBackgroundColor?.(c)
+          tg.setBackgroundColor?.(bgC)
           document.body.style.backgroundColor = c
         } catch {}
 
