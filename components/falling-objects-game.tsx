@@ -267,12 +267,12 @@ export default function FallingObjectsGame({
           style={{ height: `${GAME_HEIGHT}px`,touchAction: "none" }}
         >
           <div className="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
-            <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1 shadow-sm">
+            <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 h-8 shadow-sm flex items-center">
               <span className="text-sm font-bold text-purple-600">{score}</span>
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 py-1 shadow-sm flex items-center gap-1">
+              <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 h-8 shadow-sm flex items-center gap-1">
                 {[...Array(3)].map((_, i) => (
                   <span key={i} className="text-sm">
                     {i < MAX_MISSED - missedObjects ? "❤️" : "🤍"}
@@ -280,18 +280,10 @@ export default function FallingObjectsGame({
                 ))}
               </div>
 
-              {/* Кнопка завершить/выйти в правом верхнем углу */}
-              <button
-                onClick={onRequestReturnToPicker}
-                title="Вернуться к выбору"
-                className="bg-white/90 hover:bg-white text-purple-700 font-medium rounded-lg shadow-sm px-3 py-1 border transition-colors"
-              >
-                Назад
-              </button>
               <button
                 onClick={onRequestFinish}
                 title="Завершить игру и показать вещи"
-                className="bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-sm px-3 py-1 border-0 transition-colors"
+                className="bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-sm px-3 h-8 flex items-center border-0 transition-colors"
               >
                 Завершить
               </button>
