@@ -601,7 +601,13 @@ export default function InspirationPage(): ReactElement {
 
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+    <div
+      className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none box-border"
+      style={{
+        paddingBottom: "var(--sab, env(safe-area-inset-bottom, 0px))",
+        paddingTop: "var(--sat, env(safe-area-inset-top, 0px))",
+      }}
+    >
       {/* Верхние вкладки */}
       <div className="absolute top-0 left-0 right-0 z-[3000] bg-black/80 backdrop-blur border-b border-neutral-900">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
