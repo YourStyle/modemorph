@@ -93,8 +93,10 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         // init TMA
         try {
           tg.ready()
-          tg.setHeaderColor?.(tg.colorScheme === "dark" ? "secondary_bg_color" : "bg_color")
-          tg.setBackgroundColor?.(tg.colorScheme === "dark" ? "#0e0e10" : "#ffffff")
+          const c = "rgba(249, 250, 251, 0.5)"
+          tg.setHeaderColor?.(c)
+          tg.setBackgroundColor?.(c)
+          document.body.style.backgroundColor = c
         } catch {}
 
         askFullscreen(tg)
@@ -148,7 +150,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
 
   if (!ready) {
     return (
-      <div className="fixed inset-0 bg-white flex items-center justify-center">
+      <div className="fixed inset-0 bg-[#f9fafb]/50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
