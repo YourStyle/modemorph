@@ -510,7 +510,7 @@ export default function HomePage() {
   const progressPercentage = Math.min((userItemsCount / 6) * 100, 100)
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
+    <div className="min-h-screen bg-gray-50 pb-10">
       <div className="px-4 py-6">
         {/* Header */}
         <div className="mb-8">
