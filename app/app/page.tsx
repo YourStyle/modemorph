@@ -535,7 +535,7 @@ export default function HomePage() {
                     preload="auto"
                   >
                     <source
-                      src="https://hebbkx1anhila5yf.public.blob.vercel-storage.com/2025-07-14%204.03.22%E2%80%AFPM%20%281%29-5C9s38mSex1FKGeV9b9oiB6UjE3ENH.mp4"
+                      src="https://storage.yandexcloud.net/modemorphs3/static/main.mp4"
                       type="video/mp4"
                     />
                     {/* Fallback for browsers without video support */}
