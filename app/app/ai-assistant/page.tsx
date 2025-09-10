@@ -319,10 +319,7 @@ export default function AIAssistantPage() {
   }
 
   return (
-    <div
-      className="flex flex-col h-screen overflow-hidden bg-gray-50"
-      style={{ paddingBottom: "calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 80px)" }}
-    >
+    <div className="flex flex-col h-screen overflow-hidden bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 p-4">
         <div className="flex items-center space-x-3">
@@ -337,7 +334,7 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-[calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 144px)]">
         {messages.map((message, index) => (
           <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
@@ -407,25 +404,30 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Input Area */}
-      <div className="bg-white border-t border-gray-200 pt-4 px-4">
-        <div className="flex space-x-3">
-          <div className="flex-1">
-            <Input
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Опишите ваш стиль или задайте вопрос о моде..."
-              className="w-full"
-              disabled={isLoading}
-            />
+      <div
+        className="fixed inset-x-0 bottom-[calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 80px)] bg-white border-t border-gray-200"
+        style={{ paddingBottom: "var(--sab, env(safe-area-inset-bottom, 0px))" }}
+      >
+        <div className="pt-4 px-4 max-w-7xl mx-auto">
+          <div className="flex space-x-3">
+            <div className="flex-1">
+              <Input
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Опишите ваш стиль или задайте вопрос о моде..."
+                className="w-full"
+                disabled={isLoading}
+              />
+            </div>
+            <Button onClick={handleSend} disabled={isLoading || !inputValue.trim()} size="icon">
+              <Send className="h-4 w-4" />
+            </Button>
           </div>
-          <Button onClick={handleSend} disabled={isLoading || !inputValue.trim()} size="icon">
-            <Send className="h-4 w-4" />
-          </Button>
+
+          {/* Quick Actions */}
+
         </div>
-
-        {/* Quick Actions */}
-
       </div>
 
       {/* PaywallModal */}
