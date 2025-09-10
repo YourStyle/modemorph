@@ -255,7 +255,7 @@ export function TopNavigation() {
           style={{ height: "calc(env(safe-area-inset-top, 0px) + 70px)", pointerEvents: "auto" }}
         />
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
-          <div className="mt-[95px] pointer-events-auto">
+          <div className="mt-[75px] pointer-events-auto">
             <button
               onClick={handleProfileClick}
               className="flex items-center gap-2 rounded-full px-3 py-1.5 bg-background/80 backdrop-blur text-foreground shadow-md"
