@@ -611,7 +611,7 @@ export default function InspirationPage(): ReactElement {
       {/* Верхние вкладки */}
       <div className="absolute top-0 left-0 right-0 z-[3000] bg-black/80 backdrop-blur border-b border-neutral-900">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
-          <div className="flex justify-center gap-8 py-[70px]">
+          <div className="flex justify-center gap-8 pt-[70px] pb-[10px]">
             <button
               className={cn(
                 "px-2 pb-1 text-sm font-semibold transition-colors",
@@ -636,7 +636,7 @@ export default function InspirationPage(): ReactElement {
         </div>
       </div>
 
-      <main className="absolute left-0 right-0 bottom-0 top-[115px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
+      <main className="absolute left-0 right-0 bottom-0 top-[125px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
         {/* Контейнер карточек: вертикальный скролл, снап к экрану, плавный скролл */}
         <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 select-none">
           {/* Оверлей лимита */}
