@@ -605,7 +605,7 @@ export default function InspirationPage(): ReactElement {
       className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none box-border"
       style={{
         paddingBottom: "var(--sab, env(safe-area-inset-bottom, 0px))",
-        paddingTop: "var(--sat, env(safe-area-inset-top, 0px))",
+        paddingTop: "var(--sat, env(safe-area-inset-top, 70px))",
       }}
     >
       {/* Верхние вкладки */}
