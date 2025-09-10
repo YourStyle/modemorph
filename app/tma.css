@@ -3,9 +3,9 @@
 /* Высота берётся из переменных, которые проставляет telegram-web-app.js */
 .tma-root {
   min-height: var(--tg-viewport-stable-height, 100svh);
-  background: rgba(249, 250, 251, 0.5);;
+  background: rgb(249, 250, 251);;
   padding-bottom: var(--tma-safe, 0px);
-  padding-top: 70px;
+  padding-top: 50px;
 }
 
 /* Отладочный виджет */
