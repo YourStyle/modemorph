@@ -30,7 +30,7 @@ export function TopNavigation() {
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
   const [weekdayShort, setWeekdayShort] = useState("")
 
-  const [isTmaIos, setIsTmaIos] = useState(false)
+  const [isTmaMobile, setIsTmaMobile] = useState(false)
 
   const supabase = createClient()
 
@@ -65,9 +65,9 @@ export function TopNavigation() {
       const platform = String(tg?.platform || "").toLowerCase()
       const inTma =
         hasInit && hasUser && platform && platform !== "unknown"
-      const isIos = /ios/.test(platform)
-      if (inTma && isIos) {
-        setIsTmaIos(true)
+      const isMobile = /ios|android/.test(platform)
+      if (inTma && isMobile) {
+        setIsTmaMobile(true)
       }
     } catch {
       // игнорируем ошибки определения
@@ -247,7 +247,7 @@ export function TopNavigation() {
     setIsProfileSheetOpen(true)
   }
 
-  if (isTmaIos) {
+  if (isTmaMobile) {
     return (
       <>
         <div
