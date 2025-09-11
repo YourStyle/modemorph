@@ -1,164 +1,104 @@
-"use client"
+"use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { useRouter, usePathname } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
-import { tmaHandshake } from "@/lib/tma/handshake"
+import React, { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { tmaHandshake } from "@/lib/tma/handshake";
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        platform?: string
-        version?: string
-        colorScheme?: string
-        initData?: string
-        initDataUnsafe?: Record<string, any>
-        isExpanded?: boolean
-        viewportStableHeight?: number
-         // events
-        onEvent?: (event: string, cb: (...args: any[]) => void) => void
-        offEvent?: (event: string, cb: (...args: any[]) => void) => void
+export default function MiniAppRegistrationGate({ children }: { children: ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const onMiniReg = (pathname || "").startsWith("/auth/mini-registration");
+  const supabase = useMemo(() => createClient(), []);
+  const [ready, setReady] = useState(false);
 
+  const initCalledRef = useRef(false);
+  const redirectedRef = useRef(false);
+  const fsTried = useRef(false);
 
-        // lifecycle
-        ready: () => void
-        expand?: () => void
-        requestFullscreen?: () => void
-        setHeaderColor?: (c: string) => void
-        setBackgroundColor?: (c: string) => void
-        isVersionAtLeast?: (ver: string) => boolean
+  const safeRedirect = (to: string) => {
+    if (redirectedRef.current) return;
+    redirectedRef.current = true;
+    router.replace(to);
+  };
 
-         // NEW: жесты/закрытие
-        enableClosingConfirmation?: () => void
-        disableClosingConfirmation?: () => void
-        enableVerticalSwipes?: () => void
-        disableVerticalSwipes?: () => void
-      }
-    }
-  }
-}
-
-function detectTMA() {
-  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
-  const hasInit = !!(tg?.initData && tg.initData.trim().length > 0)
-  const hasUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
-  const platformOk = !!tg?.platform && tg.platform !== "unknown"
-  return { inTMA: !!tg && hasInit && hasUser && platformOk, tg }
-}
-
-function canRequestFullscreen(tg: NonNullable<typeof window.Telegram>["WebApp"]) {
-  const p = (tg?.platform || "").toLowerCase()
-  const desktop = p.includes("tdesktop") || p.includes("macos") || p.includes("linux") || p === "web"
-  const apiOk = typeof tg?.isVersionAtLeast === "function" && tg.isVersionAtLeast("8.0")
-  return apiOk && !desktop
-}
-
-interface Props {
-  children: ReactNode
-}
-
-export default function MiniAppRegistrationGate({ children }: Props) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const onMiniReg = (pathname || "").startsWith("/auth/mini-registration")
-
-  const supabase = useMemo(() => createClient(), [])
-  const [ready, setReady] = useState(false)
-
-  const fsTried = useRef(false)
-  const askFullscreen = (tg: NonNullable<typeof window.Telegram>["WebApp"]) => {
-    if (fsTried.current) return
-    fsTried.current = true
-    if (!canRequestFullscreen(tg)) return
-    try {
-      tg.requestFullscreen?.()
-    } catch {}
-    try {
-      tg.expand?.()
-    } catch {}
-  }
+  const askFullscreen = (tg: any) => {
+    if (fsTried.current) return;
+    fsTried.current = true;
+    if (!tg) return;
+    try { tg.requestFullscreen?.(); } catch {}
+    try { tg.expand?.(); } catch {}
+  };
 
   useEffect(() => {
-    let cancelled = false
-    let redirecting = false
-    async function boot() {
-      try {
-        const { inTMA, tg } = detectTMA()
+    if (initCalledRef.current) return;
+    initCalledRef.current = true;
 
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const tg = (typeof window !== "undefined") ? window.Telegram?.WebApp : undefined;
+        const hasInit = !!tg?.initData?.trim();
+        const hasUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id;
+        const platformOk = !!tg?.platform && tg.platform !== "unknown";
+        const inTMA = tg && hasInit && hasUser && platformOk;
+
+        // не в Telegram – просто показываем children
         if (!inTMA || !tg) {
-          return // outside TMA — просто рендерим контент
+          return;
         }
 
-        // init TMA
+        // инициализация TMA
         try {
-          tg.ready()
-          const c = "#FFFFFF"
-          const bgC = "#0e0e10"
-          tg.setHeaderColor?.(c)
-          tg.setBackgroundColor?.(bgC)
-          document.body.style.backgroundColor = c
+          tg.ready();
+          tg.setHeaderColor?.("#FFFFFF");
+          tg.setBackgroundColor?.("#0e0e10");
+          document.body.style.backgroundColor = "#FFFFFF";
         } catch {}
 
-        askFullscreen(tg)
-        const once = () => askFullscreen(tg)
-        window.addEventListener("touchstart", once, { once: true, passive: true })
-        window.addEventListener("click", once, { once: true })
+        askFullscreen(tg);
+        window.addEventListener("touchstart", () => askFullscreen(tg), { once: true, passive: true });
+        window.addEventListener("click", () => askFullscreen(tg), { once: true });
 
-        try { if (tg.isVersionAtLeast?.("7.7")) tg.disableVerticalSwipes?.() } catch {}
+        try { tg.disableVerticalSwipes?.(); } catch {}
+        try { tg.enableClosingConfirmation?.(); } catch {}
 
-        // Подтверждение закрытия
-        try { tg.enableClosingConfirmation?.() } catch {}
-
-        // 1) Хэндшейк
-        const user = await tmaHandshake()
-
-        // 2) Если нет пользователя — пускаем на форму ТОЛЬКО если мы не на ней
+        // хэндшейк
+        const user = await tmaHandshake();
         if (!user) {
-          if (!onMiniReg) {
-            redirecting = true
-            router.replace("/auth/mini-registration?from=tma")
-          }
-          return
+          if (!onMiniReg) safeRedirect("/auth/mini-registration?from=tma");
+          return;
         }
 
-        // 3) Проверяем профиль
-        const prof = await fetch("/api/me/profile", { credentials: "include" }).then(r => r.ok ? r.json() : null)
-        const p = prof?.profile
-        const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
-        const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "")
+        // проверка обязательных полей профиля
+        const prof = await fetch("/api/me/profile", { credentials: "include" }).then(r => r.ok ? r.json() : null);
+        const p = prof?.profile;
+        const required = ["gender","height","weight","top_size","bottom_size","shoe_size"];
+        const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "");
         if (missing.length > 0 && !onMiniReg) {
-          redirecting = true
-          router.replace("/auth/mini-registration?from=tma")
-          return
+          safeRedirect("/auth/mini-registration?from=tma");
+          return;
         }
 
-
-        // 5) Всё ок — пропускаем детей
-        return
+        // если всё ок и мы на / или /auth/mini-registration → отправляем в основное приложение
+        if (!onMiniReg && (pathname === "/" || pathname.startsWith("/auth/mini-registration"))) {
+          safeRedirect("/app");
+        }
       } finally {
-        // КРИТИЧНО: никогда не держать экран серым
-        if (!cancelled && !redirecting) setReady(true)
+        if (!cancelled && !redirectedRef.current) {
+          setReady(true);
+        }
       }
-    }
+    })();
 
-    boot()
-    return () => {
-      cancelled = true
-    }
-  }, [router, supabase, pathname])
-
+    return () => { cancelled = true; };
+  }, [pathname, router, supabase, onMiniReg]);
 
   if (!ready) {
-    return (
-      <div className="fixed inset-0 bg-[#f9fafb]/50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    )
+    // здесь можно вернуть спиннер/скелетон
+    return null;
   }
-  return (
-    <>
-      {children}
-    </>
-  )
+
+  return <>{children}</>;
 }
