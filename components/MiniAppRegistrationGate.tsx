@@ -153,7 +153,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         // Всё ок — пропускаем детей
         return
       } finally {
-        if (!cancelled) setReady(true);
+        if (!cancelled && !redirecting) setReady(true);
       }
     }
 
