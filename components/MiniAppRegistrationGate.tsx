@@ -121,6 +121,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         if (!user) {
           if (!onMiniReg) {
             redirecting = true
+            setReady(true)
             safeRedirect("/auth/mini-registration?from=tma")
           }
           return
@@ -133,6 +134,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "")
         if (missing.length > 0 && !onMiniReg) {
           redirecting = true
+          setReady(true)
           safeRedirect("/auth/mini-registration?from=tma")
           return
         }
@@ -143,6 +145,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         const target = p?.is_admin ? "/admin" : "/app"
         if (!onMiniReg && (pathname === "/" || pathname.startsWith("/auth/"))) {
           redirecting = true
+          setReady(true)
           safeRedirect(target)
           return
         }
@@ -150,8 +153,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         // Всё ок — пропускаем детей
         return
       } finally {
-        // КРИТИЧНО: никогда не держать экран серым
-        if (!cancelled && !redirecting) setReady(true)
+        if (!cancelled) setReady(true);
       }
     }
 
