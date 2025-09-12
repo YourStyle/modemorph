@@ -9,6 +9,7 @@ import { SelectedItemsProvider } from "@/contexts/selected-items-context"
 import { AuthProvider } from "@/contexts/auth-context"
 import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
 import TmaBodyClass from "@/components/TmaBodyClass"
+import VpnWarning from "@/components/vpn-warning"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SelectedItemsProvider>
             <MiniAppRegistrationGate>{children}</MiniAppRegistrationGate>
             <Toaster />
+            <VpnWarning />
           </SelectedItemsProvider>
         </AuthProvider>
       </body>
