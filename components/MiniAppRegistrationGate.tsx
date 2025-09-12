@@ -16,14 +16,20 @@ declare global {
         initDataUnsafe?: Record<string, any>
         isExpanded?: boolean
         viewportStableHeight?: number
+         // events
         onEvent?: (event: string, cb: (...args: any[]) => void) => void
         offEvent?: (event: string, cb: (...args: any[]) => void) => void
+
+
+        // lifecycle
         ready: () => void
         expand?: () => void
         requestFullscreen?: () => void
         setHeaderColor?: (c: string) => void
         setBackgroundColor?: (c: string) => void
         isVersionAtLeast?: (ver: string) => boolean
+
+         // NEW: жесты/закрытие
         enableClosingConfirmation?: () => void
         disableClosingConfirmation?: () => void
         enableVerticalSwipes?: () => void
@@ -60,32 +66,22 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const supabase = useMemo(() => createClient(), [])
   const [ready, setReady] = useState(false)
 
-  // ⬇️ добавлено: защита от двойной инициализации/редиректа
-  const initCalledRef = useRef(false)
-  const redirectedRef = useRef(false)
-  const safeRedirect = (to: string) => {
-    if (redirectedRef.current) return
-    redirectedRef.current = true
-    router.replace(to)
-  }
-
   const fsTried = useRef(false)
   const askFullscreen = (tg: NonNullable<typeof window.Telegram>["WebApp"]) => {
     if (fsTried.current) return
     fsTried.current = true
     if (!canRequestFullscreen(tg)) return
-    try { tg.requestFullscreen?.() } catch {}
-    try { tg.expand?.() } catch {}
+    try {
+      tg.requestFullscreen?.()
+    } catch {}
+    try {
+      tg.expand?.()
+    } catch {}
   }
 
   useEffect(() => {
-    // ⬇️ добавлено: не запускаем повторно при смене pathname и т.п.
-    if (initCalledRef.current) return
-    initCalledRef.current = true
-
     let cancelled = false
     let redirecting = false
-
     async function boot() {
       try {
         const { inTMA, tg } = detectTMA()
@@ -121,8 +117,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         if (!user) {
           if (!onMiniReg) {
             redirecting = true
-            setReady(true)
-            safeRedirect("/auth/mini-registration?from=tma")
+            router.replace("/auth/mini-registration?from=tma")
           }
           return
         }
@@ -134,26 +129,16 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "")
         if (missing.length > 0 && !onMiniReg) {
           redirecting = true
-          setReady(true)
-          safeRedirect("/auth/mini-registration?from=tma")
+          router.replace("/auth/mini-registration?from=tma")
           return
         }
 
-        // ⬇️ добавлено: если уже всё ок — отправим в цель по роли
-        // (домашняя страница тоже разрулит, но это убирает «мигание» на `/`)
-        // ожидаем, что бек кладёт флаг is_admin в профиле
-        const target = p?.is_admin ? "/admin" : "/app"
-        if (!onMiniReg && (pathname === "/" || pathname.startsWith("/auth/"))) {
-          redirecting = true
-          setReady(true)
-          safeRedirect(target)
-          return
-        }
 
-        // Всё ок — пропускаем детей
+        // 5) Всё ок — пропускаем детей
         return
       } finally {
-        if (!cancelled && !redirecting) setReady(true);
+        // КРИТИЧНО: никогда не держать экран серым
+        if (!cancelled && !redirecting) setReady(true)
       }
     }
 
@@ -161,8 +146,8 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     return () => {
       cancelled = true
     }
-    // оставляю твои зависимости (но защищаемся initCalledRef)
-  }, [router, supabase, pathname, onMiniReg])
+  }, [router, supabase, pathname])
+
 
   if (!ready) {
     return (
