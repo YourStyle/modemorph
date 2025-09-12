@@ -79,6 +79,7 @@ export type Database = {
           is_hidden: boolean | null
           created_at: string
           updated_at: string
+          gender: string | null
         }
         Insert: {
           id?: number
@@ -101,6 +102,7 @@ export type Database = {
           is_hidden?: boolean | null
           created_at?: string
           updated_at?: string
+          gender?: string | null
         }
         Update: {
           id?: number
@@ -123,6 +125,7 @@ export type Database = {
           is_hidden?: boolean | null
           created_at?: string
           updated_at?: string
+          gender?: string | null
         }
         Relationships: []
       }

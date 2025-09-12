@@ -16,6 +16,7 @@ interface WardrobeItem {
   color?: string
   material?: string
   brand?: string
+  gender?: string
 }
 
 interface MobileOptimizedWardrobeGridProps {

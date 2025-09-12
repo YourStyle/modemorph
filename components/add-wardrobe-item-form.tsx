@@ -28,6 +28,8 @@ const CLOTHING_TYPES = [
   "спорт",
 ] as const
 
+const GENDER_OPTIONS = ["male", "female", "unisex"] as const
+
 const AI_PART_MAPPING: Record<string, string> = {
   upper: "верхняя",
   lower: "нижняя",
@@ -42,6 +44,7 @@ interface BasicItem {
   name_en?: string
   description: string | null
   image_url: string | null
+  gender?: string | null
 }
 
 interface AddWardrobeItemFormProps {
@@ -83,6 +86,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     notes: "",
     basic_item_id: "none",
     clothing_type: "",
+    gender: "",
   })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
@@ -302,6 +306,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         notes: formData.notes || null,
         basic_item_id: formData.basic_item_id === "none" ? null : Number.parseInt(formData.basic_item_id),
         clothing_type: formData.clothing_type || null,
+        gender: formData.gender || null,
       }
 
       const res = await fetch("/api/wardrobe", {
@@ -500,6 +505,25 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                   {CLOTHING_TYPES.map((type) => (
                     <SelectItem key={type} value={type}>
                       {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="gender">Пол</Label>
+              <Select
+                value={formData.gender}
+                onValueChange={(value) => handleInputChange("gender", value)}
+              >
+                <SelectTrigger id="gender">
+                  <SelectValue placeholder="Выберите пол" />
+                </SelectTrigger>
+                <SelectContent>
+                  {GENDER_OPTIONS.map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {g === "male" ? "Мужской" : g === "female" ? "Женский" : "Унисекс"}
                     </SelectItem>
                   ))}
                 </SelectContent>

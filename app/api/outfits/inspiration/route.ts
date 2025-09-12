@@ -45,12 +45,19 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url)
     const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 50)
+    const gender = url.searchParams.get("gender")
 
-    const { data: outfits, error: outfitsErr } = await supabase
+    let outfitsQuery = supabase
       .from("outfits")
-      .select("id, name, description, preview_image_url, created_at")
+      .select("id, name, description, preview_image_url, created_at, gender")
       .order("created_at", { ascending: false })
       .limit(limit)
+
+    if (gender) {
+      outfitsQuery = outfitsQuery.or(`gender.eq.${gender},gender.eq.unisex,gender.is.null`)
+    }
+
+    const { data: outfits, error: outfitsErr } = await outfitsQuery
 
     if (outfitsErr) {
       console.warn("Fetch outfits error:", outfitsErr)

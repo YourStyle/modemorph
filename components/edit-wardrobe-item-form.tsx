@@ -27,6 +27,8 @@ const CLOTHING_TYPES = [
   "спорт",
 ] as const
 
+const GENDER_OPTIONS = ["male", "female", "unisex"] as const
+
 interface EditWardrobeItemFormProps {
   item: any
 }
@@ -48,6 +50,7 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
     notes: item?.notes || "",
     basic_item_id: item?.basic_item_id ? String(item.basic_item_id) : "none",
     clothing_type: item?.clothing_type || "",
+    gender: item?.gender || "",
   })
 
   const [imageFile, setImageFile] = useState<File | null>(null)
@@ -166,6 +169,7 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
         notes: formData.notes || null,
         basic_item_id: formData.basic_item_id === "none" ? null : Number.parseInt(formData.basic_item_id),
         clothing_type: formData.clothing_type || null,
+        gender: formData.gender || null,
       }
 
       const res = await fetch(`/api/wardrobe/${item.id}`, {
@@ -303,6 +307,25 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
                   {CLOTHING_TYPES.map((type) => (
                     <SelectItem key={type} value={type}>
                       {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="gender">Пол</Label>
+              <Select
+                value={formData.gender}
+                onValueChange={(value) => setFormData({ ...formData, gender: value })}
+              >
+                <SelectTrigger id="gender">
+                  <SelectValue placeholder="Выберите пол" />
+                </SelectTrigger>
+                <SelectContent>
+                  {GENDER_OPTIONS.map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {g === "male" ? "Мужской" : g === "female" ? "Женский" : "Унисекс"}
                     </SelectItem>
                   ))}
                 </SelectContent>

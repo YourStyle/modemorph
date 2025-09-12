@@ -31,6 +31,7 @@ export interface WardrobeItem {
   description?: string | null
   description_en?: string | null
   is_basic?: boolean | null
+  gender?: string | null
 }
 
 interface ItemDetailsModalProps {

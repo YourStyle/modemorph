@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Plus, Trash2, Upload, ImageIcon, Edit, Copy } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import Image from "next/image"
@@ -21,6 +22,7 @@ interface BasicItem {
   name_en: string
   description: string | null
   image_url: string | null
+  gender?: string | null
   materials?: BasicMaterial[]
 }
 
@@ -29,6 +31,8 @@ interface BasicMaterial {
   name_ru: string
   name_en: string
 }
+
+const GENDER_OPTIONS = ["male", "female", "unisex"] as const
 
 export function BasicItemsManager() {
   const [items, setItems] = useState<BasicItem[]>([])
@@ -44,6 +48,7 @@ export function BasicItemsManager() {
     name_ru: "",
     name_en: "",
     description: "",
+    gender: "",
   })
   const { toast } = useToast()
   const [basicMaterials, setBasicMaterials] = useState<BasicMaterial[]>([])
@@ -135,6 +140,7 @@ export function BasicItemsManager() {
       name_ru: "",
       name_en: "",
       description: "",
+      gender: "",
     })
     setImageFile(null)
     setImagePreview(null)
@@ -148,6 +154,7 @@ export function BasicItemsManager() {
       name_ru: item.name_ru,
       name_en: item.name_en || "",
       description: item.description || "",
+      gender: item.gender || "",
     })
     setImageFile(null)
     setImagePreview(item.image_url)
@@ -249,6 +256,7 @@ export function BasicItemsManager() {
         name_en: formData.name_en || formData.name_ru,
         description: formData.description || null,
         image_url: imageUrl,
+        gender: formData.gender || null,
       }
 
       if (editingItem) {
@@ -299,6 +307,7 @@ export function BasicItemsManager() {
         name_ru: "",
         name_en: "",
         description: "",
+        gender: "",
       })
       setImageFile(null)
       setImagePreview(null)
@@ -520,9 +529,24 @@ export function BasicItemsManager() {
                     name="description"
                     value={formData.description}
                     onChange={handleInputChange}
-                    placeholder="Дополнительная информация �� базовой ����е��и"
+                    placeholder="Дополнительная информация о базовой вещи"
                     rows={3}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gender">Пол</Label>
+                  <Select value={formData.gender} onValueChange={(value) => setFormData({ ...formData, gender: value })}>
+                    <SelectTrigger id="gender">
+                      <SelectValue placeholder="Выберите пол" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GENDER_OPTIONS.map((g) => (
+                        <SelectItem key={g} value={g}>
+                          {g === "male" ? "Мужской" : g === "female" ? "Женский" : "Унисекс"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Материалы</Label>

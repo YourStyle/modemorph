@@ -215,6 +215,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       notes: body.notes ?? undefined,
       image_url: body.image_url ?? undefined,
       clothing_type: body.clothing_type ?? undefined,
+      gender: body.gender ?? undefined,
       is_basic: typeof body.is_basic === "boolean" ? body.is_basic : undefined,
     }
 

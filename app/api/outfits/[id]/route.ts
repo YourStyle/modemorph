@@ -102,7 +102,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   try {
     const { id } = params
     const body = await request.json()
-    const { name, description, season, occasion, items, preview_image_url } = body
+    const { name, description, season, occasion, items, preview_image_url, gender } = body
 
     const numericId = Number(id)
     if (!Number.isFinite(numericId) || numericId <= 0) {
@@ -136,6 +136,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         season: season || null,
         occasion: occasion || null,
         preview_image_url: preview_image_url || null,
+        gender: gender || null,
 
         updated_at: new Date().toISOString(),
       })

@@ -24,6 +24,7 @@ interface WardrobeItem {
   created_at?: string
   basic_item_id?: number
   url?: string
+  gender?: string
 }
 
 interface UserWardrobeGridProps {

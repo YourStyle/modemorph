@@ -190,6 +190,8 @@ export default function InspirationPage(): ReactElement {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
 
+  const [userGender, setUserGender] = useState("")
+
   // Текущий индекс активной карточки определяется IntersectionObserver (см. ниже)
   const [index, setIndex] = useState(0)
   const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(() => getViewedOutfits())
@@ -280,15 +282,31 @@ export default function InspirationPage(): ReactElement {
     return () => clearTimeout(timer)
   }, [current, viewedOutfits, isBlurred])
 
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const res = await fetch("/api/me/profile")
+        if (res.ok) {
+          const data = await res.json()
+          setUserGender(data?.profile?.gender || "")
+        }
+      } catch (err) {
+        console.error("Error fetching profile:", err)
+      }
+    }
+    loadProfile()
+  }, [])
+
   // Первичная загрузка
   useEffect(() => {
+    if (!userGender) return
     let cancelled = false
     ;(async () => {
       try {
         setLoading(true)
         setError(null)
         const [outfitsRes, likesRes] = await Promise.all([
-          fetch("/api/outfits/inspiration", { cache: "no-store", credentials: "include" }),
+          fetch(`/api/outfits/inspiration?gender=${userGender}`, { cache: "no-store", credentials: "include" }),
           fetch("/api/user-likes", { cache: "no-store", credentials: "include" }),
         ])
         if (!outfitsRes.ok) throw new Error("Failed to fetch outfits")
@@ -311,7 +329,7 @@ export default function InspirationPage(): ReactElement {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [userGender])
 
   // Смена вкладки -> на начало списка
   useEffect(() => {
@@ -333,9 +351,12 @@ export default function InspirationPage(): ReactElement {
     if (!nextCursor || fetchingMore) return
     try {
       setFetchingMore(true)
-      const res = await fetch(`/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}`, {
-        credentials: "include",
-      })
+      const res = await fetch(
+        `/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}&gender=${userGender}`,
+        {
+          credentials: "include",
+        },
+      )
       if (!res.ok) {
         setNextCursor(null)
         return

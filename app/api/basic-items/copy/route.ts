@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       name_en: originalItem.name_en ? `${originalItem.name_en} (copy)` : null,
       description: originalItem.description,
       image_url: originalItem.image_url, // Используем то же изображение
+      gender: originalItem.gender,
     }
 
     const { data: newItem, error: createError } = await supabase
