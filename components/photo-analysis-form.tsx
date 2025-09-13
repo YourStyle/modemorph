@@ -73,6 +73,15 @@ interface PhotoAnalysisFormProps {
 
 type ViewMode = "choose" | "quotes" | "game" | null
 
+function shuffleArray<T>(array: T[]): T[] {
+    const arr = [...array]
+    for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[arr[i], arr[j]] = [arr[j], arr[i]]
+    }
+    return arr
+}
+
 const GameShell: React.FC<React.PropsWithChildren<{ height: number }>> = ({children, height}) => (
     <div
         className="w-full rounded-xl border border-white/10 bg-white/5 flex items-center justify-center"
@@ -153,7 +162,7 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
                 <GameShell height={gameHeight}>
                     <div className="text-center max-w-md w-full">
                         <h2 className="text-lg font-semibold mb-2">ИИ анализирует ваши фото</h2>
-                        <QuoteCard className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md w-full text-center shadow">
+                        <QuoteCard className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md text-center shadow mx-4">
                             <p className="italic text-black">"{quotes[quoteIndex].text}"</p>
                             <p className="mt-2 font-medium text-black">— {quotes[quoteIndex].author}</p>
                         </QuoteCard>
@@ -234,6 +243,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
         {text: "Хорошо одеваться — это форма хороших манер", author: "Том Форд"},
         {text: "Стиль — это способ сказать, кто вы, не произнося ни слова", author: "Рейчел Зои"},
     ]
+    const [shuffledQuotes, setShuffledQuotes] = useState(() => shuffleArray(quotes))
     const [quoteIndex, setQuoteIndex] = useState(0)
     // Interval refs for rotating quotes and smooth progress updates
     const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -269,12 +279,15 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialPhotos])
 
-    // Rotate quotes every 5 seconds while loading
+    // Rotate quotes every 10 seconds while loading, in random order
     useEffect(() => {
         if (loading) {
+            const newOrder = shuffleArray(quotes)
+            setShuffledQuotes(newOrder)
+            setQuoteIndex(0)
             quoteTimerRef.current = setInterval(() => {
-                setQuoteIndex((prev) => (prev + 1) % quotes.length)
-            }, 5000)
+                setQuoteIndex((prev) => (prev + 1) % newOrder.length)
+            }, 10000)
         } else {
             if (quoteTimerRef.current) {
                 clearInterval(quoteTimerRef.current)
@@ -288,7 +301,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
                 quoteTimerRef.current = null
             }
         }
-    }, [loading, quotes.length])
+    }, [loading])
 
     // Clean up progress timer on component unmount
     useEffect(() => {
@@ -500,8 +513,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
         setProgressText(`Анализируем ${photos.length} фото `)
         try {
             const total = photos.length
-            // Use 75 so that progress grows smoothly to 85%
-            const step = 75 / total
+            // Track completed photos
             let done = 0
             // Smooth progress timer: 1 min per photo, 1.5 min for two
             const duration = total === 1 ? 60000 : 90000
@@ -513,7 +525,8 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
             progressTimerRef.current = setInterval(() => {
                 const elapsed = Date.now() - startTime
                 const fraction = Math.min(elapsed / duration, 1)
-                const target = 10 + fraction * 75
+                const eased = 1 - Math.pow(1 - fraction, 2)
+                const target = 10 + eased * 75
                 setProgress((prev) => (target > prev ? target : prev))
                 if (elapsed >= duration && progressTimerRef.current) {
                     clearInterval(progressTimerRef.current)
@@ -524,9 +537,11 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
             const tasks = photos.map(({file}) =>
                 analyzePhoto(file).finally(() => {
                     done += 1
-                    // Ensure progress never decreases and caps at 85
+                    // Ensure progress never decreases and caps at 85 using easing
                     setProgress((prev) => {
-                        const tentative = 10 + done * step
+                        const completed = done / total
+                        const easedCompleted = 1 - Math.pow(1 - completed, 2)
+                        const tentative = 10 + easedCompleted * 75
                         const clamped = Math.min(tentative, 85)
                         return clamped > prev ? clamped : prev
                     })
@@ -764,7 +779,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
                     viewMode={viewMode}
                     setViewMode={setViewMode}
                     gameHeight={GAME_AREA_HEIGHT}
-                    quotes={quotes}
+                    quotes={shuffledQuotes}
                     quoteIndex={quoteIndex}
                     progress={progress}
                     progressText={progressText}
