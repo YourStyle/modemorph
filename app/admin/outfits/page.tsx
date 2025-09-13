@@ -16,6 +16,7 @@ type OutfitListItem = {
   likes_count?: number
   saves_count?: number
   views_count?: number
+  gender?: string | null
 }
 
 export default function AdminOutfitsPage() {
@@ -83,6 +84,11 @@ export default function AdminOutfitsPage() {
                 <Card className="hover:shadow-md transition">
                   <CardHeader className="pb-2">
                     <CardTitle className="text-base truncate">{o.name || "Без названия"}</CardTitle>
+                    {o.gender && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {o.gender === "male" ? "Мужской" : o.gender === "female" ? "Женский" : "Унисекс"}
+                      </p>
+                    )}
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="w-full aspect-[4/5] bg-muted rounded-md overflow-hidden flex items-center justify-center">

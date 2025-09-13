@@ -19,6 +19,7 @@ export interface WardrobeItem {
   basic_item_id?: number
   basic_material_id?: number
   notes?: string
+  gender?: string | null
   // Связанная базовая вещь для получения типа
   basic_wardrobe_items?: {
     id: number

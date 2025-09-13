@@ -13,6 +13,7 @@ interface WardrobeItem {
   color?: string
   material?: string
   clothing_type?: string
+  gender?: string
 }
 
 interface CreateLookSheetProps {

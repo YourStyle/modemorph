@@ -21,6 +21,7 @@ interface BasicItem {
   name_en: string
   description: string | null
   image_url: string | null
+  gender?: string | null
 }
 
 interface EditWardrobeItemModalProps {

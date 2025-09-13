@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ExternalLink, Loader2, Edit, Heart, Eye, Bookmark, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type WardrobeItem = {
   id: number
@@ -42,7 +43,10 @@ type Outfit = {
   saves_count?: number
   views_count?: number
   created_at: string
+  gender?: string | null
 }
+
+const GENDER_OPTIONS = ["male", "female", "unisex"] as const
 
 export default function AdminOutfitDetailsPage() {
   const params = useParams<{ id: string }>()
@@ -57,6 +61,7 @@ export default function AdminOutfitDetailsPage() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [previewUrl, setPreviewUrl] = useState("")
+  const [gender, setGender] = useState("")
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -77,6 +82,7 @@ export default function AdminOutfitDetailsPage() {
           setName(o.name ?? "")
           setDescription(o.description ?? "")
           setPreviewUrl(o.preview_image_url ?? o.preview_url ?? "")
+          setGender(o.gender ?? "")
         }
       } catch (e) {
         if (active) setError(e instanceof Error ? e.message : "Unknown error")
@@ -115,6 +121,7 @@ export default function AdminOutfitDetailsPage() {
           preview_image_url: previewUrl || null,
           preview_url: previewUrl || null,
           items: sortedItems.map((oi) => oi.wardrobe_items.id),
+          gender: gender || null,
         }),
       })
       if (!res.ok) {
@@ -339,6 +346,21 @@ export default function AdminOutfitDetailsPage() {
               <div>
                 <Label htmlFor="name">Название</Label>
                 <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Название" />
+              </div>
+              <div>
+                <Label htmlFor="gender">Пол</Label>
+                <Select value={gender} onValueChange={setGender}>
+                  <SelectTrigger id="gender">
+                    <SelectValue placeholder="Выберите пол" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENDER_OPTIONS.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g === "male" ? "Мужской" : g === "female" ? "Женский" : "Унисекс"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="description">Описание</Label>

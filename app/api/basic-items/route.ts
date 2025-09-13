@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name_ru, name_en, type_id, description, image_url } = body
+    const { name_ru, name_en, type_id, description, image_url, gender } = body
 
     // Проверяем обязательные поля
     if (!name_ru || !name_en) {
@@ -97,6 +97,7 @@ export async function POST(request: Request) {
         type_id: type_id ? Number.parseInt(type_id) : null,
         description: description || null,
         image_url: image_url || null,
+        gender: gender || null,
       })
       .select()
 

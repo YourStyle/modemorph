@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 
 import { WardrobeItemCard } from "@/components/wardrobe-item-card"
@@ -31,6 +32,8 @@ const itemHasPrint = (val: any): boolean => {
   const s = String(val).trim().toLowerCase()
   return s === "y" || s === "yes" || s === "true" || s === "да" || s === "есть" || s === "1"
 }
+
+const GENDER_OPTIONS = ["male", "female", "unisex"] as const
 
 export default function WardrobePage() {
   const [items, setItems] = useState<WardrobeItem[]>([])
@@ -63,6 +66,7 @@ export default function WardrobePage() {
   const [saveModalOpen, setSaveModalOpen] = useState(false)
   const [outfitName, setOutfitName] = useState("")
   const [outfitDescription, setOutfitDescription] = useState("")
+  const [outfitGender, setOutfitGender] = useState("")
   const [previewUrl, setPreviewUrl] = useState("")
   const [saving, setSaving] = useState(false)
   const [previewUploading, setPreviewUploading] = useState(false)
@@ -169,6 +173,10 @@ export default function WardrobePage() {
       clearItems()
       setEditingOutfit(null)
       setEditingOutfitId(null)
+      setOutfitName("")
+      setOutfitDescription("")
+      setOutfitGender("")
+      setPreviewUrl("")
     }
     setIsCreatingOutfit((v) => !v)
   }
@@ -219,6 +227,7 @@ export default function WardrobePage() {
         description: outfitDescription || null,
         preview_url: previewUrl,
         items: itemIds,
+        gender: outfitGender || null,
       }
       const url = editingOutfit?.id ? `/api/outfits/${editingOutfit.id}` : "/api/outfits"
       const method = editingOutfit?.id ? "PUT" : "POST"
@@ -241,6 +250,10 @@ export default function WardrobePage() {
       setEditingOutfit(null)
       setEditingOutfitId(null)
       setIsCreatingOutfit(false)
+      setOutfitName("")
+      setOutfitDescription("")
+      setOutfitGender("")
+      setPreviewUrl("")
 
       // Clear only the query param; same path to avoid page switch:
       const params = new URLSearchParams(window.location.search)
@@ -282,6 +295,7 @@ export default function WardrobePage() {
       setOutfitName(outfit.name ?? "")
       setOutfitDescription(outfit.description ?? "")
       setPreviewUrl(outfit.preview_url ?? "")
+      setOutfitGender(outfit.gender ?? "")
 
       setIsCreatingOutfit(true)
       toast({ title: "Режим редактирования", description: `Загружен образ "${outfit.name}"` })
@@ -689,6 +703,21 @@ export default function WardrobePage() {
                 onChange={(e) => setOutfitName(e.target.value)}
                 placeholder="Например: Летний casual"
               />
+            </div>
+            <div>
+              <Label htmlFor="outfit-gender">Пол</Label>
+              <Select value={outfitGender} onValueChange={setOutfitGender}>
+                <SelectTrigger id="outfit-gender">
+                  <SelectValue placeholder="Выберите пол" />
+                </SelectTrigger>
+                <SelectContent>
+                  {GENDER_OPTIONS.map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {g === "male" ? "Мужской" : g === "female" ? "Женский" : "Унисекс"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label htmlFor="outfit-preview">Ссылка на превью (обязательно)</Label>

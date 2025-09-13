@@ -27,6 +27,7 @@ interface WardrobeItem {
   created_at?: string
   basic_item_id?: number
   url?: string
+  gender?: string
 }
 
 interface EditWardrobeItemSheetProps {
@@ -106,6 +107,8 @@ const BASE_STYLES = [
   "Уличный",
 ]
 
+const GENDER_OPTIONS = ["male", "female", "unisex"] as const
+
 export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: EditWardrobeItemSheetProps) {
   const [formData, setFormData] = useState({
     size_type: "",
@@ -115,6 +118,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
     shade: "",
     url: "",
     notes: "",
+    gender: "",
   })
   const [isLoading, setIsLoading] = useState(false)
   const [sizes, setSizes] = useState<string[]>(BASE_SIZES)
@@ -149,6 +153,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
         shade: item.shade || "",
         url: item.url || "",
         notes: item.notes || "",
+        gender: item.gender || "",
       })
     }
   }, [isOpen, item])
@@ -180,6 +185,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
         shade: formData.shade || null,
         url: formData.url || null,
         notes: formData.notes || null,
+        gender: formData.gender || null,
       }
 
       const response = await fetch(`/api/wardrobe/${item.id}`, {
@@ -256,23 +262,40 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                 {/* Оттенок */}
                 <div className="space-y-2">
                   <Label className="text-white">Оттенок</Label>
-                  <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                      <SelectValue placeholder="Выберите оттенок" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {shades.map((shade) => (
-                        <SelectItem key={shade} value={shade}>
-                          {shade}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
+                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="Выберите оттенок" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shades.map((shade) => (
+                      <SelectItem key={shade} value={shade}>
+                        {shade}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                {/* Материал */}
-                <div className="space-y-2">
-                  <Label className="text-white">Материал</Label>
+              {/* Пол */}
+              <div className="space-y-2">
+                <Label className="text-white">Пол</Label>
+                <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="Выберите пол" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENDER_OPTIONS.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g === "male" ? "Мужской" : g === "female" ? "Женский" : "Унисекс"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Материал */}
+              <div className="space-y-2">
+                <Label className="text-white">Материал</Label>
                   <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
                     <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
                       <SelectValue placeholder="Выберите материал" />
@@ -347,23 +370,40 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                 {/* Оттенок */}
                 <div className="space-y-2">
                   <Label className="text-white">Оттенок</Label>
-                  <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
-                      <SelectValue placeholder="Выберите оттенок" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {shades.map((shade) => (
-                        <SelectItem key={shade} value={shade}>
-                          {shade}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
+                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="Выберите оттенок" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shades.map((shade) => (
+                      <SelectItem key={shade} value={shade}>
+                        {shade}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-                {/* Материал */}
-                <div className="space-y-2">
-                  <Label className="text-white">Материал</Label>
+              {/* Пол */}
+              <div className="space-y-2">
+                <Label className="text-white">Пол</Label>
+                <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
+                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="Выберите пол" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GENDER_OPTIONS.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g === "male" ? "Мужской" : g === "female" ? "Женский" : "Унисекс"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Материал */}
+              <div className="space-y-2">
+                <Label className="text-white">Материал</Label>
                   <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
                     <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
                       <SelectValue placeholder="Выберите материал" />

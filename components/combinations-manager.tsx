@@ -20,6 +20,7 @@ interface BasicItem {
   id: number
   name_ru: string
   image_url: string | null
+  gender?: string | null
 }
 
 interface BasicMaterial {

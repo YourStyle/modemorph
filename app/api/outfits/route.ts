@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server"
 export async function POST(request: Request) {
   try {
     const body = await request.json()
-    const { name, description, season, occasion, items, preview_image_url, preview_url } = body
+    const { name, description, season, occasion, items, preview_image_url, preview_url, gender } = body
 
     if (!name || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
@@ -59,6 +59,7 @@ export async function POST(request: Request) {
       season: season ? season.toString() : null,
       occasion: occasion ? occasion.toString() : null,
       preview_image_url: preview_image_url || preview_url || null,
+      gender: gender ? gender.toString() : null,
       likes: 0,
       favorites_count: 0,
       views_count: 0,
@@ -176,7 +177,7 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json()
-    const { id, name, description, season, occasion, items } = body
+    const { id, name, description, season, occasion, items, gender } = body
 
     if (!id || !name || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
@@ -200,6 +201,7 @@ export async function PUT(request: Request) {
         description: description || null,
         season: season || null,
         occasion: occasion || null,
+        gender: gender || null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

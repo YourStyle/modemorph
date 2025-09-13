@@ -101,6 +101,7 @@ export async function POST(request: Request) {
       basic_material_id: body.basic_material_id ?? null,
       notes: body.notes ?? null,
       clothing_type: body.clothing_type ?? null,
+      gender: body.gender ?? null,
       is_hidden: false,
     }
 

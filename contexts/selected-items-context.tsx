@@ -16,6 +16,7 @@ export interface WardrobeItem {
   has_details?: string
   notes?: string
   type: "basic" | "user"
+  gender?: string
 }
 
 interface SelectedItemsContextType {
