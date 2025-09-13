@@ -35,7 +35,7 @@ export default async function HomePage() {
       // Если профиля нет, создаем его как админа и перенаправляем
       await supabase.from("user_profiles").insert({
         user_id: user.id,
-        is_admin: true,
+        is_admin: false,
       })
       redirect("/admin")
     }
