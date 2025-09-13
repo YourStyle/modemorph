@@ -19,6 +19,7 @@ interface WardrobeItem {
   basic_wardrobe_items?: {
     name_ru: string
   }
+  gender?: string
 }
 
 interface BasicItem {
@@ -26,6 +27,7 @@ interface BasicItem {
   name_ru: string
   description?: string
   image_url?: string
+  gender?: string
 }
 
 interface SelectedItem {
@@ -35,6 +37,7 @@ interface SelectedItem {
   type: "user" | "basic"
   color?: string
   material?: string
+  gender?: string
 }
 
 interface CreateLookDialogProps {
@@ -94,6 +97,7 @@ export function CreateLookDialog({ isOpen, onClose, onSave }: CreateLookDialogPr
       type: "user",
       color: item.color,
       material: item.material,
+      gender: item.gender,
     }
 
     setSelectedItems((prev) => {
@@ -112,6 +116,7 @@ export function CreateLookDialog({ isOpen, onClose, onSave }: CreateLookDialogPr
       name: item.name_ru,
       image_url: item.image_url,
       type: "basic",
+      gender: item.gender,
     }
 
     setSelectedItems((prev) => {

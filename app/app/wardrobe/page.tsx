@@ -39,6 +39,7 @@ interface BasicWardrobeItem {
   shade?: string
   has_print?: string
   has_details?: string
+  gender?: string
 }
 
 interface UploadedPhoto {
@@ -133,15 +134,36 @@ export default function WardrobePage() {
 
   const { log, consume } = useFeature()
 
+  const [userGender, setUserGender] = useState("")
+
   useEffect(() => {
-    fetchBasicItems()
+    const loadProfile = async () => {
+      try {
+        const res = await fetch("/api/me/profile")
+        if (res.ok) {
+          const data = await res.json()
+          setUserGender(data?.profile?.gender || "")
+        }
+      } catch (err) {
+        console.error("Error fetching profile:", err)
+      }
+    }
+    loadProfile()
+  }, [])
+
+  useEffect(() => {
     fetchUserItems()
-  }, [sortBy, searchQuery])
+  }, [sortBy, searchQuery, refreshUserItems])
+
+  useEffect(() => {
+    if (!userGender) return
+    fetchBasicItems()
+  }, [sortBy, searchQuery, userGender])
 
   const fetchBasicItems = async () => {
     try {
       setIsLoadingBasicItems(true)
-      const response = await fetch("/api/basic-wardrobe-items")
+      const response = await fetch(`/api/basic-wardrobe-items?gender=${userGender}`)
       if (response.ok) {
         const data = await response.json()
         console.log("Loaded basic items:", data)

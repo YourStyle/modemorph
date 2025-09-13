@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await createClient()
+
+    const url = new URL(request.url)
+    const gender = url.searchParams.get("gender")
 
     // Получаем текущего пользователя
     const {
@@ -15,11 +18,14 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Получаем все базовые вещи
-    const { data: basicItems, error: basicError } = await supabase
-      .from("basic_wardrobe_items")
-      .select("*")
-      .order("name_ru")
+    // Получаем все базовые вещи с учётом пола
+    let query = supabase.from("basic_wardrobe_items").select("*").order("name_ru")
+
+    if (gender) {
+      query = query.or(`gender.eq.${gender},gender.eq.unisex,gender.is.null`)
+    }
+
+    const { data: basicItems, error: basicError } = await query
 
     if (basicError) {
       console.error("Error fetching basic items:", basicError)
@@ -50,6 +56,7 @@ export async function GET() {
         description: item.description,
         clothing_type: item.clothing_type || "Одежда",
         image_url: item.image_url,
+        gender: item.gender || null,
         material: "",
         style: "",
         color: "",
