@@ -607,7 +607,7 @@ export function BasicItemsManager() {
             </form>
           </div>
 
-          <DialogFooter className="flex-shrink-0 sticky bottom-0 bg-white pt-4 border-t mt-auto">
+          <DialogFooter className="flex-shrink-0 sticky bg-white pt-4 border-t mt-auto">
             <Button
               type="button"
               variant="outline"
