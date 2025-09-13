@@ -92,7 +92,7 @@ export function AddToClosetSheet({
       <CommonSheet isOpen={isOpen} onClose={handleClose} backgroundColor="dark">
         {/* скролл контейнер, стабильный скроллбар, хороший контраст текста */}
         <div
-          className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 text-neutral-100"
+          className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100"
           style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
         >
           <PhotoAnalysisForm
