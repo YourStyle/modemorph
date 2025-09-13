@@ -7,7 +7,13 @@ export default function VpnWarning() {
   useEffect(() => {
     const checkVpn = async () => {
       try {
-        const res = await fetch("https://ipapi.co/json/")
+        // fetch client ip first
+        const ipRes = await fetch("https://api.ipify.org?format=json")
+        if (!ipRes.ok) return
+        const { ip } = await ipRes.json()
+
+        // query ipapi with explicit ip
+        const res = await fetch(`https://ipapi.co/${ip}/json/`)
         if (!res.ok) return
         const data = await res.json()
         const org = typeof data.org === "string" ? data.org : ""
