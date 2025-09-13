@@ -334,7 +334,7 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-[calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 144px)]">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-40">
         {messages.map((message, index) => (
           <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
