@@ -35,7 +35,27 @@ interface UserProfileSheetProps {
   onClose: () => void
 }
 
-const CLOTHING_SIZES = ["XXS","XS","S","M","L","XL","XXL","XXXL","40","42","44","46","48","50","52","54","56","58","60"]
+const CLOTHING_SIZES = [
+  "XXS",
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "XXXL",
+  "40",
+  "42",
+  "44",
+  "46",
+  "48",
+  "50",
+  "52",
+  "54",
+  "56",
+  "58",
+  "60",
+]
 
 export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -68,7 +88,9 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const loadProfile = async () => {
     setIsLoading(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
       if (!user) return
       const { data: profileData } = await supabase.from("user_profiles").select("*").eq("user_id", user.id).single()
 
@@ -117,74 +139,72 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const handleNumberInput = (field: string, value: string) => handleInputChange(field, value.replace(/[^0-9]/g, ""))
 
   // ↓ обновлённый обработчик: конверсия HEIC/HEIF → JPEG и сжатие до лимита 5MB
-const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-  const raw = event.target.files?.[0]
-  if (!raw || !profile) return
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = event.target.files?.[0]
+    if (!raw || !profile) return
 
-  // Разрешаем HEIC/HEIF даже если mime может быть нестандартным
-  const isImageLike =
-    raw.type.startsWith("image/") || /\.(heic|heif|jpg|jpeg|png|webp)$/i.test(raw.name)
-  if (!isImageLike) return toast.error("Пожалуйста, выберите изображение")
+    // Разрешаем HEIC/HEIF даже если mime может быть нестандартным
+    const isImageLike = raw.type.startsWith("image/") || /\.(heic|heif|jpg|jpeg|png|webp)$/i.test(raw.name)
+    if (!isImageLike) return toast.error("Пожалуйста, выберите изображение")
 
-  setIsUploadingAvatar(true)
-  try {
-    // 1) Нормализация: HEIC/HEIF → JPEG, даунскейл (для аватара обычно хватает 1024px)
-    let fileForUpload = await normalizeImageFile(raw, {
-      maxWidth: 1024,
-      output: "image/jpeg",
-      quality: 0.9,
-    })
-
-    // 2) Контроль размера: если всё ещё >5MB — дополнительное сжатие
-    if (fileForUpload.size > 5 * 1024 * 1024) {
-      fileForUpload = await normalizeImageFile(fileForUpload, {
+    setIsUploadingAvatar(true)
+    try {
+      // 1) Нормализация: HEIC/HEIF → JPEG, даунскейл (для аватара обычно хватает 1024px)
+      let fileForUpload = await normalizeImageFile(raw, {
         maxWidth: 1024,
         output: "image/jpeg",
-        quality: 0.8,
+        quality: 0.9,
       })
+
+      // 2) Контроль размера: если всё ещё >5MB — дополнительное сжатие
       if (fileForUpload.size > 5 * 1024 * 1024) {
-        toast.error("Файл слишком большой после сжатия (>5MB). Уменьшите качество/размер.")
-        return
+        fileForUpload = await normalizeImageFile(fileForUpload, {
+          maxWidth: 1024,
+          output: "image/jpeg",
+          quality: 0.8,
+        })
+        if (fileForUpload.size > 5 * 1024 * 1024) {
+          toast.error("Файл слишком большой после сжатия (>5MB). Уменьшите качество/размер.")
+          return
+        }
       }
+
+      // 3) Загрузка в хранилище
+      const fd = new FormData()
+      fd.append("file", fileForUpload, fileForUpload.name) // важно передать имя
+      fd.append("folder", "avatars")
+
+      const resp = await fetch("/api/upload-to-yandex", { method: "POST", body: fd })
+      const result = await resp.json()
+      if (!resp.ok || !result.success) throw new Error(result.error || `HTTP ${resp.status}`)
+
+      // 4) Обновление профиля
+      if (profile.id) {
+        const { error } = await supabase
+          .from("user_profiles")
+          .update({ avatar_url: result.url, updated_at: new Date().toISOString() })
+          .eq("id", profile.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from("user_profiles").insert({
+          user_id: profile.user_id,
+          avatar_url: result.url,
+          is_admin: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        if (error) throw error
+      }
+
+      setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
+      toast.success("Аватар успешно обновлён")
+    } catch (e: any) {
+      toast.error(`Ошибка загрузки аватара: ${e?.message || "Неизвестная ошибка"}`)
+    } finally {
+      setIsUploadingAvatar(false)
+      if (fileInputRef.current) fileInputRef.current.value = ""
     }
-
-    // 3) Загрузка в хранилище
-    const fd = new FormData()
-    fd.append("file", fileForUpload, fileForUpload.name) // важно передать имя
-    fd.append("folder", "avatars")
-
-    const resp = await fetch("/api/upload-to-yandex", { method: "POST", body: fd })
-    const result = await resp.json()
-    if (!resp.ok || !result.success) throw new Error(result.error || `HTTP ${resp.status}`)
-
-    // 4) Обновление профиля
-    if (profile.id) {
-      const { error } = await supabase
-        .from("user_profiles")
-        .update({ avatar_url: result.url, updated_at: new Date().toISOString() })
-        .eq("id", profile.id)
-      if (error) throw error
-    } else {
-      const { error } = await supabase.from("user_profiles").insert({
-        user_id: profile.user_id,
-        avatar_url: result.url,
-        is_admin: false,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      if (error) throw error
-    }
-
-    setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
-    toast.success("Аватар успешно обновлён")
-  } catch (e: any) {
-    toast.error(`Ошибка загрузки аватара: ${e?.message || "Неизвестная ошибка"}`)
-  } finally {
-    setIsUploadingAvatar(false)
-    if (fileInputRef.current) fileInputRef.current.value = ""
   }
-}
-
 
   const handleSave = async () => {
     if (!profile) return
@@ -223,13 +243,18 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
 
   const handleSignOut = async () => {
     try {
-      await fetch("/api/auth/signout", {
+      const response = await fetch("/api/auth/signout", {
         method: "POST",
         credentials: "include",
       })
-      router.push("/auth/login")
-      onClose()
-    } catch {
+
+      if (response.ok) {
+        router.push("/auth/login")
+        onClose()
+      } else {
+        throw new Error("Ошибка при выходе")
+      }
+    } catch (error) {
       toast.error("Ошибка при выходе")
     }
   }
@@ -243,8 +268,12 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
           <div className="space-y-6">
             <Tabs defaultValue="about" className="w-full">
               <TabsList className="grid w-full grid-cols-2 bg-white">
-                <TabsTrigger value="about" className="text-gray-900">Обо мне</TabsTrigger>
-                <TabsTrigger value="avatars" className="text-gray-600">Аватары</TabsTrigger>
+                <TabsTrigger value="about" className="text-gray-900">
+                  Обо мне
+                </TabsTrigger>
+                <TabsTrigger value="avatars" className="text-gray-600">
+                  Аватары
+                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="about" className="space-y-6 mt-6">
@@ -289,8 +318,20 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
                               className="w-full md:w-auto bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white border-0 px-6 py-3 rounded-xl font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
                             >
                               {subscriptionData?.subscription?.status === "active" ? "Управление" : "Оформить подписку"}
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                xmlns="http://www.w3.org/2000/svg"
+                              >
+                                <path
+                                  d="M5 12H19M19 12L12 5M19 12L12 19"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
                               </svg>
                             </Button>
                           </div>
@@ -320,9 +361,11 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
                           type="button"
                           variant={formData.gender === "male" ? "default" : "outline"}
                           onClick={() => handleInputChange("gender", "male")}
-                          className={`flex-1 ${formData.gender === "male"
-                            ? "bg-blue-600 hover:bg-blue-700 text-white"
-                            : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"}`}
+                          className={`flex-1 ${
+                            formData.gender === "male"
+                              ? "bg-blue-600 hover:bg-blue-700 text-white"
+                              : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
+                          }`}
                         >
                           👨 Мужской
                         </Button>
@@ -330,9 +373,11 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
                           type="button"
                           variant={formData.gender === "female" ? "default" : "outline"}
                           onClick={() => handleInputChange("gender", "female")}
-                          className={`flex-1 ${formData.gender === "female"
-                            ? "bg-pink-600 hover:bg-pink-700 text-white"
-                            : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"}`}
+                          className={`flex-1 ${
+                            formData.gender === "female"
+                              ? "bg-pink-600 hover:bg-pink-700 text-white"
+                              : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
+                          }`}
                         >
                           👩 Женский
                         </Button>
@@ -370,7 +415,11 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
                           <SelectValue placeholder="Выберите размер" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CLOTHING_SIZES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+                          {CLOTHING_SIZES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -382,7 +431,11 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
                           <SelectValue placeholder="Выберите размер" />
                         </SelectTrigger>
                         <SelectContent>
-                          {CLOTHING_SIZES.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
+                          {CLOTHING_SIZES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
@@ -401,7 +454,11 @@ const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) =>
 
                     {/* Кнопка сохранения */}
                     <div>
-                      <Button onClick={handleSave} disabled={isSaving} className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0">
+                      <Button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
+                      >
                         {isSaving ? "Сохранение..." : "Сохранить изменения"}
                       </Button>
                     </div>

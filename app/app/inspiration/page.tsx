@@ -1,6 +1,5 @@
 "use client"
 
-
 import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactElement } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
@@ -10,8 +9,7 @@ import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { PaywallModal } from "@/components/paywall-modal"
 import { OutfitItemsSheet } from "@/components/outfit-items-sheet"
-import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
-
+import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
 
 type OutfitItem = {
   id: string
@@ -52,9 +50,8 @@ type TabKey = "popular" | "liked"
 
 const WINDOW_SIZE = 10
 const WINDOW_STEP = 3
-const DOWN_TRIGGER = 7   // когда локальный индекс >= 7 — сдвигаем окно вниз
+const DOWN_TRIGGER = 7 // когда локальный индекс >= 7 — сдвигаем окно вниз
 const UP_TRIGGER = 2
-
 
 function getPreviewSrc(o?: FeedOutfit | null): string {
   const direct = (o?.preview_image_url || "").trim()
@@ -104,82 +101,80 @@ function saveViewedOutfits(viewedIds: Set<string>) {
 }
 
 // Буферизованное фото полноэкранного превью без «морганий».
-const BufferedImage = React.memo(
-  ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
-    const [visibleIndex, setVisibleIndex] = useState(0)
-    const [bufferSrcs, setBufferSrcs] = useState<[string | null, string | null]>([src, null])
-    const loadingRef = useRef<[boolean, boolean]>([true, true])
-    const swapTimeout = useRef<number | null>(null)
+const BufferedImage = React.memo(({ src, alt, className }: { src: string; alt: string; className?: string }) => {
+  const [visibleIndex, setVisibleIndex] = useState(0)
+  const [bufferSrcs, setBufferSrcs] = useState<[string | null, string | null]>([src, null])
+  const loadingRef = useRef<[boolean, boolean]>([true, true])
+  const swapTimeout = useRef<number | null>(null)
 
-    useEffect(() => {
-      if (bufferSrcs[visibleIndex] === src) return
-      const nextIndex = 1 - visibleIndex
-      setBufferSrcs((prev) => {
-        const copy = [...prev] as [string | null, string | null]
-        copy[nextIndex] = src
-        return copy
-      })
-      loadingRef.current[nextIndex] = true
-    }, [src, bufferSrcs, visibleIndex])
+  useEffect(() => {
+    if (bufferSrcs[visibleIndex] === src) return
+    const nextIndex = 1 - visibleIndex
+    setBufferSrcs((prev) => {
+      const copy = [...prev] as [string | null, string | null]
+      copy[nextIndex] = src
+      return copy
+    })
+    loadingRef.current[nextIndex] = true
+  }, [src, bufferSrcs, visibleIndex])
 
-    useEffect(() => {
-      return () => {
-        if (swapTimeout.current) {
-          window.clearTimeout(swapTimeout.current)
-          swapTimeout.current = null
-        }
+  useEffect(() => {
+    return () => {
+      if (swapTimeout.current) {
+        window.clearTimeout(swapTimeout.current)
+        swapTimeout.current = null
       }
-    }, [])
+    }
+  }, [])
 
-    const handleComplete = useCallback(
-      (index: number) => {
-        loadingRef.current[index] = false
-        if (index !== visibleIndex && !loadingRef.current[index]) {
-          swapTimeout.current = window.setTimeout(() => {
-            setVisibleIndex(index)
-            setBufferSrcs((prev) => {
-              const copy = [...prev] as [string | null, string | null]
-              copy[1 - index] = null
-              return copy
-            })
-          }, 80)
-        }
-      },
-      [visibleIndex],
-    )
+  const handleComplete = useCallback(
+    (index: number) => {
+      loadingRef.current[index] = false
+      if (index !== visibleIndex && !loadingRef.current[index]) {
+        swapTimeout.current = window.setTimeout(() => {
+          setVisibleIndex(index)
+          setBufferSrcs((prev) => {
+            const copy = [...prev] as [string | null, string | null]
+            copy[1 - index] = null
+            return copy
+          })
+        }, 80)
+      }
+    },
+    [visibleIndex],
+  )
 
-    return (
-      <>
-        {bufferSrcs.map((bufferSrc, idx) => {
-          if (!bufferSrc) return null
-          return (
-            <Image
-              key={`${idx}-${bufferSrc}`}
-              src={bufferSrc}
-              alt={alt}
-              fill
-              priority={idx === visibleIndex}
-              onLoadingComplete={() => handleComplete(idx)}
-              loading={idx === visibleIndex ? "eager" : "lazy"}
-              fetchPriority={idx === visibleIndex ? "high" : "auto"}
-              className={cn(
-                className,
-                "transition-opacity duration-300 ease-out will-change-opacity [backface-visibility:hidden]",
-                idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
-              )}
-            />
-          )
-        })}
-      </>
-    )
-  },
-)
+  return (
+    <>
+      {bufferSrcs.map((bufferSrc, idx) => {
+        if (!bufferSrc) return null
+        return (
+          <Image
+            key={`${idx}-${bufferSrc}`}
+            src={bufferSrc || "/placeholder.svg"}
+            alt={alt}
+            fill
+            priority={idx === visibleIndex}
+            onLoadingComplete={() => handleComplete(idx)}
+            loading={idx === visibleIndex ? "eager" : "lazy"}
+            fetchPriority={idx === visibleIndex ? "high" : "auto"}
+            className={cn(
+              className,
+              "transition-opacity duration-300 ease-out will-change-opacity [backface-visibility:hidden]",
+              idx === visibleIndex ? "opacity-100" : "opacity-0 absolute",
+            )}
+          />
+        )
+      })}
+    </>
+  )
+})
 BufferedImage.displayName = "BufferedImage"
 
 export default function InspirationPage(): ReactElement {
   // Данные / состояние
   const [windowStart, setWindowStart] = useState(0) // глобальный индекс начала окна
-  const adjustScrollRef = useRef(0) 
+  const adjustScrollRef = useRef(0)
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -191,9 +186,6 @@ export default function InspirationPage(): ReactElement {
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
 
   const [userGender, setUserGender] = useState("")
-
-  // Текущий индекс активной карточки определяется IntersectionObserver (см. ниже)
-  const [index, setIndex] = useState(0)
   const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(() => getViewedOutfits())
 
   const [dailyViewsUsed, setDailyViewsUsed] = useState(0)
@@ -206,6 +198,8 @@ export default function InspirationPage(): ReactElement {
   const [selectedOutfitItems, setSelectedOutfitItems] = useState<OutfitItem[]>([])
   const [selectedOutfitTitle, setSelectedOutfitTitle] = useState<string>("")
 
+  const [index, setIndex] = useState(0) // Declare index and setIndex variables
+
   // Ссылки на скролл-контейнер и карточки
   const scrollerRef = useRef<HTMLDivElement | null>(null)
 
@@ -216,7 +210,7 @@ export default function InspirationPage(): ReactElement {
 
   const current = filtered[index]
 
-  useReconcileLimits(true);
+  useReconcileLimits(true)
 
   useEffect(() => {
     saveViewedOutfits(viewedOutfits)
@@ -266,8 +260,8 @@ export default function InspirationPage(): ReactElement {
         })
         const consume = await consumeRes.json()
         if (!consumeRes.ok || !consume?.canUse) {
-          setIsBlurred(true);
-          return;
+          setIsBlurred(true)
+          return
         }
         await fetch("/api/outfits/track-view", {
           method: "POST",
@@ -285,13 +279,18 @@ export default function InspirationPage(): ReactElement {
   useEffect(() => {
     const loadProfile = async () => {
       try {
+        console.log("[v0] Loading user profile for gender")
         const res = await fetch("/api/me/profile")
         if (res.ok) {
           const data = await res.json()
-          setUserGender(data?.profile?.gender || "")
+          const gender = data?.profile?.gender || ""
+          console.log("[v0] User gender loaded:", gender)
+          setUserGender(gender)
+        } else {
+          console.log("[v0] Failed to load profile:", res.status)
         }
       } catch (err) {
-        console.error("Error fetching profile:", err)
+        console.error("[v0] Error fetching profile:", err)
       }
     }
     loadProfile()
@@ -299,7 +298,12 @@ export default function InspirationPage(): ReactElement {
 
   // Первичная загрузка
   useEffect(() => {
-    if (!userGender) return
+    if (!userGender) {
+      console.log("[v0] No user gender, skipping outfits load")
+      return
+    }
+
+    console.log("[v0] Loading outfits for gender:", userGender)
     let cancelled = false
     ;(async () => {
       try {
@@ -334,11 +338,13 @@ export default function InspirationPage(): ReactElement {
   // Смена вкладки -> на начало списка
   useEffect(() => {
     setIndex(0)
-     setWindowStart(0)
+    setWindowStart(0)
   }, [activeTab])
 
-
-  const rendered = useMemo(() => filtered.slice(windowStart, Math.min(filtered.length, windowStart + WINDOW_SIZE)),[filtered, windowStart])
+  const rendered = useMemo(
+    () => filtered.slice(windowStart, Math.min(filtered.length, windowStart + WINDOW_SIZE)),
+    [filtered, windowStart],
+  )
   // Дозагрузка при приближении к концу
   useEffect(() => {
     if (activeTab !== "popular") return
@@ -374,7 +380,7 @@ export default function InspirationPage(): ReactElement {
 
   // Управление клавиатурой
   const scrollStep = useCallback((dir: "up" | "down") => {
-  const h = scrollerRef.current?.clientHeight || window.innerHeight || 0
+    const h = scrollerRef.current?.clientHeight || window.innerHeight || 0
     if (!h) return
     scrollerRef.current?.scrollBy({ top: dir === "down" ? h : -h, behavior: "smooth" })
   }, [])
@@ -396,25 +402,27 @@ export default function InspirationPage(): ReactElement {
     if (!scrollerRef.current || rendered.length === 0) return
     const root = scrollerRef.current
     const thresholds = [0, 0.25, 0.5, 0.7, 0.85, 1]
-    const observer = new IntersectionObserver((entries) => {
-      let bestIdx = index
-      let bestRatio = 0
-      for (const entry of entries) {
-        const el = entry.target as HTMLDivElement
-        const i = Number(el.dataset.index) // ГЛОБАЛЬНЫЙ индекс!
-        if (entry.isIntersecting && entry.intersectionRatio >= bestRatio) {
-          bestRatio = entry.intersectionRatio
-          bestIdx = i
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let bestIdx = index
+        let bestRatio = 0
+        for (const entry of entries) {
+          const el = entry.target as HTMLDivElement
+          const i = Number(el.dataset.index) // ГЛОБАЛЬНЫЙ индекс!
+          if (entry.isIntersecting && entry.intersectionRatio >= bestRatio) {
+            bestRatio = entry.intersectionRatio
+            bestIdx = i
+          }
         }
-      }
-      if (bestRatio >= 0.7 && bestIdx !== index) setIndex(bestIdx)
-    }, { root, threshold: thresholds })
+        if (bestRatio >= 0.7 && bestIdx !== index) setIndex(bestIdx)
+      },
+      { root, threshold: thresholds },
+    )
 
     const nodes = root.querySelectorAll<HTMLDivElement>("[data-window-node='1']")
     nodes.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
   }, [rendered, windowStart, index])
-
 
   useEffect(() => {
     if (!filtered.length) return
@@ -620,7 +628,6 @@ export default function InspirationPage(): ReactElement {
     )
   }
 
-
   return (
     <div
       className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none box-border"
@@ -695,7 +702,7 @@ export default function InspirationPage(): ReactElement {
             className={cn(
               "h-full w-full overflow-y-auto scroll-smooth snap-y snap-mandatory",
               "[-webkit-overflow-scrolling:touch]",
-              "scrollbar-none", 
+              "scrollbar-none",
             )}
           >
             {rendered.length === 0 ? (
@@ -772,7 +779,9 @@ export default function InspirationPage(): ReactElement {
                   aria-label="Лайк"
                   className={cn(
                     "w-12 h-12 rounded-full flex items-center justify-center shadow-xl",
-                    current?.isLiked ? "bg-red-500 text-white" : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30",
+                    current?.isLiked
+                      ? "bg-red-500 text-white"
+                      : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30",
                   )}
                 >
                   {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
@@ -781,7 +790,9 @@ export default function InspirationPage(): ReactElement {
                 <button
                   onClick={() => current && handleSave(current)}
                   disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
-                  aria-label={!!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"}
+                  aria-label={
+                    !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"
+                  }
                   className={cn(
                     "w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-xl",
                     !!current && (isSaving || savedOutfitIds.has(current.id) || current.isSaved) && "opacity-80",
@@ -806,7 +817,9 @@ export default function InspirationPage(): ReactElement {
                 onClick={() => current && handleSave(current)}
                 disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
                 className="bg-white text-black hover:bg-neutral-200 h-11 w-11 p-0 rounded-full shadow-xl"
-                aria-label={!!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"}
+                aria-label={
+                  !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"
+                }
               >
                 {isSaving ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -825,7 +838,9 @@ export default function InspirationPage(): ReactElement {
                 disabled={isLiking}
                 className={cn(
                   "h-11 w-11 p-0 rounded-full shadow-xl",
-                  current?.isLiked ? "bg-red-500 text-white hover:bg-red-600" : "bg-white/15 text-white hover:bg-white/25",
+                  current?.isLiked
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "bg-white/15 text-white hover:bg-white/25",
                 )}
                 aria-label="Лайк"
               >
@@ -839,7 +854,10 @@ export default function InspirationPage(): ReactElement {
         {filtered.length > 0 && (
           <div className="mt-3 flex justify-center gap-2 px-4">
             {filtered.map((_, i) => (
-              <div key={i} className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-white" : "w-2 bg-neutral-600")} />
+              <div
+                key={i}
+                className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-white" : "w-2 bg-neutral-600")}
+              />
             ))}
           </div>
         )}
@@ -949,58 +967,56 @@ function normalizeOutfits(list: any[]): FeedOutfit[] {
 }
 
 // Буферизованные миниатюры (белый плейсхолдер до отрисовки изображения)
-const BufferedItemImage = React.memo(
-  ({ src, alt, className }: { src: string; alt: string; className?: string }) => {
-    const [currentSrc, setCurrentSrc] = useState<string | null>(null)
-    const [isLoading, setIsLoading] = useState(true)
-    const imageCache = useRef<Map<string, boolean>>(new Map())
+const BufferedItemImage = React.memo(({ src, alt, className }: { src: string; alt: string; className?: string }) => {
+  const [currentSrc, setCurrentSrc] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const imageCache = useRef<Map<string, boolean>>(new Map())
 
-    useEffect(() => {
-      if (!src) return
-      if (imageCache.current.has(src)) {
-        setCurrentSrc(src)
-        setIsLoading(false)
-        return
-      }
-
-      let cancelled = false
-      setIsLoading(true)
-      const img = new window.Image()
-      img.onload = async () => {
-        try {
-          // @ts-ignore
-          if (typeof img.decode === "function") await img.decode()
-        } catch (_) {}
-        if (!cancelled) {
-          imageCache.current.set(src, true)
-          setCurrentSrc(src)
-          setIsLoading(false)
-        }
-      }
-      img.onerror = () => {
-        if (!cancelled) setIsLoading(false)
-      }
-      img.src = src
-
-      return () => {
-        cancelled = true
-      }
-    }, [src])
-
-    if (isLoading || !currentSrc) {
-      return <div className={cn("bg-white", className)} />
+  useEffect(() => {
+    if (!src) return
+    if (imageCache.current.has(src)) {
+      setCurrentSrc(src)
+      setIsLoading(false)
+      return
     }
 
-    return (
-      <Image
-        src={currentSrc}
-        alt={alt}
-        fill
-        sizes="56px"
-        priority={false}
-        className={cn("object-cover transition-opacity duration-300 will-change-opacity", className)}
-      />
-    )
-  },
-)
+    let cancelled = false
+    setIsLoading(true)
+    const img = new window.Image()
+    img.onload = async () => {
+      try {
+        // @ts-ignore
+        if (typeof img.decode === "function") await img.decode()
+      } catch (_) {}
+      if (!cancelled) {
+        imageCache.current.set(src, true)
+        setCurrentSrc(src)
+        setIsLoading(false)
+      }
+    }
+    img.onerror = () => {
+      if (!cancelled) setIsLoading(false)
+    }
+    img.src = src
+
+    return () => {
+      cancelled = true
+    }
+  }, [src])
+
+  if (isLoading || !currentSrc) {
+    return <div className={cn("bg-white", className)} />
+  }
+
+  return (
+    <Image
+      src={currentSrc || "/placeholder.svg"}
+      alt={alt}
+      fill
+      sizes="56px"
+      priority={false}
+      className={cn("object-cover transition-opacity duration-300 will-change-opacity", className)}
+    />
+  )
+})
 BufferedItemImage.displayName = "BufferedItemImage"

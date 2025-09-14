@@ -52,7 +52,20 @@ export default function TestAIWebhookPage() {
   }
 
   if (!isAdmin) {
-    return null
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-red-600 text-lg font-semibold">Доступ запрещен</div>
+          <p className="text-gray-600">У вас нет прав администратора</p>
+          <button
+            onClick={() => router.push("/app")}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Вернуться в приложение
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

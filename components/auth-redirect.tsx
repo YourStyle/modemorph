@@ -16,6 +16,8 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
   const router = useRouter()
 
   useEffect(() => {
+    console.log("[v0] AuthRedirect check:", { user: !!user, loading, requireAuth })
+
     const checkAuthCookies = () => {
       if (typeof document === "undefined") return true
 
@@ -24,6 +26,7 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
 
       if (!cookies || !hasSupabaseAuthToken) {
         if (requireAuth) {
+          console.log("[v0] No auth cookies, redirecting to home")
           router.push("/")
           return false
         }
@@ -39,8 +42,10 @@ export function AuthRedirect({ children, requireAuth = true, redirectTo = "/auth
       const isAuthenticated = !!user
 
       if (requireAuth && !isAuthenticated) {
+        console.log("[v0] Auth required but user not authenticated, redirecting to:", redirectTo)
         router.push(redirectTo)
       } else if (!requireAuth && isAuthenticated) {
+        console.log("[v0] User authenticated but auth not required, redirecting to app")
         router.push("/app")
       }
     }

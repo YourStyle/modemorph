@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation" 
+import { useRouter } from "next/navigation"
 import { tmaHandshake } from "@/lib/tma/handshake"
 import { createClient } from "@/lib/supabase/client"
 import { User, Weight, Ruler, Shirt, Users, Share2, Megaphone, Heart } from "lucide-react"
@@ -17,7 +17,7 @@ interface FormData {
 }
 
 export default function MiniRegistrationPage() {
-  const router = useRouter() 
+  const router = useRouter()
   const supabase = createClient()
   const [ready, setReady] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
@@ -55,16 +55,20 @@ export default function MiniRegistrationPage() {
 
   const handleSubmit = async () => {
     if (!userId || isSubmitting) return
-      setIsSubmitting(true)
-      const { error } = await fetch("/api/profile/miniapp-upsert", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(formData),
-      }).then(async r => (r.ok ? {} : { error: await r.json().catch(() => ({})) }))
+    setIsSubmitting(true)
+    const { error } = await fetch("/api/profile/miniapp-upsert", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(formData),
+    }).then(async (r) => (r.ok ? {} : { error: await r.json().catch(() => ({})) }))
 
-      if (error) { alert(error.error || "Не удалось сохранить профиль"); setIsSubmitting(false); return }
-      router.replace("/")
+    if (error) {
+      alert(error.error || "Не удалось сохранить профиль")
+      setIsSubmitting(false)
+      return
+    }
+    router.replace("/")
   }
 
   const isStepValid = () => {
@@ -80,7 +84,16 @@ export default function MiniRegistrationPage() {
     }
   }
 
-  if (!ready) return null
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="text-gray-600">Инициализация...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-white">
