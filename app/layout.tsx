@@ -16,6 +16,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Mode Morph - Умный гардероб",
   description: "Создавайте стильные образы с помощью ИИ",
+    generator: 'v0.app'
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

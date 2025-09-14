@@ -27,7 +27,7 @@ export class WeatherCache {
   private supabase
 
   constructor() {
-    this.supabase = await createClient()
+    this.supabase = createClient()
   }
 
   async getCachedWeather(latitude: number, longitude: number): Promise<WeatherData | null> {
