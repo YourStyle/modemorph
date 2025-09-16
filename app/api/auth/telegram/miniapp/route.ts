@@ -16,6 +16,14 @@ function isFresh(authDate: number, maxAgeSec = 24 * 60 * 60) {
   return authDate > 0 && Math.abs(now - authDate) <= maxAgeSec
 }
 
+function jsonNoStore(data: any, init?: ResponseInit) {
+  const res = NextResponse.json(data, init)
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+  res.headers.set("Pragma", "no-cache")
+  res.headers.set("Vary", "Cookie")
+  return res
+}
+
 type ParsedInit = {
   entries: [string, string][],
   hash: string,
@@ -63,24 +71,24 @@ function derivedPassword(telegramId: string, pepper: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    requireEnv("TELEGRAM_BOT_TOKEN", "TELEGRAM_PEPPER", "SUPABASE_URL", "SUPABASE_ANON_KEY")
+    requireEnv("TELEGRAM_BOT_TOKEN", "TELEGRAM_PEPPER", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY")
     if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
       throw new Error("Missing env: SUPABASE_SERVICE_ROLE_KEY")
     }
 
     const body = await req.json().catch(() => ({}))
-    const rawInitData: string = body?.initData || ""
-    if (!rawInitData) return NextResponse.json({ error: "No initData" }, { status: 400 })
+    const rawInitData: string = (body?.initData || "").trim()
+    if (!rawInitData) return jsonNoStore({ error: "No initData" }, { status: 400 })
 
     // 1) verify + TTL
     const { ok, authDate, user: initUser } = verifyInitData(rawInitData, process.env.TELEGRAM_BOT_TOKEN!)
-    if (!ok) return NextResponse.json({ error: "Invalid initData" }, { status: 401 })
-    if (!isFresh(authDate)) return NextResponse.json({ error: "Init data expired" }, { status: 401 })
+    if (!ok) return jsonNoStore({ error: "Invalid initData" }, { status: 401 })
+    if (!isFresh(authDate)) return jsonNoStore({ error: "Init data expired" }, { status: 401 })
 
     // 2) user из проверенного initData
     const u = initUser || {}
     const tgId = String(u.id || "")
-    if (!tgId) return NextResponse.json({ error: "No user in initData" }, { status: 400 })
+    if (!tgId) return jsonNoStore({ error: "No user in initData" }, { status: 400 })
 
     const email = `${tgId}@telegram.local`
     const password = derivedPassword(tgId, process.env.TELEGRAM_PEPPER!)
@@ -114,8 +122,8 @@ export async function POST(req: NextRequest) {
           { onConflict: "user_id" }
         )
         // не молчим о серверной ошибке
-        if (upErr) return NextResponse.json({ error: `profile upsert failed: ${upErr.message}` }, { status: 500 })
-        return NextResponse.json({ success: true })
+       if (upErr) return jsonNoStore({ error: `profile upsert failed: ${upErr.message}` }, { status: 500 })
+       return jsonNoStore({ success: true })
       }
     }
 
@@ -128,8 +136,9 @@ export async function POST(req: NextRequest) {
       created?.user?.id ??
       (await (async () => {
         if (createErr && createErr.status !== 422) return null
-        const url = `${process.env.SUPABASE_URL!.replace(/\/+$/, "")}/auth/v1/admin/users?email=${encodeURIComponent(email)}`
-        const serviceRole = process.env.SUPABASE_SERVICE_ROLE ?? process.env.SUPABASE_SERVICE_ROLE_KEY!
+        const base = process.env.NEXT_PUBLIC_SUPABASE_URL!.replace(/\/+$/, "")
+        const url = `${base}/auth/v1/admin/users?email=${encodeURIComponent(email)}`
+        const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY!
         const resp = await fetch(url, { headers: { apikey: serviceRole, Authorization: `Bearer ${serviceRole}` } })
         if (!resp.ok) return null
         const json = await resp.json().catch(() => null)
@@ -137,11 +146,11 @@ export async function POST(req: NextRequest) {
         return obj?.id ?? null
       })())
 
-    if (!userId) return NextResponse.json({ error: "User lookup failed" }, { status: 500 })
+    if (!userId) return jsonNoStore({ error: "User lookup failed" }, { status: 500 })
 
     const upd = await (admin as any).auth.admin.updateUserById(userId, { password, user_metadata: metadata })
     if ((upd as any)?.error) {
-      return NextResponse.json({ error: (upd as any).error?.message || "updateUser failed" }, { status: 500 })
+      return jsonNoStore({ error: (upd as any).error?.message || "updateUser failed" }, { status: 500 })
     }
 
     const { error: upErr2 } = await (admin as any).from("user_profiles").upsert(
@@ -154,15 +163,15 @@ export async function POST(req: NextRequest) {
       },
       { onConflict: "user_id" }
     )
-    if (upErr2) return NextResponse.json({ error: `profile upsert failed: ${upErr2.message}` }, { status: 500 })
+    if (upErr2) return jsonNoStore({ error: `profile upsert failed: ${upErr2.message}` }, { status: 500 })
 
     const retry = await supabase.auth.signInWithPassword({ email, password })
     if (retry.error || !retry.data?.session) {
-      return NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 })
+      return jsonNoStore({ error: retry.error?.message || "Auth failed" }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true })
+    return jsonNoStore({ success: true })
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 })
+   return jsonNoStore({ error: e?.message || "Server error" }, { status: 500 })
   }
 }
