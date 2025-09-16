@@ -15,27 +15,35 @@ declare global {
   }
 }
 
-export async function tmaHandshake(): Promise<User | null> {
-  const supabase = createClient()
+async function pollMe(attempts = 6): Promise<User | null> {
+  for (let i = 0; i < attempts; i++) {
+    const me = await fetch(`/api/auth/me?i=${i}&t=${Date.now()}`, {
+      credentials: "include",
+      cache: "no-store",
+    }).then(r => r.ok ? r.json() : null);
 
-  // 1) Если уже есть пользователь — просто вернём
+    const user = me?.user ?? null;
+    if (user) return user;
+    await new Promise(r => setTimeout(r, 150 * (i + 1))); // 150ms, 300ms, ...
+  }
+  return null;
+}
+
+export async function tmaHandshake(): Promise<User | null> {
   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
   const initData = tg?.initData || ""
   if (!initData) return null
 
-  try {
-    const res = await fetch("/api/auth/telegram/miniapp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ initData }),
-      credentials: "include",
-    })
-    if (!res.ok) return null
-  } catch {
-    return null
-  }
+  // 1) Хэндшейк — только сервер ставит куки
+  const res = await fetch("/api/auth/telegram/miniapp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ initData }),
+    credentials: "include",
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
 
-  // 3) Повторно читаем пользователя
-  const me = await fetch("/api/auth/me", { credentials: "include" }).then(r => r.ok ? r.json() : null)
-  return me?.user ?? null
+  // 2) Дождаться, пока вебвью реально начнет слать куки
+  return await pollMe();
 }
