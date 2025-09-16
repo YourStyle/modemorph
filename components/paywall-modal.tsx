@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
-import { Check, Sparkles, Zap, X } from "lucide-react"
+import { Check, Sparkles, Zap, X, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { startRoboPayment } from "@/lib/payments"
 
@@ -121,7 +121,7 @@ const handleBuyCredits = async (packId: number) => {
           </div>
         </div>
 
-        <div className="p-6 space-y-8 max-w-4xl mx-auto">
+        <div className="p-6 space-y-8 max-w-4xl mx-auto pb-24">
           {/* Current Credits */}
           <div className="text-center p-6 bg-gray-800/50 rounded-xl border border-gray-700">
             <div className="text-gray-400 mb-2">Ваши кредиты</div>
@@ -296,6 +296,14 @@ const handleBuyCredits = async (packId: number) => {
                 <span>Образы: до 20 сохраненных</span>
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Нижняя плашка-предупреждение */}
+        <div className="sticky bottom-0 z-20 bg-yellow-500/10 backdrop-blur-sm border-t border-yellow-500/30">
+          <div className="max-w-4xl mx-auto px-4 py-3 text-sm text-yellow-300 flex items-center justify-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            <span>Убедитесь что у вас выключен VPN перед покупкой</span>
           </div>
         </div>
       </DialogContent>
