@@ -89,7 +89,7 @@ const handleBuyCredits = async (packId: number) => {
   if (loading) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="w-full h-full max-w-none max-h-none m-0 p-0 pt-20 bg-gray-900">
+        <DialogContent className="w-full h-full max-w-none max-h-none m-0 p-0 bg-gray-900">
           <div className="flex items-center justify-center h-full">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
           </div>
@@ -102,9 +102,9 @@ const handleBuyCredits = async (packId: number) => {
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="w-full h-full max-w-none max-h-none m-0 p-0 pt-20 bg-gray-900 text-white overflow-y-auto">
+      <DialogContent className="w-full h-full max-w-none max-h-none m-0 p-0 bg-gray-900 text-white overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-20 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
+        <div className="sticky top-0 pt-20 z-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
           <div className="flex items-center justify-between p-4">
             <div className="flex items-center gap-3">
               <Sparkles className="h-6 w-6 text-purple-400" />
