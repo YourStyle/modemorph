@@ -38,6 +38,30 @@ export function PaywallModal({ isOpen, onClose, onSuccess }: PaywallModalProps) 
     }
   }, [isOpen])
 
+    // TMA: на время модалки — тёмные цвета; после — вернуть текущие
+  useEffect(() => {
+    const tg = (window as any)?.Telegram?.WebApp
+    const LIGHT = "#FFFFFF"  // текущий цвет header и body
+    const DARK  = "#0e0e10"  // текущий фон TMA
+
+    if (isOpen) {
+      tg?.setHeaderColor?.(DARK)
+      tg?.setBackgroundColor?.(DARK)
+      document.body.style.backgroundColor = DARK
+   } else {
+      tg?.setHeaderColor?.(LIGHT)
+      tg?.setBackgroundColor?.(DARK)
+      document.body.style.backgroundColor = LIGHT
+    }
+
+    // На случай размонтирования компонента, вернём цвета
+    return () => {
+      tg?.setHeaderColor?.(LIGHT)
+      tg?.setBackgroundColor?.(DARK)
+      document.body.style.backgroundColor = LIGHT
+    }
+  }, [isOpen])
+
   const loadData = async () => {
     setLoading(true)
     try {
