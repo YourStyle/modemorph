@@ -12,16 +12,16 @@ export function AnimatedLanding() {
       {/* Навигация */}
       <nav className="flex justify-end p-4 lg:p-6 animate-fade-in-down">
         <div className="flex gap-2">
-          {!isLoading && !isTMA && (
-            <Link href="/auth/login">
+          <Link href="/auth/login">
               <Button variant="ghost" className="text-gray-600 hover:text-gray-900">
                 Войти
               </Button>
             </Link>
-          )}
-          <Link href="/auth/sign-up">
+          {!isLoading && !isTMA && (
+            <Link href="/auth/sign-up">
             <Button className="bg-gray-900 hover:bg-gray-800 text-white">Регистрация</Button>
           </Link>
+          )}
         </div>
       </nav>
 
