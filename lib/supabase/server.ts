@@ -40,6 +40,7 @@ export async function createClient(opts?: { role?: Role }) {
     sameSite: "none",
     secure: true,
     domain: cookieDomain,
+    partitioned: true, 
     path: "/",
   }
 
@@ -61,6 +62,7 @@ export async function createClient(opts?: { role?: Role }) {
           secure: true,
           domain: ".modemorph.ru",
           path: "/",
+          partitioned: true, 
           maxAge: 0,           // <-- важно
         })
       },
