@@ -110,13 +110,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         // Подтверждение закрытия
         try { tg.enableClosingConfirmation?.() } catch {}
 
-
-        if (document.requestStorageAccess && document.hasStorageAccess) {
-          const has = await document.hasStorageAccess();
-          if (!has) {
-            try { await document.requestStorageAccess(); } catch {}
-          }
-        }
         // 1) Хэндшейк
         const user = await tmaHandshake()
 
