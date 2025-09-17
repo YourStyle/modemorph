@@ -10,6 +10,7 @@ export async function updateSession(request: NextRequest) {
     sameSite: "none",
     secure: true,
     domain: ".modemorph.ru",
+    partitioned: true,
     path: "/",
   }
 
