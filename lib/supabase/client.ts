@@ -13,7 +13,7 @@ export function createClient() {
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: false,
-          storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
+          storage: typeof window !== "undefined" ? window.localStorage : undefined,
         },
       }
     )
