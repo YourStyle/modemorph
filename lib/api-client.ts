@@ -7,7 +7,6 @@ export function useApiClient() {
 
   const apiCall = async (url: string, options: RequestInit = {}) => {
     const response = await fetch(url, {
-      credentials: "include",
       cache: "no-store",
       ...options,
       headers: {
