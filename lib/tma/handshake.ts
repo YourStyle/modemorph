@@ -1,6 +1,5 @@
 // lib/tma/handshake.ts
 // Унифицированный обмен initData → Supabase-сессия. Возвращает актуального user или null.
-"use client"
 
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
