@@ -77,15 +77,14 @@ export function Navigation() {
 
   const handleSignOut = async () => {
     try {
-      await fetch("/api/auth/signout", {
-        method: "POST",
-        credentials: "include",
-      })
-      router.push("/")
+      await supabase.auth.signOut();
+      await fetch("/api/auth/signout", { method: "POST" });
+      router.push("/");
     } catch {
       // ignore
     }
-  }
+  };
+
 
   const navigateToProfile = () => {
     router.push("/app/profile")
