@@ -18,7 +18,6 @@ declare global {
 async function pollMe(attempts = 6): Promise<User | null> {
   for (let i = 0; i < attempts; i++) {
     const me = await fetch(`/api/auth/me?i=${i}&t=${Date.now()}`, {
-      credentials: "include",
       cache: "no-store",
     }).then(r => r.ok ? r.json() : null);
 
@@ -39,7 +38,6 @@ export async function tmaHandshake(): Promise<User | null> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ initData }),
-    credentials: "include",
     cache: "no-store",
   });
   if (!res.ok) return null;
