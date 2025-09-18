@@ -65,6 +65,21 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const supabase = createClient()
+  async function getAccessToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? "";
+  }
+  async function apiFetch(url: string, init: RequestInit = {}) {
+    const token = await getAccessToken();
+    return fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  }
   const [isPaywallOpen, setIsPaywallOpen] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
 
@@ -128,12 +143,14 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
   const loadSubscriptionData = async () => {
     try {
-      const res = await fetch("/api/user-subscription", { credentials: "include" })
+      const res = await apiFetch("/api/user-subscription")
       if (res.ok) setSubscriptionData(await res.json())
     } catch {
       // ignore
     }
   }
+
+
 
   const handleInputChange = (field: string, value: string) => setFormData((p) => ({ ...p, [field]: value }))
   const handleNumberInput = (field: string, value: string) => handleInputChange(field, value.replace(/[^0-9]/g, ""))
@@ -174,7 +191,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
       fd.append("file", fileForUpload, fileForUpload.name) // важно передать имя
       fd.append("folder", "avatars")
 
-      const resp = await fetch("/api/upload-to-yandex", { method: "POST", body: fd })
+      const resp = await apiFetch("/api/upload-to-yandex", { method: "POST", body: fd })
       const result = await resp.json()
       if (!resp.ok || !result.success) throw new Error(result.error || `HTTP ${resp.status}`)
 
@@ -243,9 +260,8 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
   const handleSignOut = async () => {
     try {
-      const response = await fetch("/api/auth/signout", {
-        method: "POST",
-        credentials: "include",
+      const response = await apiFetch("/api/auth/signout", {
+        method: "POST"
       })
 
       if (response.ok) {

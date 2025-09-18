@@ -21,12 +21,30 @@ interface UserProfile {
   is_admin: boolean
 }
 
+
+
 export function Navigation() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
   const pathname = usePathname()
+
   const supabase = createClient()
+  async function getAccessToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? "";
+  }
+  async function apiFetch(url: string, init: RequestInit = {}) {
+    const token = await getAccessToken();
+    return fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  }
 
   useEffect(() => {
     loadUserProfile()
@@ -78,7 +96,7 @@ export function Navigation() {
   const handleSignOut = async () => {
     try {
       await supabase.auth.signOut();
-      await fetch("/api/auth/signout", { method: "POST" });
+      await apiFetch("/api/auth/signout", { method: "POST" });
       router.push("/");
     } catch {
       // ignore

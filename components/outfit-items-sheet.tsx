@@ -5,6 +5,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Plus, ExternalLink, Loader2 } from "lucide-react"
+import {createClient} from "@/lib/supabase/client";
 
 type OutfitItem = {
   id: string
@@ -33,17 +34,30 @@ interface OutfitItemsSheetProps {
 
 export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: OutfitItemsSheetProps) {
   const [addingItems, setAddingItems] = useState<Set<string>>(new Set())
-
+  const supabase = createClient()
+  async function getAccessToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? "";
+  }
+  async function apiFetch(url: string, init: RequestInit = {}) {
+    const token = await getAccessToken();
+    return fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  }
   const handleAddToWardrobe = async (item: OutfitItem) => {
     if (addingItems.has(item.id)) return
 
     setAddingItems((prev) => new Set([...prev, item.id]))
 
     try {
-      const response = await fetch("/api/wardrobe-user-items", {
+      const response = await apiFetch("/api/wardrobe-user-items", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           item_name: item.name,
           image_url: item.image_url,

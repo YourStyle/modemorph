@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  const token = request.headers.get("authorization")?.replace("Bearer ", "");
+  const supabase = await createClient({ token });
 
   // auth
   const {

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Check, Sparkles, Zap, X, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { startRoboPayment } from "@/lib/payments"
+import {createClient} from "@/lib/supabase/client";
 
 interface PaywallModalProps {
   isOpen: boolean
@@ -27,10 +28,29 @@ interface SubscriptionData {
   creditPacks: CreditPack[]
 }
 
+
+
 export function PaywallModal({ isOpen, onClose, onSuccess }: PaywallModalProps) {
   const [data, setData] = useState<SubscriptionData | null>(null)
   const [loading, setLoading] = useState(false)
   const [purchasing, setPurchasing] = useState(false)
+
+  const supabase = createClient()
+  async function getAccessToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? "";
+  }
+  async function apiFetch(url: string, init: RequestInit = {}) {
+    const token = await getAccessToken();
+    return fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  }
 
   useEffect(() => {
     if (isOpen) {
@@ -65,9 +85,7 @@ export function PaywallModal({ isOpen, onClose, onSuccess }: PaywallModalProps) 
   const loadData = async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/user-subscription", {
-        credentials: "include",
-      })
+      const response = await apiFetch("/api/user-subscription")
       if (response.ok) {
         const result = await response.json()
         setData(result)

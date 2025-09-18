@@ -38,7 +38,8 @@ function shuffleInPlace<T>(arr: T[]) {
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
+    const token = request.headers.get("authorization")?.replace("Bearer ", "");
+    const supabase = await createClient({ token });
     const {
       data: { user },
     } = await supabase.auth.getUser()

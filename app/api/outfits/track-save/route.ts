@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server"
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
+    const token = request.headers.get("authorization")?.replace("Bearer ", "");
+    const supabase = await createClient({ token });
     const {
       data: { user },
     } = await supabase.auth.getUser()

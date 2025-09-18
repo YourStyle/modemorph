@@ -3,7 +3,8 @@ import { NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 
 export async function POST(req: Request) {
-  const supabase = await createClient()
+  const token = req.headers.get("authorization")?.replace("Bearer ", "");
+  const supabase = await createClient({ token });
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: "No session" }, { status: 401 })
 

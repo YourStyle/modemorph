@@ -19,6 +19,21 @@ interface FormData {
 export default function MiniRegistrationPage() {
   const router = useRouter()
   const supabase = createClient()
+  async function getAccessToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? "";
+  }
+  async function apiFetch(url: string, init: RequestInit = {}) {
+    const token = await getAccessToken();
+    return fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  }
   const [ready, setReady] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState(1)
@@ -56,10 +71,8 @@ export default function MiniRegistrationPage() {
   const handleSubmit = async () => {
     if (!userId || isSubmitting) return
     setIsSubmitting(true)
-    const { error } = await fetch("/api/profile/miniapp-upsert", {
+    const { error } = await apiFetch("/api/profile/miniapp-upsert", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
       body: JSON.stringify(formData),
     }).then(async (r) => (r.ok ? {} : { error: await r.json().catch(() => ({})) }))
 

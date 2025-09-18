@@ -9,7 +9,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const token = request.headers.get("authorization")?.replace("Bearer ", "");
+    const supabase = await createClient({ token });
 
     // Get current user
     const {

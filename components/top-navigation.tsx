@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
 import { UserProfileSheet } from "./user-profile-sheet"
+import {useRouter} from "next/navigation";
 
 interface WeatherData {
   temperature: number
@@ -21,6 +22,8 @@ interface UserProfile {
   is_admin: boolean
 }
 
+
+
 export function TopNavigation() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -29,10 +32,25 @@ export function TopNavigation() {
   const [weatherLoading, setWeatherLoading] = useState(true)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
   const [weekdayShort, setWeekdayShort] = useState("")
-
+  const router = useRouter()
   const [isTmaMobile, setIsTmaMobile] = useState(false)
 
   const supabase = createClient()
+  async function getAccessToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? "";
+  }
+  async function apiFetch(url: string, init: RequestInit = {}) {
+    const token = await getAccessToken();
+    return fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  }
 
   useEffect(() => {
     updateDateTime()
@@ -233,15 +251,13 @@ export function TopNavigation() {
 
   const handleSignOut = async () => {
     try {
-      await fetch("/api/auth/signout", {
-        method: "POST",
-        credentials: "include",
-      })
-      window.location.href = "/"
+      await supabase.auth.signOut();
+      await apiFetch("/api/auth/signout", { method: "POST" });
+      router.push("/");
     } catch {
       // ignore
     }
-  }
+  };
 
   const handleProfileClick = () => {
     setIsProfileSheetOpen(true)

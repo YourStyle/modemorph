@@ -28,7 +28,8 @@ function normFeature(s?: string) {
 
 
 export async function POST(req: Request) {
-  const supabase = await createClient();
+  const token = req.headers.get("authorization")?.replace("Bearer ", "");
+  const supabase = await createClient({ token });
 
   const {
     data: { user },

@@ -10,6 +10,7 @@ import { BottomNavigation } from "@/components/bottom-navigation"
 import { PaywallModal } from "@/components/paywall-modal"
 import { OutfitItemsSheet } from "@/components/outfit-items-sheet"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
+import { createClient } from "@/lib/supabase/client";
 
 type OutfitItem = {
   id: string
@@ -52,6 +53,8 @@ const WINDOW_SIZE = 10
 const WINDOW_STEP = 3
 const DOWN_TRIGGER = 7 // когда локальный индекс >= 7 — сдвигаем окно вниз
 const UP_TRIGGER = 2
+
+
 
 function getPreviewSrc(o?: FeedOutfit | null): string {
   const direct = (o?.preview_image_url || "").trim()
@@ -200,6 +203,25 @@ export default function InspirationPage(): ReactElement {
 
   const [index, setIndex] = useState(0) // Declare index and setIndex variables
 
+  const supabase = createClient();
+
+  async function getAccessToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ?? "";
+  }
+
+  async function apiFetch(url: string, init: RequestInit = {}) {
+    const token = await getAccessToken();
+    return fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...(init.headers || {}),
+      },
+    });
+  }
+
   // Ссылки на скролл-контейнер и карточки
   const scrollerRef = useRef<HTMLDivElement | null>(null)
 
@@ -232,11 +254,9 @@ export default function InspirationPage(): ReactElement {
   useEffect(() => {
     const checkDailyLimits = async () => {
       try {
-        const response = await fetch("/api/check-limits", {
+        const response = await apiFetch("/api/check-limits", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ limitType: "daily", usageType: "ideas_viewed" }),
+          body: JSON.stringify({ limitType: "daily", usageType: "ideas_viewed" })
         })
         if (response.ok) {
           const data = await response.json()
@@ -252,21 +272,17 @@ export default function InspirationPage(): ReactElement {
     if (!current || viewedOutfits.has(current.id) || isBlurred) return
     const timer = setTimeout(async () => {
       try {
-        const consumeRes = await fetch("/api/check-limits", {
+        const consumeRes = await apiFetch("/api/check-limits", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ featureType: "ideas_viewed" }),
+          body: JSON.stringify({ featureType: "ideas_viewed" })
         })
         const consume = await consumeRes.json()
         if (!consumeRes.ok || !consume?.canUse) {
           setIsBlurred(true)
           return
         }
-        await fetch("/api/outfits/track-view", {
+        await apiFetch("/api/outfits/track-view", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
           body: JSON.stringify({ outfitId: current.id }),
         })
         setViewedOutfits((prev) => new Set([...prev, current.id]))
@@ -280,7 +296,7 @@ export default function InspirationPage(): ReactElement {
     const loadProfile = async () => {
       try {
         console.log("[v0] Loading user profile for gender")
-        const res = await fetch("/api/me/profile")
+        const res = await apiFetch("/api/me/profile")
         if (res.ok) {
           const data = await res.json()
           const gender = data?.profile?.gender || ""
@@ -310,8 +326,8 @@ export default function InspirationPage(): ReactElement {
         setLoading(true)
         setError(null)
         const [outfitsRes, likesRes] = await Promise.all([
-          fetch(`/api/outfits/inspiration?gender=${userGender}`, { cache: "no-store", credentials: "include" }),
-          fetch("/api/user-likes", { cache: "no-store", credentials: "include" }),
+          apiFetch(`/api/outfits/inspiration?gender=${userGender}`),
+          apiFetch("/api/user-likes"),
         ])
         if (!outfitsRes.ok) throw new Error("Failed to fetch outfits")
         const data: ApiResponse = await outfitsRes.json()
@@ -357,11 +373,8 @@ export default function InspirationPage(): ReactElement {
     if (!nextCursor || fetchingMore) return
     try {
       setFetchingMore(true)
-      const res = await fetch(
-        `/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}&gender=${userGender}`,
-        {
-          credentials: "include",
-        },
+      const res = await apiFetch(
+        `/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}&gender=${userGender}`
       )
       if (!res.ok) {
         setNextCursor(null)
@@ -507,18 +520,14 @@ export default function InspirationPage(): ReactElement {
     if (!outfit || isSaving || savedOutfitIds.has(outfit.id)) return
     setIsSaving(true)
     try {
-      const res = await fetch("/api/outfits/save-to-looks", {
+      const res = await apiFetch("/api/outfits/save-to-looks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ outfitId: outfit.id }),
+        body: JSON.stringify({ outfitId: outfit.id })
       })
       if (!res.ok) throw new Error("Failed to save outfit")
       setSavedOutfitIds((prev) => new Set([...prev, outfit.id]))
-      await fetch("/api/outfits/track-save", {
+      await apiFetch("/api/outfits/track-save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ outfitId: outfit.id }),
       }).catch(() => {})
     } catch (_) {
@@ -532,10 +541,8 @@ export default function InspirationPage(): ReactElement {
     setIsLiking(true)
     try {
       const action = outfit.isLiked ? "unlike" : "like"
-      const res = await fetch("/api/outfits/like", {
+      const res = await apiFetch("/api/outfits/like", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ outfitId: outfit.id, action }),
       })
       if (!res.ok) throw new Error("Failed to like")
@@ -558,10 +565,8 @@ export default function InspirationPage(): ReactElement {
 
   async function handleBuyMoreViews() {
     try {
-      const response = await fetch("/api/spend-credits", {
+      const response = await apiFetch("/api/spend-credits", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           amount: 2,
           reason: "ideas_viewed",
