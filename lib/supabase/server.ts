@@ -22,7 +22,7 @@ export function isSupabaseConfigured(): boolean {
   }
 }
 
-export async function createClient(opts?: { role?: Role }) {
+export async function createClient(opts?: { role?: Role, token?: string }) {
   const url = must("NEXT_PUBLIC_SUPABASE_URL")
   const anonKey = must("NEXT_PUBLIC_SUPABASE_ANON_KEY")
 
@@ -43,8 +43,9 @@ export async function createClient(opts?: { role?: Role }) {
     partitioned: true, 
     path: "/",
   }
-
+  const token = opts?.token;
   return createServerClient(url, anonKey, {
+    global: token ? { headers: { Authorization: `Bearer ${token}` } } : {},
     cookies: {
       get(name) {
         return cookieStore.get(name)?.value
