@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
         )
         // не молчим о серверной ошибке
        if (upErr) return jsonNoStore({ error: `profile upsert failed: ${upErr.message}` }, { status: 500 })
-       return jsonNoStore({ success: true })
+       return jsonNoStore({ success: true, session: data.session });
       }
     }
 
@@ -167,10 +167,10 @@ export async function POST(req: NextRequest) {
 
     const retry = await supabase.auth.signInWithPassword({ email, password })
     if (retry.error || !retry.data?.session) {
-      return jsonNoStore({ error: retry.error?.message || "Auth failed" }, { status: 400 })
+        return jsonNoStore({ error: retry.error?.message || "Auth failed" }, { status: 400 });
     }
 
-    return jsonNoStore({ success: true })
+    return jsonNoStore({ success: true, session: retry.data.session });
   } catch (e: any) {
    return jsonNoStore({ error: e?.message || "Server error" }, { status: 500 })
   }
