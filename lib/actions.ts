@@ -1,33 +1,51 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import type { Session } from "@supabase/supabase-js"
 import { redirect } from "next/navigation"
 
-export async function signIn(prevState: any, formData: FormData) {
+export type SignInState = {
+  error: string | null
+  session: Session | null
+}
+
+export const defaultSignInState: SignInState = { error: null, session: null }
+
+export async function signIn(prevState: SignInState, formData: FormData): Promise<SignInState> {
   if (!formData) {
-    return { error: "Form data is missing" }
+    return { ...defaultSignInState, error: "Form data is missing" }
   }
 
   const email = formData.get("email")
   const password = formData.get("password")
 
   if (!email || !password) {
-    return { error: "Email and password are required" }
+    return { ...defaultSignInState, error: "Email and password are required" }
   }
 
   const supabase = await createClient()
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.toString(),
-    password: password.toString(),
-  })
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.toString(),
+      password: password.toString(),
+    })
 
-  if (error) {
+    if (error || !data?.session) {
+      return {
+        ...defaultSignInState,
+        error: error?.message || "Unable to sign in",
+      }
+    }
+
+    return { error: null, session: data.session }
+  } catch (error: any) {
     console.error("Sign in error:", error)
-    return { error: error.message }
+    return {
+      ...defaultSignInState,
+      error: error?.message || "Unexpected error during sign in",
+    }
   }
-
-  redirect("/")
 }
 
 export async function signUp(prevState: any, formData: FormData) {

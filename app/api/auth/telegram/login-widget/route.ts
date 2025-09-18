@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
             { onConflict: "user_id" }
           )
         } catch {}
-        return NextResponse.json({ success: true })
+        return NextResponse.json({ success: true, session: data.session })
       }
     }
 
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
       if (retry.error || !retry.data?.session) {
         return NextResponse.json({ error: retry.error?.message || "Auth failed" }, { status: 400 })
       }
-      return NextResponse.json({ success: true })
+      return NextResponse.json({ success: true, session: retry.data.session })
     }
 
     // Конфликт/ошибка создания — ищем пользователя по email и обновляем пароль и метаданные
@@ -209,7 +209,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: retry2.error?.message || "Auth failed" }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, session: retry2.data.session })
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server misconfigured" }, { status: 500 })
   }

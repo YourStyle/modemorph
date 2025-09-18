@@ -1,23 +1,26 @@
 "use client"
 
-import { useActionState } from "react"
+import { useActionState, useEffect, useRef, useState } from "react"
 import { useFormStatus } from "react-dom"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2 } from "lucide-react"
 import Link from "next/link"
-import { signIn } from "@/lib/actions"
+import { defaultSignInState, signIn, type SignInState } from "@/lib/actions"
+import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
 
-function SubmitButton() {
+function SubmitButton({ processing }: { processing: boolean }) {
   const { pending } = useFormStatus()
+  const isSubmitting = pending || processing
 
   return (
     <Button
       type="submit"
-      disabled={pending}
+      disabled={isSubmitting}
       className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 text-base font-medium rounded-xl h-12 shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-50"
     >
-      {pending ? (
+      {isSubmitting ? (
         <>
           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           Вход...
@@ -30,7 +33,54 @@ function SubmitButton() {
 }
 
 export default function ModernLoginForm() {
-  const [state, formAction] = useActionState(signIn, null)
+  const router = useRouter()
+  const supabase = useRef(createClient()).current
+  const handledAccessTokenRef = useRef<string | null>(null)
+  const [clientError, setClientError] = useState<string | null>(null)
+  const [processing, setProcessing] = useState(false)
+  const [state, formAction] = useActionState<SignInState, FormData>(signIn, defaultSignInState)
+
+  useEffect(() => {
+    if (state.error) {
+      setClientError(state.error)
+      setProcessing(false)
+      handledAccessTokenRef.current = null
+    } else if (!state.session) {
+      setClientError(null)
+      setProcessing(false)
+      handledAccessTokenRef.current = null
+    }
+  }, [state.error, state.session])
+
+  useEffect(() => {
+    const session = state.session
+    if (!session) return
+    if (handledAccessTokenRef.current === session.access_token) return
+
+    handledAccessTokenRef.current = session.access_token
+    setProcessing(true)
+
+    let cancelled = false
+
+    ;(async () => {
+      const { error } = await supabase.auth.setSession(session)
+      if (cancelled) return
+      if (error) {
+        handledAccessTokenRef.current = null
+        setClientError(error.message)
+        setProcessing(false)
+        return
+      }
+
+      setClientError(null)
+      router.replace("/")
+      router.refresh()
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [state.session, supabase, router])
 
   return (
     <div className="w-full space-y-6">
@@ -40,8 +90,8 @@ export default function ModernLoginForm() {
       </div>
 
       <form action={formAction} className="space-y-5">
-        {state?.error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{state.error}</div>
+        {clientError && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{clientError}</div>
         )}
 
         <div className="space-y-4">
@@ -73,7 +123,7 @@ export default function ModernLoginForm() {
         </div>
 
         <div className="space-y-3">
-          <SubmitButton />
+          <SubmitButton processing={processing} />
 
           <Button
             type="button"
