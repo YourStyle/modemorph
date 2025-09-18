@@ -24,7 +24,6 @@ export async function tmaHandshake(): Promise<User | null> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ initData }),
-    cache: "no-store",
   });
   if (!res.ok) return null;
   
