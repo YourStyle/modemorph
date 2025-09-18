@@ -221,6 +221,11 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
     const [viewMode, setViewMode] = useState<ViewMode>(null)
     const [isTransitioning, setIsTransitioning] = useState(false)
     const GAME_AREA_HEIGHT = 300
+    // Allow up to two minutes for the AI analysis with a safety buffer
+    const MAX_ANALYSIS_DURATION_MS = 2 * 60 * 1000
+    const ANALYSIS_TIMEOUT_BUFFER_MS = 30_000
+    // Requests may take close to two minutes, add a buffer so we don't abort right before completion
+    const ANALYSIS_REQUEST_TIMEOUT_MS = MAX_ANALYSIS_DURATION_MS + ANALYSIS_TIMEOUT_BUFFER_MS
 
     // Quotes shown above the progress bar while analysis runs
     const quotes = [
@@ -429,7 +434,8 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
         formData.append("image", file)
         const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
         const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minutes
+        // Allow requests to run for a little longer than two minutes before aborting
+        const timeoutId = setTimeout(() => controller.abort(), ANALYSIS_REQUEST_TIMEOUT_MS)
         try {
             const authToken = await getAuthToken()
             const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
@@ -515,8 +521,8 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
             const total = photos.length
             // Track completed photos
             let done = 0
-            // Smooth progress timer: 1 min per photo, 1.5 min for two
-            const duration = total === 1 ? 60000 : 90000
+            // Smooth progress timer: stretch to match the longer processing window
+            const duration = total === 1 ? MAX_ANALYSIS_DURATION_MS : ANALYSIS_REQUEST_TIMEOUT_MS
             const startTime = Date.now()
             if (progressTimerRef.current) {
                 clearInterval(progressTimerRef.current)
