@@ -10,11 +10,10 @@ export function createClient() {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         auth: {
-          // ✦ Не держим сессию в localStorage
-          persistSession: false,
-          autoRefreshToken: false,
+          persistSession: true,
+          autoRefreshToken: true,
           detectSessionInUrl: false,
-          storage: undefined,
+          storage: typeof window !== "undefined" ? window.sessionStorage : undefined,
         },
       }
     )
