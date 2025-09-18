@@ -54,8 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hardLogout = async () => {
     if (redirectingRef.current) return
       redirectingRef.current = true
-      try { await fetch("/api/auth/signout", { method: "POST", credentials: "include" }) } catch {}
-      setUser(null)
+      await supabase.auth.signOut();     // очищаем sessionStorage
+      try { await fetch("/api/auth/signout", { method: "POST" }); } catch {}
+      setUser(null);
 
     if (!onAuthPage() && typeof window !== "undefined") {
       const next = window.location.pathname + window.location.search;
