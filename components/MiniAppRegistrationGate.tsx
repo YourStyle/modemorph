@@ -123,17 +123,19 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         }
 
         // 3) Проверяем профиль
-        const prof = await fetch("/api/me/profile?ts=" + Date.now(), {
-          credentials: "include",
-          cache: "no-store",
-        }).then(r => r.ok ? r.json() : null);
-        const p = prof?.profile
-        const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
-        const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "")
+        const { data: profileData, error } = await supabase
+          .from("user_profiles")
+          .select("gender,height,weight,top_size,bottom_size,shoe_size")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        
+        const p = profileData;
+        const required = ["gender","height","weight","top_size","bottom_size","shoe_size"];
+        const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "");
         if (missing.length > 0 && !onMiniReg) {
-          redirecting = true
-          router.replace("/auth/mini-registration?from=tma")
-          return
+          redirecting = true;
+          router.replace("/auth/mini-registration?from=tma");
+          return;
         }
 
 
