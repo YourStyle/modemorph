@@ -89,16 +89,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
       const init = async () => {
         try {
-          const res = await fetch("/api/auth/me", { credentials: "include" })
-          const json = await res.json().catch(() => null)
-          setUser(json?.user ?? null)        // это уже user из куки-сессии
-          resetUnauthorizedSeries()
+          const { data, error } = await supabase.auth.getUser();
+          if (error) setUser(null);
+          else setUser(data.user ?? null);
+          resetUnauthorizedSeries();
         } catch {
-          setUser(null)
+          setUser(null);
         } finally {
-          setLoading(false)
+          setLoading(false);
         }
-      }
+      };
       init()
     }, [])
 
