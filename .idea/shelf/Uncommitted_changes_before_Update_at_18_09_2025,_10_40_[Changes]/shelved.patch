@@ -1,0 +1,20 @@
+Index: package.json
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>{\n  \"name\": \"my-v0-project\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"scripts\": {\n    \"build\": \"next build\",\n    \"dev\": \"next dev\",\n    \"lint\": \"next lint\",\n    \"start\": \"next start\"\n  },\n  \"dependencies\": {\n    \"@aws-sdk/client-s3\": \"latest\",\n    \"@hookform/resolvers\": \"^3.9.1\",\n    \"@radix-ui/react-accordion\": \"latest\",\n    \"@radix-ui/react-alert-dialog\": \"latest\",\n    \"@radix-ui/react-aspect-ratio\": \"latest\",\n    \"@radix-ui/react-avatar\": \"latest\",\n    \"@radix-ui/react-checkbox\": \"latest\",\n    \"@radix-ui/react-collapsible\": \"latest\",\n    \"@radix-ui/react-context-menu\": \"latest\",\n    \"@radix-ui/react-dialog\": \"latest\",\n    \"@radix-ui/react-dropdown-menu\": \"latest\",\n    \"@radix-ui/react-hover-card\": \"latest\",\n    \"@radix-ui/react-label\": \"latest\",\n    \"@radix-ui/react-menubar\": \"latest\",\n    \"@radix-ui/react-navigation-menu\": \"latest\",\n    \"@radix-ui/react-popover\": \"latest\",\n    \"@radix-ui/react-progress\": \"latest\",\n    \"@radix-ui/react-radio-group\": \"latest\",\n    \"@radix-ui/react-scroll-area\": \"latest\",\n    \"@radix-ui/react-select\": \"latest\",\n    \"@radix-ui/react-separator\": \"latest\",\n    \"@radix-ui/react-slider\": \"latest\",\n    \"@radix-ui/react-slot\": \"latest\",\n    \"@radix-ui/react-switch\": \"latest\",\n    \"@radix-ui/react-tabs\": \"latest\",\n    \"@radix-ui/react-toast\": \"latest\",\n    \"@radix-ui/react-toggle\": \"latest\",\n    \"@radix-ui/react-toggle-group\": \"latest\",\n    \"@radix-ui/react-tooltip\": \"latest\",\n    \"@supabase/auth-helpers-nextjs\": \"latest\",\n    \"@supabase/ssr\": \"latest\",\n    \"@supabase/supabase-js\": \"latest\",\n    \"@vercel/blob\": \"latest\",\n    \"ace-builds\": \"latest\",\n    \"autoprefixer\": \"^10.4.20\",\n    \"buffer\": \"latest\",\n    \"class-variance-authority\": \"^0.7.1\",\n    \"clsx\": \"^2.1.1\",\n    \"cmdk\": \"latest\",\n    \"crypto\": \"latest\",\n    \"date-fns\": \"latest\",\n    \"embla-carousel-react\": \"latest\",\n    \"eruda\": \"latest\",\n    \"heic2any\": \"latest\",\n    \"input-otp\": \"latest\",\n    \"lucide-react\": \"^0.454.0\",\n    \"nanoid\": \"latest\",\n    \"next\": \"15.2.4\",\n    \"next-themes\": \"latest\",\n    \"react\": \"^19\",\n    \"react-ace\": \"latest\",\n    \"react-day-picker\": \"latest\",\n    \"react-dom\": \"^19\",\n    \"react-hook-form\": \"latest\",\n    \"react-resizable-panels\": \"latest\",\n    \"recharts\": \"latest\",\n    \"sonner\": \"latest\",\n    \"tailwind-merge\": \"^2.5.5\",\n    \"tailwindcss-animate\": \"^1.0.7\",\n    \"vaul\": \"latest\",\n    \"zod\": \"^3.24.1\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22\",\n    \"@types/react\": \"^19\",\n    \"@types/react-dom\": \"^19\",\n    \"postcss\": \"^8.5\",\n    \"tailwindcss\": \"^3.4.17\",\n    \"typescript\": \"^5\"\n  }\n}
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/package.json b/package.json
+--- a/package.json	(revision b5406f46eb07fb02a6085ecbfd3b1f625183ef0d)
++++ b/package.json	(date 1757441963158)
+@@ -78,5 +78,6 @@
+     "postcss": "^8.5",
+     "tailwindcss": "^3.4.17",
+     "typescript": "^5"
+-  }
+-}
+\ No newline at end of file
++  },
++  "packageManager": "pnpm@9.15.0+sha512.76e2379760a4328ec4415815bcd6628dee727af3779aaa4c914e3944156c4299921a89f976381ee107d41f12cfa4b66681ca9c718f0668fa0831ed4c6d8ba56c"
++}

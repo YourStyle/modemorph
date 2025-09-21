@@ -122,14 +122,43 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           return
         }
 
-        // 3) Проверяем профиль
-        const prof = await fetch("/api/me/profile?ts=" + Date.now(), {
-          credentials: "include",
-          cache: "no-store",
-        }).then(r => r.ok ? r.json() : null);
+        // 3) Проверяем профиль с retry-логикой для минимизации race condition
+        let prof = null
+        let retryCount = 0
+        const maxRetries = 3
+
+        while (retryCount < maxRetries) {
+          prof = await fetch("/api/me/profile?ts=" + Date.now() + "&retry=" + retryCount, {
+            credentials: "include",
+            cache: "no-store",
+          }).then(r => r.ok ? r.json() : null);
+
+          const p = prof?.profile
+          const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
+          const missing = !p ? required : required.filter(k => {
+            const value = p[k]
+            return value == null || value === "" || value === undefined
+          })
+
+          // Если профиль полный или мы на странице регистрации - выходим из цикла
+          if (missing.length === 0 || onMiniReg) {
+            break
+          }
+
+          retryCount++
+          if (retryCount < maxRetries) {
+            // Небольшая задержка перед повтором
+            await new Promise(resolve => setTimeout(resolve, 200))
+          }
+        }
+
         const p = prof?.profile
         const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
-        const missing = !p ? required : required.filter(k => p[k] == null || p[k] === "")
+        const missing = !p ? required : required.filter(k => {
+          const value = p[k]
+          return value == null || value === "" || value === undefined
+        })
+
         if (missing.length > 0 && !onMiniReg) {
           redirecting = true
           router.replace("/auth/mini-registration?from=tma")

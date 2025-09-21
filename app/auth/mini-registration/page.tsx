@@ -35,9 +35,21 @@ export default function MiniRegistrationPage() {
 
   useEffect(() => {
     ;(async () => {
-      const user = await tmaHandshake()
-      setUserId(user?.id ?? null)
-      setReady(true)
+      try {
+        const user = await tmaHandshake()
+        setUserId(user?.id ?? null)
+
+        // Если handshake не удался, пробуем еще раз через короткую задержку
+        if (!user?.id) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          const retryUser = await tmaHandshake()
+          setUserId(retryUser?.id ?? null)
+        }
+      } catch (error) {
+        console.error("TMA Handshake failed:", error)
+      } finally {
+        setReady(true)
+      }
     })()
   }, [])
 
@@ -68,6 +80,10 @@ export default function MiniRegistrationPage() {
       setIsSubmitting(false)
       return
     }
+
+    // Добавляем небольшую задержку чтобы дать базе данных время обновиться
+    // и избежать race condition с MiniAppRegistrationGate
+    await new Promise(resolve => setTimeout(resolve, 500))
     router.replace("/")
   }
 
