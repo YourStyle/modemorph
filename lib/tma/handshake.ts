@@ -22,11 +22,14 @@ export interface TMAUser {
 }
 
 export async function tmaHandshake(): Promise<TMAUser | null> {
+  console.log("[TMA Handshake] Starting handshake process")
+
   // 1) Проверяем существующую сессию
+  console.log("[TMA Handshake] Checking for existing session")
   if (sessionAuth.hasValidSession()) {
     const userId = sessionAuth.getUserId()
     if (userId) {
-      console.log("[TMA Handshake] Using existing session")
+      console.log("[TMA Handshake] Using existing session for user:", userId)
       return { id: userId, telegram_id: userId }
     }
   }

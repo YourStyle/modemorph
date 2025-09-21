@@ -142,11 +142,25 @@ export default function MiniAppRegistrationGate({ children }: Props) {
             cache: "no-store",
           })
 
-          if (!profileResponse.ok && !onMiniReg) {
-            console.log("[MiniAppRegistrationGate] Profile check failed, redirecting to registration")
-            redirecting = true
-            router.replace("/auth/mini-registration?from=tma")
-            return
+          console.log("[MiniAppRegistrationGate] Profile response status:", profileResponse.status)
+
+          if (!profileResponse.ok) {
+            if (profileResponse.status === 401) {
+              // Токен недействителен, очищаем сессию и редиректим
+              console.log("[MiniAppRegistrationGate] Invalid token, clearing session")
+              sessionAuth.clearSession()
+              if (!onMiniReg) {
+                redirecting = true
+                router.replace("/auth/mini-registration?from=tma")
+                return
+              }
+            } else {
+              // Другая ошибка - логируем и пропускаем пользователя (fail-open)
+              console.log("[MiniAppRegistrationGate] Profile API error, allowing access (fail-open)")
+            }
+          } else {
+            const profileData = await profileResponse.json()
+            console.log("[MiniAppRegistrationGate] Profile data received:", !!profileData.profile)
           }
 
           console.log("[MiniAppRegistrationGate] Profile check successful, allowing access")
