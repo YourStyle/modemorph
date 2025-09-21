@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { tmaHandshake } from "@/lib/tma/handshake"
+import { sessionAuth } from "@/lib/tma/session-auth"
 
 declare global {
   interface Window {
@@ -63,7 +63,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const pathname = usePathname()
   const onMiniReg = (pathname || "").startsWith("/auth/mini-registration")
 
-  const supabase = useMemo(() => createClient(), [])
   const [ready, setReady] = useState(false)
 
   const fsTried = useRef(false)
@@ -122,29 +121,38 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           return
         }
 
-        // 3) Если пользователь есть - проверяем только базовое наличие профиля
-        // Не требуем размерные данные для уже зарегистрированных пользователей
-        console.log("[MiniAppRegistrationGate] User authenticated, checking profile existence...")
+        // 3) Проверяем профиль с session-based авторизацией
+        console.log("[MiniAppRegistrationGate] User authenticated, checking profile...")
 
         try {
-          const profileExists = await fetch("/api/me/profile?ts=" + Date.now(), {
-            credentials: "include",
-            cache: "no-store",
-          }).then(r => r.ok);
+          const accessToken = sessionAuth.getAccessToken()
+          if (!accessToken) {
+            console.log("[MiniAppRegistrationGate] No access token, redirecting to registration")
+            if (!onMiniReg) {
+              redirecting = true
+              router.replace("/auth/mini-registration?from=tma")
+            }
+            return
+          }
 
-          if (!profileExists && !onMiniReg) {
-            // Только если профиля вообще нет - отправляем на регистрацию
-            console.log("[MiniAppRegistrationGate] No profile found, redirecting to registration")
+          const profileResponse = await fetch("/api/me/profile-session", {
+            headers: {
+              "Authorization": `Bearer ${accessToken}`
+            },
+            cache: "no-store",
+          })
+
+          if (!profileResponse.ok && !onMiniReg) {
+            console.log("[MiniAppRegistrationGate] Profile check failed, redirecting to registration")
             redirecting = true
             router.replace("/auth/mini-registration?from=tma")
             return
           }
 
-          // Если профиль существует (даже частично) - пропускаем пользователя
-          console.log("[MiniAppRegistrationGate] Profile exists, allowing access")
+          console.log("[MiniAppRegistrationGate] Profile check successful, allowing access")
         } catch (error) {
           console.error("[MiniAppRegistrationGate] Profile check failed:", error)
-          // При ошибке API - пропускаем пользователя (fail-open подход)
+          // При ошибке - пропускаем пользователя (fail-open подход)
         }
 
 
@@ -160,7 +168,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     return () => {
       cancelled = true
     }
-  }, [router, supabase, pathname])
+  }, [router, pathname])
 
 
   if (!ready) {

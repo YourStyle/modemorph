@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { tmaHandshake } from "@/lib/tma/handshake"
-import { createClient } from "@/lib/supabase/client"
+import { sessionAuth } from "@/lib/tma/session-auth"
 import { User, Weight, Ruler, Shirt, Users, Share2, Megaphone, Heart } from "lucide-react"
 
 interface FormData {
@@ -18,7 +18,6 @@ interface FormData {
 
 export default function MiniRegistrationPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [ready, setReady] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState(1)
@@ -56,10 +55,19 @@ export default function MiniRegistrationPage() {
   const handleSubmit = async () => {
     if (!userId || isSubmitting) return
     setIsSubmitting(true)
-    const { error } = await fetch("/api/profile/miniapp-upsert", {
+    const accessToken = sessionAuth.getAccessToken()
+    if (!accessToken) {
+      alert("Ошибка авторизации")
+      setIsSubmitting(false)
+      return
+    }
+
+    const { error } = await fetch("/api/profile/miniapp-upsert-session", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
+      headers: {
+        "content-type": "application/json",
+        "authorization": `Bearer ${accessToken}`
+      },
       body: JSON.stringify(formData),
     }).then(async (r) => (r.ok ? {} : { error: await r.json().catch(() => ({})) }))
 
@@ -69,9 +77,6 @@ export default function MiniRegistrationPage() {
       return
     }
 
-    // Добавляем небольшую задержку чтобы дать базе данных время обновиться
-    // и избежать race condition с MiniAppRegistrationGate
-    await new Promise(resolve => setTimeout(resolve, 500))
     router.replace("/")
   }
 
