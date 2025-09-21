@@ -122,47 +122,29 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           return
         }
 
-        // 3) Проверяем профиль с retry-логикой для минимизации race condition
-        let prof = null
-        let retryCount = 0
-        const maxRetries = 3
+        // 3) Если пользователь есть - проверяем только базовое наличие профиля
+        // Не требуем размерные данные для уже зарегистрированных пользователей
+        console.log("[MiniAppRegistrationGate] User authenticated, checking profile existence...")
 
-        while (retryCount < maxRetries) {
-          prof = await fetch("/api/me/profile?ts=" + Date.now() + "&retry=" + retryCount, {
+        try {
+          const profileExists = await fetch("/api/me/profile?ts=" + Date.now(), {
             credentials: "include",
             cache: "no-store",
-          }).then(r => r.ok ? r.json() : null);
+          }).then(r => r.ok);
 
-          const p = prof?.profile
-          const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
-          const missing = !p ? required : required.filter(k => {
-            const value = p[k]
-            return value == null || value === "" || value === undefined
-          })
-
-          // Если профиль полный или мы на странице регистрации - выходим из цикла
-          if (missing.length === 0 || onMiniReg) {
-            break
+          if (!profileExists && !onMiniReg) {
+            // Только если профиля вообще нет - отправляем на регистрацию
+            console.log("[MiniAppRegistrationGate] No profile found, redirecting to registration")
+            redirecting = true
+            router.replace("/auth/mini-registration?from=tma")
+            return
           }
 
-          retryCount++
-          if (retryCount < maxRetries) {
-            // Небольшая задержка перед повтором
-            await new Promise(resolve => setTimeout(resolve, 200))
-          }
-        }
-
-        const p = prof?.profile
-        const required = ["gender","height","weight","top_size","bottom_size","shoe_size"]
-        const missing = !p ? required : required.filter(k => {
-          const value = p[k]
-          return value == null || value === "" || value === undefined
-        })
-
-        if (missing.length > 0 && !onMiniReg) {
-          redirecting = true
-          router.replace("/auth/mini-registration?from=tma")
-          return
+          // Если профиль существует (даже частично) - пропускаем пользователя
+          console.log("[MiniAppRegistrationGate] Profile exists, allowing access")
+        } catch (error) {
+          console.error("[MiniAppRegistrationGate] Profile check failed:", error)
+          // При ошибке API - пропускаем пользователя (fail-open подход)
         }
 
 

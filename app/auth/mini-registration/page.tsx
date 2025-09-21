@@ -35,21 +35,9 @@ export default function MiniRegistrationPage() {
 
   useEffect(() => {
     ;(async () => {
-      try {
-        const user = await tmaHandshake()
-        setUserId(user?.id ?? null)
-
-        // Если handshake не удался, пробуем еще раз через короткую задержку
-        if (!user?.id) {
-          await new Promise(resolve => setTimeout(resolve, 1000))
-          const retryUser = await tmaHandshake()
-          setUserId(retryUser?.id ?? null)
-        }
-      } catch (error) {
-        console.error("TMA Handshake failed:", error)
-      } finally {
-        setReady(true)
-      }
+      const user = await tmaHandshake()
+      setUserId(user?.id ?? null)
+      setReady(true)
     })()
   }, [])
 
