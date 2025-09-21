@@ -1,8 +1,17 @@
-import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
+
     const { id } = params
 
     const numericId = Number(id)
@@ -15,22 +24,6 @@ export async function GET(request: Request, { params }: { params: { id: string }
     }
 
     console.log("Fetching outfit with ID:", id)
-
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError) {
-      console.error("Error getting user:", userError)
-      return NextResponse.json({ error: "Authentication error" }, { status: 401 })
-    }
-
-    if (!user) {
-      console.log("No user found")
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
 
     console.log("Fetching outfit for user:", user.id)
 
@@ -98,10 +91,18 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
+
     const { id } = params
-    const body = await request.json()
+    const body = await req.json()
     const { name, description, season, occasion, items, preview_image_url, gender } = body
 
     const numericId = Number(id)
@@ -111,21 +112,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
 
     if (!id || !name || !items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ error: "Invalid request data" }, { status: 400 })
-    }
-
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError) {
-      console.error("Error getting user:", userError)
-      return NextResponse.json({ error: "Authentication error" }, { status: 401 })
-    }
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { error: outfitError } = await supabase
@@ -178,8 +164,16 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
+
     const { id } = params
 
     const numericId = Number(id)
@@ -189,21 +183,6 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
 
     if (!id) {
       return NextResponse.json({ error: "Outfit ID is required" }, { status: 400 })
-    }
-
-    const supabase = await createClient()
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError) {
-      console.error("Error getting user:", userError)
-      return NextResponse.json({ error: "Authentication error" }, { status: 401 })
-    }
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { error } = await supabase.from("outfits").delete().eq("id", numericId).eq("user_id", user.id)

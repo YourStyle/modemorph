@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
 // Shapes returned to the client /app/inspiration
 type FeedOutfit = {
@@ -36,14 +37,16 @@ function shuffleInPlace<T>(arr: T[]) {
   return arr
 }
 
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getAuthUser(req)
 
-    const url = new URL(request.url)
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
+
+    const url = new URL(req.url)
     const limit = Math.min(Number(url.searchParams.get("limit")) || 20, 50)
     const gender = url.searchParams.get("gender")
 

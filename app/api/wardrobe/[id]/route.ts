@@ -1,18 +1,16 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient()
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     const itemId = Number.parseInt(params.id)
     if (isNaN(itemId)) {
@@ -61,18 +59,15 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient()
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     const itemId = Number.parseInt(params.id)
     if (isNaN(itemId)) {
@@ -110,25 +105,22 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
 }
 
 // Toggle visibility only
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient()
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     const itemId = Number.parseInt(params.id)
     if (isNaN(itemId)) {
       return NextResponse.json({ error: "Invalid item ID" }, { status: 400 })
     }
 
-    const body = await request.json()
+    const body = await req.json()
     const { is_hidden } = body
 
     if (typeof is_hidden !== "boolean") {
@@ -169,16 +161,15 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 }
 
 // Full update for admin edit page
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient()
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     // Check admin
     const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
@@ -187,7 +178,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const itemId = Number.parseInt(params.id)
     if (isNaN(itemId)) return NextResponse.json({ error: "Invalid item ID" }, { status: 400 })
 
-    const body = await request.json()
+    const body = await req.json()
 
     const normalizeBool = (v: unknown): boolean | null => {
       if (v === null || typeof v === "undefined") return null

@@ -62,7 +62,7 @@ export default function MiniRegistrationPage() {
       return
     }
 
-    const { error } = await fetch("/api/profile/miniapp-upsert-session", {
+    const { error } = await fetch("/api/profile/miniapp-upsert", {
       method: "POST",
       headers: {
         "content-type": "application/json",

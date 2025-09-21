@@ -1,28 +1,112 @@
-"use client"
+// lib/api-client.ts
+// Универсальный API клиент с session-based авторизацией
 
-import { useAuth } from "@/contexts/auth-context"
+import { sessionAuth } from "./tma/session-auth"
 
-export function useApiClient() {
-  const { trackUnauthorizedError } = useAuth()
+interface ApiClientOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  body?: any
+  headers?: Record<string, string>
+  cache?: RequestCache
+}
 
-  const apiCall = async (url: string, options: RequestInit = {}) => {
-    const response = await fetch(url, {
-      credentials: "include",
-      cache: "no-store",
-      ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-    })
+class ApiClient {
+  private static instance: ApiClient | null = null
 
-    if (response.status === 401) {
-    
-      trackUnauthorizedError()
+  static getInstance(): ApiClient {
+    if (!ApiClient.instance) {
+      ApiClient.instance = new ApiClient()
     }
-
-    return response
+    return ApiClient.instance
   }
 
-  return { apiCall }
+  private getHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...customHeaders
+    }
+
+    // Добавляем токен авторизации если есть
+    const accessToken = sessionAuth.getAccessToken()
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`
+    }
+
+    return headers
+  }
+
+  async request<T = any>(url: string, options: ApiClientOptions = {}): Promise<T> {
+    const {
+      method = 'GET',
+      body,
+      headers: customHeaders = {},
+      cache = 'no-store'
+    } = options
+
+    const config: RequestInit = {
+      method,
+      headers: this.getHeaders(customHeaders),
+      cache,
+      credentials: 'include' // Fallback для cookie-based endpoints
+    }
+
+    if (body && method !== 'GET') {
+      config.body = typeof body === 'string' ? body : JSON.stringify(body)
+    }
+
+    console.log(`[API Client] ${method} ${url}`, { hasToken: !!sessionAuth.getAccessToken() })
+
+    const response = await fetch(url, config)
+
+    if (!response.ok) {
+      // Если токен недействителен, очищаем сессию
+      if (response.status === 401) {
+        console.log('[API Client] 401 error, clearing session')
+        sessionAuth.clearSession()
+      }
+
+      const errorText = await response.text().catch(() => 'Unknown error')
+      throw new Error(`API Error ${response.status}: ${errorText}`)
+    }
+
+    // Проверяем, есть ли контент для парсинга
+    const contentType = response.headers.get('content-type')
+    if (contentType?.includes('application/json')) {
+      return await response.json()
+    }
+
+    return response.text() as any
+  }
+
+  // Удобные методы для разных HTTP методов
+  async get<T = any>(url: string, options: Omit<ApiClientOptions, 'method'> = {}): Promise<T> {
+    return this.request<T>(url, { ...options, method: 'GET' })
+  }
+
+  async post<T = any>(url: string, body?: any, options: Omit<ApiClientOptions, 'method' | 'body'> = {}): Promise<T> {
+    return this.request<T>(url, { ...options, method: 'POST', body })
+  }
+
+  async put<T = any>(url: string, body?: any, options: Omit<ApiClientOptions, 'method' | 'body'> = {}): Promise<T> {
+    return this.request<T>(url, { ...options, method: 'PUT', body })
+  }
+
+  async delete<T = any>(url: string, options: Omit<ApiClientOptions, 'method'> = {}): Promise<T> {
+    return this.request<T>(url, { ...options, method: 'DELETE' })
+  }
+
+  async patch<T = any>(url: string, body?: any, options: Omit<ApiClientOptions, 'method' | 'body'> = {}): Promise<T> {
+    return this.request<T>(url, { ...options, method: 'PATCH', body })
+  }
+}
+
+export const apiClient = ApiClient.getInstance()
+
+// Удобные функции для использования
+export const api = {
+  get: <T = any>(url: string, options?: Omit<ApiClientOptions, 'method'>) => apiClient.get<T>(url, options),
+  post: <T = any>(url: string, body?: any, options?: Omit<ApiClientOptions, 'method' | 'body'>) => apiClient.post<T>(url, body, options),
+  put: <T = any>(url: string, body?: any, options?: Omit<ApiClientOptions, 'method' | 'body'>) => apiClient.put<T>(url, body, options),
+  delete: <T = any>(url: string, options?: Omit<ApiClientOptions, 'method'>) => apiClient.delete<T>(url, options),
+  patch: <T = any>(url: string, body?: any, options?: Omit<ApiClientOptions, 'method' | 'body'>) => apiClient.patch<T>(url, body, options),
 }

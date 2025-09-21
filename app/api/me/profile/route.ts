@@ -1,18 +1,27 @@
 export const runtime = "nodejs"
-import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function GET() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+export async function GET(req: NextRequest) {
+  const user = await getAuthUser(req)
   if (!user) return NextResponse.json({ error: "No session" }, { status: 401 })
 
-  const { data, error } = await supabase
-    .from("user_profiles")
-    .select("gender,height,weight,top_size,bottom_size,shoe_size")
-    .eq("user_id", user.id)
-    .maybeSingle()
+  try {
+    // Используем service role для запросов к базе
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 })
-  return NextResponse.json({ profile: data })
+    const { data, error } = await supabase
+      .from("user_profiles")
+      .select("gender,height,weight,top_size,bottom_size,shoe_size")
+      .eq("user_id", user.id)
+      .maybeSingle()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    return NextResponse.json({ profile: data })
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Server error" }, { status: 500 })
+  }
 }

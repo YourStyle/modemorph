@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
+import { sessionAuth } from "@/lib/tma/session-auth";
 
-/** 
- * Telegram login button.
+/**
+ * Telegram login button with session storage support.
  *
  * При монтировании компонента регистрирует глобальный callback onTelegramAuth
- * и добавляет в контейнер скрипт виджета Telegram. При размонтировании 
- * удаляет скрипт, очищает контейнер и удаляет callback, чтобы кнопка 
- * не оставалась на других страницах. 
+ * и добавляет в контейнер скрипт виджета Telegram. При размонтировании
+ * удаляет скрипт, очищает контейнер и удаляет callback, чтобы кнопка
+ * не оставалась на других страницах.
  */
 declare global {
   interface Window {
@@ -22,15 +23,50 @@ export function TelegramLoginButton({
   useEffect(() => {
     // регистрируем callback до загрузки скрипта
     window.onTelegramAuth = async (user: any) => {
-      const res = await fetch("/api/auth/telegram/login-widget", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ user }),
-      });
-      if (res.ok) {
-        location.href = "/";
-      } else {
-        alert("Telegram auth failed");
+      try {
+        // Используем session-based endpoint
+        const res = await fetch("/api/auth/telegram/login-widget-session", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ user }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+
+          if (data.session && data.user) {
+            // Правильно парсим дату истечения
+            let expiresAt: number;
+            if (typeof data.session.expires_at === 'number') {
+              const timestamp = data.session.expires_at;
+              expiresAt = timestamp < 2000000000 ? timestamp * 1000 : timestamp;
+            } else if (typeof data.session.expires_at === 'string') {
+              expiresAt = new Date(data.session.expires_at).getTime();
+            } else {
+              expiresAt = Date.now() + (60 * 60 * 1000); // 1 час
+            }
+
+            // Сохраняем сессию в sessionStorage
+            sessionAuth.saveSession({
+              access_token: data.session.access_token,
+              refresh_token: data.session.refresh_token,
+              user_id: data.user.id,
+              expires_at: expiresAt
+            });
+
+            console.log("[Telegram Login] Session saved, redirecting to home");
+            location.href = "/";
+          } else {
+            alert("Ошибка авторизации: некорректный ответ сервера");
+          }
+        } else {
+          const errorText = await res.text().catch(() => "Unknown error");
+          console.error("[Telegram Login] Auth failed:", errorText);
+          alert("Ошибка авторизации Telegram");
+        }
+      } catch (error) {
+        console.error("[Telegram Login] Error:", error);
+        alert("Ошибка при авторизации");
       }
     };
 

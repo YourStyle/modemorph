@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    // Используем service role для операций с базой (публичные данные)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     const { data, error } = await supabase.from("wardrobe_items").select("item_type").order("item_type")
 

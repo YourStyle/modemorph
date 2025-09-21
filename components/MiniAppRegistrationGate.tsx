@@ -135,7 +135,8 @@ export default function MiniAppRegistrationGate({ children }: Props) {
             return
           }
 
-          const profileResponse = await fetch("/api/me/profile-session", {
+          // Используем универсальный API клиент или session-based endpoint
+          const profileResponse = await fetch("/api/me/profile", {
             headers: {
               "Authorization": `Bearer ${accessToken}`
             },
