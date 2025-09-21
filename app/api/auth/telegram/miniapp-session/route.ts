@@ -125,6 +125,12 @@ export async function POST(req: NextRequest) {
         )
       } catch {}
 
+      console.log("[MiniApp Session API] Returning session data:", {
+        expires_at: signInData.session.expires_at,
+        expires_at_type: typeof signInData.session.expires_at,
+        user_id: signInData.user.id
+      })
+
       return jsonNoStore({
         success: true,
         session: signInData.session,
@@ -181,6 +187,12 @@ export async function POST(req: NextRequest) {
     if (finalError || !finalSignIn?.session) {
       return jsonNoStore({ error: "Auth failed after user creation" }, { status: 500 })
     }
+
+    console.log("[MiniApp Session API] Final session data:", {
+      expires_at: finalSignIn.session.expires_at,
+      expires_at_type: typeof finalSignIn.session.expires_at,
+      user_id: finalSignIn.user.id
+    })
 
     return jsonNoStore({
       success: true,

@@ -21,9 +21,31 @@ export interface TMAUser {
   avatar_url?: string
 }
 
+// Предотвращаем множественные одновременные вызовы
+let handshakePromise: Promise<TMAUser | null> | null = null
+
 export async function tmaHandshake(): Promise<TMAUser | null> {
+  // Если handshake уже выполняется, ждем его результат
+  if (handshakePromise) {
+    console.log("[TMA Handshake] Handshake already in progress, waiting...")
+    return await handshakePromise
+  }
+
   console.log("[TMA Handshake] Starting handshake process")
 
+  // Запускаем новый handshake
+  handshakePromise = performHandshake()
+
+  try {
+    const result = await handshakePromise
+    return result
+  } finally {
+    // Очищаем promise после завершения
+    handshakePromise = null
+  }
+}
+
+async function performHandshake(): Promise<TMAUser | null> {
   // 1) Проверяем существующую сессию
   console.log("[TMA Handshake] Checking for existing session")
   if (sessionAuth.hasValidSession()) {
@@ -64,11 +86,34 @@ export async function tmaHandshake(): Promise<TMAUser | null> {
 
     if (data.session && data.user) {
       // 4) Сохраняем сессию в sessionStorage
+      console.log("[TMA Handshake] Raw session data:", {
+        expires_at: data.session.expires_at,
+        expires_at_type: typeof data.session.expires_at
+      })
+
+      // Правильно парсим дату истечения
+      let expiresAt: number
+      if (typeof data.session.expires_at === 'number') {
+        // Если это timestamp, проверяем в секундах или миллисекундах
+        const timestamp = data.session.expires_at
+        // Если timestamp меньше 2000000000 (примерно 2033 год), то это секунды
+        expiresAt = timestamp < 2000000000 ? timestamp * 1000 : timestamp
+      } else if (typeof data.session.expires_at === 'string') {
+        // Если это строка ISO
+        expiresAt = new Date(data.session.expires_at).getTime()
+      } else {
+        // Fallback - устанавливаем 1 час от текущего времени
+        expiresAt = Date.now() + (60 * 60 * 1000)
+        console.warn("[TMA Handshake] Unknown expires_at format, using fallback")
+      }
+
+      console.log("[TMA Handshake] Parsed expires_at:", new Date(expiresAt).toISOString())
+
       sessionAuth.saveSession({
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
         user_id: data.user.id,
-        expires_at: new Date(data.session.expires_at).getTime()
+        expires_at: expiresAt
       })
 
       console.log("[TMA Handshake] Session created successfully")
