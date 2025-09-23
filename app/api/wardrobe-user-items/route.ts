@@ -18,17 +18,30 @@ export async function GET(req: NextRequest) {
     const user = await getAuthUser(req)
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
+    console.log("[Wardrobe API] Authenticated user:", { id: user.id, email: user.email })
+
     // Используем service role для операций с базой
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
     const supabase = createClient(supabaseUrl, serviceKey)
 
+    // Сначала проверим все записи для пользователя без фильтров
+    const { data: allData, error: allError } = await supabase
+      .from("wardrobe_user_items")
+      .select("id, user_id, item_name, is_hidden, created_at")
+      .eq("user_id", user.id)
+
+    console.log("[Wardrobe API] All user items:", { count: allData?.length || 0, items: allData })
+
+    // Теперь с фильтром is_hidden = false
     const { data, error } = await supabase
       .from("wardrobe_user_items")
       .select("*")
       .eq("user_id", user.id)
       .eq("is_hidden", false)
       .order("created_at", { ascending: false })
+
+    console.log("[Wardrobe API] Filtered items:", { count: data?.length || 0, error })
 
     if (error) {
       console.error("Error fetching wardrobe items:", error)
