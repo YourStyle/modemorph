@@ -279,7 +279,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
         basic_item_id: item.basic_item_id,
       }
 
-      await api.post("/api/wardrobe-user-items", {itemData})
+      await api.post("/api/wardrobe-user-items", itemData)
       // Обновляем состояние - показываем что добавлено
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false, isAdded: true } : r)))
     } catch (error) {

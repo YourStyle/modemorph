@@ -618,7 +618,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
                 image_url: item.finalImageUrl,
                 basic_item_id: item.basic_item_id,
             }
-            await api.post("/api/wardrobe-user-items", {itemData})
+            await api.post("/api/wardrobe-user-items", itemData)
             setResults((prev) => prev.map((r, i) => (i === index ? {...r, isAdding: false, isAdded: true} : r)))
         } catch (error) {
             console.error("Error saving item:", error)
