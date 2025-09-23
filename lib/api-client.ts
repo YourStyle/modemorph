@@ -20,10 +20,14 @@ class ApiClient {
     return ApiClient.instance
   }
 
-  private getHeaders(customHeaders: Record<string, string> = {}): Record<string, string> {
+  private getHeaders(customHeaders: Record<string, string> = {}, body?: any): Record<string, string> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...customHeaders
+    }
+
+    // Для FormData не устанавливаем Content-Type - браузер сам установит с boundary
+    if (!(body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json'
     }
 
     // Добавляем токен авторизации если есть
@@ -49,13 +53,18 @@ class ApiClient {
 
     const config: RequestInit = {
       method,
-      headers: this.getHeaders(customHeaders),
+      headers: this.getHeaders(customHeaders, body),
       cache,
       credentials: 'include' // Fallback для cookie-based endpoints
     }
 
     if (body && method !== 'GET') {
-      config.body = typeof body === 'string' ? body : JSON.stringify(body)
+      // Для FormData не применяем JSON.stringify
+      if (body instanceof FormData) {
+        config.body = body
+      } else {
+        config.body = typeof body === 'string' ? body : JSON.stringify(body)
+      }
     }
 
     console.log(`[API Client] ${method} ${url} (attempt ${attempt + 1})`, { hasToken: !!sessionAuth.getAccessToken() })
