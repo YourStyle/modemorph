@@ -111,18 +111,11 @@ export async function POST(req: NextRequest) {
     const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({ email, password })
 
     if (!signInError && signInData?.session && signInData?.user) {
-      // Обновляем профиль
+      // Обновляем только метаданные пользователя в auth.users, но НЕ создаем профиль
       try {
-        await adminClient.from("user_profiles").upsert(
-          {
-            user_id: signInData.user.id,
-            is_admin: false,
-            full_name: fullName,
-            avatar_url: u.photo_url ?? null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "user_id" }
-        )
+        await adminClient.auth.admin.updateUserById(signInData.user.id, {
+          user_metadata: metadata,
+        })
       } catch {}
 
       console.log("[MiniApp Session API] Returning session data:", {
@@ -167,19 +160,8 @@ export async function POST(req: NextRequest) {
       return jsonNoStore({ error: "Failed to create or find user" }, { status: 500 })
     }
 
-    // 7) Создаем профиль
-    try {
-      await adminClient.from("user_profiles").upsert(
-        {
-          user_id: userId,
-          is_admin: false,
-          full_name: fullName,
-          avatar_url: u.photo_url ?? null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      )
-    } catch {}
+    // 7) НЕ создаем профиль автоматически для новых пользователей
+    // Профиль будет создан только после прохождения онбординга
 
     // 8) Логинимся и возвращаем сессию
     const { data: finalSignIn, error: finalError } = await anonClient.auth.signInWithPassword({ email, password })
