@@ -162,6 +162,16 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           } else {
             const profileData = await profileResponse.json()
             console.log("[MiniAppRegistrationGate] Profile data received:", !!profileData.profile)
+
+            // Если профиль не найден (новый пользователь) - редиректим на онбординг
+            if (!profileData.profile) {
+              console.log("[MiniAppRegistrationGate] No profile found, redirecting new user to registration")
+              if (!onMiniReg) {
+                redirecting = true
+                router.replace("/auth/mini-registration?from=tma")
+                return
+              }
+            }
           }
 
           console.log("[MiniAppRegistrationGate] Profile check successful, allowing access")
