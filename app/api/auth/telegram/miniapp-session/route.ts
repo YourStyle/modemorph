@@ -108,9 +108,12 @@ export async function POST(req: NextRequest) {
     const adminClient = createClient(supabaseUrl, serviceKey)
 
     // 4) Пробуем войти с существующими данными
+    console.log("[MiniApp Session API] Attempting sign in for:", { email, telegram_id: tgId })
     const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({ email, password })
 
     if (!signInError && signInData?.session && signInData?.user) {
+      console.log("[MiniApp Session API] Existing user login successful:", signInData.user.id)
+
       // Обновляем только метаданные пользователя в auth.users, но НЕ создаем профиль
       try {
         await adminClient.auth.admin.updateUserById(signInData.user.id, {
@@ -131,6 +134,11 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    console.log("[MiniApp Session API] Sign in failed, attempting user creation/recovery:", {
+      error: signInError?.message,
+      email
+    })
+
     // 5) Создаем нового пользователя
     const { data: createData, error: createError } = await adminClient.auth.admin.createUser({
       email,
@@ -143,16 +151,35 @@ export async function POST(req: NextRequest) {
 
     // 6) Если создание не удалось, ищем существующего пользователя
     if (!userId && createError) {
+      console.log("[MiniApp Session API] User creation failed, searching for existing user:", createError.message)
+
       const { data: { users } } = await adminClient.auth.admin.listUsers()
-      const existingUser = users.find(user => user.email === email)
+      // Ищем пользователя как по email, так и по telegram_id в метаданных
+      const existingUser = users.find(user =>
+        user.email === email ||
+        user.user_metadata?.telegram_id === tgId
+      )
       userId = existingUser?.id
 
+      if (existingUser) {
+        console.log("[MiniApp Session API] Found user by:", {
+          by_email: existingUser.email === email,
+          by_telegram_id: existingUser.user_metadata?.telegram_id === tgId,
+          user_email: existingUser.email,
+          user_telegram_id: existingUser.user_metadata?.telegram_id
+        })
+      }
+
       if (userId) {
-        // Обновляем пароль и метаданные существующего пользователя
+        console.log("[MiniApp Session API] Found existing user, updating password and metadata:", userId)
+        // Обновляем пароль, email и метаданные существующего пользователя
         await adminClient.auth.admin.updateUserById(userId, {
+          email,
           password,
           user_metadata: metadata,
         })
+      } else {
+        console.log("[MiniApp Session API] No existing user found with email:", email)
       }
     }
 
@@ -164,6 +191,7 @@ export async function POST(req: NextRequest) {
     // Профиль будет создан только после прохождения онбординга
 
     // 8) Логинимся и возвращаем сессию
+    console.log("[MiniApp Session API] Attempting final sign in for user:", userId)
     const { data: finalSignIn, error: finalError } = await anonClient.auth.signInWithPassword({ email, password })
 
     if (finalError || !finalSignIn?.session) {

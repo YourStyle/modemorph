@@ -4,15 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update auth">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/me/profile/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/me/profile/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/profile/miniapp-upsert/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/profile/miniapp-upsert/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/MiniAppRegistrationGate.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/MiniAppRegistrationGate.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/auth/telegram-login-button.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/auth/telegram-login-button.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/api-client.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api-client.ts" afterDir="false" />
-    </list>
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update auth" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -33,22 +25,22 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.OpenProjectViewOnStart": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "WebServerToolWindowFactoryState": "false",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/antoncukseev/modemorph",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "pnpm",
-    "ts.external.directory.path": "/Users/antoncukseev/modemorph/node_modules/typescript/lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/antoncukseev/modemorph&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Users/antoncukseev/modemorph/node_modules/typescript/lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
   <component name="TaskManager">
     <task active="true" id="Default" summary="Default task">
