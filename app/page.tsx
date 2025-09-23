@@ -1,46 +1,94 @@
-import { createClient, isSupabaseConfigured } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+"use client"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { sessionAuth } from "@/lib/tma/session-auth"
 import { AnimatedLanding } from "@/components/animated-landing"
 
-export default async function HomePage() {
-  // If Supabase is not configured, show setup message directly
-  if (!isSupabaseConfigured) {
+export default function HomePage() {
+  const router = useRouter()
+  const [isLoading, setIsLoading] = useState(true)
+  const [showLanding, setShowLanding] = useState(false)
+
+  useEffect(() => {
+    const checkAuthAndRedirect = async () => {
+      try {
+        // Проверяем сессию
+        if (sessionAuth.hasValidSession()) {
+          const userId = sessionAuth.getUserId()
+          if (userId) {
+            console.log("[HomePage] User authenticated, checking profile...")
+
+            // Проверяем профиль пользователя
+            const accessToken = sessionAuth.getAccessToken()
+            if (accessToken) {
+              const profileResponse = await fetch("/api/me/profile", {
+                headers: {
+                  "Authorization": `Bearer ${accessToken}`
+                }
+              })
+
+              if (profileResponse.ok) {
+                const profileData = await profileResponse.json()
+
+                // Если профиль есть, проверяем роль
+                if (profileData.profile) {
+                  // Получаем информацию о роли пользователя
+                  const userInfoResponse = await fetch("/api/me", {
+                    headers: {
+                      "Authorization": `Bearer ${accessToken}`
+                    }
+                  })
+
+                  if (userInfoResponse.ok) {
+                    const userData = await userInfoResponse.json()
+
+                    if (userData.profile?.is_admin) {
+                      console.log("[HomePage] Admin user, redirecting to /admin")
+                      router.replace("/admin")
+                      return
+                    } else {
+                      console.log("[HomePage] Regular user, redirecting to /app")
+                      router.replace("/app")
+                      return
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Если нет сессии или не удалось получить данные - показываем лендинг
+        console.log("[HomePage] No valid session, showing landing")
+        setShowLanding(true)
+      } catch (error) {
+        console.error("[HomePage] Error checking auth:", error)
+        setShowLanding(true)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkAuthAndRedirect()
+  }, [router])
+
+  if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="w-full max-w-md p-8 text-center">
-          <h1 className="text-2xl font-bold mb-4">Подключите Supabase</h1>
-          <p className="text-gray-600">Для начала работы необходимо настроить подключение к Supabase</p>
-        </div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-
-  // Если пользователь авторизован, проверяем его роль и перенаправляем
-  if (user) {
-    try {
-      const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
-
-      if (profile?.is_admin) {
-        redirect("/admin")
-      } else {
-        redirect("/app")
-      }
-    } catch (error) {
-      // Если профиля нет, создаем его как админа и перенаправляем
-      await supabase.from("user_profiles").insert({
-        user_id: user.id,
-        is_admin: false,
-      })
-      redirect("/admin")
-    }
+  if (showLanding) {
+    return <AnimatedLanding />
   }
 
-  // Показываем анимированный лендинг для неавторизованных пользователей
-  return <AnimatedLanding />
+  // Показываем загрузку во время редиректа
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    </div>
+  )
 }
