@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update auth" />
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update auth">
+      <change beforePath="$PROJECT_DIR$/app/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/page.tsx" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />

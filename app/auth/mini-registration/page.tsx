@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { tmaHandshake } from "@/lib/tma/handshake"
 import { sessionAuth } from "@/lib/tma/session-auth"
+import { API } from "@/lib/api"
 import { User, Weight, Ruler, Shirt, Users, Share2, Megaphone, Heart } from "lucide-react"
 
 interface FormData {
@@ -55,24 +56,11 @@ export default function MiniRegistrationPage() {
   const handleSubmit = async () => {
     if (!userId || isSubmitting) return
     setIsSubmitting(true)
-    const accessToken = sessionAuth.getAccessToken()
-    if (!accessToken) {
-      alert("Ошибка авторизации")
-      setIsSubmitting(false)
-      return
-    }
 
-    const { error } = await fetch("/api/profile/miniapp-upsert", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "authorization": `Bearer ${accessToken}`
-      },
-      body: JSON.stringify(formData),
-    }).then(async (r) => (r.ok ? {} : { error: await r.json().catch(() => ({})) }))
+    const response = await API.user.updateProfile(formData)
 
-    if (error) {
-      alert(error.error || "Не удалось сохранить профиль")
+    if (!response.ok) {
+      alert(response.error || "Не удалось сохранить профиль")
       setIsSubmitting(false)
       return
     }

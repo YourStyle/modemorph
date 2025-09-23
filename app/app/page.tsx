@@ -10,6 +10,7 @@ import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
 import { PaywallModal } from "@/components/paywall-modal";
+import { API } from "@/lib/api";
 
 interface OutfitItem {
   id: string
@@ -203,10 +204,9 @@ export default function HomePage() {
   // Load user looks
   const loadUserLooks = async () => {
     try {
-      const response = await fetch("/api/user-looks")
-      if (response.ok) {
-        const looks = await response.json()
-        setUserLooks(looks)
+      const response = await API.userLooks.getAll()
+      if (response.ok && response.data) {
+        setUserLooks(response.data)
       }
     } catch (error) {
       console.error("Error loading user looks:", error)
@@ -260,9 +260,7 @@ export default function HomePage() {
         )
 
         if (lookToRemove) {
-          const response = await fetch(`/api/user-looks/${lookToRemove.id}`, {
-            method: "DELETE",
-          })
+          const response = await API.userLooks.delete(lookToRemove.id)
 
           if (response.ok) {
             setUserLooks((prev) => prev.filter((look) => look.id !== lookToRemove.id))
@@ -277,21 +275,14 @@ export default function HomePage() {
           id: Number.parseInt(item.id),
         }))
 
-        const response = await fetch("/api/user-looks", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: suggestion.title,
-            description: `Рекомендованный образ с ${suggestion.suggested_items_count} предложенными вещами`,
-            items: transformedItems,
-          }),
+        const response = await API.userLooks.create({
+          name: suggestion.title,
+          description: `Рекомендованный образ с ${suggestion.suggested_items_count} предложенными вещами`,
+          items: transformedItems,
         })
 
-        if (response.ok) {
-          const newLook = await response.json()
-          setUserLooks((prev) => [...prev, newLook])
+        if (response.ok && response.data) {
+          setUserLooks((prev) => [...prev, response.data])
         } else {
           throw new Error("Failed to save outfit")
         }
@@ -315,10 +306,9 @@ export default function HomePage() {
   useEffect(() => {
     const loadUserItemsCount = async () => {
       try {
-        const response = await fetch("/api/wardrobe-user-items")
-        if (response.ok) {
-          const data = await response.json()
-          setUserItemsCount(Array.isArray(data) ? data.length : 0)
+        const response = await API.userItems.getAll()
+        if (response.ok && response.data) {
+          setUserItemsCount(Array.isArray(response.data) ? response.data.length : 0)
         }
       } catch (error) {
         console.error("Error loading user items count:", error)

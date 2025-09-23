@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { AnimatedLanding } from "@/components/animated-landing"
+import { API } from "@/lib/api"
 
 export default function HomePage() {
   const router = useRouter()
@@ -20,38 +21,23 @@ export default function HomePage() {
             console.log("[HomePage] User authenticated, checking profile...")
 
             // Проверяем профиль пользователя
-            const accessToken = sessionAuth.getAccessToken()
-            if (accessToken) {
-              const profileResponse = await fetch("/api/me/profile", {
-                headers: {
-                  "Authorization": `Bearer ${accessToken}`
-                }
-              })
+            const profileResponse = await API.user.getProfile()
 
-              if (profileResponse.ok) {
-                const profileData = await profileResponse.json()
+            if (profileResponse.ok && profileResponse.data) {
+              // Если профиль есть, проверяем роль
+              if (profileResponse.data.profile) {
+                // Получаем информацию о роли пользователя
+                const userResponse = await API.user.getMe()
 
-                // Если профиль есть, проверяем роль
-                if (profileData.profile) {
-                  // Получаем информацию о роли пользователя
-                  const userInfoResponse = await fetch("/api/me", {
-                    headers: {
-                      "Authorization": `Bearer ${accessToken}`
-                    }
-                  })
-
-                  if (userInfoResponse.ok) {
-                    const userData = await userInfoResponse.json()
-
-                    if (userData.profile?.is_admin) {
-                      console.log("[HomePage] Admin user, redirecting to /admin")
-                      router.replace("/admin")
-                      return
-                    } else {
-                      console.log("[HomePage] Regular user, redirecting to /app")
-                      router.replace("/app")
-                      return
-                    }
+                if (userResponse.ok && userResponse.data) {
+                  if (userResponse.data.profile?.is_admin) {
+                    console.log("[HomePage] Admin user, redirecting to /admin")
+                    router.replace("/admin")
+                    return
+                  } else {
+                    console.log("[HomePage] Regular user, redirecting to /app")
+                    router.replace("/app")
+                    return
                   }
                 }
               }
