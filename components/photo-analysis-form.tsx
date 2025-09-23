@@ -10,6 +10,7 @@ import {AIAssistantLoader} from "@/components/ai-assistant-loader"
 import Image from "next/image"
 import {createClient} from "@/lib/supabase/client"
 import {PhotoRegenerationModal} from "./photo-regeneration-modal"
+import { api } from "@/lib/api-client"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
 
@@ -379,14 +380,13 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
             const file = new File([blob], "image.jpg", {type: blob.type})
             const formData = new FormData()
             formData.append("file", file)
-            const uploadResponse = await fetch("/api/upload-image", {
-                method: "POST",
-                body: formData,
+            const uploadResult = await api.post("/api/upload-image", formData, {
+                headers: {} // Убираем Content-Type для FormData
             })
-            if (!uploadResponse.ok) {
+            if (!uploadResult) {
                 throw new Error("Failed to upload image")
             }
-            const {url} = await uploadResponse.json()
+            const {url} = uploadResult
             return url
         } catch (error) {
             console.error("Error downloading and uploading image:", error)

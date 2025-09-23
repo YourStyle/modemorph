@@ -1,20 +1,19 @@
-import { createClient } from "@/lib/supabase/server"
-import { type NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const supabase = await createClient()
-
-    // Get the current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      console.error("Auth error:", authError)
+    const user = await getAuthUser(req)
+    if (!user) {
+      console.error("Auth error: No user found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     console.log("Fetching sections for user:", user.id)
 
@@ -110,22 +109,20 @@ export async function GET() {
   }
 }
 
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient()
-
-    // Get the current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      console.error("Auth error:", authError)
+    const user = await getAuthUser(req)
+    if (!user) {
+      console.error("Auth error: No user found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await request.json()
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
+
+    const body = await req.json()
     const { name, description } = body
 
     if (!name) {

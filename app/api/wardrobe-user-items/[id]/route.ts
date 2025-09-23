@@ -1,23 +1,22 @@
-import { createClient } from "@/lib/supabase/server"
-import { type NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const supabase = await createClient()
-    const itemId = params.id
-
-    console.log("Attempting to delete user wardrobe item:", itemId)
-
-    // Получаем текущего пользователя
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
-
-    if (authError || !user) {
-      console.error("Authentication error:", authError)
+    const user = await getAuthUser(req)
+    if (!user) {
+      console.error("Authentication error: No user found")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const itemId = params.id
+    console.log("Attempting to delete user wardrobe item:", itemId)
+
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     console.log("User authenticated:", user.id)
 

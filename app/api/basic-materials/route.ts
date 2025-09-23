@@ -1,22 +1,17 @@
-import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
 // GET - получение списка базовых материалов
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    // Получаем текущего пользователя
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     // Проверяем, существует ли таблица basic_materials
     const { data: tableExists } = await supabase.rpc("exec_sql", {
@@ -51,9 +46,12 @@ export async function GET(request: Request) {
 }
 
 // POST - создание нового базового материала
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json()
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const body = await req.json()
     const { name_ru, name_en, description, properties } = body
 
     // Проверяем обязательные поля
@@ -61,18 +59,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 })
     }
 
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-    // Получаем текущего пользователя
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     // Проверяем, существует ли таблица basic_materials
     const { data: tableExists } = await supabase.rpc("exec_sql", {
@@ -115,27 +105,22 @@ export async function POST(request: Request) {
 }
 
 // DELETE - удаление базового материала
-export async function DELETE(request: Request) {
+export async function DELETE(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { searchParams } = new URL(req.url)
     const id = searchParams.get("id")
 
     if (!id) {
       return NextResponse.json({ error: "ID is required" }, { status: 400 })
     }
 
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-    // Получаем текущего пользователя
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     // Проверяем, существует ли таблица basic_materials
     const { data: tableExists } = await supabase.rpc("exec_sql", {

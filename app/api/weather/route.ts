@@ -1,5 +1,6 @@
-import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
 interface WeatherData {
   temperature: number
@@ -133,25 +134,24 @@ async function saveWeatherToCache(
   }
 }
 
-export async function GET(request: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
     console.log("Weather API called")
-    const supabase = await createClient()
+    const user = await getAuthUser(req)
 
-    // Get current user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
-    if (authError || !user) {
-      console.error("User not authenticated:", authError)
+    if (!user) {
+      console.error("User not authenticated")
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     console.log("User authenticated:", user.id)
 
-    const { searchParams } = new URL(request.url)
+    const { searchParams } = new URL(req.url)
     const lat = searchParams.get("lat")
     const lon = searchParams.get("lon")
 

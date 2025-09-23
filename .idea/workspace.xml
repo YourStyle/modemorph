@@ -5,9 +5,22 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update auth">
-      <change beforePath="$PROJECT_DIR$/app/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/basic-items/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/basic-items/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/basic-materials/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/basic-materials/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/basic-wardrobe-items/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/basic-wardrobe-items/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/clothing-types/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/clothing-types/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/limits/consume/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/limits/consume/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/limits/reconcile/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/limits/reconcile/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/looks-sections/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/looks-sections/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/spend-credits/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/spend-credits/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/usage/log/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/usage/log/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/user-recommendations/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/user-recommendations/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/user-subscription/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/user-subscription/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/wardrobe-user-items/[id]/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/wardrobe-user-items/[id]/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/wardrobe-user-items/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/wardrobe-user-items/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/api/weather/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/weather/route.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/auth-server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth-server.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -64,7 +77,15 @@
       <option name="project" value="LOCAL" />
       <updated>1758467884573</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="update auth">
+      <option name="closed" value="true" />
+      <created>1758633075018</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1758633075018</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

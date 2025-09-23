@@ -1,5 +1,6 @@
-import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth-server";
+import { createClient } from "@supabase/supabase-js";
 
 type Feature = "wardrobe_items_anlyzed" | "ai_requests" | "ideas_viewed" | "outfits_saved" | "vton_used";
 const norm = (s: string): Feature => {
@@ -12,15 +13,16 @@ const norm = (s: string): Feature => {
   return "ideas_viewed";
 };
 
-export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  if (authErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function POST(req: NextRequest) {
+  const user = await getAuthUser(req);
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await request.json();
+  // Используем service role для операций с базой
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  const body = await req.json();
   const key = norm(body.featureType ?? body.usageType ?? "");
 
   const { data: profile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single();

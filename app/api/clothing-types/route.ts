@@ -1,25 +1,20 @@
-import { NextResponse } from "next/server"
-import { cookies } from "next/headers"
-import { createServerActionClient } from "@supabase/auth-helpers-nextjs"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
 // GET - получение списка типов одежды
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { searchParams } = new URL(req.url)
     const category = searchParams.get("category")
 
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-    // Получаем текущего пользователя
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     // Формируем запрос
     let query = supabase.from("clothing_types").select("*")
@@ -48,9 +43,12 @@ export async function GET(request: Request) {
 }
 
 // POST - создание нового типа одежды
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json()
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const body = await req.json()
     const { code, name_ru, name_en, category, description } = body
 
     // Проверяем обязательные поля
@@ -58,18 +56,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Code, name_ru and name_en are required" }, { status: 400 })
     }
 
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-    // Получаем текущего пользователя
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     // Проверяем, существует ли тип с таким кодом
     const { data: existingType } = await supabase.from("clothing_types").select("id").eq("code", code).single()
@@ -106,27 +96,22 @@ export async function POST(request: Request) {
 }
 
 // DELETE - удаление типа одежды
-export async function DELETE(request: Request) {
+export async function DELETE(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url)
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+
+    const { searchParams } = new URL(req.url)
     const id = searchParams.get("id")
 
     if (!id) {
       return NextResponse.json({ error: "ID is required" }, { status: 400 })
     }
 
-    const cookieStore = cookies()
-    const supabase = createServerActionClient({ cookies: () => cookieStore })
-
-    // Получаем текущего пользователя
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     // Проверяем, используется ли тип в wardrobe_items
     const { data: usedItems } = await supabase.from("wardrobe_items").select("id").eq("type_ref", id).limit(1)

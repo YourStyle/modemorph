@@ -1,20 +1,20 @@
 // /api/credits/spend
-import { createClient } from "@/lib/supabase/server";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { getAuthUser } from "@/lib/auth-server";
+import { createClient } from "@supabase/supabase-js";
 
-export async function POST(request: Request) {
-  const supabase = await createClient();
-
-  // auth
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-  if (userError || !user) {
+export async function POST(req: NextRequest) {
+  const user = await getAuthUser(req);
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401, headers: { "X-Track-Unauthorized": "true" } });
   }
 
-  const { amount, reason, description } = await request.json();
+  // Используем service role для операций с базой
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabase = createClient(supabaseUrl, serviceKey);
+
+  const { amount, reason, description } = await req.json();
   if (!reason) return NextResponse.json({ error: "Reason is required" }, { status: 400 });
 
   // нормализация для SQL-функции

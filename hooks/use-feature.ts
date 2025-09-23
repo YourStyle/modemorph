@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { api } from "@/lib/api-client";
 
 type Feature =
   | "wardrobe_items_anlyzed"
@@ -17,15 +18,11 @@ export function useFeature() {
       meta?: Record<string, any>
     ) => {
       try {
-        await fetch("/api/usage/log", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            feature,
-            action,
-            count: 1,
-            meta: meta ?? {},
-          }),
+        await api.post("/api/usage/log", {
+          feature,
+          action,
+          count: 1,
+          meta: meta ?? {},
         });
       } catch {
         /* no-op */
@@ -36,17 +33,19 @@ export function useFeature() {
 
   const consume = useCallback(
     async (feature: Feature, meta?: Record<string, any>,count: number = 1) => {
-      const r = await fetch("/api/check-limits", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ featureType: feature, count, meta: meta ?? {} }),
-      });
-
-      if (r.status === 402) return { ok: false as const, code: "payment_required" as const };
-      if (!r.ok) return { ok: false as const, code: "error" as const };
-
-      const data = await r.json();
-      return { ok: true as const, remaining: Number(data?.remaining ?? 0) };
+      try {
+        const response = await api.post("/api/check-limits", {
+          featureType: feature,
+          count,
+          meta: meta ?? {}
+        });
+        return { ok: true as const, remaining: Number(response?.remaining ?? 0) };
+      } catch (error: any) {
+        if (error.message?.includes('402')) {
+          return { ok: false as const, code: "payment_required" as const };
+        }
+        return { ok: false as const, code: "error" as const };
+      }
     },
     []
   );

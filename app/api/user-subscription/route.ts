@@ -1,16 +1,11 @@
-import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const supabase = await createClient()
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
+    const user = await getAuthUser(req)
+    if (!user) {
       return NextResponse.json(
         { error: "Unauthorized" },
         {
@@ -19,6 +14,11 @@ export async function GET() {
         },
       )
     }
+
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     const { data: userProfile } = await supabase.from("user_profiles").select("id").eq("user_id", user.id).single()
 
@@ -56,18 +56,15 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient()
+    const user = await getAuthUser(req)
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
-
-    if (userError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    // Используем service role для операций с базой
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const supabase = createClient(supabaseUrl, serviceKey)
 
     const { data: userProfile, error: upErr } = await supabase
       .from("user_profiles")
@@ -79,7 +76,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "User profile not found" }, { status: 404 })
     }
 
-    const { action, type, packId } = await request.json()
+    const { action, type, packId } = await req.json()
 
     if (action === "subscribe") {
       // Проверяем, нет ли активной подписки

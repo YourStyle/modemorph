@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { PaywallModal } from "./paywall-modal"
 import { normalizeImageFile } from "@/lib/image-normalize"
+import { api } from "@/lib/api-client"
 
 interface UserProfile {
   id: string
@@ -128,8 +129,8 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
   const loadSubscriptionData = async () => {
     try {
-      const res = await fetch("/api/user-subscription", { credentials: "include" })
-      if (res.ok) setSubscriptionData(await res.json())
+      const data = await api.get("/api/user-subscription")
+      setSubscriptionData(data)
     } catch {
       // ignore
     }
@@ -174,9 +175,10 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
       fd.append("file", fileForUpload, fileForUpload.name) // важно передать имя
       fd.append("folder", "avatars")
 
-      const resp = await fetch("/api/upload-to-yandex", { method: "POST", body: fd })
-      const result = await resp.json()
-      if (!resp.ok || !result.success) throw new Error(result.error || `HTTP ${resp.status}`)
+      const result = await api.post("/api/upload-to-yandex", fd, {
+        headers: {} // Убираем Content-Type для FormData
+      })
+      if (!result.success) throw new Error(result.error || 'Upload failed')
 
       // 4) Обновление профиля
       if (profile.id) {
@@ -243,17 +245,9 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
   const handleSignOut = async () => {
     try {
-      const response = await fetch("/api/auth/signout", {
-        method: "POST",
-        credentials: "include",
-      })
-
-      if (response.ok) {
-        router.push("/auth/login")
-        onClose()
-      } else {
-        throw new Error("Ошибка при выходе")
-      }
+      await api.post("/api/auth/signout")
+      router.push("/auth/login")
+      onClose()
     } catch (error) {
       toast.error("Ошибка при выходе")
     }

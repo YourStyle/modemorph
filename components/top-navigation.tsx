@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
 import { UserProfileSheet } from "./user-profile-sheet"
+import { api } from "@/lib/api-client"
 
 interface WeatherData {
   temperature: number
@@ -149,18 +150,15 @@ export function TopNavigation() {
 
       // Сначала пробуем загрузить кэшированную погоду
       try {
-        const cachedResponse = await fetch("/api/weather/cached")
-        if (cachedResponse.ok) {
-          const cachedWeather = await cachedResponse.json()
-          setWeather({
-            temperature: cachedWeather.temperature,
-            description: cachedWeather.description,
-            location: cachedWeather.location,
-            icon: cachedWeather.icon || "🌤️",
-          })
-          setWeatherLoading(false)
-          return
-        }
+        const cachedWeather = await api.get("/api/weather/cached")
+        setWeather({
+          temperature: cachedWeather.temperature,
+          description: cachedWeather.description,
+          location: cachedWeather.location,
+          icon: cachedWeather.icon || "🌤️",
+        })
+        setWeatherLoading(false)
+        return
       } catch {
         // ignore cache errors
       }
@@ -233,10 +231,7 @@ export function TopNavigation() {
 
   const handleSignOut = async () => {
     try {
-      await fetch("/api/auth/signout", {
-        method: "POST",
-        credentials: "include",
-      })
+      await api.post("/api/auth/signout")
       window.location.href = "/"
     } catch {
       // ignore
