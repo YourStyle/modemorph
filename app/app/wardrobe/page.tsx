@@ -19,6 +19,7 @@ import { PaywallModal } from "@/components/paywall-modal"
 import { useToast } from "@/hooks/use-toast"
 import { useFeature } from "@/hooks/use-feature"
 import { normalizeImageFile } from "@/lib/image-normalize"
+import { api } from "@/lib/api-client"
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -139,13 +140,10 @@ export default function WardrobePage() {
   useEffect(() => {
     const loadProfile = async () => {
       try {
-        const res = await fetch("/api/me/profile")
-        if (res.ok) {
-          const data = await res.json()
-          setUserGender(data?.profile?.gender || "")
-        }
+        const data = await api.get("/api/me/profile")
+        setUserGender(data?.profile?.gender || "")
       } catch (err) {
-        console.error("Error fetching profile:", err)
+        console.error(err)
       }
     }
     loadProfile()
@@ -163,17 +161,11 @@ export default function WardrobePage() {
   const fetchBasicItems = async () => {
     try {
       setIsLoadingBasicItems(true)
-      const response = await fetch(`/api/basic-wardrobe-items?gender=${userGender}`)
-      if (response.ok) {
-        const data = await response.json()
-        console.log("Loaded basic items:", data)
-        // Ensure data is an array
-        const itemsArray = Array.isArray(data) ? data : []
-        setBasicItems(itemsArray)
-      } else {
-        console.error("Failed to fetch basic items:", response.statusText)
-        setBasicItems([])
-      }
+      const data = await api.get(`/api/basic-wardrobe-items?gender=${userGender}`)
+      console.log("Loaded basic items:", data)
+      // Ensure data is an array
+      const itemsArray = Array.isArray(data) ? data : []
+      setBasicItems(itemsArray)
     } catch (error) {
       console.error("Error fetching basic items:", error)
       setBasicItems([])
@@ -193,11 +185,8 @@ export default function WardrobePage() {
       }
       params.append("sort", sortBy)
 
-      const response = await fetch(`/api/wardrobe-user-items?${params.toString()}`)
-      if (response.ok) {
-        const data = await response.json()
-        setUserItemsCount(Array.isArray(data) ? data.length : 0)
-      }
+      const data = await api.get(`/api/wardrobe-user-items?${params.toString()}`)
+      setUserItemsCount(Array.isArray(data) ? data.length : 0)
     } catch (error) {
       console.error("Error fetching user items:", error)
     } finally {
@@ -287,20 +276,7 @@ export default function WardrobePage() {
 
       console.log("Sending payload:", payload)
 
-      const response = await fetch("/api/wardrobe-user-items", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to add item")
-      }
-
-      const result = await response.json()
+      const result = await api.post("/api/wardrobe-user-items", payload)
       console.log("Item added successfully:", result)
 
       toast({

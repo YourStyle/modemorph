@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { CommonSheet } from "./common-sheet"
+import {api} from "@/lib/api-client";
 
 interface WardrobeItem {
   id: number
@@ -188,22 +189,8 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
         gender: formData.gender || null,
       }
 
-      const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(submitData),
-      })
-
-      if (response.ok) {
-        toast.success("Вещь успешно обновлена!")
-        onSuccess?.()
-        onClose()
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to update item")
-      }
+      await api.put(`/api/wardrobe/${item.id}`, {submitData})
+      toast.success("Вещь успешно обновлена!")
     } catch (error) {
       console.error("Error updating item:", error)
       toast.error("Ошибка при обновлении вещи")

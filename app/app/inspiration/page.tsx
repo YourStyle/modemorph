@@ -10,6 +10,7 @@ import { BottomNavigation } from "@/components/bottom-navigation"
 import { PaywallModal } from "@/components/paywall-modal"
 import { OutfitItemsSheet } from "@/components/outfit-items-sheet"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
+import { api } from "@/lib/api-client"
 
 type OutfitItem = {
   id: string
@@ -232,16 +233,8 @@ export default function InspirationPage(): ReactElement {
   useEffect(() => {
     const checkDailyLimits = async () => {
       try {
-        const response = await fetch("/api/check-limits", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ limitType: "daily", usageType: "ideas_viewed" }),
-        })
-        if (response.ok) {
-          const data = await response.json()
-          if (!data.canUse) setIsBlurred(true)
-        }
+        const data = await api.post("/api/check-limits", { limitType: "daily", usageType: "ideas_viewed" })
+        if (!data.canUse) setIsBlurred(true)
       } catch (_) {}
     }
     checkDailyLimits()
@@ -252,23 +245,12 @@ export default function InspirationPage(): ReactElement {
     if (!current || viewedOutfits.has(current.id) || isBlurred) return
     const timer = setTimeout(async () => {
       try {
-        const consumeRes = await fetch("/api/check-limits", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ featureType: "ideas_viewed" }),
-        })
-        const consume = await consumeRes.json()
-        if (!consumeRes.ok || !consume?.canUse) {
+        const consume = await api.post("/api/check-limits", { featureType: "ideas_viewed" })
+        if (!consume?.canUse) {
           setIsBlurred(true)
           return
         }
-        await fetch("/api/outfits/track-view", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ outfitId: current.id }),
-        })
+        await api.post("/api/outfits/track-view", { outfitId: current.id })
         setViewedOutfits((prev) => new Set([...prev, current.id]))
         setDailyViewsUsed((prev) => prev + 1)
       } catch (_) {}
@@ -280,17 +262,12 @@ export default function InspirationPage(): ReactElement {
     const loadProfile = async () => {
       try {
         console.log("[v0] Loading user profile for gender")
-        const res = await fetch("/api/me/profile")
-        if (res.ok) {
-          const data = await res.json()
-          const gender = data?.profile?.gender || ""
-          console.log("[v0] User gender loaded:", gender)
-          setUserGender(gender)
-        } else {
-          console.log("[v0] Failed to load profile:", res.status)
-        }
+        const data = await api.get("/api/me/profile")
+        const gender = data?.profile?.gender || ""
+        console.log("[v0] User gender loaded:", gender)
+        setUserGender(gender)
       } catch (err) {
-        console.error("[v0] Error fetching profile:", err)
+        console.error(err)
       }
     }
     loadProfile()
@@ -309,20 +286,15 @@ export default function InspirationPage(): ReactElement {
       try {
         setLoading(true)
         setError(null)
-        const [outfitsRes, likesRes] = await Promise.all([
-          fetch(`/api/outfits/inspiration?gender=${userGender}`, { cache: "no-store", credentials: "include" }),
-          fetch("/api/user-likes", { cache: "no-store", credentials: "include" }),
+        const [data, likedData] = await Promise.all([
+          api.get(`/api/outfits/inspiration?gender=${userGender}`),
+          api.get("/api/user-likes").catch(() => ({ liked: [] })),
         ])
-        if (!outfitsRes.ok) throw new Error("Failed to fetch outfits")
-        const data: ApiResponse = await outfitsRes.json()
         const normalized = normalizeOutfits(data.outfits)
         if (!cancelled) {
           setOutfits(normalized)
           setNextCursor(data.nextCursor ?? null)
-        }
-        if (likesRes.ok) {
-          const likedData = await likesRes.json().catch(() => ({ liked: [] }))
-          if (!cancelled) setLikedIds(new Set((likedData?.liked ?? []).map(String)))
+          setLikedIds(new Set((likedData?.liked ?? []).map(String)))
         }
       } catch (e) {
         if (!cancelled) setError("Не удалось загрузить образы")
@@ -357,17 +329,9 @@ export default function InspirationPage(): ReactElement {
     if (!nextCursor || fetchingMore) return
     try {
       setFetchingMore(true)
-      const res = await fetch(
-        `/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}&gender=${userGender}`,
-        {
-          credentials: "include",
-        },
+      const data: ApiResponse = await api.get(
+          `/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}&gender=${userGender}`
       )
-      if (!res.ok) {
-        setNextCursor(null)
-        return
-      }
-      const data: ApiResponse = await res.json()
       const extra = normalizeOutfits(data.outfits)
       setOutfits((prev) => [...prev, ...extra])
       setNextCursor(data.nextCursor ?? null)
@@ -507,20 +471,9 @@ export default function InspirationPage(): ReactElement {
     if (!outfit || isSaving || savedOutfitIds.has(outfit.id)) return
     setIsSaving(true)
     try {
-      const res = await fetch("/api/outfits/save-to-looks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ outfitId: outfit.id }),
-      })
-      if (!res.ok) throw new Error("Failed to save outfit")
+      await api.post("/api/outfits/save-to-looks", { outfitId: outfit.id })
       setSavedOutfitIds((prev) => new Set([...prev, outfit.id]))
-      await fetch("/api/outfits/track-save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ outfitId: outfit.id }),
-      }).catch(() => {})
+      await api.post("/api/outfits/track-save", { outfitId: outfit.id }).catch(() => {})
     } catch (_) {
     } finally {
       setIsSaving(false)
@@ -532,14 +485,7 @@ export default function InspirationPage(): ReactElement {
     setIsLiking(true)
     try {
       const action = outfit.isLiked ? "unlike" : "like"
-      const res = await fetch("/api/outfits/like", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ outfitId: outfit.id, action }),
-      })
-      if (!res.ok) throw new Error("Failed to like")
-      const payload = await res.json()
+      const payload = await api.post("/api/outfits/like", { outfitId: outfit.id, action })
       const newLikes = typeof payload?.likes === "number" ? payload.likes : outfit.likes
       const newIsLiked = typeof payload?.isLiked === "boolean" ? payload.isLiked : !outfit.isLiked
 
@@ -558,25 +504,15 @@ export default function InspirationPage(): ReactElement {
 
   async function handleBuyMoreViews() {
     try {
-      const response = await fetch("/api/spend-credits", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          amount: 2,
-          reason: "ideas_viewed",
-          description: "Купить 5 дополнительных просмотров идей",
-          usageType: "ideas_viewed",
-        }),
+      const data = await api.post("/api/spend-credits", {
+        amount: 2,
+        reason: "ideas_viewed",
+        description: "Купить 5 дополнительных просмотров идей",
+        usageType: "ideas_viewed",
       })
-      if (response.ok) {
-        const data = await response.json()
-        setUserCredits(data.newBalance)
-        setIsBlurred(false)
-        setDailyViewsUsed((prev) => Math.max(0, prev - 5))
-      } else {
-        setShowPaywall(true)
-      }
+      setUserCredits(data.newBalance)
+      setIsBlurred(false)
+      setDailyViewsUsed((prev) => Math.max(0, prev - 5))
     } catch (_) {
       setShowPaywall(true)
     }

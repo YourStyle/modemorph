@@ -14,6 +14,7 @@ import { Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
 import type { WardrobeItem } from "./item-details-modal"
+import {api} from "@/lib/api-client";
 
 interface BasicItem {
   id: number
@@ -76,11 +77,8 @@ export function EditWardrobeItemModal({ item, isOpen, onClose, onSuccess }: Edit
   const loadBasicItems = async () => {
     setIsLoadingBasicItems(true)
     try {
-      const response = await fetch("/api/basic-wardrobe-items")
-      if (response.ok) {
-        const items = await response.json()
-        setBasicItems(items)
-      }
+      const items = await api.get("/api/basic-wardrobe-items")
+      setBasicItems(items)
     } catch (error) {
       console.error("Error loading basic items:", error)
     } finally {
@@ -133,17 +131,8 @@ export function EditWardrobeItemModal({ item, isOpen, onClose, onSuccess }: Edit
         const imageFormData = new FormData()
         imageFormData.append("file", imageFile)
 
-        const uploadResponse = await fetch("/api/upload-image", {
-          method: "POST",
-          body: imageFormData,
-        })
-
-        if (uploadResponse.ok) {
-          const uploadResult = await uploadResponse.json()
-          imageUrl = uploadResult.url
-        } else {
-          throw new Error("Failed to upload image")
-        }
+        const uploadResult = await api.post("/api/upload-image", imageFormData)
+        imageUrl = uploadResult.url
       }
 
       // Подготовка данных для отправки
@@ -162,22 +151,8 @@ export function EditWardrobeItemModal({ item, isOpen, onClose, onSuccess }: Edit
         image_url: imageUrl || null,
       }
 
-      const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(submitData),
-      })
-
-      if (response.ok) {
-        toast.success("Вещь успешно обновлена!")
-        onSuccess?.()
-        onClose()
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to update item")
-      }
+      await api.put(`/api/wardrobe/${item.id}`, {submitData})
+      toast.success("Вещь успешно обновлена!")
     } catch (error) {
       console.error("Error updating item:", error)
       toast.error("Ошибка при обновлении вещи")

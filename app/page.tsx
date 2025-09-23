@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { AnimatedLanding } from "@/components/animated-landing"
-import { API } from "@/lib/api"
+
 
 export default function HomePage() {
   const router = useRouter()
@@ -21,23 +21,41 @@ export default function HomePage() {
             console.log("[HomePage] User authenticated, checking profile...")
 
             // Проверяем профиль пользователя
-            const profileResponse = await API.user.getProfile()
+            const accessToken = sessionAuth.getAccessToken()
+            if (accessToken) {
+              const profileResponse = await fetch("/api/me/profile", {
+                headers: {
+                  "Authorization": `Bearer ${accessToken}`
+                }
+              })
 
-            if (profileResponse.ok && profileResponse.data) {
-              // Если профиль есть, проверяем роль
-              if (profileResponse.data.profile) {
-                // Получаем информацию о роли пользователя
-                const userResponse = await API.user.getMe()
+              if (profileResponse.ok) {
+                const profileData = await profileResponse.json()
 
-                if (userResponse.ok && userResponse.data) {
-                  if (userResponse.data.profile?.is_admin) {
-                    console.log("[HomePage] Admin user, redirecting to /admin")
-                    router.replace("/admin")
-                    return
-                  } else {
-                    console.log("[HomePage] Regular user, redirecting to /app")
-                    router.replace("/app")
-                    return
+                // Если профиль есть, проверяем роль
+                if (profileData.profile) {
+                  // Получаем информацию о роли пользователя
+                  const userInfoResponse = await fetch("/api/me", {
+                    headers: {
+                      "Authorization": `Bearer ${accessToken}`
+                    }
+                  })
+
+                  if (userInfoResponse.ok) {
+                    const userData = await userInfoResponse.json()
+
+
+
+
+                    if (userData.profile?.is_admin) {
+                      console.log("[HomePage] Admin user, redirecting to /admin")
+                      router.replace("/admin")
+                      return
+                    } else {
+                      console.log("[HomePage] Regular user, redirecting to /app")
+                      router.replace("/app")
+                      return
+                    }
                   }
                 }
               }
@@ -61,9 +79,9 @@ export default function HomePage() {
 
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
+        <div className="flex min-h-screen items-center justify-center bg-gray-50">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
     )
   }
 
@@ -73,8 +91,8 @@ export default function HomePage() {
 
   // Показываем загрузку во время редиректа
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-    </div>
+      <div className="flex min-h-screen items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
   )
 }

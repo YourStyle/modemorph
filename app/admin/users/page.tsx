@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "@/hooks/use-toast"
 import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
+import { api } from "@/lib/api-client"
 
 interface User {
   id: number
@@ -54,18 +55,8 @@ export default function AdminUsersPage() {
 
   const fetchUsers = async () => {
     try {
-      const response = await fetch("/api/admin/users")
-      const data = await response.json()
-
-      if (response.ok) {
-        setUsers(data.users)
-      } else {
-        toast({
-          title: "Ошибка",
-          description: data.error || "Не удалось загрузить пользователей",
-          variant: "destructive",
-        })
-      }
+      const data = await api.get("/api/admin/users")
+      setUsers(data.users)
     } catch (error) {
       toast({
         title: "Ошибка",
@@ -81,38 +72,21 @@ export default function AdminUsersPage() {
     if (!selectedUser) return
 
     try {
-      const response = await fetch("/api/admin/grant-credits", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          userId: selectedUser.user_id,
-          credits: grantCredits ? Number.parseInt(grantCredits) : 0,
-          subscriptionType: grantSubscription || null,
-          subscriptionDuration: subscriptionDuration || null,
-        }),
+      await api.post("/api/admin/grant-credits", {
+        userId: selectedUser.user_id,
+        credits: grantCredits ? Number.parseInt(grantCredits) : 0,
+        subscriptionType: grantSubscription || null,
+        subscriptionDuration: subscriptionDuration || null,
       })
-
-      const data = await response.json()
-
-      if (response.ok) {
-        toast({
-          title: "Успешно",
-          description: "Кредиты/подписка успешно начислены",
-        })
-        setGrantCredits("")
-        setGrantSubscription("")
-        setSubscriptionDuration("")
-        setSelectedUser(null)
-        fetchUsers()
-      } else {
-        toast({
-          title: "Ошибка",
-          description: data.error || "Не удалось начислить кредиты/подписку",
-          variant: "destructive",
-        })
-      }
+      toast({
+        title: "Успешно",
+        description: "Кредиты/подписка успешно начислены",
+      })
+      setGrantCredits("")
+      setGrantSubscription("")
+      setSubscriptionDuration("")
+      setSelectedUser(null)
+      fetchUsers()
     } catch (error) {
       toast({
         title: "Ошибка",

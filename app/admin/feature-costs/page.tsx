@@ -37,7 +37,7 @@ export default function FeatureCostsPage() {
       if (error) throw error
       setFeatureCosts(data || [])
     } catch (error) {
-      console.error("Error fetching feature costs:", error)
+      console.error(error)
       toast({
         title: "Ошибка",
         description: "Не удалось загрузить настройки стоимости",

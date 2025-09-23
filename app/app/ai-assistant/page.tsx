@@ -13,6 +13,7 @@ import { PhotoAnalysisForm } from "@/components/photo-analysis-form"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
 import { PaywallModal } from "@/components/paywall-modal"
 import { useFeature } from "@/hooks/use-feature"
+import { api } from "@/lib/api-client"
 
 interface Message {
   role: "user" | "assistant"
@@ -104,15 +105,16 @@ export default function AIAssistantPage() {
   const getCurrentWeather = async () => {
     try {
       // Сначала пробуем получить кэшированную погоду
-      const cachedResponse = await fetch("/api/weather/cached")
-      if (cachedResponse.ok) {
-        const cachedWeather = await cachedResponse.json()
+      try {
+        const cachedWeather = await api.get("/api/weather/cached")
         return {
           temperature: cachedWeather.temperature,
           condition: cachedWeather.condition,
           description: cachedWeather.description,
           location: cachedWeather.location,
         }
+      } catch (cachedError) {
+        // Continue to geolocation if cached weather fails
       }
 
       // Если кэша нет, получаем текущую геолокацию
@@ -122,16 +124,15 @@ export default function AIAssistantPage() {
             async (position) => {
               const { latitude, longitude } = position.coords
               try {
-                const response = await fetch(`/api/weather?lat=${latitude}&lon=${longitude}`)
-                if (response.ok) {
-                  const weatherData = await response.json()
+                try {
+                  const weatherData = await api.get(`/api/weather?lat=${latitude}&lon=${longitude}`)
                   resolve({
                     temperature: weatherData.temperature,
                     condition: weatherData.condition,
                     description: weatherData.description,
                     location: weatherData.location,
                   })
-                } else {
+                } catch (weatherError) {
                   resolve({
                     temperature: 20,
                     condition: "Clear",
@@ -140,7 +141,6 @@ export default function AIAssistantPage() {
                   })
                 }
               } catch (error) {
-                console.error("Error fetching weather:", error)
                 resolve({
                   temperature: 20,
                   condition: "Clear",

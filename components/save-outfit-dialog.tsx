@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast"
 import { useSelectedItems } from "@/contexts/selected-items-context"
 import { Loader2 } from "lucide-react"
+import { api } from "@/lib/api-client"
 
 interface SaveOutfitDialogProps {
   isOpen: boolean
@@ -91,20 +92,9 @@ export function SaveOutfitDialog({ isOpen, onClose, selectedItems, editingOutfit
         items: requestBody.items.map((item) => ({ wardrobe_item_id: item.wardrobe_item_id, position: item.position })),
       })
 
-      const response = await fetch("/api/outfits", {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(requestBody),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to save outfit")
-      }
-
-      const data = await response.json()
+      const data = editingOutfitId
+        ? await api.put("/api/outfits", requestBody)
+        : await api.post("/api/outfits", requestBody)
 
       toast({
         title: editingOutfitId ? "Образ обновлен" : "Образ сохранен",

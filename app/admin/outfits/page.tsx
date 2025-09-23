@@ -5,6 +5,7 @@ import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Loader2 } from "lucide-react"
+import { api } from "@/lib/api-client"
 
 type OutfitListItem = {
   id: number
@@ -30,9 +31,7 @@ export default function AdminOutfitsPage() {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch("/api/outfits", { cache: "no-store" })
-        if (!res.ok) throw new Error("Failed to fetch outfits")
-        const data = await res.json()
+        const data = await api.get("/api/outfits")
         // Support either { outfits } or plain array
         const list: OutfitListItem[] = Array.isArray(data) ? data : (data.outfits ?? [])
         if (active) setOutfits(list)

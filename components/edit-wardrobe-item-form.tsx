@@ -13,6 +13,7 @@ import { Upload, X } from "lucide-react"
 import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
 import { useRouter } from "next/navigation"
+import {api} from "@/lib/api-client";
 
 const CLOTHING_TYPES = [
   "верхняя",
@@ -67,8 +68,7 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
 
   const loadBasicItems = async () => {
     try {
-      const response = await fetch("/api/basic-wardrobe-items")
-      const data = await response.json().catch(() => null)
+      const data = await api.get("/api/basic-wardrobe-items")
       const arr = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []
       setBasicItems(arr)
     } catch (error) {
@@ -146,9 +146,7 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
       if (imageFile) {
         const fd = new FormData()
         fd.append("file", imageFile)
-        const uploadRes = await fetch("/api/upload-image", { method: "POST", body: fd })
-        if (!uploadRes.ok) throw new Error("Failed to upload image")
-        const uploaded = await uploadRes.json()
+        const uploaded = await api.post("/api/upload-image", fd )
         imageUrl = uploaded.url
       }
 
@@ -172,11 +170,7 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
         gender: formData.gender || null,
       }
 
-      const res = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(submitData),
-      })
+      const res = await api.put(`/api/wardrobe/${item.id}`, {submitData})
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))

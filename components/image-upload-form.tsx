@@ -10,6 +10,7 @@ import { Upload, X, Loader2, Check, Plus } from "lucide-react"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
 import { Buffer } from "buffer"
+import {api} from "@/lib/api-client";
 
 interface ResponseItem {
   index: number
@@ -278,18 +279,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
         basic_item_id: item.basic_item_id,
       }
 
-      const response = await fetch("/api/wardrobe-user-items", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(itemData),
-      })
-
-      if (!response.ok) {
-        throw new Error("Ошибка сохранения вещи")
-      }
-
+      await api.post("/api/wardrobe-user-items", {itemData})
       // Обновляем состояние - показываем что добавлено
       setResults((prev) => prev.map((r, i) => (i === index ? { ...r, isAdding: false, isAdded: true } : r)))
     } catch (error) {

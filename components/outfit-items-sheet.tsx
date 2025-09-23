@@ -5,6 +5,7 @@ import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Plus, ExternalLink, Loader2 } from "lucide-react"
+import {api} from "@/lib/api-client";
 
 type OutfitItem = {
   id: string
@@ -40,30 +41,25 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
     setAddingItems((prev) => new Set([...prev, item.id]))
 
     try {
-      const response = await fetch("/api/wardrobe-user-items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          item_name: item.name,
-          image_url: item.image_url,
-          color: item.color || "",
-          shade: item.shade || "",
-          style: item.style || "",
-          material: item.material || "",
-          url: item.url || "",
-          size_type: item.size_type || "",
-          has_print: item.has_print === "true" || item.has_print === true,
-          has_details: item.has_details === "true" || item.has_details === true,
-          notes: item.notes,
-          is_basic: item.is_basic || false,
-          basic_item_id: item.basic_item_id,
-          item_name_en: null,
-          description: null,
-          description_en: null,
-          basic_material_id: null,
-          clothing_type: null,
-        }),
+      const response = await api.post("/api/wardrobe-user-items", {
+        item_name: item.name,
+        image_url: item.image_url,
+        color: item.color || "",
+        shade: item.shade || "",
+        style: item.style || "",
+        material: item.material || "",
+        url: item.url || "",
+        size_type: item.size_type || "",
+        has_print: item.has_print === "true" || item.has_print === true,
+        has_details: item.has_details === "true" || item.has_details === true,
+        notes: item.notes,
+        is_basic: item.is_basic || false,
+        basic_item_id: item.basic_item_id,
+        item_name_en: null,
+        description: null,
+        description_en: null,
+        basic_material_id: null,
+        clothing_type: null,
       })
 
       if (!response.ok) {

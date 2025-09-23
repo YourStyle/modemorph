@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Trash2, Edit } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
+import { api } from "@/lib/api-client"
 
 interface WardrobeItem {
   id: number
@@ -69,17 +70,10 @@ export function UserWardrobeGrid({
   const fetchItems = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/wardrobe-user-items")
-      if (response.ok) {
-        const data = await response.json()
-        const items = Array.isArray(data) ? data : []
-        setAllItems(items)
-        onItemsChange?.(items.length)
-      } else {
-        console.error("Failed to fetch user items")
-        setAllItems([])
-        onItemsChange?.(0)
-      }
+      const data = await api.get("/api/wardrobe-user-items")
+      const items = Array.isArray(data) ? data : []
+      setAllItems(items)
+      onItemsChange?.(items.length)
     } catch (error) {
       console.error("Error fetching user items:", error)
       setAllItems([])
@@ -121,19 +115,12 @@ export function UserWardrobeGrid({
   const handleDelete = async (id: number) => {
     try {
       setDeletingId(id)
-      const response = await fetch(`/api/wardrobe-user-items/${id}`, {
-        method: "DELETE",
+      await api.delete(`/api/wardrobe-user-items/${id}`)
+      toast({
+        title: "Вещь удалена",
+        description: "Вещь успешно удалена из гардероба",
       })
-
-      if (response.ok) {
-        toast({
-          title: "Вещь удалена",
-          description: "Вещь успешно удалена из гардероба",
-        })
-        fetchItems() // Refresh the list
-      } else {
-        throw new Error("Failed to delete item")
-      }
+      fetchItems() // Refresh the list
     } catch (error) {
       console.error("Error deleting item:", error)
       toast({

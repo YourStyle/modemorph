@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { EditWardrobeItemForm } from "@/components/edit-wardrobe-item-form"
 import { useAuth } from "@/contexts/auth-context"
+import {api} from "@/lib/api-client";
 
 export default function EditWardrobeItemPage() {
   const [item, setItem] = useState(null)
@@ -27,11 +28,7 @@ export default function EditWardrobeItemPage() {
 
     const fetchItem = async () => {
       try {
-        const response = await fetch(`/api/wardrobe/${itemId}`)
-        if (!response.ok) {
-          throw new Error("Не удалось загрузить вещь")
-        }
-        const data = await response.json()
+        const data = await api.get(`/api/wardrobe/${itemId}`)
         setItem(data.item || data)
       } catch (err) {
         setError(err instanceof Error ? err.message : "Ошибка загрузки")

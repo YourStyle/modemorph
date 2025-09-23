@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useToast } from "@/hooks/use-toast"
+import {api} from "@/lib/api-client";
 
 interface ClothingType {
   id: number
@@ -47,7 +48,7 @@ export function ClothingTypesManager() {
   const fetchTypes = async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/clothing-types")
+      const response = await api.get("/api/clothing-types")
       if (!response.ok) {
         throw new Error("Failed to fetch clothing types")
       }
@@ -79,18 +80,7 @@ export function ClothingTypesManager() {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch("/api/clothing-types", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(formData),
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to create clothing type")
-      }
+      await api.post("/api/clothing-types", formData)
 
       toast({
         title: "Успешно",
@@ -125,15 +115,7 @@ export function ClothingTypesManager() {
     }
 
     try {
-      const response = await fetch(`/api/clothing-types?id=${id}`, {
-        method: "DELETE",
-      })
-
-      if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || "Failed to delete clothing type")
-      }
-
+      await api.delete(`/api/clothing-types?id=${id}`)
       toast({
         title: "Успешно",
         description: "Тип одежды успешно удален",

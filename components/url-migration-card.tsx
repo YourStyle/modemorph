@@ -47,7 +47,7 @@ export function UrlMigrationCard() {
           setStatus(data)
         }
       } catch (error) {
-        console.error("Error fetching URL migration status:", error)
+        console.error(error)
       }
     }, 2000)
 

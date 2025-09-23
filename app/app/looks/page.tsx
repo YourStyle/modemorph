@@ -13,6 +13,7 @@ import { toast } from "sonner"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
 import { PaywallModal } from "@/components/paywall-modal"
 import { useFeature } from "@/hooks/use-feature"
+import { api } from "@/lib/api-client"
 
 interface ExpandedItem {
   id: number
@@ -96,14 +97,9 @@ export default function LooksPage() {
 
   const loadSavedLooks = async () => {
     try {
-      const response = await fetch("/api/user-looks")
-      if (response.ok) {
-        const looks = await response.json()
-        console.log("Loaded looks:", looks)
-        setSavedLooks(looks)
-      } else {
-        throw new Error("Failed to load looks")
-      }
+      const looks = await api.get("/api/user-looks")
+      console.log("Loaded looks:", looks)
+      setSavedLooks(looks)
     } catch (error) {
       console.error("Error loading saved looks:", error)
     }
@@ -111,13 +107,8 @@ export default function LooksPage() {
 
   const loadSections = async () => {
     try {
-      const response = await fetch("/api/looks-sections")
-      if (response.ok) {
-        const sectionsData = await response.json()
-        setSections(sectionsData)
-      } else {
-        throw new Error("Failed to load sections")
-      }
+      const sectionsData = await api.get("/api/looks-sections")
+      setSections(sectionsData)
     } catch (error) {
       console.error("Error loading sections:", error)
     }
@@ -136,24 +127,12 @@ export default function LooksPage() {
         itemsCount: lookData?.items?.length ?? 0,
       })
 
-      const response = await fetch("/api/user-looks", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(lookData),
-      })
+      const newLook = await api.post("/api/user-looks", lookData)
+      setSavedLooks((prev) => [newLook, ...prev])
+      toast.success("Образ создан успешно!")
 
-      if (response.ok) {
-        const newLook = await response.json()
-        setSavedLooks((prev) => [newLook, ...prev])
-        toast.success("Образ создан успешно!")
-
-        const bill = await consume("outfits_saved", { pagePath: "/app/looks", requestId, lookId: newLook?.id }, 1)
-        if (!bill.ok && bill.code === "payment_required") setPaywallOpen(true)
-      } else {
-        throw new Error("Failed to create look")
-      }
+      const bill = await consume("outfits_saved", { pagePath: "/app/looks", requestId, lookId: newLook?.id }, 1)
+      if (!bill.ok && bill.code === "payment_required") setPaywallOpen(true)
     } catch (error) {
       console.error("Error creating look:", error)
       toast.error("Ошибка создания образа")
@@ -162,22 +141,10 @@ export default function LooksPage() {
 
   const handleAddCollection = async (name: string, description?: string) => {
     try {
-      const response = await fetch("/api/looks-sections", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ name, description }),
-      })
-
-      if (response.ok) {
-        const newSection = await response.json()
-        setSections((prev) => [{ ...newSection, section_looks: [] }, ...prev])
-        toast.success("Подборка создана успешно!")
-        setIsAddCollectionOpen(false)
-      } else {
-        throw new Error("Failed to create section")
-      }
+      const newSection = await api.post("/api/looks-sections", { name, description })
+      setSections((prev) => [{ ...newSection, section_looks: [] }, ...prev])
+      toast.success("Подборка создана успешно!")
+      setIsAddCollectionOpen(false)
     } catch (error) {
       console.error("Error creating section:", error)
       toast.error("Ошибка создания подборки")
@@ -186,16 +153,9 @@ export default function LooksPage() {
 
   const handleDeleteLook = async (lookId: number) => {
     try {
-      const response = await fetch(`/api/user-looks/${lookId}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        setSavedLooks((prev) => prev.filter((look) => look.id !== lookId))
-        toast.success("Образ удален")
-      } else {
-        throw new Error("Failed to delete look")
-      }
+      await api.delete(`/api/user-looks/${lookId}`)
+      setSavedLooks((prev) => prev.filter((look) => look.id !== lookId))
+      toast.success("Образ удален")
     } catch (error) {
       console.error("Error deleting look:", error)
       toast.error("Ошибка удаления образа")
@@ -225,24 +185,12 @@ export default function LooksPage() {
   const handleAddOutfitsToCollection = async (sectionId: number, lookIds: number[]) => {
     try {
       const promises = lookIds.map((lookId) =>
-        fetch(`/api/looks-sections/${sectionId}/looks`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ look_id: lookId }),
-        }),
+        api.post(`/api/looks-sections/${sectionId}/looks`, { look_id: lookId })
       )
 
-      const responses = await Promise.all(promises)
-      const failedCount = responses.filter((r) => !r.ok).length
-
-      if (failedCount === 0) {
-        toast.success(`Добавлено ${lookIds.length} образов в подборку`)
-        loadSections() // Reload sections to show new outfits
-      } else {
-        toast.error(`Ошибка добавления ${failedCount} образов`)
-      }
+      await Promise.all(promises)
+      toast.success(`Добавлено ${lookIds.length} образов в подборку`)
+      loadSections() // Reload sections to show new outfits
     } catch (error) {
       console.error("Error adding outfits to collection:", error)
       toast.error("Ошибка добавления образов")

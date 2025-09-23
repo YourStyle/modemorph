@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Check, Sparkles, Zap, X, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { startRoboPayment } from "@/lib/payments"
+import { api } from "@/lib/api-client"
 
 interface PaywallModalProps {
   isOpen: boolean
@@ -65,13 +66,8 @@ export function PaywallModal({ isOpen, onClose, onSuccess }: PaywallModalProps) 
   const loadData = async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/user-subscription", {
-        credentials: "include",
-      })
-      if (response.ok) {
-        const result = await response.json()
-        setData(result)
-      }
+      const result = await api.get("/api/user-subscription")
+      setData(result)
     } catch (error) {
       console.error("Error loading subscription data:", error)
     } finally {

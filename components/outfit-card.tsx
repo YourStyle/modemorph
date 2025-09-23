@@ -9,6 +9,7 @@ import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucid
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
+import { api } from "@/lib/api-client"
 
 interface OutfitItem {
   id: string
@@ -115,18 +116,12 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
             image_url: item.image_url,
           }))
 
-          const response = await fetch("/api/vton", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              items: vtonItems,
-              requestId: tryOnRequestId ?? crypto.randomUUID(),
-            }),
+          const data = await api.post("/api/vton", {
+            items: vtonItems,
+            requestId: tryOnRequestId ?? crypto.randomUUID(),
           })
 
-          const data = await response.json()
-
-          if (!response.ok || data?.success === false) {
+          if (data?.success === false) {
             throw new Error(data?.error || "Failed to process virtual try-on")
           }
 

@@ -402,11 +402,8 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
                 if (item.img_url && !item.image_url) {
                     finalImageUrl = await downloadAndUploadImage(item.img_url)
                 } else if (item.basic_item_id && !finalImageUrl) {
-                    const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
-                    if (response.ok) {
-                        const basicItem = await response.json()
-                        finalImageUrl = basicItem.image_url
-                    }
+                    const basicItem = await api.get(`/api/basic-items/${item.basic_item_id}`)
+                    finalImageUrl = basicItem.image_url
                 }
             } catch (e) {
                 console.error("Error loading image for item:", item.item_name, e)
@@ -621,16 +618,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
                 image_url: item.finalImageUrl,
                 basic_item_id: item.basic_item_id,
             }
-            const response = await fetch("/api/wardrobe-user-items", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(itemData),
-            })
-            if (!response.ok) {
-                throw new Error("Ошибка сохранения вещи")
-            }
+            await api.post("/api/wardrobe-user-items", {itemData})
             setResults((prev) => prev.map((r, i) => (i === index ? {...r, isAdding: false, isAdded: true} : r)))
         } catch (error) {
             console.error("Error saving item:", error)

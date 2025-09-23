@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { CommonSheet } from "./common-sheet"
 import { toast } from "sonner"
 import { Check } from "lucide-react"
+import { api } from "@/lib/api-client"
 
 interface SavedLook {
   id: number
@@ -54,13 +55,8 @@ export function AddOutfitsToCollectionSheet({
   const loadSavedLooks = async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/user-looks")
-      if (response.ok) {
-        const looks = await response.json()
-        setSavedLooks(looks)
-      } else {
-        throw new Error("Failed to load looks")
-      }
+      const looks = await api.get("/api/user-looks")
+      setSavedLooks(looks)
     } catch (error) {
       console.error("Error loading saved looks:", error)
       toast.error("Ошибка загрузки образов")

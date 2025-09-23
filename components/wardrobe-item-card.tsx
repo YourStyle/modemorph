@@ -13,6 +13,7 @@ import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
+import {api} from "@/lib/api-client";
 
 interface WardrobeItemCardProps {
   item: WardrobeItem
@@ -43,14 +44,8 @@ export function WardrobeItemCard({
     setIsUpdating(true)
 
     try {
-      const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          is_hidden: !item.is_hidden,
-        }),
+      const response = await api.patch(`/api/wardrobe/${item.id}`, {
+        is_hidden: !item.is_hidden,
       })
 
       if (response.ok) {
@@ -84,9 +79,7 @@ export function WardrobeItemCard({
     setIsUpdating(true)
 
     try {
-      const response = await fetch(`/api/wardrobe/${item.id}`, {
-        method: "DELETE",
-      })
+      const response = await api.delete(`/api/wardrobe/${item.id}`)
 
       if (response.ok) {
         toast({

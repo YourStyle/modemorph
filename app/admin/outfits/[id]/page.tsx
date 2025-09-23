@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { ExternalLink, Loader2, Edit, Heart, Eye, Bookmark, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { api } from "@/lib/api-client"
 
 type WardrobeItem = {
   id: number
@@ -73,9 +74,7 @@ export default function AdminOutfitDetailsPage() {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/outfits/${outfitId}`, { cache: "no-store" })
-        if (!res.ok) throw new Error("Failed to fetch outfit")
-        const data = await res.json()
+        const data = await api.get(`/api/outfits/${outfitId}`)
         const o: Outfit = data.outfit ?? data
         if (active) {
           setOutfit(o)
@@ -112,25 +111,16 @@ export default function AdminOutfitDetailsPage() {
     }
     setSaving(true)
     try {
-      const res = await fetch(`/api/outfits/${outfit.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await api.put(`/api/outfits/${outfit.id}`, {
           name: name || null,
           description: description || null,
           preview_image_url: previewUrl || null,
           preview_url: previewUrl || null,
           items: sortedItems.map((oi) => oi.wardrobe_items.id),
           gender: gender || null,
-        }),
       })
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}))
-        throw new Error(d.error || "Failed to save outfit")
-      }
       toast({ title: "Сохранено", description: "Данные образа обновлены" })
-      const ref = await fetch(`/api/outfits/${outfit.id}`, { cache: "no-store" })
-      const refData = await ref.json()
+      const refData = await api.get(`/api/outfits/${outfit.id}`)
       setOutfit(refData.outfit ?? refData)
     } catch (e) {
       console.error(e)
@@ -149,9 +139,9 @@ export default function AdminOutfitDetailsPage() {
       setUploading(true)
       const fd = new FormData()
       fd.append("file", file)
-      const res = await fetch("/api/upload-image", { method: "POST", body: fd })
-      if (!res.ok) throw new Error("Upload failed")
-      const data = await res.json()
+      const data = await api.post("/api/upload-image", fd, {
+        headers: {} // Remove Content-Type for FormData
+      })
       if (data?.url) {
         setPreviewUrl(data.url)
         toast({ title: "Загружено", description: "Превью обновлено" })
@@ -174,14 +164,7 @@ export default function AdminOutfitDetailsPage() {
 
     setDeleting(true)
     try {
-      const res = await fetch(`/api/outfits/${outfit.id}`, {
-        method: "DELETE",
-      })
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        throw new Error(data.error || "Failed to delete outfit")
-      }
+      await api.delete(`/api/outfits/${outfit.id}`)
 
       toast({
         title: "Удалено",

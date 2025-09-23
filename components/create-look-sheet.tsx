@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CommonSheet } from "./common-sheet"
 import { toast } from "sonner"
+import {api} from "@/lib/api-client";
 
 interface WardrobeItem {
   id: number
@@ -39,11 +40,8 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
   const loadWardrobeItems = async () => {
     setLoading(true)
     try {
-      const response = await fetch("/api/wardrobe-user-items")
-      if (response.ok) {
-        const items = await response.json()
-        setWardrobeItems(items)
-      }
+      const items =  await api.get("/api/wardrobe-user-items")
+      setWardrobeItems(items)
     } catch (error) {
       console.error("Error loading wardrobe items:", error)
       toast.error("Ошибка загрузки ��ещей")

@@ -2,6 +2,7 @@
 "use client"
 import type React from "react"
 import { useState } from "react"
+import {api} from "@/lib/api-client";
 
 export default function ResetPage() {
   const [email, setEmail] = useState("")
@@ -11,13 +12,7 @@ export default function ResetPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErr(null)
-    const res = await fetch("/api/auth/reset", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email }),
-    })
-    if (res.ok) setSent(true)
-    else setErr((await res.json()).error || "Failed")
+    await api.post("/api/auth/reset", {email})
   }
 
   return (

@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { X, Plus } from "lucide-react"
+import {api} from "@/lib/api-client";
 
 interface WardrobeItem {
   id: number
@@ -65,11 +66,8 @@ export function CreateLookDialog({ isOpen, onClose, onSave }: CreateLookDialogPr
   const loadWardrobeItems = async () => {
     setLoadingItems(true)
     try {
-      const response = await fetch("/api/wardrobe-user-items")
-      if (response.ok) {
-        const items = await response.json()
-        setWardrobeItems(items)
-      }
+      const items = await api.get("/api/wardrobe-user-items")
+      setWardrobeItems(items)
     } catch (error) {
       console.error("Error loading wardrobe items:", error)
     } finally {
@@ -79,11 +77,8 @@ export function CreateLookDialog({ isOpen, onClose, onSave }: CreateLookDialogPr
 
   const loadBasicItems = async () => {
     try {
-      const response = await fetch("/api/basic-wardrobe-items")
-      if (response.ok) {
-        const items = await response.json()
-        setBasicItems(items)
-      }
+      const items = await api.get("/api/basic-wardrobe-items")
+      setBasicItems(items)
     } catch (error) {
       console.error("Error loading basic items:", error)
     }

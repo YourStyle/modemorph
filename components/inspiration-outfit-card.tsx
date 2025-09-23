@@ -11,6 +11,7 @@ import Image from "next/image"
 import { ItemDetailsModal } from "./item-details-modal"
 import { OutfitDetailsModal } from "./outfit-details-modal"
 import { toast } from "sonner"
+import {api} from "@/lib/api-client";
 
 interface OutfitItem {
   id: string
@@ -85,24 +86,12 @@ export function InspirationOutfitCard({
 
     try {
       const action = isLiked ? "unlike" : "like"
-      const response = await fetch("/api/outfits/like", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outfitId: id, action }),
+      const data = await api.post("/api/outfits/like", { outfitId: id, action })
+      setLikes(data.likes || (isLiked ? likes - 1 : likes + 1))
+      setIsLiked(!isLiked)
+      toast.success(isLiked ? "Лайк убран" : "Лайк поставлен", {
+        duration: 1500,
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        setLikes(data.likes || (isLiked ? likes - 1 : likes + 1))
-        setIsLiked(!isLiked)
-        onLike?.(id, action)
-
-        toast.success(isLiked ? "Лайк убран" : "Лайк поставлен", {
-          duration: 1500,
-        })
-      } else {
-        throw new Error("Failed to update like")
-      }
     } catch (error) {
       toast.error("Не удалось обновить лайк")
     } finally {
@@ -117,11 +106,7 @@ export function InspirationOutfitCard({
     setIsSaving(true)
 
     try {
-      const response = await fetch("/api/outfits/save-to-looks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outfitId: id }),
-      })
+      const response = await api.post("/api/outfits/save-to-looks", { outfitId: id })
 
       if (response.ok) {
         setIsSaved(true)

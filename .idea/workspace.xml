@@ -4,23 +4,44 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update auth">
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update api routes">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/basic-items/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/basic-items/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/basic-materials/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/basic-materials/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/basic-wardrobe-items/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/basic-wardrobe-items/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/clothing-types/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/clothing-types/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/limits/consume/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/limits/consume/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/limits/reconcile/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/limits/reconcile/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/looks-sections/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/looks-sections/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/spend-credits/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/spend-credits/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/usage/log/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/usage/log/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/user-recommendations/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/user-recommendations/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/user-subscription/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/user-subscription/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/wardrobe-user-items/[id]/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/wardrobe-user-items/[id]/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/wardrobe-user-items/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/wardrobe-user-items/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/api/weather/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/weather/route.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/auth-server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/auth-server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/feature-costs/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/feature-costs/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/outfits/[id]/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/outfits/[id]/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/outfits/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/outfits/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/users/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/users/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/wardrobe/edit/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/wardrobe/edit/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/wardrobe/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/wardrobe/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/app/ai-assistant/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/ai-assistant/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/app/inspiration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/inspiration/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/app/looks/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/looks/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/app/wardrobe/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/wardrobe/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/auth/reset/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/auth/reset/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/add-outfits-to-collection-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/add-outfits-to-collection-sheet.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/add-wardrobe-item-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/add-wardrobe-item-form.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/basic-items-manager.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/basic-items-manager.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/blob-migration-card.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/cached-wardrobe-image.tsx" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/clothing-types-manager.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/clothing-types-manager.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/create-look-dialog.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/create-look-dialog.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/create-look-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/create-look-sheet.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/edit-wardrobe-item-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/edit-wardrobe-item-form.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/edit-wardrobe-item-modal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/edit-wardrobe-item-modal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/edit-wardrobe-item-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/edit-wardrobe-item-sheet.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/image-upload-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/image-upload-form.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/inspiration-feed-item.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/inspiration-feed-item.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/inspiration-outfit-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/inspiration-outfit-card.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/outfit-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/outfit-card.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/outfit-items-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/outfit-items-sheet.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/paywall-modal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/paywall-modal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/photo-analysis-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/photo-analysis-form.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/save-outfit-dialog.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/save-outfit-dialog.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/url-migration-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/url-migration-card.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/user-wardrobe-grid.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/user-wardrobe-grid.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/wardrobe-item-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/wardrobe-item-card.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -85,7 +106,23 @@
       <option name="project" value="LOCAL" />
       <updated>1758633075018</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="update api routes">
+      <option name="closed" value="true" />
+      <created>1758636109502</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1758636109502</updated>
+    </task>
+    <task id="LOCAL-00004" summary="update api routes">
+      <option name="closed" value="true" />
+      <created>1758636313082</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1758636313082</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -110,6 +147,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="update auth" />
-    <option name="LAST_COMMIT_MESSAGE" value="update auth" />
+    <MESSAGE value="update api routes" />
+    <option name="LAST_COMMIT_MESSAGE" value="update api routes" />
   </component>
 </project>

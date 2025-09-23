@@ -14,6 +14,7 @@ import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { api } from "@/lib/api-client"
 
 const CLOTHING_TYPES = [
   "верхняя", // футболка, рубашка, свитер, худи, кардиган, пиджак и т.п.
@@ -107,8 +108,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   const loadBasicItems = async () => {
     setIsLoadingBasicItems(true)
     try {
-      const response = await fetch("/api/basic-wardrobe-items")
-      const data = await response.json().catch(() => null)
+      const data = await api.get("/api/basic-wardrobe-items")
       const arr = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : []
       setBasicItems(arr)
     } catch (error) {
@@ -187,9 +187,9 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       // Upload image first
       const fd = new FormData()
       fd.append("file", imageFile)
-      const uploadRes = await fetch("/api/upload-image", { method: "POST", body: fd })
-      if (!uploadRes.ok) throw new Error("Failed to upload image")
-      const uploaded = await uploadRes.json()
+      const uploaded = await api.post("/api/upload-image", fd, {
+        headers: {} // Remove Content-Type for FormData
+      })
 
       // Call AI analysis
       const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL
@@ -280,9 +280,9 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       } else if (imageFile) {
         const fd = new FormData()
         fd.append("file", imageFile)
-        const uploadRes = await fetch("/api/upload-image", { method: "POST", body: fd })
-        if (!uploadRes.ok) throw new Error("Failed to upload image")
-        const uploaded = await uploadRes.json()
+        const uploaded = await api.post("/api/upload-image", fd, {
+          headers: {} // Remove Content-Type for FormData
+        })
         imageUrl = uploaded.url
       } else if (imagePreview && imagePreview.startsWith("http")) {
         // Use the preview URL if it's already a URL (from AI analysis)
@@ -309,16 +309,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         gender: formData.gender || null,
       }
 
-      const res = await fetch("/api/wardrobe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(submitData),
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || "Failed to add item")
-      }
+      await api.post("/api/wardrobe", submitData)
 
       toast.success("Вещь успешно сохранена")
       router.push("/admin/wardrobe")
