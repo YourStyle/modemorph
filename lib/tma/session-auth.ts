@@ -124,6 +124,49 @@ export class TMASessionAuth {
     return userId
   }
 
+  // Получить refresh token
+  getRefreshToken(): string | null {
+    console.log('[SessionAuth] Getting refresh token')
+    const session = this.getSession()
+    const token = session?.refresh_token || null
+    console.log('[SessionAuth] Refresh token available:', !!token)
+    return token
+  }
+
+  // Обновить access token через refresh token
+  async refreshAccessToken(): Promise<void> {
+    const refreshToken = this.getRefreshToken()
+    if (!refreshToken) {
+      throw new Error('No refresh token available')
+    }
+
+    console.log('[SessionAuth] Attempting to refresh access token')
+
+    try {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Refresh failed: ${response.status}`)
+      }
+
+      const newSession = await response.json()
+      console.log('[SessionAuth] Token refreshed successfully')
+
+      // Обновляем сессию с новыми токенами
+      this.saveSession(newSession)
+    } catch (error) {
+      console.error('[SessionAuth] Failed to refresh token:', error)
+      this.clearSession()
+      throw error
+    }
+  }
+
   // Debug функция для проверки состояния сессии
   debug(): void {
     if (typeof window === 'undefined') {

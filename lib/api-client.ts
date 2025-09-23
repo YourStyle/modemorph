@@ -36,6 +36,10 @@ class ApiClient {
   }
 
   async request<T = any>(url: string, options: ApiClientOptions = {}): Promise<T> {
+    return this.requestWithRetry(url, options, 0)
+  }
+
+  private async requestWithRetry<T = any>(url: string, options: ApiClientOptions = {}, attempt: number = 0): Promise<T> {
     const {
       method = 'GET',
       body,
@@ -54,15 +58,42 @@ class ApiClient {
       config.body = typeof body === 'string' ? body : JSON.stringify(body)
     }
 
-    console.log(`[API Client] ${method} ${url}`, { hasToken: !!sessionAuth.getAccessToken() })
+    console.log(`[API Client] ${method} ${url} (attempt ${attempt + 1})`, { hasToken: !!sessionAuth.getAccessToken() })
 
     const response = await fetch(url, config)
 
     if (!response.ok) {
-      // Если токен недействителен, очищаем сессию
-      if (response.status === 401) {
-        console.log('[API Client] 401 error, clearing session')
+      // Логика повторных попыток для 401 ошибок
+      if (response.status === 401 && attempt < 3) {
+        console.log(`[API Client] 401 error on attempt ${attempt + 1}, retrying...`)
+
+        // Пытаемся обновить токен через refreshToken если он есть
+        try {
+          const refreshToken = sessionAuth.getRefreshToken()
+          if (refreshToken && sessionAuth.refreshAccessToken) {
+            await sessionAuth.refreshAccessToken()
+            // Повторяем запрос с новым токеном
+            return this.requestWithRetry(url, options, attempt + 1)
+          }
+        } catch (refreshError) {
+          console.log('[API Client] Failed to refresh token:', refreshError)
+        }
+
+        // Если это 3-я попытка или refresh не сработал, делаем еще одну попытку
+        if (attempt < 2) {
+          return this.requestWithRetry(url, options, attempt + 1)
+        }
+      }
+
+      // Если все попытки исчерпаны и это 401, очищаем сессию и редиректим
+      if (response.status === 401 && attempt >= 2) {
+        console.log('[API Client] All retry attempts failed, clearing session and redirecting')
         sessionAuth.clearSession()
+
+        // Редиректим на главную страницу
+        if (typeof window !== 'undefined') {
+          window.location.href = '/'
+        }
       }
 
       const errorText = await response.text().catch(() => 'Unknown error')

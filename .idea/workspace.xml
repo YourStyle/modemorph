@@ -6,42 +6,12 @@
   <component name="ChangeListManager">
     <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update api routes">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/admin/feature-costs/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/feature-costs/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/admin/outfits/[id]/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/outfits/[id]/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/admin/outfits/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/outfits/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/admin/users/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/users/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/admin/wardrobe/edit/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/wardrobe/edit/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/admin/wardrobe/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/wardrobe/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/app/ai-assistant/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/ai-assistant/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/app/inspiration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/inspiration/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/app/looks/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/looks/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/app/wardrobe/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/wardrobe/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/auth/reset/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/auth/reset/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/add-outfits-to-collection-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/add-outfits-to-collection-sheet.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/add-wardrobe-item-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/add-wardrobe-item-form.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/basic-items-manager.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/basic-items-manager.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/blob-migration-card.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/cached-wardrobe-image.tsx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/clothing-types-manager.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/clothing-types-manager.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/create-look-dialog.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/create-look-dialog.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/create-look-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/create-look-sheet.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/edit-wardrobe-item-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/edit-wardrobe-item-form.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/edit-wardrobe-item-modal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/edit-wardrobe-item-modal.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/edit-wardrobe-item-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/edit-wardrobe-item-sheet.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/image-upload-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/image-upload-form.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/inspiration-feed-item.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/inspiration-feed-item.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/inspiration-outfit-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/inspiration-outfit-card.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/outfit-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/outfit-card.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/outfit-items-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/outfit-items-sheet.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/paywall-modal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/paywall-modal.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/photo-analysis-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/photo-analysis-form.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/save-outfit-dialog.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/save-outfit-dialog.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/url-migration-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/url-migration-card.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/user-wardrobe-grid.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/user-wardrobe-grid.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/wardrobe-item-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/wardrobe-item-card.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/api-client.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api-client.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/blob-images.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/fix-corrupted-files.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/image-cache.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/wardrobe.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/yandex-migration.ts" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
