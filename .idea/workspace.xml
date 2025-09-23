@@ -5,13 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update api routes">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/lib/api-client.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/api-client.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/blob-images.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/fix-corrupted-files.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/image-cache.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/wardrobe.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/yandex-migration.ts" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

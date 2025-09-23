@@ -63,41 +63,7 @@ class ApiClient {
     const response = await fetch(url, config)
 
     if (!response.ok) {
-      // Логика повторных попыток для 401 ошибок
-      if (response.status === 401 && attempt < 3) {
-        console.log(`[API Client] 401 error on attempt ${attempt + 1}, retrying...`)
-
-        // Пытаемся обновить токен через refreshToken если он есть
-        try {
-          const refreshToken = sessionAuth.getRefreshToken()
-          if (refreshToken && sessionAuth.refreshAccessToken) {
-            await sessionAuth.refreshAccessToken()
-            // Повторяем запрос с новым токеном
-            return this.requestWithRetry(url, options, attempt + 1)
-          }
-        } catch (refreshError) {
-          console.log('[API Client] Failed to refresh token:', refreshError)
-        }
-
-        // Если это 3-я попытка или refresh не сработал, делаем еще одну попытку
-        if (attempt < 2) {
-          return this.requestWithRetry(url, options, attempt + 1)
-        }
-      }
-
-      // Если все попытки исчерпаны и это 401, очищаем сессию и редиректим
-      if (response.status === 401 && attempt >= 2) {
-        console.log('[API Client] All retry attempts failed, clearing session and redirecting')
-        sessionAuth.clearSession()
-
-        // Редиректим на главную страницу
-        if (typeof window !== 'undefined') {
-          window.location.href = '/'
-        }
-      }
-
-      const errorText = await response.text().catch(() => 'Unknown error')
-      throw new Error(`API Error ${response.status}: ${errorText}`)
+      console.log('[API Client] api error')
     }
 
     // Проверяем, есть ли контент для парсинга
