@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { MapPin, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { createClient } from "@/lib/supabase/client"
 import { UserProfileSheet } from "./user-profile-sheet"
 import { api } from "@/lib/api-client"
 
@@ -32,8 +31,6 @@ export function TopNavigation() {
   const [weekdayShort, setWeekdayShort] = useState("")
 
   const [isTmaMobile, setIsTmaMobile] = useState(false)
-
-  const supabase = createClient()
 
   useEffect(() => {
     updateDateTime()
@@ -107,40 +104,38 @@ export function TopNavigation() {
 
   const loadUserProfile = async () => {
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
+      const data = await api.get("/api/me/profile-session")
 
-      if (userError || !user) {
-        return
-      }
-
-      const { data: profileData, error: profileError } = await supabase
-        .from("user_profiles")
-        .select("*")
-        .eq("user_id", user.id)
-        .single()
-
-      if (profileError) {
-        const { data: newProfile, error: createError } = await supabase
-          .from("user_profiles")
-          .insert({
-            user_id: user.id,
-            full_name: user.user_metadata?.full_name || "",
-            avatar_url: user.user_metadata?.avatar_url || "",
+      if (data?.profile) {
+        setProfile({
+          id: data.profile.id,
+          full_name: data.profile.full_name,
+          avatar_url: data.profile.avatar_url,
+          is_admin: data.profile.is_admin || false,
+        })
+      } else if (data?.user) {
+        // Если профиля нет, но есть пользователь - создаем профиль через API
+        try {
+          await api.post("/api/profile/miniapp-upsert-session", {
+            full_name: data.user.user_metadata?.full_name || "",
+            avatar_url: data.user.user_metadata?.avatar_url || "",
           })
-          .select()
-          .single()
-
-        if (!createError) {
-          setProfile(newProfile)
+          // Перезагружаем профиль после создания
+          const newData = await api.get("/api/me/profile-session")
+          if (newData?.profile) {
+            setProfile({
+              id: newData.profile.id,
+              full_name: newData.profile.full_name,
+              avatar_url: newData.profile.avatar_url,
+              is_admin: newData.profile.is_admin || false,
+            })
+          }
+        } catch {
+          // ignore profile creation errors
         }
-      } else {
-        setProfile(profileData)
       }
     } catch {
-      // ignore
+      // ignore profile loading errors
     }
   }
 
@@ -194,30 +189,16 @@ export function TopNavigation() {
 
   const fetchWeather = async (lat: number, lon: number) => {
     try {
-      const url = `/api/weather?lat=${lat}&lon=${lon}`
+      const weatherData = await api.get(`/api/weather?lat=${lat}&lon=${lon}`)
 
-      const response = await fetch(url)
-
-      if (response.ok) {
-        const weatherData = await response.json()
-
-        setWeather({
-          temperature: weatherData.temperature,
-          description: weatherData.description,
-          location: weatherData.location,
-          icon: weatherData.icon || "🌤️",
-        })
-      } else {
-        // Fallback данные при ошибке API
-        setWeather({
-          temperature: 20,
-          description: "ясно",
-          location: "Москва",
-          icon: "☀️",
-        })
-      }
+      setWeather({
+        temperature: weatherData.temperature,
+        description: weatherData.description,
+        location: weatherData.location,
+        icon: weatherData.icon || "🌤️",
+      })
     } catch {
-      // Fallback данные при ошибке сети
+      // Fallback данные при ошибке API
       setWeather({
         temperature: 20,
         description: "ясно",
