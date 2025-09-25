@@ -173,24 +173,6 @@ export default function HomePage() {
     return Math.abs(cachedData.userItemsCount - currentUserItemsCount) <= 1
   }
 
-  // Save recommendations to database
-  const saveRecommendationsToDatabase = async (recommendations: LookSection[]) => {
-    try {
-      // Flatten all suggestions from all sections
-      const allSuggestions = recommendations.flatMap((section) => section.suggestions || [])
-
-      console.log("Saving recommendations to database:", allSuggestions.length)
-
-      const result = await api.post("/api/user-recommendations", {
-        recommendations: allSuggestions,
-      })
-      console.log("Recommendations saved:", result)
-    } catch (error) {
-      console.error("Error saving recommendations to database:", error)
-    }
-  }
-
-  // Load user looks
   const loadUserLooks = async () => {
     try {
       const looks = await api.get("/api/user-looks")
@@ -363,7 +345,6 @@ export default function HomePage() {
           setCachedRecommendations(processedRecommendations, userItemsCount)
 
           // Save recommendations to database (only those with user items only) - only if not from cache
-          await saveRecommendationsToDatabase(processedRecommendations)
         } else {
           const errorText = await response.text()
           console.error("API error:", response.status, errorText)
@@ -446,7 +427,6 @@ export default function HomePage() {
         setCachedRecommendations(processedRecommendations, userItemsCount)
 
         // Save recommendations to database (only those with user items only)
-        await saveRecommendationsToDatabase(processedRecommendations)
       } else {
         const errorText = await response.text()
         console.error("Manual API error:", response.status, errorText)

@@ -1,17 +1,22 @@
 // app/api/payments/robokassa/create/route.ts
-import { NextResponse } from "next/server"
-import { createClient as createServerClient } from "@/lib/supabase/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 import crypto from "crypto"
 const md5 = (s: string) => crypto.createHash("md5").update(s).digest("hex")
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   const { amount, description, meta } = await req.json()
 
   if (!amount) return NextResponse.json({ success:false, error:"amount required" }, { status:400 })
 
-  const supabase = await createServerClient()
-  const { data:{ user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(req)
   if (!user) return NextResponse.json({ success:false, error:"Unauthorized" }, { status:401 })
+
+  // Используем service role для операций с базой
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabase = createClient(supabaseUrl, serviceKey)
 
   const { data: payment, error } = await supabase
     .from("payments")

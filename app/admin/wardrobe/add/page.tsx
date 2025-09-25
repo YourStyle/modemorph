@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+import { getAdminUser } from "@/lib/admin-auth"
 import { AddWardrobeItemForm } from "@/components/add-wardrobe-item-form"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
@@ -7,13 +6,10 @@ import Link from "next/link"
 
 export default async function AddWardrobeItemPage() {
   // Проверяем авторизацию
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAdminUser()
 
   if (!user) {
-    redirect("/auth/login")
+    return <div>Access denied</div>
   }
 
   return (

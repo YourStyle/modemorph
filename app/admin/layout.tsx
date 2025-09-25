@@ -1,5 +1,5 @@
 import type React from "react"
-import { createClient } from "@/lib/supabase/server"
+import { getAdminUser } from "@/lib/admin-auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -24,19 +24,9 @@ export default async function AdminLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAdminUser()
 
   if (!user) {
-    redirect("/auth/login")
-  }
-
-  // Проверяем права администратора
-  const { data: profile } = await supabase.from("user_profiles").select("is_admin").eq("user_id", user.id).single()
-
-  if (!profile?.is_admin) {
     redirect("/app")
   }
 

@@ -1,17 +1,17 @@
-import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function POST(request: Request) {
-  const supabase = await createClient()
-
-  // 1) Аутентификация
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user) {
+export async function POST(req: NextRequest) {
+  const user = await getAuthUser(req)
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  // Используем service role для админских операций
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabase = createClient(supabaseUrl, serviceKey)
 
   // 2) Проверка, что вызывающий — админ
   const { data: profile } = await supabase
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   }
 
   // 3) Входные параметры
-  const { userId, credits, subscriptionType, subscriptionDuration } = await request.json()
+  const { userId, credits, subscriptionType, subscriptionDuration } = await req.json()
 
   try {
     // 4) Начисление кредитов (через RPC)

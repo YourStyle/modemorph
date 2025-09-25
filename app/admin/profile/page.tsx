@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
-import { redirect } from "next/navigation"
+import { getAdminUser } from "@/lib/admin-auth"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -8,13 +7,10 @@ import { User, Mail, Calendar, Shield, LogOut } from "lucide-react"
 import { signOut } from "@/lib/actions"
 
 export default async function ProfilePage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAdminUser()
 
   if (!user) {
-    redirect("/auth/login")
+    return <div>Access denied</div>
   }
 
   const formatDate = (dateString: string) => {

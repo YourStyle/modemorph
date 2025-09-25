@@ -1,14 +1,11 @@
-import { createClient } from "@/lib/supabase/server"
+import { getAdminUser } from "@/lib/admin-auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Shirt, FolderIcon as Hanger, Plus, TrendingUp, Package, Palette, Zap } from "lucide-react"
 import Link from "next/link"
 
 export default async function AdminDashboard() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAdminUser()
 
   return (
     <div className="min-h-screen bg-gray-50">

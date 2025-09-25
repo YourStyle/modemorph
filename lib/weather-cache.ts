@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient } from "@supabase/supabase-js"
 
 export interface WeatherData {
   temperature: number
@@ -27,7 +27,10 @@ export class WeatherCache {
   private supabase
 
   constructor() {
-    this.supabase = createClient()
+    // Используем service role для операций с кэшем погоды
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    this.supabase = createClient(supabaseUrl, serviceKey)
   }
 
   async getCachedWeather(latitude: number, longitude: number): Promise<WeatherData | null> {

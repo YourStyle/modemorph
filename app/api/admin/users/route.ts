@@ -1,25 +1,26 @@
-import { createClient } from "@/lib/supabase/server"
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
+import { getAuthUser } from "@/lib/auth-server"
+import { createClient } from "@supabase/supabase-js"
 
-export async function GET() {
-  const supabase = await createClient()
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user) {
+export async function GET(req: NextRequest) {
+  const user = await getAuthUser(req)
+  if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { data: isAdminResult, error: adminCheckError } = await supabase.rpc("is_user_admin", { user_uuid: user.id })
+  // Используем service role для админских операций
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+  const supabase = createClient(supabaseUrl, serviceKey)
 
-  if (adminCheckError) {
-    console.error("Admin check error:", adminCheckError)
-    return NextResponse.json({ error: "Admin check failed" }, { status: 500 })
-  }
+  // Проверяем админские права
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("is_admin")
+    .eq("user_id", user.id)
+    .single()
 
-  if (!isAdminResult) {
+  if (!profile?.is_admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
