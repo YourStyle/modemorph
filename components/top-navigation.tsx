@@ -153,6 +153,7 @@ export function TopNavigation() {
           icon: cachedWeather.icon || "🌤️",
         })
         setWeatherLoading(false)
+        console.log('fuck')
         return
       } catch {
         // ignore cache errors
