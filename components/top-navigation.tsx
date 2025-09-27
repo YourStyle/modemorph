@@ -158,8 +158,9 @@ export function TopNavigation() {
         // ignore cache errors
       }
 
-      // Если кэша нет, пытаемся получить геолокацию
+      console.log('hi')
       if (navigator.geolocation) {
+        console.log('hi from navigator')
         navigator.geolocation.getCurrentPosition(
           async (position) => {
             const { latitude, longitude } = position.coords

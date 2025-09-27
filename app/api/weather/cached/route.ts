@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     }
 
     console.log("No cached weather found")
-    return NextResponse.json({ error: data }, { status: 404 })
+    return NextResponse.json({ error: "No cached weather found" }, { status: 404 })
   } catch (error) {
     console.error("Error getting cached weather:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
