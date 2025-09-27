@@ -153,15 +153,12 @@ export function TopNavigation() {
           icon: cachedWeather.icon || "🌤️",
         })
         setWeatherLoading(false)
-        console.log('fuck')
         return
       } catch {
         // ignore cache errors
       }
 
-      console.log('hi')
       if (navigator.geolocation) {
-        console.log('hi from navigator')
         navigator.geolocation.getCurrentPosition(
           async (position) => {
             const { latitude, longitude } = position.coords

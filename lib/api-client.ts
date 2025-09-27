@@ -72,7 +72,8 @@ class ApiClient {
     const response = await fetch(url, config)
 
     if (!response.ok) {
-      console.log('[API Client] api error')
+      const errorText = await response.text().catch(() => 'Unknown error')
+      throw new Error(`API Error ${response.status}: ${errorText}`)
     }
 
     // Проверяем, есть ли контент для парсинга
