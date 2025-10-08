@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { createClient } from "@/lib/supabase/client"
 import { OutfitCard } from "@/components/outfit-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -37,15 +36,6 @@ interface LookSection {
   suggestions: OutfitSuggestion[]
 }
 
-interface CachedRecommendations {
-  data: LookSection[]
-  timestamp: number
-  userItemsCount: number
-  fromCache: boolean
-}
-
-const CACHE_KEY = "outfit_recommendations_cache"
-const CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
 
 // Skeleton component for recommendations
 const RecommendationsSkeleton = () => {
@@ -124,54 +114,11 @@ export default function HomePage() {
   const [userItemsCount, setUserItemsCount] = useState(0)
   const [itemsLoading, setItemsLoading] = useState(true)
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
-  const [isFromCache, setIsFromCache] = useState(false)
   const [userLooks, setUserLooks] = useState<any[]>([])
   const [paywallOpen, setPaywallOpen] = useState(false);
   const { log, consume } = useFeature()
   useReconcileLimits(true);
 
-  // Cache management functions
-  const getCachedRecommendations = (): CachedRecommendations | null => {
-    try {
-      const cached = localStorage.getItem(CACHE_KEY)
-      if (!cached) return null
-
-      const parsedCache: CachedRecommendations = JSON.parse(cached)
-      const now = Date.now()
-
-      // Check if cache is still valid (within 24 hours)
-      if (now - parsedCache.timestamp > CACHE_DURATION) {
-        localStorage.removeItem(CACHE_KEY)
-        return null
-      }
-
-      return { ...parsedCache, fromCache: true }
-    } catch (error) {
-      console.error("Error reading cache:", error)
-      localStorage.removeItem(CACHE_KEY)
-      return null
-    }
-  }
-
-  const setCachedRecommendations = (data: LookSection[], userItemsCount: number) => {
-    try {
-      const cacheData: CachedRecommendations = {
-        data,
-        timestamp: Date.now(),
-        userItemsCount,
-        fromCache: false,
-      }
-      localStorage.setItem(CACHE_KEY, JSON.stringify(cacheData))
-    } catch (error) {
-      console.error("Error saving to cache:", error)
-    }
-  }
-
-  const isCacheValidForUser = (cachedData: CachedRecommendations, currentUserItemsCount: number): boolean => {
-    // Cache is valid if user items count hasn't changed significantly
-    // Allow small variations (±1) but invalidate for larger changes
-    return Math.abs(cachedData.userItemsCount - currentUserItemsCount) <= 1
-  }
 
   const loadUserLooks = async () => {
     try {
@@ -251,13 +198,6 @@ export default function HomePage() {
     }
   }
 
-  const getAuthToken = async () => {
-    const supabase = createClient()
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    return session?.access_token
-  }
 
 
 
@@ -278,78 +218,28 @@ export default function HomePage() {
     loadUserLooks()
   }, [])
 
-  // Load outfit suggestions from cache or API
+  // Load outfit suggestions from database API
   useEffect(() => {
     const loadOutfitSuggestions = async () => {
       try {
-        // First, check cache
-        const cachedRecommendations = getCachedRecommendations()
+        console.log("Loading recommendations from database")
 
-        if (cachedRecommendations && isCacheValidForUser(cachedRecommendations, userItemsCount)) {
-          console.log("Loading recommendations from cache")
-          setOutfitSections(Array.isArray(cachedRecommendations.data) ? cachedRecommendations.data : [])
-          setIsFromCache(true)
-          setLoading(false)
-          return
-        }
+        const recommendations = await api.get("/api/recommendations")
+        console.log("Recommendations received from database:", recommendations)
 
-        setIsFromCache(false)
+        // Ensure recommendations is an array and has proper structure
+        const validRecommendations = Array.isArray(recommendations) ? recommendations : []
+        const processedRecommendations = validRecommendations.map((section) => ({
+          ...section,
+          suggestions: Array.isArray(section.suggestions)
+              ? section.suggestions.map((suggestion) => ({
+                ...suggestion,
+                items: Array.isArray(suggestion.items) ? suggestion.items : [],
+              }))
+              : [],
+        }))
 
-        const supabase = createClient()
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-
-        if (!user) {
-          console.error("User not authenticated")
-          setLoading(false)
-          return
-        }
-
-        const authToken = await getAuthToken()
-
-        const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(authToken && { Authorization: `Bearer ${authToken}` }),
-          },
-          body: JSON.stringify({
-            user_id: user.id,
-            user_items_count: userItemsCount,
-            preferences: "casual",
-          }),
-        })
-
-        console.log("Response status:", response.status)
-
-        if (response.ok) {
-          const recommendations = await response.json()
-          console.log("Recommendations received:", recommendations)
-
-          // Ensure recommendations is an array and has proper structure
-          const validRecommendations = Array.isArray(recommendations) ? recommendations : []
-          const processedRecommendations = validRecommendations.map((section) => ({
-            ...section,
-            suggestions: Array.isArray(section.suggestions)
-                ? section.suggestions.map((suggestion) => ({
-                  ...suggestion,
-                  items: Array.isArray(suggestion.items) ? suggestion.items : [],
-                }))
-                : [],
-          }))
-
-          setOutfitSections(processedRecommendations)
-
-          // Cache the new recommendations
-          setCachedRecommendations(processedRecommendations, userItemsCount)
-
-          // Save recommendations to database (only those with user items only) - only if not from cache
-        } else {
-          const errorText = await response.text()
-          console.error("API error:", response.status, errorText)
-          setOutfitSections([])
-        }
+        setOutfitSections(processedRecommendations)
       } catch (error) {
         console.error("Error loading outfit suggestions:", error)
         setOutfitSections([])
@@ -369,69 +259,25 @@ export default function HomePage() {
 
   const handleGetRecommendations = async () => {
     setRecommendationsLoading(true)
-    setIsFromCache(false)
     try {
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
+      console.log("Manual recommendation request to database")
 
-      if (!user) {
-        console.error("User not authenticated")
-        return
-      }
+      const recommendations = await api.get("/api/recommendations")
+      console.log("Manual recommendations received from database:", recommendations)
 
-      const authToken = await getAuthToken()
+      // Ensure recommendations is an array and has proper structure
+      const validRecommendations = Array.isArray(recommendations) ? recommendations : []
+      const processedRecommendations = validRecommendations.map((section) => ({
+        ...section,
+        suggestions: Array.isArray(section.suggestions)
+            ? section.suggestions.map((suggestion) => ({
+              ...suggestion,
+              items: Array.isArray(suggestion.items) ? suggestion.items : [],
+            }))
+            : [],
+      }))
 
-      console.log("Manual recommendation request to:", `${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`)
-      console.log("Request payload:", {
-        user_id: user.id,
-        user_items_count: userItemsCount,
-        preferences: "casual",
-      })
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_AI_API_URL}/recommendations`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authToken && { Authorization: `Bearer ${authToken}` }),
-        },
-        body: JSON.stringify({
-          user_id: user.id,
-          user_items_count: userItemsCount,
-          preferences: "casual",
-        }),
-      })
-
-      console.log("Manual response status:", response.status)
-
-      if (response.ok) {
-        const recommendations = await response.json()
-        console.log("Manual recommendations received:", recommendations)
-
-        // Ensure recommendations is an array and has proper structure
-        const validRecommendations = Array.isArray(recommendations) ? recommendations : []
-        const processedRecommendations = validRecommendations.map((section) => ({
-          ...section,
-          suggestions: Array.isArray(section.suggestions)
-              ? section.suggestions.map((suggestion) => ({
-                ...suggestion,
-                items: Array.isArray(suggestion.items) ? suggestion.items : [],
-              }))
-              : [],
-        }))
-
-        setOutfitSections(processedRecommendations)
-
-        // Update cache with new recommendations
-        setCachedRecommendations(processedRecommendations, userItemsCount)
-
-        // Save recommendations to database (only those with user items only)
-      } else {
-        const errorText = await response.text()
-        console.error("Manual API error:", response.status, errorText)
-        setOutfitSections([])
-      }
+      setOutfitSections(processedRecommendations)
     } catch (error) {
       console.error("Error getting recommendations:", error)
       setOutfitSections([])
