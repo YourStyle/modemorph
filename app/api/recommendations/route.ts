@@ -4,24 +4,58 @@ import { createClient } from "@supabase/supabase-js"
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getAuthUser(req)
-    if (!user) {
+    // Получаем токен из Authorization header для создания authenticated клиента
+    const authHeader = req.headers.get("authorization")
+    const token = authHeader?.replace("Bearer ", "")
+
+    if (!token) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Используем service role для операций с базой
+    // Создаем клиент с токеном пользователя для соблюдения RLS политик
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-    const supabase = createClient(supabaseUrl, serviceKey)
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    const supabase = createClient(supabaseUrl, anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    })
+
+    // Проверяем пользователя
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token)
+    if (userError || !user) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
+    }
 
     console.log("[Recommendations API] Loading recommendations for user:", user.id)
 
-    // Получаем рекомендации из таблицы main_recommendations
+    // Для отладки: проверим данные через service role
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+    const serviceSupabase = createClient(supabaseUrl, serviceKey)
+    const { data: allUserRecs, error: serviceError } = await serviceSupabase
+      .from("main_recommendations")
+      .select("id, user_id, created_at")
+      .eq("user_id", user.id)
+
+    console.log("[Recommendations API] Service role check:", {
+      totalUserRecords: allUserRecs?.length || 0,
+      serviceError: serviceError?.message,
+      sampleRecords: allUserRecs?.slice(0, 3)
+    })
+
+    // Получаем рекомендации из таблицы main_recommendations с RLS
     const { data: recommendations, error } = await supabase
       .from("main_recommendations")
       .select("*")
-      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
+
+    console.log("[Recommendations API] Query result:", {
+      error: error?.message,
+      recommendationsCount: recommendations?.length || 0,
+      userFromToken: user.id
+    })
 
     if (error) {
       console.error("[Recommendations API] Database error:", error)
@@ -68,12 +102,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    // Используем service role для записи (обходим RLS для записи)
     const user = await getAuthUser(req)
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Используем service role для операций с базой
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
     const supabase = createClient(supabaseUrl, serviceKey)
