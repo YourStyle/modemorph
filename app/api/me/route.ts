@@ -19,7 +19,16 @@ export async function GET(req: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 400 })
+    if (error) {
+      console.error("[/api/me] Database error:", error.message)
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+
+    console.log("[/api/me] User profile data:", {
+      user_id: user.id,
+      profile: data,
+      is_admin: data?.is_admin
+    })
 
     return NextResponse.json({
       user: { id: user.id },

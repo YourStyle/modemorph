@@ -48,17 +48,23 @@ export default function HomePage() {
                   userInfoResponse.json()
                 ])
 
-                if (profileData.profile) {
-                  if (userData.profile?.is_admin) {
-                    console.log("[HomePage] Admin user, redirecting to /admin")
-                    router.replace("/admin")
-                    return
-                  } else {
-                    console.log("[HomePage] Regular user, redirecting to /app")
-                    router.replace("/app")
-                    return
-                  }
+                // Проверяем is_admin независимо от наличия заполненного профиля
+                console.log("[HomePage] User data:", {
+                  hasProfile: !!profileData.profile,
+                  hasUserData: !!userData.profile,
+                  isAdmin: userData.profile?.is_admin
+                })
+
+                if (userData.profile?.is_admin) {
+                  console.log("[HomePage] Admin user, redirecting to /admin")
+                  router.replace("/admin")
+                  return
                 }
+
+                // Если есть профиль - идем в /app, если нет - тоже в /app (там будет онбординг)
+                console.log("[HomePage] Regular user, redirecting to /app")
+                router.replace("/app")
+                return
               }
             }
           }
