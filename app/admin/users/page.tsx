@@ -13,7 +13,7 @@ import { toast } from "@/hooks/use-toast"
 import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
 import { api } from "@/lib/api-client"
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
 import { Users, TrendingUp, Calendar, CreditCard, Loader2 } from "lucide-react"
 
 interface User {
@@ -214,20 +214,44 @@ export default function AdminUsersPage() {
                 <CardDescription>Новые пользователи за последние 30 дней</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={metrics.charts.registrations}>
-                    <CartesianGrid strokeDasharray="3 3" />
+                <ResponsiveContainer width="100%" height={250}>
+                  <AreaChart data={metrics.charts.registrations}>
+                    <defs>
+                      <linearGradient id="colorRegistrations" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
                     <XAxis
                       dataKey="date"
                       tickFormatter={(value) => new Date(value).toLocaleDateString("ru", { month: "short", day: "numeric" })}
+                      tick={{ fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={false}
                     />
-                    <YAxis />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
                     <Tooltip
                       labelFormatter={(value) => new Date(value).toLocaleDateString("ru")}
                       formatter={(value: number) => [`${value} польз.`, "Регистраций"]}
+                      contentStyle={{
+                        backgroundColor: "rgba(255, 255, 255, 0.95)",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "8px",
+                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+                      }}
                     />
-                    <Line type="monotone" dataKey="count" stroke="#8884d8" strokeWidth={2} />
-                  </LineChart>
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      fill="url(#colorRegistrations)"
+                    />
+                  </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
@@ -238,20 +262,44 @@ export default function AdminUsersPage() {
                 <CardDescription>Активные пользователи за последние 30 дней</CardDescription>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={metrics.charts.activity}>
-                    <CartesianGrid strokeDasharray="3 3" />
+                <ResponsiveContainer width="100%" height={250}>
+                  <AreaChart data={metrics.charts.activity}>
+                    <defs>
+                      <linearGradient id="colorActivity" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
                     <XAxis
                       dataKey="date"
                       tickFormatter={(value) => new Date(value).toLocaleDateString("ru", { month: "short", day: "numeric" })}
+                      tick={{ fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={false}
                     />
-                    <YAxis />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
                     <Tooltip
                       labelFormatter={(value) => new Date(value).toLocaleDateString("ru")}
                       formatter={(value: number) => [`${value} польз.`, "Активных"]}
+                      contentStyle={{
+                        backgroundColor: "rgba(255, 255, 255, 0.95)",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "8px",
+                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+                      }}
                     />
-                    <Line type="monotone" dataKey="count" stroke="#82ca9d" strokeWidth={2} />
-                  </LineChart>
+                    <Area
+                      type="monotone"
+                      dataKey="count"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      fill="url(#colorActivity)"
+                    />
+                  </AreaChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
