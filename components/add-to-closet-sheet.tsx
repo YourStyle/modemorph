@@ -118,6 +118,11 @@ export function AddToClosetSheet({
       return
     }
 
+    // Сначала закрываем шторку
+    handleReset()
+    onClose()
+
+    // Затем запускаем фоновый анализ
     try {
       await startAnalysis({
         files: filesToAnalyze.map(p => p.file),
@@ -157,9 +162,6 @@ export function AddToClosetSheet({
         variant: "destructive",
       })
     }
-
-    handleReset()
-    onClose()
   }
 
   const handleCancelClose = () => {

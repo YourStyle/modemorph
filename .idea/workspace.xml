@@ -4,14 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update bottom menu">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/ANALYTICS_SETUP.md" beforeDir="false" afterPath="$PROJECT_DIR$/ANALYTICS_SETUP.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/admin/analytics/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/analytics/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/admin/users/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/users/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pnpm-lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pnpm-lock.yaml" afterDir="false" />
-    </list>
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update bg task and excel download" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -172,7 +165,15 @@
       <option name="project" value="LOCAL" />
       <updated>1760308246801</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="update bg task and excel download">
+      <option name="closed" value="true" />
+      <created>1760309641529</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1760309641529</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -202,6 +203,7 @@
     <MESSAGE value="update charts" />
     <MESSAGE value="update events and bottom menu" />
     <MESSAGE value="update bottom menu" />
-    <option name="LAST_COMMIT_MESSAGE" value="update bottom menu" />
+    <MESSAGE value="update bg task and excel download" />
+    <option name="LAST_COMMIT_MESSAGE" value="update bg task and excel download" />
   </component>
 </project>
