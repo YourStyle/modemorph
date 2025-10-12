@@ -4,12 +4,15 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { AnimatedLanding } from "@/components/animated-landing"
+import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
+import { NetworkError as NetworkErrorComponent } from "@/components/network-error"
 
 
 export default function HomePage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
   const [showLanding, setShowLanding] = useState(false)
+  const [networkError, setNetworkError] = useState<string | null>(null)
 
   useEffect(() => {
     const checkAuthAndRedirect = async () => {
@@ -23,39 +26,40 @@ export default function HomePage() {
             // Проверяем профиль пользователя
             const accessToken = sessionAuth.getAccessToken()
             if (accessToken) {
-              const profileResponse = await fetch("/api/me/profile", {
-                headers: {
-                  "Authorization": `Bearer ${accessToken}`
-                }
-              })
+              // ✅ Выполняем запросы параллельно для ускорения
+              const [profileResponse, userInfoResponse] = await Promise.all([
+                fetchWithRetry(
+                  "/api/me/profile",
+                  {
+                    headers: { "Authorization": `Bearer ${accessToken}` }
+                  },
+                  { timeout: 8000, retries: 2 }
+                ),
+                fetchWithRetry(
+                  "/api/me",
+                  {
+                    headers: { "Authorization": `Bearer ${accessToken}` }
+                  },
+                  { timeout: 8000, retries: 2 }
+                )
+              ])
 
-              if (profileResponse.ok) {
-                const profileData = await profileResponse.json()
+              if (profileResponse.ok && userInfoResponse.ok) {
+                const [profileData, userData] = await Promise.all([
+                  profileResponse.json(),
+                  userInfoResponse.json()
+                ])
 
                 // Если профиль есть, проверяем роль
                 if (profileData.profile) {
-                  // Получаем информацию о роли пользователя
-                  const userInfoResponse = await fetch("/api/me", {
-                    headers: {
-                      "Authorization": `Bearer ${accessToken}`
-                    }
-                  })
-
-                  if (userInfoResponse.ok) {
-                    const userData = await userInfoResponse.json()
-
-
-
-
-                    if (userData.profile?.is_admin) {
-                      console.log("[HomePage] Admin user, redirecting to /admin")
-                      router.replace("/admin")
-                      return
-                    } else {
-                      console.log("[HomePage] Regular user, redirecting to /app")
-                      router.replace("/app")
-                      return
-                    }
+                  if (userData.profile?.is_admin) {
+                    console.log("[HomePage] Admin user, redirecting to /admin")
+                    router.replace("/admin")
+                    return
+                  } else {
+                    console.log("[HomePage] Regular user, redirecting to /app")
+                    router.replace("/app")
+                    return
                   }
                 }
               }
@@ -68,6 +72,21 @@ export default function HomePage() {
         setShowLanding(true)
       } catch (error) {
         console.error("[HomePage] Error checking auth:", error)
+
+        // Обрабатываем сетевые ошибки
+        if (error instanceof NetworkError) {
+          if (error.isOffline) {
+            setNetworkError("Нет подключения к интернету")
+          } else {
+            setNetworkError("Проблема с сетью")
+          }
+          return
+        } else if (error instanceof TimeoutError) {
+          setNetworkError("Превышено время ожидания")
+          return
+        }
+
+        // При других ошибках показываем лендинг
         setShowLanding(true)
       } finally {
         setIsLoading(false)
@@ -76,6 +95,20 @@ export default function HomePage() {
 
     checkAuthAndRedirect()
   }, [router])
+
+  // Показываем ошибку сети
+  if (networkError) {
+    return (
+      <NetworkErrorComponent
+        message={networkError}
+        onRetry={() => {
+          setNetworkError(null)
+          setIsLoading(true)
+          window.location.reload()
+        }}
+      />
+    )
+  }
 
   if (isLoading) {
     return (

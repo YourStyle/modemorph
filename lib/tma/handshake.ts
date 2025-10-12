@@ -2,6 +2,7 @@
 // TMA авторизация через sessionStorage вместо cookies для Safari/iOS совместимости
 
 import { sessionAuth } from "./session-auth"
+import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
 
 declare global {
   interface Window {
@@ -69,12 +70,23 @@ async function performHandshake(): Promise<TMAUser | null> {
 
   try {
     // 3) Отправляем initData на сервер для создания сессии
-    const response = await fetch("/api/auth/telegram/miniapp-session", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ initData }),
-      cache: "no-store",
-    })
+    console.log("[TMA Handshake] Sending request to create session...")
+
+    const response = await fetchWithRetry(
+      "/api/auth/telegram/miniapp-session",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ initData }),
+        cache: "no-store",
+      },
+      {
+        timeout: 15000,  // 15 секунд для создания сессии
+        retries: 2,      // 2 повторные попытки
+        retryDelay: 1000,
+        backoff: true
+      }
+    )
 
     if (!response.ok) {
       const error = await response.text().catch(() => "Unknown error")
@@ -127,7 +139,13 @@ async function performHandshake(): Promise<TMAUser | null> {
 
     return null
   } catch (error) {
-    console.error("[TMA Handshake] Error:", error)
+    if (error instanceof NetworkError) {
+      console.error("[TMA Handshake] Network error:", error.message, { isOffline: error.isOffline })
+    } else if (error instanceof TimeoutError) {
+      console.error("[TMA Handshake] Timeout error:", error.message)
+    } else {
+      console.error("[TMA Handshake] Unexpected error:", error)
+    }
     return null
   }
 }

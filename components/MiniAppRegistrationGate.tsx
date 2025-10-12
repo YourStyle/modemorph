@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { tmaHandshake } from "@/lib/tma/handshake"
 import { sessionAuth } from "@/lib/tma/session-auth"
+import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
+import { NetworkError as NetworkErrorComponent } from "@/components/network-error"
 
 declare global {
   interface Window {
@@ -64,6 +66,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const onMiniReg = (pathname || "").startsWith("/auth/mini-registration")
 
   const [ready, setReady] = useState(false)
+  const [networkError, setNetworkError] = useState<string | null>(null)
 
   const fsTried = useRef(false)
   const askFullscreen = (tg: NonNullable<typeof window.Telegram>["WebApp"]) => {
@@ -136,12 +139,20 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           }
 
           // Используем универсальный API клиент или session-based endpoint
-          const profileResponse = await fetch("/api/me/profile", {
-            headers: {
-              "Authorization": `Bearer ${accessToken}`
+          const profileResponse = await fetchWithRetry(
+            "/api/me/profile",
+            {
+              headers: {
+                "Authorization": `Bearer ${accessToken}`
+              },
+              cache: "no-store",
             },
-            cache: "no-store",
-          })
+            {
+              timeout: 10000,  // 10 секунд
+              retries: 2,
+              retryDelay: 1000
+            }
+          )
 
           console.log("[MiniAppRegistrationGate] Profile response status:", profileResponse.status)
 
@@ -182,7 +193,22 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           console.log("[MiniAppRegistrationGate] Profile check successful, allowing access")
         } catch (error) {
           console.error("[MiniAppRegistrationGate] Profile check failed:", error)
-          // При ошибке - пропускаем пользователя (fail-open подход)
+
+          // Обрабатываем сетевые ошибки
+          if (error instanceof NetworkError) {
+            if (error.isOffline) {
+              setNetworkError("Нет подключения к интернету")
+            } else {
+              setNetworkError("Проблема с сетью")
+            }
+            return
+          } else if (error instanceof TimeoutError) {
+            setNetworkError("Превышено время ожидания")
+            return
+          }
+
+          // При других ошибках - пропускаем пользователя (fail-open подход)
+          console.log("[MiniAppRegistrationGate] Non-network error, allowing access (fail-open)")
         }
 
 
@@ -200,6 +226,21 @@ export default function MiniAppRegistrationGate({ children }: Props) {
     }
   }, [router, pathname])
 
+
+  // Показываем ошибку сети
+  if (networkError) {
+    return (
+      <NetworkErrorComponent
+        message={networkError}
+        onRetry={() => {
+          setNetworkError(null)
+          setReady(false)
+          // Перезагружаем страницу для повторной попытки
+          window.location.reload()
+        }}
+      />
+    )
+  }
 
   if (!ready) {
     return (

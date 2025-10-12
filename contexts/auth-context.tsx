@@ -8,6 +8,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
+import { fetchWithRetry } from "@/lib/fetch-with-retry";
 
 interface AuthContextType {
   user: User | null;
@@ -89,11 +90,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
       const init = async () => {
         try {
-          const res = await fetch("/api/auth/me", { credentials: "include" })
+          const res = await fetchWithRetry(
+            "/api/auth/me",
+            { credentials: "include" },
+            {
+              timeout: 8000,   // 8 секунд для проверки auth
+              retries: 1,      // 1 повторная попытка
+              retryDelay: 500
+            }
+          )
           const json = await res.json().catch(() => null)
           setUser(json?.user ?? null)        // это уже user из куки-сессии
           resetUnauthorizedSeries()
-        } catch {
+        } catch (error) {
+          console.log("[AuthProvider] Failed to check auth:", error)
           setUser(null)
         } finally {
           setLoading(false)

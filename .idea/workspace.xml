@@ -5,7 +5,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update api routes">
-      <change beforePath="$PROJECT_DIR$/app/api/recommendations/route.ts" beforeDir="false" afterPath="$PROJECT_DIR$/app/api/recommendations/route.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.nvmrc" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_18_09_2025,_10_40_[Changes]/shelved.patch" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_18_09_2025__10_40__Changes_.xml" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/MiniAppRegistrationGate.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/MiniAppRegistrationGate.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/tma/handshake.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/tma/handshake.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -53,6 +58,7 @@
       <updated>1758181224620</updated>
       <workItem from="1758181225645" duration="7731000" />
       <workItem from="1758459635130" duration="2251000" />
+      <workItem from="1760268637464" duration="1297000" />
     </task>
     <task id="LOCAL-00001" summary="update auth">
       <option name="closed" value="true" />
