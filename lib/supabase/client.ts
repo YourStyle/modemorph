@@ -1,5 +1,6 @@
 import { createBrowserClient } from "@supabase/ssr"
 import type { Database } from "@/types/supabase"
+import { sessionAuth } from "@/lib/tma/session-auth"
 
 let supabaseInstance: ReturnType<typeof createBrowserClient<Database>> | null = null
 
@@ -16,6 +17,15 @@ export function createClient() {
           detectSessionInUrl: false,
           storage: undefined,
         },
+        global: {
+          headers: {
+            // Автоматически добавляем Bearer token из sessionAuth ко всем запросам
+            get Authorization() {
+              const accessToken = sessionAuth.getAccessToken()
+              return accessToken ? `Bearer ${accessToken}` : ''
+            }
+          }
+        }
       }
     )
   }
