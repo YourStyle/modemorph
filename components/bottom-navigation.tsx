@@ -19,11 +19,26 @@ export function BottomNavigation() {
     const pathname = usePathname()
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-50">
-            <div className="max-w-md mx-auto">
-                <nav className="flex items-center justify-center px-4 py-2">
+        <div className="fixed bottom-0 left-0 right-0 z-50 pb-4">
+            <div className="max-w-md mx-auto px-4">
+                <nav className="flex items-center justify-center">
                     <div
-                        className="bg-gray-900 rounded-full px-6 py-3 md:px-8 md:py-4 flex items-center justify-between shadow-lg">
+                        className="relative rounded-full px-6 py-3 md:px-8 md:py-4 flex items-center justify-between overflow-hidden"
+                        style={{
+                            background: 'rgba(17, 24, 39, 0.7)',
+                            backdropFilter: 'blur(20px) saturate(180%)',
+                            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 1px 0 0 rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.08)',
+                        }}
+                    >
+                        {/* Gradient overlay для эффекта жидкости */}
+                        <div
+                            className="absolute inset-0 rounded-full pointer-events-none"
+                            style={{
+                                background: 'radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.05) 0%, transparent 50%)',
+                            }}
+                        />
                         {navItems.map((item) => {
                             const isActive = pathname === item.href
                             const Icon = item.icon
@@ -34,7 +49,7 @@ export function BottomNavigation() {
                                     key={item.href}
                                     href={item.href}
                                     className={cn(
-                                        "flex flex-col items-center gap-1 transition-colors relative group min-w-[60px] md:min-w-[80px]",
+                                        "flex flex-col items-center gap-1 transition-colors relative group min-w-[60px] md:min-w-[80px] z-10",
                                         isActive ? "text-white" : "text-gray-400 hover:text-gray-300",
                                     )}
                                 >
