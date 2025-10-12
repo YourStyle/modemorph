@@ -21,6 +21,11 @@ export function useBackgroundPhotoAnalysis() {
         progress: 0,
       })
 
+      // Функция нелинейного изменения прогресса (easing)
+      const easeOutQuad = (t: number): number => {
+        return 1 - Math.pow(1 - t, 3) // Cubic easing out - быстрее в начале, медленнее в конце
+      }
+
       try {
         // Подготавливаем FormData
         const formData = new FormData()
@@ -28,8 +33,16 @@ export function useBackgroundPhotoAnalysis() {
           formData.append("files", file)
         })
 
-        // Обновляем прогресс
-        updateTask(taskId, { progress: 20 })
+        // Симулируем плавный прогресс до 20%
+        let currentProgress = 0
+        const progressInterval = setInterval(() => {
+          currentProgress += 1
+          const easedProgress = easeOutQuad(currentProgress / 20) * 20
+          updateTask(taskId, { progress: Math.min(easedProgress, 20) })
+          if (currentProgress >= 20) {
+            clearInterval(progressInterval)
+          }
+        }, 100)
 
         // Отправляем запрос
         const response = await fetch("/api/analyze-photos", {
@@ -37,29 +50,60 @@ export function useBackgroundPhotoAnalysis() {
           body: formData,
         })
 
-        updateTask(taskId, { progress: 60 })
+        clearInterval(progressInterval)
+
+        // Плавный переход 20% -> 60%
+        currentProgress = 20
+        const midProgressInterval = setInterval(() => {
+          currentProgress += 1
+          const normalized = (currentProgress - 20) / 40 // 0 to 1
+          const easedProgress = 20 + easeOutQuad(normalized) * 40
+          updateTask(taskId, { progress: Math.min(easedProgress, 60) })
+          if (currentProgress >= 60) {
+            clearInterval(midProgressInterval)
+          }
+        }, 50)
 
         if (!response.ok) {
+          clearInterval(midProgressInterval)
           throw new Error("Failed to analyze photos")
         }
 
         const result = await response.json()
 
-        updateTask(taskId, { progress: 100 })
+        clearInterval(midProgressInterval)
 
-        // Небольшая задержка перед завершением для плавности
-        setTimeout(() => {
-          updateTask(taskId, {
-            status: "completed",
-            data: {
-              items: result.items || [],
-              itemsCount: result.items?.length || 0,
-            },
-          })
-
-          if (onComplete) {
-            onComplete(result)
+        // Плавный переход 60% -> 95%
+        currentProgress = 60
+        const finalProgressInterval = setInterval(() => {
+          currentProgress += 1
+          const normalized = (currentProgress - 60) / 35 // 0 to 1
+          const easedProgress = 60 + easeOutQuad(normalized) * 35
+          updateTask(taskId, { progress: Math.min(easedProgress, 95) })
+          if (currentProgress >= 95) {
+            clearInterval(finalProgressInterval)
           }
+        }, 80)
+
+        // Финальный скачок до 100%
+        setTimeout(() => {
+          clearInterval(finalProgressInterval)
+          updateTask(taskId, { progress: 100 })
+
+          // Небольшая задержка перед завершением для плавности
+          setTimeout(() => {
+            updateTask(taskId, {
+              status: "completed",
+              data: {
+                items: result.items || [],
+                itemsCount: result.items?.length || 0,
+              },
+            })
+
+            if (onComplete) {
+              onComplete(result)
+            }
+          }, 300)
         }, 500)
 
         return { success: true, taskId, result }
