@@ -2,34 +2,31 @@ import { createBrowserClient } from "@supabase/ssr"
 import type { Database } from "@/types/supabase"
 import { sessionAuth } from "@/lib/tma/session-auth"
 
-let supabaseInstance: ReturnType<typeof createBrowserClient<Database>> | null = null
-
 export function createClient() {
-  if (!supabaseInstance) {
-    supabaseInstance = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        auth: {
-          // ✦ Не держим сессию в localStorage
-          persistSession: false,
-          autoRefreshToken: false,
-          detectSessionInUrl: false,
-          storage: undefined,
-        },
-        global: {
-          headers: {
-            // Автоматически добавляем Bearer token из sessionAuth ко всем запросам
-            get Authorization() {
-              const accessToken = sessionAuth.getAccessToken()
-              return accessToken ? `Bearer ${accessToken}` : ''
-            }
-          }
-        }
+  // Не кэшируем клиент, чтобы каждый раз получать актуальный токен
+  const accessToken = sessionAuth.getAccessToken()
+
+  const client = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        // ✦ Не держим сессию в localStorage
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+        storage: undefined,
+      },
+      global: {
+        headers: accessToken ? {
+          // Добавляем Bearer token из sessionAuth ко всем запросам
+          Authorization: `Bearer ${accessToken}`
+        } : {}
       }
-    )
-  }
-  return supabaseInstance
+    }
+  )
+
+  return client
 }
 
 // Экспорт для совместимости
