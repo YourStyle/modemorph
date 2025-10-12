@@ -31,7 +31,7 @@ export function BottomNavigation() {
               elasticity={0.35}
               cornerRadius={100}
             >
-              <div className="bg-gray-900/9=60 backdrop-blur-md rounded-full px-4 py-2.5 md:px-6 md:py-3 flex items-center justify-between shadow-xl border border-white/10">
+              <div className="bg-gray-900/80 backdrop-blur-md rounded-full px-6 py-3 md:px-8 md:py-4 flex items-center justify-between shadow-xl border border-white/10">
               {navItems.map((item) => {
                 const isActive = pathname === item.href
                 const Icon = item.icon
