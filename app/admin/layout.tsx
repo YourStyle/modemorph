@@ -21,6 +21,7 @@ import {
   Layers,
   Sparkles,
   DollarSign,
+  BarChart3,
 } from "lucide-react"
 
 export default function AdminLayout({
@@ -101,6 +102,7 @@ export default function AdminLayout({
   const navigationItems = [
     { href: "/admin", label: "Главная", icon: Home },
     { href: "/admin/users", label: "Пользователи", icon: UserCheck },
+    { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
     { href: "/admin/feature-costs", label: "Стоимость функций", icon: DollarSign },
     { href: "/admin/settings", label: "Настройки", icon: Settings },
   ]

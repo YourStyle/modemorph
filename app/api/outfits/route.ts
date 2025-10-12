@@ -12,6 +12,21 @@ export async function POST(req: NextRequest) {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
     const supabase = createClient(supabaseUrl, serviceKey)
 
+    // Получаем user_profile_id для трекинга
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .single()
+
+    const userProfileId = profile?.id
+
+    // Проверяем количество образов до создания
+    const { count: outfitsCountBefore } = await supabase
+      .from("outfits")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+
     const body = await req.json()
     const { name, description, season, occasion, items, preview_image_url, preview_url, gender } = body
 
@@ -91,6 +106,49 @@ export async function POST(req: NextRequest) {
     if (itemsError) {
       console.error("Database error inserting outfit items:", itemsError)
       return NextResponse.json({ error: `Failed to add items to outfit: ${itemsError.message}` }, { status: 500 })
+    }
+
+    // Трекинг событий после успешного создания образа
+    if (userProfileId && createdOutfit) {
+      try {
+        // Трекаем сохранение образа
+        await supabase.from("user_events").insert({
+          user_profile_id: userProfileId,
+          event_type: "outfit_saved",
+          event_data: {
+            outfit_id: createdOutfit.id,
+            outfit_name: createdOutfit.name,
+            items_count: items.length,
+            source: body.source || "manual",
+          },
+        })
+        console.log("[Analytics] Tracked: outfit_saved")
+
+        // Трекаем первый созданный образ (AI или ручной)
+        if (outfitsCountBefore === 0) {
+          const { data: existingEvent } = await supabase
+            .from("user_events")
+            .select("id")
+            .eq("user_profile_id", userProfileId)
+            .eq("event_type", "first_outfit_generated")
+            .limit(1)
+            .single()
+
+          if (!existingEvent) {
+            await supabase.from("user_events").insert({
+              user_profile_id: userProfileId,
+              event_type: "first_outfit_generated",
+              event_data: {
+                outfit_id: createdOutfit.id,
+                source: body.source || "manual",
+              },
+            })
+            console.log("[Analytics] Tracked: first_outfit_generated")
+          }
+        }
+      } catch (analyticsError) {
+        console.error("[Analytics] Failed to track outfit events:", analyticsError)
+      }
     }
 
     return NextResponse.json({ success: true, outfit: createdOutfit })

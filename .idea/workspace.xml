@@ -4,13 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update api routes">
-      <change afterPath="$PROJECT_DIR$/.nvmrc" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_18_09_2025,_10_40_[Changes]/shelved.patch" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/shelf/Uncommitted_changes_before_Update_at_18_09_2025__10_40__Changes_.xml" beforeDir="false" />
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update charts">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/MiniAppRegistrationGate.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/MiniAppRegistrationGate.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/tma/handshake.ts" beforeDir="false" afterPath="$PROJECT_DIR$/lib/tma/handshake.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -92,7 +87,23 @@
       <option name="project" value="LOCAL" />
       <updated>1758636313082</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="update dau">
+      <option name="closed" value="true" />
+      <created>1760295279876</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1760295279876</updated>
+    </task>
+    <task id="LOCAL-00006" summary="update charts">
+      <option name="closed" value="true" />
+      <created>1760295492652</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1760295492652</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -118,6 +129,8 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="update auth" />
     <MESSAGE value="update api routes" />
-    <option name="LAST_COMMIT_MESSAGE" value="update api routes" />
+    <MESSAGE value="update dau" />
+    <MESSAGE value="update charts" />
+    <option name="LAST_COMMIT_MESSAGE" value="update charts" />
   </component>
 </project>

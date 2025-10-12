@@ -65,6 +65,22 @@ export async function POST(req: NextRequest) {
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
     const supabase = createClient(supabaseUrl, serviceKey)
 
+    // Получаем user_profile_id для трекинга
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("id")
+      .eq("user_id", user.id)
+      .single()
+
+    const userProfileId = profile?.id
+
+    // Проверяем количество вещей до добавления
+    const { count: itemsCountBefore } = await supabase
+      .from("wardrobe_user_items")
+      .select("*", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("is_hidden", false)
+
     const body = await req.json()
 
     const itemData = {
@@ -93,6 +109,74 @@ export async function POST(req: NextRequest) {
     if (error) {
       console.error("Error creating wardrobe item:", error)
       return NextResponse.json({ error: "Failed to create item", details: error.message }, { status: 500 })
+    }
+
+    // Трекинг событий после успешного добавления
+    if (userProfileId && data) {
+      const itemsCountAfter = (itemsCountBefore || 0) + 1
+
+      // Трекаем первую добавленную вещь
+      if (itemsCountBefore === 0) {
+        try {
+          const { data: existingEvent } = await supabase
+            .from("user_events")
+            .select("id")
+            .eq("user_profile_id", userProfileId)
+            .eq("event_type", "first_item_added")
+            .limit(1)
+            .single()
+
+          if (!existingEvent) {
+            await supabase.from("user_events").insert({
+              user_profile_id: userProfileId,
+              event_type: "first_item_added",
+              event_data: { item_id: data.id, item_name: data.item_name, source: "user_upload" },
+            })
+            console.log("[Analytics] Tracked: first_item_added")
+          }
+        } catch (e) {
+          console.error("[Analytics] Failed to track first_item_added:", e)
+        }
+      }
+
+      // Трекаем milestone прогресса гардероба
+      const targetCount = 50
+      const percentage = Math.floor((itemsCountAfter / targetCount) * 100)
+
+      const milestones = [
+        { threshold: 30, eventType: "wardrobe_30_percent" },
+        { threshold: 50, eventType: "wardrobe_50_percent" },
+        { threshold: 100, eventType: "wardrobe_100_percent" },
+      ]
+
+      for (const milestone of milestones) {
+        if (percentage >= milestone.threshold) {
+          try {
+            const { data: existingMilestone } = await supabase
+              .from("user_events")
+              .select("id")
+              .eq("user_profile_id", userProfileId)
+              .eq("event_type", milestone.eventType)
+              .limit(1)
+              .single()
+
+            if (!existingMilestone) {
+              await supabase.from("user_events").insert({
+                user_profile_id: userProfileId,
+                event_type: milestone.eventType,
+                event_data: {
+                  percentage: milestone.threshold,
+                  items_count: itemsCountAfter,
+                  target_count: targetCount,
+                },
+              })
+              console.log(`[Analytics] Tracked: ${milestone.eventType}`)
+            }
+          } catch (e) {
+            console.error(`[Analytics] Failed to track ${milestone.eventType}:`, e)
+          }
+        }
+      }
     }
 
     return NextResponse.json(data)

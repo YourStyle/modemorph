@@ -3,7 +3,7 @@
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
-import { Send, Camera, Sparkles } from "lucide-react"
+import { Send, Camera, Sparkles, Image as ImageIcon, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
@@ -14,6 +14,8 @@ import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
 import { PaywallModal } from "@/components/paywall-modal"
 import { useFeature } from "@/hooks/use-feature"
 import { api } from "@/lib/api-client"
+import { toast } from "@/hooks/use-toast"
+import { useAnalytics } from "@/hooks/use-analytics"
 
 interface Message {
   role: "user" | "assistant"
@@ -65,24 +67,57 @@ interface OutfitResponse {
 
 type AIPromptResponse = TrashResponse | ContentResponse | OutfitResponse
 
+const STORAGE_KEY = "ai_assistant_history"
+const MAX_MESSAGES = 100
+
 export default function AIAssistantPage() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
       content:
-        "Привет! Я ваш персональный стилист-ассистент. Расскажите мне о своих предпочтениях в стиле, планах на день или загрузите фото одежды для анализа! 👗✨",
+        "Привет! Я помогу вам с образами и анализом одежды. Вы можете попросить подобрать образ на день или загрузить фото для анализа! 👗✨",
     },
   ])
   const [inputValue, setInputValue] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
+  const [showPhotoForm, setShowPhotoForm] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const supabase = createClient()
 
   const { log, consume } = useFeature()
+  const { trackEvent, trackOnce } = useAnalytics()
 
   useReconcileLimits(true)
+
+  // Загрузка истории из localStorage при монтировании
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved) as Message[]
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed)
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load chat history:", error)
+    }
+  }, [])
+
+  // Сохранение истории в localStorage при изменении сообщений
+  useEffect(() => {
+    if (messages.length > 1) { // Пропускаем первое приветствие
+      try {
+        // Оставляем только последние 100 сообщений
+        const messagesToSave = messages.slice(-MAX_MESSAGES)
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(messagesToSave))
+      } catch (error) {
+        console.error("Failed to save chat history:", error)
+      }
+    }
+  }, [messages])
 
   useEffect(() => {
     // Получаем ID пользователя при загрузке
@@ -186,12 +221,11 @@ export default function AIAssistantPage() {
     return session?.access_token
   }
 
-  const handleSend = async () => {
-    if (!inputValue.trim() || isLoading) return
+  const handleSend = async (customPrompt?: string) => {
+    const messageToSend = customPrompt || inputValue.trim()
+    if (!messageToSend || isLoading) return
 
-    const userMessage = inputValue.trim()
-
-    if (userMessage.length < 20) {
+    if (messageToSend.length < 20) {
       setMessages((prev) => [
         ...prev,
         {
@@ -203,7 +237,7 @@ export default function AIAssistantPage() {
       return
     }
 
-    if (userMessage.length > 2000) {
+    if (messageToSend.length > 2000) {
       setMessages((prev) => [
         ...prev,
         {
@@ -216,14 +250,14 @@ export default function AIAssistantPage() {
     }
 
     // Генерируем requestId и логируем попытку (без списания)
-    const requestId = crypto.randomUUID() // ⬅️ добавлено
+    const requestId = crypto.randomUUID()
     void log("ai_requests", "attempt", {
       pagePath: "/app/ai-assistant",
       requestId,
-      chars: userMessage.length,
-    }) // ⬅️ добавлено
+      chars: messageToSend.length,
+    })
 
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }])
+    setMessages((prev) => [...prev, { role: "user", content: messageToSend }])
     setInputValue("")
     setIsLoading(true)
 
@@ -241,7 +275,7 @@ export default function AIAssistantPage() {
           "Content-Type": "application/json",
           ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
-        body: JSON.stringify({ user_id: userId, prompt: userMessage, weather }),
+        body: JSON.stringify({ user_id: userId, prompt: messageToSend, weather }),
       })
 
       if (!response.ok) {
@@ -256,6 +290,9 @@ export default function AIAssistantPage() {
       }
 
       const firstResponse = responseData[0]
+
+      // Трекаем использование AI ассистента (только первый раз)
+      void trackOnce("ai_assistant_used", { prompt_length: messageToSend.length })
 
       if ("type" in firstResponse && firstResponse.type === "trash") {
         setMessages((prev) => [
@@ -294,7 +331,7 @@ export default function AIAssistantPage() {
         throw new Error("Unknown response format from AI API")
       }
 
-      // ⬇️ списываем 1 ai_request ПОСЛЕ успешного ответа
+      // Списываем 1 ai_request ПОСЛЕ успешного ответа
       const bill = await consume("ai_requests", { pagePath: "/app/ai-assistant", requestId }, 1)
       if (!bill.ok && bill.code === "payment_required") setPaywallOpen(true)
     } catch (error) {
@@ -308,6 +345,38 @@ export default function AIAssistantPage() {
       ])
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleSaveOutfit = async (outfit: UserRecommendation) => {
+    try {
+      // Создаем образ в базе
+      const response = await api.post("/api/outfits", {
+        name: outfit.title,
+        description: outfit.description,
+        items: outfit.items.map(item => item.id),
+        source: "ai_assistant", // Трекинг источника создания образа
+      })
+
+      toast({
+        title: "Успешно!",
+        description: `Образ "${outfit.title}" добавлен в вашу коллекцию`,
+      })
+    } catch (error) {
+      console.error("Failed to save outfit:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось сохранить образ. Попробуйте еще раз.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleQuickAction = (action: "photo" | "outfit") => {
+    if (action === "photo") {
+      setShowPhotoForm(true)
+    } else if (action === "outfit") {
+      handleSend("Подбери мне образ на сегодня с учетом погоды")
     }
   }
 
@@ -328,7 +397,7 @@ export default function AIAssistantPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-gray-900">ИИ-Стилист</h1>
-            <p className="text-sm text-gray-500">Ваш персональный помощник по стилю</p>
+            <p className="text-sm text-gray-500">Подбор образов и анализ фото</p>
           </div>
         </div>
       </div>
@@ -353,7 +422,18 @@ export default function AIAssistantPage() {
                     <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                     {message.outfit && (
                       <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                        <h4 className="font-semibold text-gray-900 mb-2">{message.outfit.title}</h4>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-gray-900">{message.outfit.title}</h4>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSaveOutfit(message.outfit!)}
+                            className="ml-2"
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            Сохранить
+                          </Button>
+                        </div>
                         <p className="text-sm text-gray-600 mb-3">{message.outfit.description}</p>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                           {message.outfit.items.map((item) => (
@@ -405,27 +485,75 @@ export default function AIAssistantPage() {
 
       {/* Input Area */}
       <div className="fixed inset-x-0 bottom-0 bg-white border-t border-gray-200" style={{ paddingBottom: "95px" }}>
-        <div className="pt-4 px-4 max-w-7xl mx-auto">
-          <div className="flex space-x-3">
-            <div className="flex-1">
-              <Input
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Опишите ваш стиль или задайте вопрос о моде..."
-                className="w-full"
-                disabled={isLoading}
-              />
-            </div>
-            <Button onClick={handleSend} disabled={isLoading || !inputValue.trim()} size="icon">
-              <Send className="h-4 w-4" />
+        <div className="max-w-7xl mx-auto">
+          {/* Quick Actions - НАД инпутом */}
+          <div className="px-4 pt-3 pb-2 flex gap-2 overflow-x-auto">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleQuickAction("outfit")}
+              disabled={isLoading}
+              className="whitespace-nowrap"
+            >
+              <Sparkles className="h-3 w-3 mr-1.5" />
+              Подобрать образ
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleQuickAction("photo")}
+              disabled={isLoading}
+              className="whitespace-nowrap"
+            >
+              <ImageIcon className="h-3 w-3 mr-1.5" />
+              Проанализировать фото
             </Button>
           </div>
 
-          {/* Quick Actions */}
-
+          {/* Input */}
+          <div className="px-4 pb-4">
+            <div className="flex space-x-3">
+              <div className="flex-1">
+                <Input
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder="Опишите ваш стиль или задайте вопрос..."
+                  className="w-full"
+                  disabled={isLoading}
+                />
+              </div>
+              <Button onClick={() => handleSend()} disabled={isLoading || !inputValue.trim()} size="icon">
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Photo Analysis Modal */}
+      {showPhotoForm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Анализ фото</h3>
+              <Button variant="ghost" size="sm" onClick={() => setShowPhotoForm(false)}>
+                ✕
+              </Button>
+            </div>
+            <PhotoAnalysisForm
+              onSuccess={(result) => {
+                setShowPhotoForm(false)
+                setMessages((prev) => [
+                  ...prev,
+                  { role: "user", content: "Проанализируй это фото одежды" },
+                  { role: "assistant", content: result }
+                ])
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* PaywallModal */}
       <PaywallModal
