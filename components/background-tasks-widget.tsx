@@ -321,7 +321,6 @@ export function BackgroundTasksWidget() {
               ))}
             </div>
           </div>
-        </div>
       </CommonSheet>
     </>
   )
