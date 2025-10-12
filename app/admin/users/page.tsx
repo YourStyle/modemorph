@@ -32,12 +32,12 @@ interface User {
     credits_balance: number
     updated_at: string
   }>
-  daily_usage_limits: Array<{
-    last_reset_date: string
-    wardrobe_items_today: number
-    ai_requests_today: number
-    ideas_viewed_today: number
-    outfits_saved_today: number
+  limits: Array<{
+    wardrobe_items_anlyzed: number
+    ai_requests: number
+    ideas_viewed: number
+    outfits_saved: number
+    vton_used: number
   }>
 }
 
@@ -105,8 +105,8 @@ export default function AdminUsersPage() {
     return activeSub || null
   }
 
-  const getTodayUsage = (user: User) => {
-    return user.daily_usage_limits?.[0] || null
+  const getRemainingLimits = (user: User) => {
+    return user.limits?.[0] || null
   }
 
   if (loading) {
@@ -130,7 +130,7 @@ export default function AdminUsersPage() {
         {users.map((user) => {
           const credits = getCurrentCredits(user)
           const subscription = getCurrentSubscription(user)
-          const todayUsage = getTodayUsage(user)
+          const remainingLimits = getRemainingLimits(user)
 
           return (
             <Card key={user.user_id} className="p-4">
@@ -176,20 +176,22 @@ export default function AdminUsersPage() {
                     </div>
 
                     <div>
-                      <div className="font-medium">Использование сегодня</div>
+                      <div className="font-medium">Оставшиеся лимиты</div>
                       <div className="text-xs">
-                        {todayUsage ? (
+                        {remainingLimits ? (
                           <>
-                            Гардероб: {5 - todayUsage.wardrobe_items_today}/5
+                            Гардероб: {remainingLimits.wardrobe_items_anlyzed}
                             <br />
-                            ИИ: {(subscription ? 20 : 1) - todayUsage.ai_requests_today}/{subscription ? "20" : "1"}
+                            ИИ: {remainingLimits.ai_requests}
                             <br />
-                            Идеи: {10 - todayUsage.ideas_viewed_today}/10
+                            Идеи: {remainingLimits.ideas_viewed}
                             <br />
-                            Образы: {20 - todayUsage.outfits_saved_today}/20
+                            Образы: {remainingLimits.outfits_saved}
+                            <br />
+                            VTON: {remainingLimits.vton_used}
                           </>
                         ) : (
-                          "Нет активности"
+                          "Нет данных"
                         )}
                       </div>
                     </div>

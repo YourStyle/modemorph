@@ -69,12 +69,12 @@ export async function GET(req: NextRequest) {
           credits_balance,
           updated_at
         ),
-        daily_usage_limits (
-          last_reset_date,
-          wardrobe_items_today,
-          ai_requests_today,
-          ideas_viewed_today,
-          outfits_saved_today
+        limits (
+          wardrobe_items_anlyzed,
+          ai_requests,
+          ideas_viewed,
+          outfits_saved,
+          vton_used
         )
       `)
       .order("created_at", { ascending: false })
