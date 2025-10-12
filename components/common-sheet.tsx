@@ -8,7 +8,7 @@ import { X } from "lucide-react"
 interface CommonSheetProps {
   isOpen: boolean
   onClose: () => void
-  title: string
+  title?: string
   children: React.ReactNode
   backgroundColor?: "white" | "dark"
 }
@@ -39,13 +39,15 @@ export function CommonSheet({ isOpen, onClose, title, children, backgroundColor 
           <X className="w-5 h-5" />
         </button>
 
-        <SheetHeader className="px-6 pb-4">
-          <SheetTitle className={cn("text-center text-xl font-semibold", isDark ? "text-white" : "text-gray-900")}>
-            {title}
-          </SheetTitle>
-        </SheetHeader>
+        {title && (
+          <SheetHeader className="px-6 pb-4">
+            <SheetTitle className={cn("text-center text-xl font-semibold", isDark ? "text-white" : "text-gray-900")}>
+              {title}
+            </SheetTitle>
+          </SheetHeader>
+        )}
 
-        <div className="px-6 pb-6 h-full overflow-y-auto">{children}</div>
+        <div className={cn("px-6 pb-6 h-full overflow-y-auto", !title && "pt-4")}>{children}</div>
       </SheetContent>
     </Sheet>
   )

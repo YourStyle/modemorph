@@ -1,19 +1,17 @@
 "use client"
 
 import { useBackgroundTasks } from "@/contexts/background-tasks-context"
-import { Card } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
-import { X, CheckCircle2, Loader2, AlertCircle, Shirt } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { X, CheckCircle2, Loader2, AlertCircle, Shirt, ChevronDown } from "lucide-react"
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog"
+import { CommonSheet } from "@/components/common-sheet"
+import { api } from "@/lib/api-client"
+import { toast } from "@/hooks/use-toast"
+import Image from "next/image"
 
 // Компонент кругового прогресса
 const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: number }) => {
@@ -54,8 +52,10 @@ const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: nu
 export function BackgroundTasksWidget() {
   const { tasks, removeTask } = useBackgroundTasks()
   const [showTooltip, setShowTooltip] = useState<string | null>(null)
-  const [showResultsModal, setShowResultsModal] = useState(false)
+  const [showResultsSheet, setShowResultsSheet] = useState(false)
   const [selectedTask, setSelectedTask] = useState<any>(null)
+  const [addingItems, setAddingItems] = useState<Set<number>>(new Set())
+  const [addedItems, setAddedItems] = useState<Set<number>>(new Set())
   const shownTooltipsRef = useRef<Set<string>>(new Set())
 
   // Показываем tooltip когда задача завершена
@@ -77,8 +77,56 @@ export function BackgroundTasksWidget() {
   const handleTaskClick = (task: any) => {
     if (task.status === "completed" && task.data?.items) {
       setSelectedTask(task)
-      setShowResultsModal(true)
+      setShowResultsSheet(true)
     }
+  }
+
+  const handleAddItem = async (item: any, index: number) => {
+    try {
+      setAddingItems((prev) => new Set(prev).add(index))
+
+      const itemData = {
+        item_name: item.item_name || item.name,
+        material: item.material || "",
+        color: item.color || "",
+        style: item.style || "",
+        has_print: item.has_print === "yes" ? "есть" : "нет",
+        shade: item.shade || "",
+        has_details: item.has_details || "",
+        image_url: item.finalImageUrl || item.image_url,
+        basic_item_id: item.basic_item_id || null,
+      }
+
+      await api.post("/api/wardrobe-user-items", itemData)
+
+      setAddedItems((prev) => new Set(prev).add(index))
+      setAddingItems((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(index)
+        return newSet
+      })
+
+      toast({
+        title: "Вещь добавлена",
+        description: `${item.item_name || item.name} добавлена в ваш гардероб`,
+      })
+    } catch (error) {
+      console.error("Error adding item:", error)
+      setAddingItems((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(index)
+        return newSet
+      })
+      toast({
+        title: "Ошибка",
+        description: "Не удалось добавить вещь в гардероб",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleMinimizeSheet = () => {
+    setShowResultsSheet(false)
   }
 
   if (activeTasks.length === 0) return null
@@ -174,46 +222,109 @@ export function BackgroundTasksWidget() {
       })}
     </div>
 
-      {/* Модальное окно с результатами */}
-      <Dialog open={showResultsModal} onOpenChange={setShowResultsModal}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Результаты анализа</DialogTitle>
-            <DialogDescription>
-              {selectedTask?.data?.itemsCount
-                ? `Найдено ${selectedTask.data.itemsCount} ${selectedTask.data.itemsCount === 1 ? "вещь" : "вещей"}`
-                : "Результаты анализа фотографий"}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 mt-4">
-            {selectedTask?.data?.items?.map((item: any, index: number) => (
-              <Card key={index} className="p-4">
-                <div className="flex gap-3">
-                  {item.image_url && (
-                    <img
-                      src={item.image_url}
-                      alt={item.item_name || item.name}
-                      className="w-20 h-20 object-cover rounded-lg"
-                    />
-                  )}
-                  <div className="flex-1">
-                    <h4 className="font-semibold text-sm">{item.item_name || item.name}</h4>
-                    {item.material && (
-                      <p className="text-xs text-gray-600 mt-1">Материал: {item.material}</p>
+      {/* Шторка с результатами */}
+      <CommonSheet
+        isOpen={showResultsSheet}
+        onClose={() => setShowResultsSheet(false)}
+        backgroundColor="dark"
+      >
+        <div className="relative">
+          {/* Кнопка сворачивания */}
+          <button
+            onClick={handleMinimizeSheet}
+            className="absolute top-0 right-14 w-10 h-10 flex items-center justify-center text-neutral-300 hover:text-white transition-colors rounded-full hover:bg-white/10"
+          >
+            <ChevronDown className="w-6 h-6" />
+          </button>
+
+          <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100">
+            <div className="mb-6">
+              <h2 className="text-2xl font-semibold text-white mb-2">Результаты анализа</h2>
+              <p className="text-neutral-300 text-sm">
+                {selectedTask?.data?.itemsCount
+                  ? `Найдено ${selectedTask.data.itemsCount} ${selectedTask.data.itemsCount === 1 ? "вещь" : selectedTask.data.itemsCount < 5 ? "вещи" : "вещей"}`
+                  : "Результаты анализа фотографий"}
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {selectedTask?.data?.items?.map((item: any, index: number) => (
+                <Card key={index} className="bg-white/5 border-white/10 overflow-hidden">
+                  <CardContent className="flex flex-col sm:flex-row gap-4 p-4">
+                    {/* Изображение */}
+                    {(item.finalImageUrl || item.image_url) ? (
+                      <div className="relative w-full sm:w-24 h-40 sm:h-24 flex-shrink-0">
+                        <Image
+                          src={item.finalImageUrl || item.image_url}
+                          alt={item.item_name || item.name}
+                          fill
+                          className="rounded-md object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-full sm:w-24 h-40 sm:h-24 bg-white/10 rounded-md flex items-center justify-center text-3xl">
+                        👕
+                      </div>
                     )}
-                    {item.color && (
-                      <p className="text-xs text-gray-600">Цвет: {item.color}</p>
-                    )}
-                    {item.style && (
-                      <p className="text-xs text-gray-600">Стиль: {item.style}</p>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))}
+
+                    {/* Информация */}
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-white text-base">
+                            {item.item_name || item.name}
+                          </h3>
+                          {item.basic_item_id && (
+                            <Badge className="mt-1 bg-blue-500/20 text-blue-300 border-blue-500/30">
+                              Базовая
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-neutral-300 space-y-1">
+                        {item.material && (
+                          <p>Материал: <span className="text-white">{item.material}</span></p>
+                        )}
+                        {item.color && (
+                          <p>Цвет: <span className="text-white">{item.color}</span></p>
+                        )}
+                        {item.shade && (
+                          <p>Оттенок: <span className="text-white">{item.shade}</span></p>
+                        )}
+                        {item.style && (
+                          <p>Стиль: <span className="text-white">{item.style}</span></p>
+                        )}
+                      </div>
+
+                      {/* Кнопка добавления */}
+                      <Button
+                        onClick={() => handleAddItem(item, index)}
+                        disabled={addingItems.has(index) || addedItems.has(index)}
+                        variant={addedItems.has(index) ? "secondary" : "default"}
+                        size="sm"
+                        className="w-full mt-3"
+                      >
+                        {addingItems.has(index) && (
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        )}
+                        {addedItems.has(index) && (
+                          <CheckCircle2 className="w-4 h-4 mr-2" />
+                        )}
+                        {addingItems.has(index)
+                          ? "Добавляем..."
+                          : addedItems.has(index)
+                          ? "Добавлено"
+                          : "Добавить в гардероб"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </CommonSheet>
     </>
   )
 }
