@@ -3,7 +3,7 @@
 import type React from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
-import { X } from "lucide-react"
+import { X, ChevronDown } from "lucide-react"
 
 interface CommonSheetProps {
   isOpen: boolean
@@ -11,9 +11,10 @@ interface CommonSheetProps {
   title?: string
   children: React.ReactNode
   backgroundColor?: "white" | "dark"
+  onMinimize?: () => void
 }
 
-export function CommonSheet({ isOpen, onClose, title, children, backgroundColor = "white" }: CommonSheetProps) {
+export function CommonSheet({ isOpen, onClose, title, children, backgroundColor = "white", onMinimize }: CommonSheetProps) {
   const isDark = backgroundColor === "dark"
 
   return (
@@ -26,6 +27,22 @@ export function CommonSheet({ isOpen, onClose, title, children, backgroundColor 
         <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
           <div className={cn("w-12 h-1 rounded-full", isDark ? "bg-gray-600" : "bg-gray-300")} />
         </div>
+
+        {/* Кнопка сворачивания (если передана) */}
+        {onMinimize && (
+          <button
+            onClick={onMinimize}
+            className={cn(
+              "absolute top-4 right-16 p-2 rounded-full transition-colors z-10",
+              isDark
+                ? "text-gray-300 hover:text-white hover:bg-gray-700"
+                : "text-gray-500 hover:text-gray-700 hover:bg-gray-100",
+            )}
+            aria-label="Свернуть в виджет"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        )}
 
         <button
           onClick={onClose}

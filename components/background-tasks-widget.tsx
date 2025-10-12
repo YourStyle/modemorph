@@ -144,32 +144,38 @@ export function BackgroundTasksWidget() {
             {/* Компактный круглый виджет с liquid glass эффектом */}
             <div
               onClick={() => handleTaskClick(task)}
-              className={cn(
-                "relative w-16 h-16 rounded-full shadow-xl transition-all duration-300 cursor-pointer hover:scale-105",
-                isCompleted && "bg-green-500",
-                isError && "bg-red-500"
-              )}
+              className="relative w-16 h-16 rounded-full shadow-xl transition-all duration-300 cursor-pointer hover:scale-105"
               style={{
-                background: !isCompleted && !isError
-                  ? 'rgba(255, 255, 255, 0.85)'
-                  : undefined,
-                backdropFilter: !isCompleted && !isError ? 'blur(20px) saturate(180%)' : undefined,
-                WebkitBackdropFilter: !isCompleted && !isError ? 'blur(20px) saturate(180%)' : undefined,
-                boxShadow: !isCompleted && !isError
-                  ? '0 8px 32px 0 rgba(0, 0, 0, 0.1), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
-                  : undefined,
-                border: !isCompleted && !isError ? '1px solid rgba(255, 255, 255, 0.18)' : undefined,
+                background: isCompleted
+                  ? 'rgba(34, 197, 94, 0.15)'
+                  : isError
+                  ? 'rgba(239, 68, 68, 0.15)'
+                  : 'rgba(255, 255, 255, 0.85)',
+                backdropFilter: 'blur(20px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                boxShadow: isCompleted
+                  ? '0 8px 32px 0 rgba(34, 197, 94, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
+                  : isError
+                  ? '0 8px 32px 0 rgba(239, 68, 68, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
+                  : '0 8px 32px 0 rgba(0, 0, 0, 0.1), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)',
+                border: isCompleted
+                  ? '1px solid rgba(34, 197, 94, 0.3)'
+                  : isError
+                  ? '1px solid rgba(239, 68, 68, 0.3)'
+                  : '1px solid rgba(255, 255, 255, 0.18)',
               }}
             >
               {/* Gradient overlay для liquid glass эффекта */}
-              {!isCompleted && !isError && (
-                <div
-                  className="absolute inset-0 rounded-full pointer-events-none"
-                  style={{
-                    background: 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, transparent 70%)',
-                  }}
-                />
-              )}
+              <div
+                className="absolute inset-0 rounded-full pointer-events-none"
+                style={{
+                  background: isCompleted
+                    ? 'radial-gradient(circle at 30% 30%, rgba(34, 197, 94, 0.3) 0%, transparent 70%)'
+                    : isError
+                    ? 'radial-gradient(circle at 30% 30%, rgba(239, 68, 68, 0.3) 0%, transparent 70%)'
+                    : 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, transparent 70%)',
+                }}
+              />
               {/* Круговой прогресс */}
               {task.status === "processing" && (
                 <div className="absolute inset-0">
@@ -187,8 +193,8 @@ export function BackgroundTasksWidget() {
                     </span>
                   </>
                 )}
-                {isCompleted && <CheckCircle2 className="w-7 h-7 text-white" />}
-                {isError && <AlertCircle className="w-7 h-7 text-white" />}
+                {isCompleted && <CheckCircle2 className="w-7 h-7 text-green-600" />}
+                {isError && <AlertCircle className="w-7 h-7 text-red-600" />}
               </div>
 
               {/* Кнопка закрытия */}
@@ -227,17 +233,9 @@ export function BackgroundTasksWidget() {
         isOpen={showResultsSheet}
         onClose={() => setShowResultsSheet(false)}
         backgroundColor="dark"
+        onMinimize={handleMinimizeSheet}
       >
-        <div className="relative">
-          {/* Кнопка сворачивания */}
-          <button
-            onClick={handleMinimizeSheet}
-            className="absolute top-0 right-14 w-10 h-10 flex items-center justify-center text-neutral-300 hover:text-white transition-colors rounded-full hover:bg-white/10"
-          >
-            <ChevronDown className="w-6 h-6" />
-          </button>
-
-          <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100">
+        <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100">
             <div className="mb-6">
               <h2 className="text-2xl font-semibold text-white mb-2">Результаты анализа</h2>
               <p className="text-neutral-300 text-sm">

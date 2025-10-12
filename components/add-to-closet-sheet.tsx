@@ -3,7 +3,7 @@
 import type React from "react"
 import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Camera, ChevronDown } from "lucide-react"
+import { Camera } from "lucide-react"
 import { PhotoAnalysisForm } from "./photo-analysis-form"
 import { CommonSheet } from "@/components/common-sheet"
 import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
@@ -179,29 +179,18 @@ export function AddToClosetSheet({
   if (showAnalysisForm || (initialPhotos && initialPhotos.length > 0)) {
     return (
       <>
-        <CommonSheet isOpen={isOpen} onClose={handleClose} backgroundColor="dark">
-          <div className="relative">
-            {/* Кнопка сворачивания */}
-            <button
-              onClick={handleMinimize}
-              className="absolute top-0 right-14 w-10 h-10 flex items-center justify-center text-neutral-300 hover:text-white transition-colors rounded-full hover:bg-white/10 z-20"
-              aria-label="Свернуть в виджет"
-            >
-              <ChevronDown className="w-6 h-6" />
-            </button>
-
-            {/* скролл контейнер, стабильный скроллбар, хороший контраст текста */}
-            <div
-              className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100"
-              style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
-            >
-              <PhotoAnalysisForm
-                initialPhotos={selectedFiles.length > 0 ? selectedFiles : initialPhotos}
-                onSuccess={handleAnalysisSuccess}
-                onReset={handleReset}
-                onLoadingChange={setIsAnalyzing}
-              />
-            </div>
+        <CommonSheet isOpen={isOpen} onClose={handleClose} backgroundColor="dark" onMinimize={handleMinimize}>
+          {/* скролл контейнер, стабильный скроллбар, хороший контраст текста */}
+          <div
+            className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100"
+            style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
+          >
+            <PhotoAnalysisForm
+              initialPhotos={selectedFiles.length > 0 ? selectedFiles : initialPhotos}
+              onSuccess={handleAnalysisSuccess}
+              onReset={handleReset}
+              onLoadingChange={setIsAnalyzing}
+            />
           </div>
         </CommonSheet>
 
