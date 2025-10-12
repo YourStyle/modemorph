@@ -6,7 +6,14 @@ import { sessionAuth } from "@/lib/tma/session-auth"
 import { AnimatedLanding } from "@/components/animated-landing"
 import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
 import { NetworkError as NetworkErrorComponent } from "@/components/network-error"
+import { useAuth } from "@/contexts/auth-context"
 
+// Хелпер для определения контекста (TMA vs обычный веб)
+function isTelegramMiniApp(): boolean {
+  if (typeof window === 'undefined') return false
+  const tg = window.Telegram?.WebApp
+  return !!(tg?.initData && tg.initData.trim().length > 0)
+}
 
 export default function HomePage() {
   const router = useRouter()
@@ -14,61 +21,118 @@ export default function HomePage() {
   const [showLanding, setShowLanding] = useState(false)
   const [networkError, setNetworkError] = useState<string | null>(null)
 
+  // Для обычных пользователей (cookie-based auth)
+  const { user: cookieUser, loading: authLoading } = useAuth()
+
   useEffect(() => {
     const checkAuthAndRedirect = async () => {
       try {
-        // Проверяем сессию
-        if (sessionAuth.hasValidSession()) {
-          const userId = sessionAuth.getUserId()
-          if (userId) {
-            console.log("[HomePage] User authenticated, checking profile...")
+        const inTMA = isTelegramMiniApp()
+        console.log("[HomePage] Context:", inTMA ? "Telegram Mini App" : "Regular Web")
 
-            // Проверяем профиль пользователя
-            const accessToken = sessionAuth.getAccessToken()
-            if (accessToken) {
-              // ✅ Выполняем запросы параллельно для ускорения
-              const [profileResponse, userInfoResponse] = await Promise.all([
-                fetchWithRetry(
-                  "/api/me/profile",
-                  {
-                    headers: { "Authorization": `Bearer ${accessToken}` }
-                  },
-                  { timeout: 8000, retries: 2 }
-                ),
-                fetchWithRetry(
-                  "/api/me",
-                  {
-                    headers: { "Authorization": `Bearer ${accessToken}` }
-                  },
-                  { timeout: 8000, retries: 2 }
-                )
-              ])
+        // === TELEGRAM MINI APP FLOW ===
+        if (inTMA) {
+          // Проверяем TMA сессию через sessionAuth
+          if (sessionAuth.hasValidSession()) {
+            const userId = sessionAuth.getUserId()
+            if (userId) {
+              console.log("[HomePage] TMA user authenticated, checking profile...")
 
-              if (profileResponse.ok && userInfoResponse.ok) {
-                const [profileData, userData] = await Promise.all([
-                  profileResponse.json(),
-                  userInfoResponse.json()
+              const accessToken = sessionAuth.getAccessToken()
+              if (accessToken) {
+                // Выполняем запросы параллельно
+                const [profileResponse, userInfoResponse] = await Promise.all([
+                  fetchWithRetry(
+                    "/api/me/profile",
+                    {
+                      headers: { "Authorization": `Bearer ${accessToken}` }
+                    },
+                    { timeout: 8000, retries: 2 }
+                  ),
+                  fetchWithRetry(
+                    "/api/me",
+                    {
+                      headers: { "Authorization": `Bearer ${accessToken}` }
+                    },
+                    { timeout: 8000, retries: 2 }
+                  )
                 ])
 
-                // Если профиль есть, проверяем роль
-                if (profileData.profile) {
-                  if (userData.profile?.is_admin) {
-                    console.log("[HomePage] Admin user, redirecting to /admin")
-                    router.replace("/admin")
-                    return
-                  } else {
-                    console.log("[HomePage] Regular user, redirecting to /app")
-                    router.replace("/app")
-                    return
+                if (profileResponse.ok && userInfoResponse.ok) {
+                  const [profileData, userData] = await Promise.all([
+                    profileResponse.json(),
+                    userInfoResponse.json()
+                  ])
+
+                  if (profileData.profile) {
+                    if (userData.profile?.is_admin) {
+                      console.log("[HomePage] TMA admin user, redirecting to /admin")
+                      router.replace("/admin")
+                      return
+                    } else {
+                      console.log("[HomePage] TMA regular user, redirecting to /app")
+                      router.replace("/app")
+                      return
+                    }
                   }
                 }
               }
             }
           }
+
+          // Если в TMA но нет сессии - показываем лендинг
+          console.log("[HomePage] TMA: No valid session, showing landing")
+          setShowLanding(true)
+          return
         }
 
-        // Если нет сессии или не удалось получить данные - показываем лендинг
-        console.log("[HomePage] No valid session, showing landing")
+        // === REGULAR WEB FLOW ===
+        // Ждем пока AuthProvider загрузит пользователя
+        if (authLoading) {
+          console.log("[HomePage] Web: Waiting for auth to load...")
+          return
+        }
+
+        // Если есть пользователь из cookie-based auth
+        if (cookieUser) {
+          console.log("[HomePage] Web user authenticated, checking profile...")
+
+          // Выполняем запросы параллельно
+          const [profileResponse, userInfoResponse] = await Promise.all([
+            fetchWithRetry(
+              "/api/me/profile",
+              { credentials: "include" },
+              { timeout: 8000, retries: 2 }
+            ),
+            fetchWithRetry(
+              "/api/me",
+              { credentials: "include" },
+              { timeout: 8000, retries: 2 }
+            )
+          ])
+
+          if (profileResponse.ok && userInfoResponse.ok) {
+            const [profileData, userData] = await Promise.all([
+              profileResponse.json(),
+              userInfoResponse.json()
+            ])
+
+            if (profileData.profile || userData.profile) {
+              if (userData.profile?.is_admin) {
+                console.log("[HomePage] Web admin user, redirecting to /admin")
+                router.replace("/admin")
+                return
+              } else {
+                console.log("[HomePage] Web regular user, redirecting to /app")
+                router.replace("/app")
+                return
+              }
+            }
+          }
+        }
+
+        // Если нет авторизации - показываем лендинг
+        console.log("[HomePage] Web: No authenticated user, showing landing")
         setShowLanding(true)
       } catch (error) {
         console.error("[HomePage] Error checking auth:", error)
@@ -94,7 +158,7 @@ export default function HomePage() {
     }
 
     checkAuthAndRedirect()
-  }, [router])
+  }, [router, authLoading, cookieUser])
 
   // Показываем ошибку сети
   if (networkError) {
