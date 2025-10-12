@@ -1,5 +1,6 @@
 import type React from "react"
 import AppClientLayout from "./layout-client"
+import { BackgroundTasksProvider } from "@/contexts/background-tasks-context"
 
 export default function AppLayout({
   children,
@@ -7,5 +8,9 @@ export default function AppLayout({
   children: React.ReactNode
 }) {
   // Server Component layout. Client behavior is inside AppClientLayout.
-  return <AppClientLayout>{children}</AppClientLayout>
+  return (
+    <BackgroundTasksProvider>
+      <AppClientLayout>{children}</AppClientLayout>
+    </BackgroundTasksProvider>
+  )
 }

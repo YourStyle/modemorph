@@ -14,7 +14,8 @@ import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
 import { api } from "@/lib/api-client"
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
-import { Users, TrendingUp, Calendar, CreditCard, Loader2 } from "lucide-react"
+import { Users, TrendingUp, Calendar, CreditCard, Loader2, Download } from "lucide-react"
+import * as XLSX from "xlsx"
 
 interface User {
   id: number
@@ -98,6 +99,75 @@ export default function AdminUsersPage() {
     }
   }
 
+  const exportUsersToExcel = () => {
+    if (users.length === 0) return
+
+    const wb = XLSX.utils.book_new()
+
+    // Sheet 1: User list with activity
+    const userData = [
+      ["ID", "Имя", "Email", "Статус", "Кредиты", "AI запросов", "Вещей в гардеробе", "Дата регистрации", "Последнее обновление"],
+      ...users.map((user) => {
+        const credits = getCurrentCredits(user)
+        const subscription = getCurrentSubscription(user)
+        const limits = getRemainingLimits(user)
+        const status = user.is_admin
+          ? "Админ"
+          : subscription
+          ? `Pro (${subscription.subscription_type})`
+          : "Free"
+
+        return [
+          user.user_id.slice(0, 8),
+          user.full_name || "Пользователь",
+          user.email || "—",
+          status,
+          credits,
+          limits?.ai_requests || 0,
+          limits?.wardrobe_items_anlyzed || 0,
+          new Date(user.created_at).toLocaleDateString("ru"),
+          new Date(user.updated_at).toLocaleDateString("ru"),
+        ]
+      }),
+    ]
+    const ws1 = XLSX.utils.aoa_to_sheet(userData)
+    XLSX.utils.book_append_sheet(wb, ws1, "Пользователи")
+
+    // Sheet 2: Summary metrics
+    if (metrics) {
+      const metricsData = [
+        ["Метрика", "Значение"],
+        ["", ""],
+        ["Всего пользователей", metrics.summary.totalUsers],
+        ["MAU", metrics.summary.mau],
+        ["DAU", metrics.summary.dau],
+        ["Активных подписок", metrics.summary.activeSubscriptions],
+      ]
+      const ws2 = XLSX.utils.aoa_to_sheet(metricsData)
+      XLSX.utils.book_append_sheet(wb, ws2, "Метрики")
+
+      // Sheet 3: Activity chart data
+      const activityData = [
+        ["Дата", "Активных пользователей"],
+        ...metrics.charts.activity.map((item) => [item.date, item.count]),
+      ]
+      const ws3 = XLSX.utils.aoa_to_sheet(activityData)
+      XLSX.utils.book_append_sheet(wb, ws3, "Активность")
+
+      // Sheet 4: Registration chart data
+      const registrationData = [
+        ["Дата", "Регистраций"],
+        ...metrics.charts.registrations.map((item) => [item.date, item.count]),
+      ]
+      const ws4 = XLSX.utils.aoa_to_sheet(registrationData)
+      XLSX.utils.book_append_sheet(wb, ws4, "Регистрации")
+    }
+
+    // Export
+    const date = new Date().toISOString().split("T")[0]
+    XLSX.writeFile(wb, `users_activity_${date}.xlsx`)
+  }
+
   const handleGrantCreditsOrSubscription = async () => {
     if (!selectedUser) return
 
@@ -152,9 +222,15 @@ export default function AdminUsersPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Управление пользователями</h1>
-        <p className="text-muted-foreground mt-2">Аналитика и управление пользователями системы</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Управление пользователями</h1>
+          <p className="text-muted-foreground mt-2">Аналитика и управление пользователями системы</p>
+        </div>
+        <Button onClick={exportUsersToExcel} className="gap-2" disabled={users.length === 0}>
+          <Download className="h-4 w-4" />
+          Экспорт в Excel
+        </Button>
       </div>
 
       {/* Метрики */}

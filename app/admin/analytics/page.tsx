@@ -3,9 +3,11 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api-client"
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, FunnelChart, Funnel, Cell, LabelList } from "recharts"
-import { Users, TrendingUp, Target, Zap, CreditCard, Loader2, Sparkles, CheckCircle2 } from "lucide-react"
+import { Users, TrendingUp, Target, Zap, CreditCard, Loader2, Sparkles, CheckCircle2, Download } from "lucide-react"
+import * as XLSX from "xlsx"
 
 interface AnalyticsData {
   onboarding: {
@@ -87,6 +89,81 @@ export default function AnalyticsPage() {
     }
   }
 
+  const exportToExcel = () => {
+    if (!data) return
+
+    const wb = XLSX.utils.book_new()
+
+    // Sheet 1: Summary metrics
+    const summaryData = [
+      ["Метрика", "Значение"],
+      ["", ""],
+      ["=== ОНБОРДИНГ ===", ""],
+      ["Пользователей с первой вещью", data.onboarding.users_with_first_item],
+      ["Завершили онбординг", data.onboarding.users_onboarding_complete],
+      ["30% гардероба", data.onboarding.users_wardrobe_30],
+      ["50% гардероба", data.onboarding.users_wardrobe_50],
+      ["100% гардероба", data.onboarding.users_wardrobe_100],
+      ["", ""],
+      ["=== AHA-МОМЕНТ ===", ""],
+      ["Первый образ", data.ahaMoment.users_first_outfit],
+      ["Первая примерка", data.ahaMoment.users_first_tryon],
+      ["Клики по рекомендациям", data.ahaMoment.users_clicked_recommendation],
+      ["", ""],
+      ["=== ДОСТАВКА ЦЕННОСТИ ===", ""],
+      ["Всего образов сохранено", data.value.total_outfits_saved],
+      ["Пользователей сохранявших образы", data.value.users_saved_outfits],
+      ["Образов поделились", data.value.total_outfits_shared],
+      ["Задач завершено", data.value.total_tasks_completed],
+      ["Repeat Task Rate", `${data.value.repeat_task_rate}%`],
+      ["Образов на пользователя", data.value.outfits_per_active_user],
+      ["", ""],
+      ["=== ВОВЛЕЧЁННОСТЬ ===", ""],
+      ["Использовали AI", data.engagement.users_used_ai],
+      ["AI сессий", data.engagement.total_ai_sessions],
+      ["", ""],
+      ["=== RETENTION ===", ""],
+      ["D1 Retention", `${data.retention.d1_retention}%`],
+      ["D7 Retention", `${data.retention.d7_retention}%`],
+      ["D30 Retention", `${data.retention.d30_retention}%`],
+      ["D1 пользователей", data.retention.d1_users],
+      ["D7 пользователей", data.retention.d7_users],
+      ["D30 пользователей", data.retention.d30_users],
+      ["", ""],
+      ["=== МОНЕТИЗАЦИЯ ===", ""],
+      ["Paywall показан", data.monetization.paywall_shown],
+      ["Конверсий в premium", data.monetization.conversions_to_premium],
+      ["Конверсия", `${data.monetization.conversion_rate}%`],
+      ["Premium пользователей", data.monetization.premium_users],
+      ["Premium функций использовано", data.monetization.premium_feature_uses],
+    ]
+    const ws1 = XLSX.utils.aoa_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(wb, ws1, "Сводка")
+
+    // Sheet 2: Funnel
+    const funnelData = [["Этап", "Пользователей"], ...data.funnel.map((item) => [item.stage, item.users])]
+    const ws2 = XLSX.utils.aoa_to_sheet(funnelData)
+    XLSX.utils.book_append_sheet(wb, ws2, "Воронка")
+
+    // Sheet 3: Timeline
+    const timelineData = [
+      ["Дата", "Первая вещь", "Первый образ", "Образ сохранён", "AI использован"],
+      ...data.timeline.map((item) => [
+        item.date,
+        item.first_item_added,
+        item.first_outfit_generated,
+        item.outfit_saved,
+        item.ai_assistant_used,
+      ]),
+    ]
+    const ws3 = XLSX.utils.aoa_to_sheet(timelineData)
+    XLSX.utils.book_append_sheet(wb, ws3, "Динамика")
+
+    // Export
+    const date = new Date().toISOString().split("T")[0]
+    XLSX.writeFile(wb, `analytics_${date}.xlsx`)
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -108,9 +185,15 @@ export default function AnalyticsPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold">Аналитика продукта</h1>
-        <p className="text-muted-foreground mt-2">Ключевые метрики и поведение пользователей</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Аналитика продукта</h1>
+          <p className="text-muted-foreground mt-2">Ключевые метрики и поведение пользователей</p>
+        </div>
+        <Button onClick={exportToExcel} className="gap-2">
+          <Download className="h-4 w-4" />
+          Экспорт в Excel
+        </Button>
       </div>
 
       {/* Onboarding Metrics */}

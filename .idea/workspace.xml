@@ -6,7 +6,11 @@
   <component name="ChangeListManager">
     <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="update bottom menu">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/bottom-navigation.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/bottom-navigation.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/ANALYTICS_SETUP.md" beforeDir="false" afterPath="$PROJECT_DIR$/ANALYTICS_SETUP.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/analytics/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/analytics/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/users/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/users/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pnpm-lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pnpm-lock.yaml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -144,7 +148,31 @@
       <option name="project" value="LOCAL" />
       <updated>1760307913970</updated>
     </task>
-    <option name="localTasksCounter" value="12" />
+    <task id="LOCAL-00012" summary="update bottom menu">
+      <option name="closed" value="true" />
+      <created>1760308041143</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1760308041143</updated>
+    </task>
+    <task id="LOCAL-00013" summary="update bottom menu">
+      <option name="closed" value="true" />
+      <created>1760308049167</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1760308049167</updated>
+    </task>
+    <task id="LOCAL-00014" summary="update bottom menu">
+      <option name="closed" value="true" />
+      <created>1760308246801</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1760308246801</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

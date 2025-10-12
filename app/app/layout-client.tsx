@@ -4,6 +4,7 @@ import type React from "react"
 import { usePathname } from "next/navigation"
 import { TopNavigation } from "@/components/top-navigation"
 import { BottomNavigation } from "@/components/bottom-navigation"
+import { BackgroundTasksWidget } from "@/components/background-tasks-widget"
 import { cn } from "@/lib/utils"
 
 export default function AppClientLayout({
@@ -20,6 +21,7 @@ export default function AppClientLayout({
       {!hideTopNavigation && <TopNavigation />}
       <main className={cn("pt-0 max-w-7xl m-auto", isAssistant ? "pb-0" : "pb-10")}>{children}</main>
       <BottomNavigation />
+      <BackgroundTasksWidget />
     </div>
   )
 }

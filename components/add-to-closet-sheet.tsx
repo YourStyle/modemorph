@@ -6,6 +6,16 @@ import { Button } from "@/components/ui/button"
 import { Camera } from "lucide-react"
 import { PhotoAnalysisForm } from "./photo-analysis-form"
 import { CommonSheet } from "@/components/common-sheet"
+import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
+import { toast } from "@/hooks/use-toast"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
 interface UploadedPhoto {
   file: File
@@ -35,7 +45,10 @@ export function AddToClosetSheet({
 }: AddToClosetSheetProps) {
   const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
   const [showAnalysisForm, setShowAnalysisForm] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false)
   const batchIdRef = useRef<string>("")
+  const { startAnalysis } = useBackgroundPhotoAnalysis()
 
   // генерируем batchId при каждом открытии
   useEffect(() => {
@@ -76,8 +89,82 @@ export function AddToClosetSheet({
   }
 
   const handleClose = () => {
+    // Если анализ идет, показываем диалог подтверждения
+    if (isAnalyzing) {
+      setShowConfirmDialog(true)
+      return
+    }
+    // Иначе просто закрываем
     handleReset()
     onClose()
+  }
+
+  const handleConfirmClose = () => {
+    // Закрыть и прервать анализ
+    setShowConfirmDialog(false)
+    handleReset()
+    onClose()
+  }
+
+  const handleMinimize = async () => {
+    // Свернуть анализ в фоновый режим
+    setShowConfirmDialog(false)
+
+    const filesToAnalyze = selectedFiles.length > 0 ? selectedFiles : initialPhotos
+
+    if (filesToAnalyze.length === 0) {
+      handleReset()
+      onClose()
+      return
+    }
+
+    try {
+      await startAnalysis({
+        files: filesToAnalyze.map(p => p.file),
+        onComplete: (data) => {
+          toast({
+            title: "Анализ завершён!",
+            description: `Добавлено ${data.items?.length || 0} вещей в гардероб`,
+          })
+          // Если был передан onAnalysisSuccess, вызываем его
+          if (onAnalysisSuccess && data.items) {
+            onAnalysisSuccess({
+              items: data.items,
+              photos: filesToAnalyze,
+              analysisResults: [{ success: true, items: data.items }],
+              batchId: batchIdRef.current,
+            })
+          }
+        },
+        onError: (error) => {
+          toast({
+            title: "Ошибка",
+            description: error,
+            variant: "destructive",
+          })
+        },
+      })
+
+      toast({
+        title: "Анализ свёрнут",
+        description: "Вы можете продолжить работу с приложением. Прогресс отображается в виджете.",
+      })
+    } catch (error) {
+      console.error("Error starting background analysis:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось начать фоновый анализ",
+        variant: "destructive",
+      })
+    }
+
+    handleReset()
+    onClose()
+  }
+
+  const handleCancelClose = () => {
+    // Просто закрыть диалог, вернуться к анализу
+    setShowConfirmDialog(false)
   }
 
   const handleReset = () => {
@@ -89,19 +176,46 @@ export function AddToClosetSheet({
   // Если есть начальные фото или показываем форму анализа
   if (showAnalysisForm || (initialPhotos && initialPhotos.length > 0)) {
     return (
-      <CommonSheet isOpen={isOpen} onClose={handleClose} backgroundColor="dark">
-        {/* скролл контейнер, стабильный скроллбар, хороший контраст текста */}
-        <div
-          className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100"
-          style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
-        >
-          <PhotoAnalysisForm
-            initialPhotos={selectedFiles.length > 0 ? selectedFiles : initialPhotos}
-            onSuccess={handleAnalysisSuccess}
-            onReset={handleReset}
-          />
-        </div>
-      </CommonSheet>
+      <>
+        <CommonSheet isOpen={isOpen} onClose={handleClose} backgroundColor="dark">
+          {/* скролл контейнер, стабильный скроллбар, хороший контраст текста */}
+          <div
+            className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100"
+            style={{ WebkitOverflowScrolling: "touch", scrollbarGutter: "stable" }}
+          >
+            <PhotoAnalysisForm
+              initialPhotos={selectedFiles.length > 0 ? selectedFiles : initialPhotos}
+              onSuccess={handleAnalysisSuccess}
+              onReset={handleReset}
+              onLoadingChange={setIsAnalyzing}
+            />
+          </div>
+        </CommonSheet>
+
+        {/* Диалог подтверждения закрытия */}
+        <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Анализ в процессе</DialogTitle>
+              <DialogDescription>
+                Если вы закроете это окно, анализ фотографий будет прерван.
+                Вы можете свернуть анализ в виджет и продолжить работу с приложением.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col sm:flex-col gap-2">
+              <Button onClick={handleMinimize} className="w-full">
+                Свернуть в виджет
+              </Button>
+              <Button onClick={handleConfirmClose} variant="destructive" className="w-full">
+                Закрыть и прервать
+              </Button>
+              <Button onClick={handleCancelClose} variant="outline" className="w-full">
+                Отмена
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
     )
   }
 

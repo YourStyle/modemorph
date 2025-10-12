@@ -70,6 +70,7 @@ interface PhotoAnalysisFormProps {
         analysisResults: PhotoAnalysisResult[]
     }) => void
     onReset?: () => void
+    onLoadingChange?: (isLoading: boolean) => void
 }
 
 type ViewMode = "choose" | "quotes" | "game" | null
@@ -195,7 +196,7 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
 }
 
 
-export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: PhotoAnalysisFormProps) {
+export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoadingChange}: PhotoAnalysisFormProps) {
 
     const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
 
@@ -318,6 +319,11 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset}: Phot
             }
         }
     }, [])
+
+    // Notify parent of loading state changes
+    useEffect(() => {
+        onLoadingChange?.(loading)
+    }, [loading, onLoadingChange])
 
     // Handler for selecting files from the hidden input
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
