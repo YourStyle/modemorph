@@ -403,7 +403,7 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-40">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-56">
         {messages.map((message, index) => (
           <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
             <div
@@ -484,16 +484,16 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Input Area */}
-      <div className="fixed inset-x-0 bottom-0 bg-white border-t border-gray-200" style={{ paddingBottom: "95px" }}>
+      <div className="fixed inset-x-0 bottom-0 bg-white border-t border-gray-200 pb-24">
         <div className="max-w-7xl mx-auto">
           {/* Quick Actions - НАД инпутом */}
-          <div className="px-4 pt-3 pb-2 flex gap-2 overflow-x-auto">
+          <div className="px-4 pt-3 pb-2 flex flex-col sm:flex-row gap-2">
             <Button
               size="sm"
               variant="outline"
               onClick={() => handleQuickAction("outfit")}
               disabled={isLoading}
-              className="whitespace-nowrap"
+              className="w-full sm:w-auto whitespace-nowrap justify-center"
             >
               <Sparkles className="h-3 w-3 mr-1.5" />
               Подобрать образ
@@ -503,7 +503,7 @@ export default function AIAssistantPage() {
               variant="outline"
               onClick={() => handleQuickAction("photo")}
               disabled={isLoading}
-              className="whitespace-nowrap"
+              className="w-full sm:w-auto whitespace-nowrap justify-center"
             >
               <ImageIcon className="h-3 w-3 mr-1.5" />
               Проанализировать фото
