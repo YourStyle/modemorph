@@ -34,25 +34,31 @@ export async function GET(req: NextRequest) {
 
     // Получаем метрики
     const now = new Date()
+    const today = now.toISOString().split("T")[0]
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+    const last30DaysDate = last30Days.toISOString().split("T")[0]
 
     // Общее количество пользователей
     const { count: totalUsers } = await supabase
       .from("user_profiles")
       .select("*", { count: "exact", head: true })
 
-    // Пользователи за последние 30 дней (MAU)
-    const { count: mau } = await supabase
-      .from("user_profiles")
-      .select("*", { count: "exact", head: true })
-      .gte("updated_at", last30Days.toISOString())
+    // MAU - уникальные пользователи за последние 30 дней
+    const { data: mauData } = await supabase
+      .from("daily_user_activity")
+      .select("user_profile_id")
+      .gte("activity_date", last30DaysDate)
+      .lte("activity_date", today)
 
-    // Пользователи за последние 24 часа (DAU)
-    const last24Hours = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-    const { count: dau } = await supabase
-      .from("user_profiles")
-      .select("*", { count: "exact", head: true })
-      .gte("updated_at", last24Hours.toISOString())
+    const mau = new Set(mauData?.map((row) => row.user_profile_id)).size
+
+    // DAU - уникальные пользователи за сегодня
+    const { data: dauData } = await supabase
+      .from("daily_user_activity")
+      .select("user_profile_id")
+      .eq("activity_date", today)
+
+    const dau = dauData?.length || 0
 
     // Активные подписки
     const { count: activeSubscriptions } = await supabase
@@ -85,20 +91,22 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Получаем активность пользователей (по updated_at)
+    // Получаем активность пользователей из daily_user_activity
     const { data: dailyActivity } = await supabase
-      .from("user_profiles")
-      .select("updated_at")
-      .gte("updated_at", last30Days.toISOString())
-      .order("updated_at", { ascending: true })
+      .from("daily_user_activity")
+      .select("activity_date, user_profile_id")
+      .gte("activity_date", last30DaysDate)
+      .lte("activity_date", today)
+      .order("activity_date", { ascending: true })
 
-    // Группируем активность по дням
+    // Группируем активность по дням (считаем уникальных пользователей)
     const activityByDay: Record<string, Set<string>> = {}
     dailyActivity?.forEach((record) => {
-      const date = new Date(record.updated_at).toISOString().split("T")[0]
-      if (!activityByDay[date]) {
-        activityByDay[date] = new Set()
+      const dateStr = record.activity_date
+      if (!activityByDay[dateStr]) {
+        activityByDay[dateStr] = new Set()
       }
+      activityByDay[dateStr].add(record.user_profile_id.toString())
     })
 
     // Формируем массив для графика активности
