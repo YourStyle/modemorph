@@ -22,15 +22,16 @@ export function BottomNavigation() {
     <div className="fixed bottom-0 left-0 right-0 z-50 pb-4">
       <div className="max-w-md mx-auto px-4">
         <nav className="flex items-center justify-center">
-          <LiquidGlass
-            displacementScale={64}
-            blurAmount={0.1}
-            saturation={130}
-            aberrationIntensity={2}
-            elasticity={0.35}
-            cornerRadius={100}
-          >
-            <div className="bg-gray-900/90 backdrop-blur-md rounded-full px-4 py-2.5 md:px-6 md:py-3 flex items-center justify-between shadow-xl border border-white/10">
+          <div className="[&_.glass]:!p-0 [&_.glass]:!gap-0 [&_.glass]:shadow-none [&_.glass]:!transform-none">
+            <LiquidGlass
+              displacementScale={64}
+              blurAmount={0.1}
+              saturation={130}
+              aberrationIntensity={2}
+              elasticity={0.35}
+              cornerRadius={100}
+            >
+              <div className="bg-gray-900/9=60 backdrop-blur-md rounded-full px-4 py-2.5 md:px-6 md:py-3 flex items-center justify-between shadow-xl border border-white/10">
               {navItems.map((item) => {
                 const isActive = pathname === item.href
                 const Icon = item.icon
@@ -70,8 +71,9 @@ export function BottomNavigation() {
                   </Link>
                 )
               })}
-            </div>
-          </LiquidGlass>
+              </div>
+            </LiquidGlass>
+          </div>
         </nav>
       </div>
     </div>
