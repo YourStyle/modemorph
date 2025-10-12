@@ -1,6 +1,10 @@
+"use client"
+
 import type React from "react"
-import { getAdminUser } from "@/lib/admin-auth"
-import { redirect } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { sessionAuth } from "@/lib/tma/session-auth"
+import { fetchWithRetry } from "@/lib/fetch-with-retry"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -19,15 +23,79 @@ import {
   DollarSign,
 } from "lucide-react"
 
-export default async function AdminLayout({
+export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const user = await getAdminUser()
+  const router = useRouter()
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  if (!user) {
-    redirect("/app")
+  useEffect(() => {
+    const checkAdminAccess = async () => {
+      try {
+        // Проверяем сессию
+        if (!sessionAuth.hasValidSession()) {
+          console.log("[AdminLayout] No valid session, redirecting to /app")
+          router.replace("/app")
+          return
+        }
+
+        const accessToken = sessionAuth.getAccessToken()
+        if (!accessToken) {
+          console.log("[AdminLayout] No access token, redirecting to /app")
+          router.replace("/app")
+          return
+        }
+
+        // Проверяем is_admin
+        const response = await fetchWithRetry(
+          "/api/me",
+          {
+            headers: { "Authorization": `Bearer ${accessToken}` }
+          },
+          { timeout: 5000, retries: 1 }
+        )
+
+        if (!response.ok) {
+          console.log("[AdminLayout] API error, redirecting to /app")
+          router.replace("/app")
+          return
+        }
+
+        const data = await response.json()
+        console.log("[AdminLayout] User data:", data)
+
+        if (!data.profile?.is_admin) {
+          console.log("[AdminLayout] User is not admin, redirecting to /app")
+          router.replace("/app")
+          return
+        }
+
+        console.log("[AdminLayout] User is admin, allowing access")
+        setIsAdmin(true)
+      } catch (error) {
+        console.error("[AdminLayout] Error checking admin access:", error)
+        router.replace("/app")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkAdminAccess()
+  }, [router])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+      </div>
+    )
+  }
+
+  if (!isAdmin) {
+    return null // Редирект уже произошел
   }
 
   const navigationItems = [
@@ -110,11 +178,17 @@ export default async function AdminLayout({
                   В приложение
                 </Button>
               </Link>
-              <form action="/auth/signout" method="post" className="hidden sm:block">
-                <Button variant="ghost" size="sm" type="submit">
-                  Выйти
-                </Button>
-              </form>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  sessionAuth.clearSession()
+                  router.push("/")
+                }}
+                className="hidden sm:block"
+              >
+                Выйти
+              </Button>
 
               {/* Mobile Menu */}
               <Sheet>
@@ -169,11 +243,17 @@ export default async function AdminLayout({
                           В приложение
                         </Button>
                       </Link>
-                      <form action="/auth/signout" method="post">
-                        <Button variant="ghost" size="sm" type="submit" className="w-full">
-                          Выйти
-                        </Button>
-                      </form>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          sessionAuth.clearSession()
+                          router.push("/")
+                        }}
+                        className="w-full"
+                      >
+                        Выйти
+                      </Button>
                     </div>
                   </div>
                 </SheetContent>
