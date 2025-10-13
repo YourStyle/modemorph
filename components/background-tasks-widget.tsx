@@ -188,7 +188,7 @@ export function BackgroundTasksWidget() {
                 {task.status === "processing" && (
                   <>
                     <Shirt className="w-5 h-5 text-blue-600 -mt-1" />
-                    <span className="text-[9px] font-bold text-gray-700 mt-0.5">
+                    <span className="text-[10px] font-bold text-gray-700 mt-0.5 ml-[1px]">
                       {Math.round(task.progress)}%
                     </span>
                   </>

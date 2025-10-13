@@ -66,12 +66,18 @@ export function useBackgroundPhotoAnalysis() {
 
         if (!response.ok) {
           clearInterval(midProgressInterval)
-          throw new Error("Failed to analyze photos")
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.reason || errorData.error || "Failed to analyze photos")
         }
 
         const result = await response.json()
 
         clearInterval(midProgressInterval)
+
+        // Проверяем, есть ли items в результате
+        if (!result.items || result.items.length === 0) {
+          throw new Error(result.reason || result.error || "Не удалось найти вещи на фото")
+        }
 
         // Плавный переход 60% -> 95%
         currentProgress = 60
@@ -95,8 +101,8 @@ export function useBackgroundPhotoAnalysis() {
             updateTask(taskId, {
               status: "completed",
               data: {
-                items: result.items || [],
-                itemsCount: result.items?.length || 0,
+                items: result.items,
+                itemsCount: result.items.length,
               },
             })
 

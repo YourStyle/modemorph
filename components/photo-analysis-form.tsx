@@ -279,7 +279,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
 
     useEffect(() => {
         if (initialPhotos && initialPhotos.length > 0 && !hasAnalyzed) {
-            const limitedPhotos = initialPhotos.slice(0, 2)
+            const limitedPhotos = initialPhotos.slice(0, 10)
             setSelectedFiles(limitedPhotos)
             handleAnalyze(limitedPhotos)
         }
@@ -329,11 +329,11 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(event.target.files || [])
         if (files.length === 0) return
-        // Limit to 2 files total
-        const remainingSlots = 2 - selectedFiles.length
+        // Limit to 10 files total
+        const remainingSlots = 10 - selectedFiles.length
         const filesToAdd = files.slice(0, remainingSlots)
         if (filesToAdd.length === 0) {
-            setError("Максимум 2 фото для анализа")
+            setError("Максимум 10 фото для анализа")
             return
         }
         const newPhotos: UploadedPhoto[] = filesToAdd.map((file) => ({
@@ -730,7 +730,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
                             </div>
                         ))}
                     </div>
-                    {selectedFiles.length < 2 && (
+                    {selectedFiles.length < 10 && (
                         <Button
                             type="button"
                             variant="default"
@@ -757,7 +757,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
                 <div className="flex flex-col items-center justify-center space-y-4 p-8 border rounded-md">
                     <Upload className="w-8 h-8 text-gray-500"/>
                     <p className="font-medium">Загрузить фото одежды</p>
-                    <p className="text-sm text-gray-500">Максимум 2 фото для анализа</p>
+                    <p className="text-sm text-gray-500">Максимум 10 фото для анализа</p>
                     <Button type="button" variant="default" onClick={() => fileInputRef.current?.click()}>
                         <Plus className="w-4 h-4 mr-2"/> Нажмите для выбора фото
                     </Button>

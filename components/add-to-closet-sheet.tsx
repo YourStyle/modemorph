@@ -127,10 +127,7 @@ export function AddToClosetSheet({
       await startAnalysis({
         files: filesToAnalyze.map(p => p.file),
         onComplete: (data) => {
-          toast({
-            title: "Анализ завершён!",
-            description: `Добавлено ${data.items?.length || 0} вещей в гардероб`,
-          })
+          // Tooltip показывается автоматически в виджете, toast не нужен
           // Если был передан onAnalysisSuccess, вызываем его
           if (onAnalysisSuccess && data.items) {
             onAnalysisSuccess({

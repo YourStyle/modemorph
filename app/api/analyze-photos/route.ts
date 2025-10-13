@@ -22,6 +22,11 @@ interface ResponseItem {
   image_url?: string
 }
 
+interface RejectedPhoto {
+  acceptable: false
+  reason: string
+}
+
 interface ItemWithImage extends ResponseItem {
   finalImageUrl?: string
 }
@@ -132,6 +137,13 @@ export async function POST(request: Request) {
         }
 
         const data = await response.json()
+
+        // Проверяем на rejection
+        if (Array.isArray(data) && data.length > 0 && data[0].acceptable === false) {
+          const rejected = data[0] as RejectedPhoto
+          return { success: false, error: rejected.reason, isRejection: true }
+        }
+
         return { success: true, data }
       } catch (error) {
         console.error("Error analyzing photo:", error)
@@ -143,10 +155,22 @@ export async function POST(request: Request) {
 
     // Собираем все успешные результаты
     const allItems: ResponseItem[] = []
+    const errors: string[] = []
+
     for (const result of results) {
       if (result.success && Array.isArray(result.data)) {
         allItems.push(...result.data)
+      } else if (!result.success && result.error) {
+        errors.push(result.error)
       }
+    }
+
+    // Если нет успешных результатов, возвращаем ошибку
+    if (allItems.length === 0 && errors.length > 0) {
+      return NextResponse.json(
+        { error: errors[0], reason: errors[0] },
+        { status: 400 }
+      )
     }
 
     // Загружаем изображения для всех items
