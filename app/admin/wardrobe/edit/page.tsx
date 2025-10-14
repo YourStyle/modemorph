@@ -15,7 +15,7 @@ export default function EditWardrobeItemPage() {
   const [error, setError] = useState<string | null>(null)
   const searchParams = useSearchParams()
   const router = useRouter()
-  const { user, loading: authLoading } = useAuth()
+  const { loading: authLoading } = useAuth()
 
   const itemId = searchParams.get("id")
 
@@ -45,17 +45,6 @@ export default function EditWardrobeItemPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="text-lg font-semibold">Загрузка...</div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-red-600 text-lg font-semibold">Необходима авторизация</div>
-          <Button onClick={() => router.push("/auth/login")}>Войти</Button>
         </div>
       </div>
     )
