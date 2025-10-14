@@ -9,6 +9,7 @@ import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucid
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
+import { PaywallModal } from "./paywall-modal"
 import { api } from "@/lib/api-client"
 
 interface OutfitItem {
@@ -60,6 +61,7 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
   const [vtonLoading, setVtonLoading] = useState(false)
   const [vtonResult, setVtonResult] = useState<any>(null)
   const [tryOnRequestId, setTryOnRequestId] = useState<string | null>(null) // ⬅️ для корреляции событий
+  const [showPaywall, setShowPaywall] = useState(false)
 
   if (!suggestion) return null
 
@@ -118,9 +120,9 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
           })
 
           if (!limitCheck.canUse) {
-            toast.error("Лимит примерок исчерпан. Пожалуйста, оформите подписку.")
             setVtonLoading(false)
             setShowTryOnModal(false)
+            setShowPaywall(true)
             return
           }
 
@@ -391,6 +393,16 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
           onClose={() => setSelectedItem(null)}
         />
       )}
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        isOpen={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onSuccess={() => {
+          setShowPaywall(false)
+          toast.success("Лимиты обновлены! Попробуйте еще раз.")
+        }}
+      />
     </>
   )
 }

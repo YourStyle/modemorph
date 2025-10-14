@@ -16,6 +16,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { PaywallModal } from "./paywall-modal"
 
 interface UploadedPhoto {
   file: File
@@ -47,6 +48,7 @@ export function AddToClosetSheet({
   const [showAnalysisForm, setShowAnalysisForm] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [showConfirmDialog, setShowConfirmDialog] = useState(false)
+  const [showPaywall, setShowPaywall] = useState(false)
   const batchIdRef = useRef<string>("")
   const { startAnalysis } = useBackgroundPhotoAnalysis()
 
@@ -139,11 +141,16 @@ export function AddToClosetSheet({
           }
         },
         onError: (error) => {
-          toast({
-            title: "Ошибка",
-            description: error,
-            variant: "destructive",
-          })
+          // Если ошибка связана с лимитами, открываем paywall
+          if (error.toLowerCase().includes("лимит")) {
+            setShowPaywall(true)
+          } else {
+            toast({
+              title: "Ошибка",
+              description: error,
+              variant: "destructive",
+            })
+          }
         },
       })
 
@@ -219,22 +226,37 @@ export function AddToClosetSheet({
   }
 
   return (
-    <CommonSheet isOpen={isOpen} onClose={onClose} title="Добавить в гардероб" backgroundColor="dark">
-      <div className="space-y-6 text-neutral-100">
-        <div className="text-center">
-          <p className="text-sm text-neutral-300">Сфотографируйте вещь или загрузите фото из галереи</p>
-        </div>
+    <>
+      <CommonSheet isOpen={isOpen} onClose={onClose} title="Добавить в гардероб" backgroundColor="dark">
+        <div className="space-y-6 text-neutral-100">
+          <div className="text-center">
+            <p className="text-sm text-neutral-300">Сфотографируйте вещь или загрузите фото из галереи</p>
+          </div>
 
-        <Button
-          type="button"
-          aria-label="Загрузить фото вещей"
-          onClick={handlePhotoUpload}
-          className="w-full bg-white text-neutral-900 hover:bg-neutral-100 h-14 rounded-2xl text-base font-medium"
-        >
-          <Camera className="w-5 h-5 mr-3" />
-          Найти вещи на фото
-        </Button>
-      </div>
-    </CommonSheet>
+          <Button
+            type="button"
+            aria-label="Загрузить фото вещей"
+            onClick={handlePhotoUpload}
+            className="w-full bg-white text-neutral-900 hover:bg-neutral-100 h-14 rounded-2xl text-base font-medium"
+          >
+            <Camera className="w-5 h-5 mr-3" />
+            Найти вещи на фото
+          </Button>
+        </div>
+      </CommonSheet>
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        isOpen={showPaywall}
+        onClose={() => setShowPaywall(false)}
+        onSuccess={() => {
+          setShowPaywall(false)
+          toast({
+            title: "Лимиты обновлены",
+            description: "Попробуйте еще раз",
+          })
+        }}
+      />
+    </>
   )
 }

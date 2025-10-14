@@ -10,6 +10,7 @@ import {AIAssistantLoader} from "@/components/ai-assistant-loader"
 import Image from "next/image"
 import {createClient} from "@/lib/supabase/client"
 import {PhotoRegenerationModal} from "./photo-regeneration-modal"
+import {PaywallModal} from "./paywall-modal"
 import { api } from "@/lib/api-client"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
@@ -222,6 +223,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
     const [isFirstTimeRegeneration, setIsFirstTimeRegeneration] = useState(true)
     const [viewMode, setViewMode] = useState<ViewMode>(null)
     const [isTransitioning, setIsTransitioning] = useState(false)
+    const [showPaywall, setShowPaywall] = useState(false)
     const GAME_AREA_HEIGHT = 300
     // Allow up to two minutes for the AI analysis with a safety buffer
     const MAX_ANALYSIS_DURATION_MS = 2 * 60 * 1000
@@ -522,7 +524,7 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
             })
 
             if (!limitCheck.canUse) {
-                setError("Лимит анализа фотографий исчерпан. Пожалуйста, оформите подписку.")
+                setShowPaywall(true)
                 return
             }
         } catch (err) {
@@ -868,6 +870,15 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
                     onClose={closeRegenerationModal}
                 />
             )}
+
+            {/* Paywall Modal */}
+            <PaywallModal
+                isOpen={showPaywall}
+                onClose={() => setShowPaywall(false)}
+                onSuccess={() => {
+                    setShowPaywall(false)
+                }}
+            />
         </div>
     )
 }
