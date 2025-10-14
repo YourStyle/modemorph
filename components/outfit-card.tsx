@@ -108,6 +108,22 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
         setVtonResult(null)
 
         try {
+          // ПРОВЕРКА ЛИМИТОВ ДО выполнения примерки
+          const limitCheck = await api.post("/api/check-limits", {
+            featureType: "vton_used",
+            count: 1,
+            meta: {
+              requestId: tryOnRequestId ?? crypto.randomUUID(),
+            }
+          })
+
+          if (!limitCheck.canUse) {
+            toast.error("Лимит примерок исчерпан. Пожалуйста, оформите подписку.")
+            setVtonLoading(false)
+            setShowTryOnModal(false)
+            return
+          }
+
           const vtonItems = items.map((item) => ({
             name: item.name,
             description: `${item.style || ""} ${item.has_print || ""} ${item.has_details || ""}`.trim(),

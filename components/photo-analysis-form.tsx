@@ -512,6 +512,25 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
     const handleAnalyze = async (photosToAnalyze?: UploadedPhoto[]) => {
         const photos = photosToAnalyze || selectedFiles
         if (photos.length === 0) return
+
+        // ПРОВЕРКА ЛИМИТОВ ДО выполнения анализа
+        try {
+            const limitCheck = await api.post("/api/check-limits", {
+                featureType: "wardrobe_items_anlyzed",
+                count: photos.length,
+                meta: {},
+            })
+
+            if (!limitCheck.canUse) {
+                setError("Лимит анализа фотографий исчерпан. Пожалуйста, оформите подписку.")
+                return
+            }
+        } catch (err) {
+            console.error("Error checking limits:", err)
+            setError("Не удалось проверить лимиты")
+            return
+        }
+
         setLoading(true)
         setError(null)
         setHasAnalyzed(true)

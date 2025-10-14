@@ -27,6 +27,34 @@ export function useBackgroundPhotoAnalysis() {
       }
 
       try {
+        // ПРОВЕРКА ЛИМИТОВ ДО выполнения анализа
+        const limitCheckResponse = await fetch("/api/check-limits", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            featureType: "wardrobe_items_anlyzed",
+            count: files.length,
+            meta: {},
+          }),
+        })
+
+        const limitCheck = await limitCheckResponse.json()
+
+        if (!limitCheck.canUse) {
+          updateTask(taskId, {
+            status: "error",
+            error: "Лимит анализа фотографий исчерпан. Пожалуйста, оформите подписку.",
+          })
+
+          if (onError) {
+            onError("Лимит анализа фотографий исчерпан. Пожалуйста, оформите подписку.")
+          }
+
+          return { success: false, taskId, error: "Лимит исчерпан" }
+        }
+
         // Подготавливаем FormData
         const formData = new FormData()
         files.forEach((file) => {
