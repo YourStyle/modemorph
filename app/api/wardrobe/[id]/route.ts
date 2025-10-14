@@ -208,6 +208,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
       clothing_type: body.clothing_type ?? undefined,
       gender: body.gender ?? undefined,
       is_basic: typeof body.is_basic === "boolean" ? body.is_basic : undefined,
+      basic_item_id: body.basic_item_id !== undefined ? body.basic_item_id : undefined,
     }
 
     const hp = normalizeBool(body.has_print)
@@ -222,7 +223,13 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 
     if (error) {
       console.error("Error updating wardrobe item:", error)
-      return NextResponse.json({ error: "Failed to update item" }, { status: 500 })
+      console.error("Update data:", updateData)
+      console.error("Item ID:", itemId)
+      return NextResponse.json({
+        error: "Failed to update item",
+        details: error.message,
+        code: error.code
+      }, { status: 500 })
     }
 
     return NextResponse.json({ item: data })

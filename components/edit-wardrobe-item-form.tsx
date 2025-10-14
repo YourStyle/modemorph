@@ -170,7 +170,7 @@ export function EditWardrobeItemForm({ item }: EditWardrobeItemFormProps) {
         gender: formData.gender || null,
       }
 
-      const res = await api.put(`/api/wardrobe/${item.id}`, {submitData})
+      const res = await api.put(`/api/wardrobe/${item.id}`, submitData)
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
