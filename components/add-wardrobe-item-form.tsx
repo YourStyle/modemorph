@@ -275,17 +275,34 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
     try {
       let imageUrl = ""
 
-      if (selectedAiItem && !imageFile) {
-        imageUrl = selectedAiItem.img_url
-      } else if (imageFile) {
+      if (imageFile) {
+        // If there's a file selected, upload it
         const fd = new FormData()
         fd.append("file", imageFile)
         const uploaded = await api.post("/api/upload-image", fd, {
           headers: {} // Remove Content-Type for FormData
         })
         imageUrl = uploaded.url
-      } else if (imagePreview && imagePreview.startsWith("http")) {
-        // Use the preview URL if it's already a URL (from AI analysis)
+      } else if (selectedAiItem?.img_url) {
+        // If using AI selected item image
+        if (selectedAiItem.img_url.startsWith("http")) {
+          // Already a URL (from S3), use it directly
+          imageUrl = selectedAiItem.img_url
+        } else if (selectedAiItem.img_url.startsWith("data:")) {
+          // Base64 image, need to upload to S3
+          const response = await fetch(selectedAiItem.img_url)
+          const blob = await response.blob()
+          const file = new File([blob], "ai-generated.jpg", { type: "image/jpeg" })
+
+          const fd = new FormData()
+          fd.append("file", file)
+          const uploaded = await api.post("/api/upload-image", fd, {
+            headers: {} // Remove Content-Type for FormData
+          })
+          imageUrl = uploaded.url
+        }
+      } else if (imagePreview?.startsWith("http")) {
+        // Use the preview URL if it's already a URL from S3
         imageUrl = imagePreview
       }
 

@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="fix admin pages" />
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="fix edit item">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/add-wardrobe-item-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/add-wardrobe-item-form.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/wardrobe-item-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/wardrobe-item-card.tsx" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -269,7 +273,15 @@
       <option name="project" value="LOCAL" />
       <updated>1760435908220</updated>
     </task>
-    <option name="localTasksCounter" value="28" />
+    <task id="LOCAL-00028" summary="fix edit item">
+      <option name="closed" value="true" />
+      <created>1760436341227</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1760436341227</updated>
+    </task>
+    <option name="localTasksCounter" value="29" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -305,6 +317,7 @@
     <MESSAGE value="update widget and photo count" />
     <MESSAGE value="update paywall screen usage" />
     <MESSAGE value="fix admin pages" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix admin pages" />
+    <MESSAGE value="fix edit item" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix edit item" />
   </component>
 </project>

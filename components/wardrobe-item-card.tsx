@@ -44,21 +44,18 @@ export function WardrobeItemCard({
     setIsUpdating(true)
 
     try {
-      const response = await api.patch(`/api/wardrobe/${item.id}`, {
+      await api.patch(`/api/wardrobe/${item.id}`, {
         is_hidden: !item.is_hidden,
       })
 
-      if (response.ok) {
-        toast({
-          title: item.is_hidden ? "Вещь показана" : "Вещь скрыта",
-          description: `Вещь "${item.item_name}" ${item.is_hidden ? "теперь видна" : "скрыта"} в гардеробе`,
-        })
-        onVisibilityChange?.(item.id, !item.is_hidden)
-        onRefresh?.()
-      } else {
-        throw new Error("Failed to update visibility")
-      }
+      toast({
+        title: item.is_hidden ? "Вещь показана" : "Вещь скрыта",
+        description: `Вещь "${item.item_name}" ${item.is_hidden ? "теперь видна" : "скрыта"} в гардеробе`,
+      })
+      onVisibilityChange?.(item.id, !item.is_hidden)
+      onRefresh?.()
     } catch (error) {
+      console.error("Error toggling visibility:", error)
       toast({
         title: "Ошибка",
         description: "Не удалось изменить видимость вещи",
@@ -79,19 +76,16 @@ export function WardrobeItemCard({
     setIsUpdating(true)
 
     try {
-      const response = await api.delete(`/api/wardrobe/${item.id}`)
+      await api.delete(`/api/wardrobe/${item.id}`)
 
-      if (response.ok) {
-        toast({
-          title: "Вещь удалена",
-          description: `Вещь "${item.item_name}" успешно удалена из гардероба`,
-        })
-        onDelete?.(item.id)
-        onRefresh?.()
-      } else {
-        throw new Error("Failed to delete item")
-      }
+      toast({
+        title: "Вещь удалена",
+        description: `Вещь "${item.item_name}" успешно удалена из гардероба`,
+      })
+      onDelete?.(item.id)
+      onRefresh?.()
     } catch (error) {
+      console.error("Error deleting item:", error)
       toast({
         title: "Ошибка",
         description: "Не удалось удалить вещь",
