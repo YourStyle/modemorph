@@ -1,15 +1,35 @@
-import { getAdminUser } from "@/lib/admin-auth"
+"use client"
+
 import { AddWardrobeItemForm } from "@/components/add-wardrobe-item-form"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { useAuth } from "@/contexts/auth-context"
+import { useRouter } from "next/navigation"
 
-export default async function AddWardrobeItemPage() {
-  // Проверяем авторизацию
-  const user = await getAdminUser()
+export default function AddWardrobeItemPage() {
+  const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-lg font-semibold">Загрузка...</div>
+        </div>
+      </div>
+    )
+  }
 
   if (!user) {
-    return <div>Access denied</div>
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-red-600 text-lg font-semibold">Необходима авторизация</div>
+          <Button onClick={() => router.push("/auth/login")}>Войти</Button>
+        </div>
+      </div>
+    )
   }
 
   return (
