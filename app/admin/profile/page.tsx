@@ -6,17 +6,15 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { User, Mail, Calendar, Shield, LogOut } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
-import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 
 export default function ProfilePage() {
   const { user, loading: authLoading } = useAuth()
-  const router = useRouter()
 
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.push("/auth/login")
+    window.location.href = "/auth/login"
   }
 
   if (authLoading) {
@@ -24,17 +22,6 @@ export default function ProfilePage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="text-lg font-semibold">Загрузка...</div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-red-600 text-lg font-semibold">Необходима авторизация</div>
-          <Button onClick={() => router.push("/auth/login")}>Войти</Button>
         </div>
       </div>
     )

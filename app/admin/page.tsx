@@ -5,28 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Shirt, FolderIcon as Hanger, Plus, TrendingUp, Package, Palette, Zap } from "lucide-react"
 import Link from "next/link"
 import { useAuth } from "@/contexts/auth-context"
-import { useRouter } from "next/navigation"
 
 export default function AdminDashboard() {
   const { user, loading: authLoading } = useAuth()
-  const router = useRouter()
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="text-lg font-semibold">Загрузка...</div>
-        </div>
-      </div>
-    )
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-red-600 text-lg font-semibold">Необходима авторизация</div>
-          <Button onClick={() => router.push("/auth/login")}>Войти</Button>
         </div>
       </div>
     )
