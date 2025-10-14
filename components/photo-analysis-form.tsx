@@ -619,7 +619,20 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
             }, 800)
         } catch (err) {
             console.error("Analysis error:", err)
-            setError("Произошла ошибка при анализе фото")
+
+            // Проверяем, является ли это ошибкой лимита (402 или payment_required)
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            const isPaymentRequired =
+                errorMessage.includes("402") ||
+                errorMessage.includes("payment_required") ||
+                errorMessage.toLowerCase().includes("лимит")
+
+            if (isPaymentRequired) {
+                setShowPaywall(true)
+            } else {
+                setError("Произошла ошибка при анализе фото")
+            }
+
             setLoading(false)
             if (progressTimerRef.current) {
                 clearInterval(progressTimerRef.current)

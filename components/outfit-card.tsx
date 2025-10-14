@@ -161,7 +161,21 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
           toast.success("Примерка готова!")
         } catch (error) {
           console.error("Error in virtual try-on:", error)
-          toast.error(error instanceof Error ? error.message : "Ошибка при примерке")
+
+          // Проверяем, является ли это ошибкой лимита (402 или payment_required)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          const isPaymentRequired =
+            errorMessage.includes("402") ||
+            errorMessage.includes("payment_required") ||
+            errorMessage.toLowerCase().includes("лимит")
+
+          if (isPaymentRequired) {
+            setVtonLoading(false)
+            setShowTryOnModal(false)
+            setShowPaywall(true)
+          } else {
+            toast.error(error instanceof Error ? error.message : "Ошибка при примерке")
+          }
         } finally {
           setVtonLoading(false)
         }
