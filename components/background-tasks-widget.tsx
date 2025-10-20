@@ -1,6 +1,7 @@
 "use client"
 
 import { useBackgroundTasks } from "@/contexts/background-tasks-context"
+import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
@@ -51,9 +52,10 @@ const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: nu
 
 export function BackgroundTasksWidget() {
   const { tasks, removeTask } = useBackgroundTasks()
+  const aiAnalysis = useAIAnalysis()
   const [showTooltip, setShowTooltip] = useState<string | null>(null)
   const [showResultsSheet, setShowResultsSheet] = useState(false)
-  const [selectedTask, setSelectedTask] = useState<any>(null)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [addingItems, setAddingItems] = useState<Set<number>>(new Set())
   const [addedItems, setAddedItems] = useState<Set<number>>(new Set())
   const shownTooltipsRef = useRef<Set<string>>(new Set())
@@ -75,9 +77,12 @@ export function BackgroundTasksWidget() {
   const activeTasks = tasks.filter((task) => task.status !== "error" || Date.now() - task.startedAt.getTime() < 10000)
 
   const handleTaskClick = (task: any) => {
-    if (task.status === "completed" && task.data?.items) {
-      setSelectedTask(task)
-      setShowResultsSheet(true)
+    if (task.status === "completed" && task.data?.sessionId) {
+      const session = aiAnalysis.getSession(task.data.sessionId)
+      if (session && session.items.length > 0) {
+        setSelectedSessionId(task.data.sessionId)
+        setShowResultsSheet(true)
+      }
     }
   }
 
@@ -236,17 +241,23 @@ export function BackgroundTasksWidget() {
         onMinimize={handleMinimizeSheet}
       >
         <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100">
-            <div className="mb-6">
-              <h2 className="text-2xl font-semibold text-white mb-2">Результаты анализа</h2>
-              <p className="text-neutral-300 text-sm">
-                {selectedTask?.data?.itemsCount
-                  ? `Найдено ${selectedTask.data.itemsCount} ${selectedTask.data.itemsCount === 1 ? "вещь" : selectedTask.data.itemsCount < 5 ? "вещи" : "вещей"}`
-                  : "Результаты анализа фотографий"}
-              </p>
-            </div>
+            {(() => {
+              const session = selectedSessionId ? aiAnalysis.getSession(selectedSessionId) : null
+              const itemsCount = session?.items.length || 0
 
-            <div className="space-y-4">
-              {selectedTask?.data?.items?.map((item: any, index: number) => (
+              return (
+                <>
+                  <div className="mb-6">
+                    <h2 className="text-2xl font-semibold text-white mb-2">Результаты анализа</h2>
+                    <p className="text-neutral-300 text-sm">
+                      {itemsCount > 0
+                        ? `Найдено ${itemsCount} ${itemsCount === 1 ? "вещь" : itemsCount < 5 ? "вещи" : "вещей"}`
+                        : "Результаты анализа фотографий"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {session?.items?.map((item: any, index: number) => (
                 <Card key={index} className="bg-white/5 border-white/10 overflow-hidden">
                   <CardContent className="flex flex-col sm:flex-row gap-4 p-4">
                     {/* Изображение */}
@@ -319,7 +330,10 @@ export function BackgroundTasksWidget() {
                   </CardContent>
                 </Card>
               ))}
-            </div>
+                  </div>
+                </>
+              )
+            })()}
           </div>
       </CommonSheet>
     </>

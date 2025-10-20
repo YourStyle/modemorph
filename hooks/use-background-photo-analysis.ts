@@ -1,24 +1,40 @@
 "use client"
 
 import { useBackgroundTasks } from "@/contexts/background-tasks-context"
+import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { useCallback } from "react"
 
 interface PhotoAnalysisOptions {
   files: File[]
+  batchId?: string
   onComplete?: (result: any) => void
   onError?: (error: string) => void
 }
 
 export function useBackgroundPhotoAnalysis() {
   const { addTask, updateTask } = useBackgroundTasks()
+  const aiAnalysis = useAIAnalysis()
 
   const startAnalysis = useCallback(
-    async ({ files, onComplete, onError }: PhotoAnalysisOptions) => {
+    async ({ files, batchId, onComplete, onError }: PhotoAnalysisOptions) => {
+      // Создаём сессию AI анализа, если указан batchId
+      let sessionId: string | null = null
+      if (batchId) {
+        const photos = files.map((file) => ({
+          file,
+          preview: URL.createObjectURL(file),
+          id: Math.random().toString(36).substr(2, 9),
+        }))
+        sessionId = aiAnalysis.createSession(batchId, photos)
+        console.log("[useBackgroundPhotoAnalysis] Created AI analysis session:", sessionId)
+      }
+
       // Создаём задачу
       const taskId = addTask({
         type: "photo_analysis",
         status: "processing",
         progress: 0,
+        data: { sessionId },
       })
 
       // Функция нелинейного изменения прогресса (easing)
@@ -131,8 +147,19 @@ export function useBackgroundPhotoAnalysis() {
               data: {
                 items: result.items,
                 itemsCount: result.items.length,
+                sessionId,
               },
             })
+
+            // Обновляем сессию AI анализа
+            if (sessionId) {
+              aiAnalysis.updateSession(sessionId, {
+                status: "completed",
+                items: result.items,
+                progress: 100,
+                progressText: "Готово!",
+              })
+            }
 
             if (onComplete) {
               onComplete(result)
@@ -156,7 +183,7 @@ export function useBackgroundPhotoAnalysis() {
         return { success: false, taskId, error: errorMessage }
       }
     },
-    [addTask, updateTask]
+    [addTask, updateTask, aiAnalysis]
   )
 
   return { startAnalysis }

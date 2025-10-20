@@ -14,6 +14,7 @@ import {PaywallModal} from "./paywall-modal"
 import { api } from "@/lib/api-client"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
+import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 
 interface ResponseItem {
     index: number
@@ -65,6 +66,7 @@ interface PhotoAnalysisResult {
 
 interface PhotoAnalysisFormProps {
     initialPhotos?: UploadedPhoto[]
+    batchId?: string
     onSuccess?: (payload?: {
         items: ItemWithImage[]
         photos: UploadedPhoto[]
@@ -197,7 +199,9 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
 }
 
 
-export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoadingChange}: PhotoAnalysisFormProps) {
+export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onReset, onLoadingChange}: PhotoAnalysisFormProps) {
+    const aiAnalysis = useAIAnalysis()
+    const sessionIdRef = useRef<string | null>(null)
 
     const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
 
@@ -279,14 +283,43 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
         }
     }, [loading, viewMode])
 
+    // Загрузить данные из существующей сессии при монтировании
     useEffect(() => {
+        if (batchId) {
+            const existingSession = aiAnalysis.getSessionByBatchId(batchId)
+            if (existingSession) {
+                // Восстановить состояние из существующей сессии
+                sessionIdRef.current = existingSession.id
+                setSelectedFiles(existingSession.photos)
+                setResults(existingSession.items)
+                setAnalysisResults(existingSession.analysisResults)
+                setProgress(existingSession.progress)
+                setProgressText(existingSession.progressText)
+                setLoading(existingSession.status === "analyzing")
+                setHasAnalyzed(existingSession.status !== "idle")
+                setError(existingSession.error)
+
+                console.log("[PhotoAnalysisForm] Restored session from context:", existingSession.id)
+                return
+            }
+        }
+
+        // Только если нет существующей сессии, начинаем новый анализ
         if (initialPhotos && initialPhotos.length > 0 && !hasAnalyzed) {
             const limitedPhotos = initialPhotos.slice(0, 10)
             setSelectedFiles(limitedPhotos)
+
+            // Создать новую сессию если есть batchId
+            if (batchId) {
+                const sessionId = aiAnalysis.createSession(batchId, limitedPhotos)
+                sessionIdRef.current = sessionId
+                console.log("[PhotoAnalysisForm] Created new session:", sessionId)
+            }
+
             handleAnalyze(limitedPhotos)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [initialPhotos])
+    }, [initialPhotos, batchId])
 
     // Rotate quotes every 10 seconds while loading, in random order
     useEffect(() => {
@@ -326,6 +359,26 @@ export function PhotoAnalysisForm({initialPhotos = [], onSuccess, onReset, onLoa
     useEffect(() => {
         onLoadingChange?.(loading)
     }, [loading, onLoadingChange])
+
+    // Sync local state with global session
+    const syncSessionState = () => {
+        if (sessionIdRef.current) {
+            aiAnalysis.updateSession(sessionIdRef.current, {
+                status: loading ? "analyzing" : hasAnalyzed ? "completed" : "idle",
+                progress,
+                progressText,
+                items: results,
+                analysisResults,
+                error,
+            })
+        }
+    }
+
+    // Sync state changes to global context
+    useEffect(() => {
+        syncSessionState()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [progress, progressText, results, analysisResults, error, loading, hasAnalyzed])
 
     // Handler for selecting files from the hidden input
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {

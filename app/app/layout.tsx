@@ -1,6 +1,7 @@
 import type React from "react"
 import AppClientLayout from "./layout-client"
 import { BackgroundTasksProvider } from "@/contexts/background-tasks-context"
+import { AIAnalysisProvider } from "@/contexts/ai-analysis-context"
 
 export default function AppLayout({
   children,
@@ -10,7 +11,9 @@ export default function AppLayout({
   // Server Component layout. Client behavior is inside AppClientLayout.
   return (
     <BackgroundTasksProvider>
-      <AppClientLayout>{children}</AppClientLayout>
+      <AIAnalysisProvider>
+        <AppClientLayout>{children}</AppClientLayout>
+      </AIAnalysisProvider>
     </BackgroundTasksProvider>
   )
 }

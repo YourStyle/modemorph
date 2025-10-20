@@ -7,6 +7,7 @@ import { Camera } from "lucide-react"
 import { PhotoAnalysisForm } from "./photo-analysis-form"
 import { CommonSheet } from "@/components/common-sheet"
 import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
+import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { toast } from "@/hooks/use-toast"
 import {
   Dialog,
@@ -51,19 +52,46 @@ export function AddToClosetSheet({
   const [showPaywall, setShowPaywall] = useState(false)
   const batchIdRef = useRef<string>("")
   const { startAnalysis } = useBackgroundPhotoAnalysis()
+  const aiAnalysis = useAIAnalysis()
 
-  // генерируем batchId при каждом открытии
+  // Проверяем активную сессию при открытии
   useEffect(() => {
     if (isOpen) {
-      batchIdRef.current = crypto.randomUUID()
+      const activeSession = aiAnalysis.getActiveSession()
+
+      if (activeSession) {
+        // Если есть активная сессия - используем её batchId и показываем форму
+        console.log("[AddToClosetSheet] Found active session, showing it:", activeSession.id)
+        batchIdRef.current = activeSession.batchId
+        setShowAnalysisForm(true)
+        setIsAnalyzing(true)
+      } else {
+        // Генерируем новый batchId только если нет активной сессии
+        batchIdRef.current = crypto.randomUUID()
+      }
     } else {
-      batchIdRef.current = ""
+      if (!aiAnalysis.getActiveSession()) {
+        // Очищаем только если нет активной сессии
+        batchIdRef.current = ""
+      }
     }
-  }, [isOpen])
+  }, [isOpen, aiAnalysis])
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length === 0) return
+
+    // Проверяем, есть ли активная сессия
+    const activeSession = aiAnalysis.getActiveSession()
+    if (activeSession) {
+      console.log("[AddToClosetSheet] Cannot start new analysis, active session exists:", activeSession.id)
+      toast({
+        title: "Анализ уже выполняется",
+        description: "Дождитесь завершения текущего анализа или сверните его в виджет",
+        variant: "destructive",
+      })
+      return
+    }
 
     const newPhotos: UploadedPhoto[] = files.map((file) => ({
       file,
@@ -76,6 +104,18 @@ export function AddToClosetSheet({
   }
 
   const handlePhotoUpload = () => {
+    // Проверяем, есть ли активная сессия перед открытием file input
+    const activeSession = aiAnalysis.getActiveSession()
+    if (activeSession) {
+      console.log("[AddToClosetSheet] Cannot upload, active session exists:", activeSession.id)
+      toast({
+        title: "Анализ уже выполняется",
+        description: "Дождитесь завершения текущего анализа или сверните его в виджет",
+        variant: "destructive",
+      })
+      return
+    }
+
     const fileInput = document.createElement("input")
     fileInput.type = "file"
     fileInput.accept = "image/heic,image/jpeg,image/jpg,image/webp,image/png"
@@ -128,6 +168,7 @@ export function AddToClosetSheet({
     try {
       await startAnalysis({
         files: filesToAnalyze.map(p => p.file),
+        batchId: batchIdRef.current,
         onComplete: (data) => {
           // Tooltip показывается автоматически в виджете, toast не нужен
           // Если был передан onAnalysisSuccess, вызываем его
@@ -191,6 +232,7 @@ export function AddToClosetSheet({
           >
             <PhotoAnalysisForm
               initialPhotos={selectedFiles.length > 0 ? selectedFiles : initialPhotos}
+              batchId={batchIdRef.current}
               onSuccess={handleAnalysisSuccess}
               onReset={handleReset}
               onLoadingChange={setIsAnalyzing}

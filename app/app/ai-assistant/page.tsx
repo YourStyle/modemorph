@@ -269,6 +269,8 @@ export default function AIAssistantPage() {
       const requestUrl = `${aiApiUrl}/user-prompt-rec`
       const authToken = await getAuthToken()
 
+      console.log("Sending request to AI API:", { url: requestUrl, userId, promptLength: messageToSend.length })
+
       const response = await fetch(requestUrl, {
         method: "POST",
         headers: {
@@ -278,14 +280,29 @@ export default function AIAssistantPage() {
         body: JSON.stringify({ user_id: userId, prompt: messageToSend, weather }),
       })
 
+      console.log("AI API response status:", response.status)
+
       if (!response.ok) {
         const errorText = await response.text().catch(() => "")
         console.error("AI API error:", response.status, errorText)
         throw new Error(`AI API error: ${response.status}`)
       }
 
-      const responseData: AIPromptResponse[] = await response.json()
+      const responseText = await response.text()
+      console.log("AI API raw response:", responseText)
+
+      let responseData: AIPromptResponse[]
+      try {
+        responseData = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error("Failed to parse AI API response:", parseError, "Response text:", responseText)
+        throw new Error("Invalid JSON response from AI API")
+      }
+
+      console.log("AI API parsed response:", responseData)
+
       if (!Array.isArray(responseData) || responseData.length === 0) {
+        console.error("Invalid response format - not an array or empty:", responseData)
         throw new Error("Invalid response format from AI API")
       }
 
@@ -350,12 +367,14 @@ export default function AIAssistantPage() {
 
   const handleSaveOutfit = async (outfit: UserRecommendation) => {
     try {
-      // Создаем образ в базе
-      const response = await api.post("/api/outfits", {
+      // Создаем образ в user_looks
+      const response = await api.post("/api/user-looks", {
         name: outfit.title,
         description: outfit.description,
-        items: outfit.items.map(item => item.id),
-        source: "ai_assistant", // Трекинг источника создания образа
+        items: outfit.items.map(item => ({
+          type: "user",
+          id: item.id
+        })),
       })
 
       toast({
