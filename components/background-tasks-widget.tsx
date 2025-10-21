@@ -279,10 +279,6 @@ export function BackgroundTasksWidget() {
               const session = selectedSessionId ? aiAnalysis.getSession(selectedSessionId) : null
               const itemsCount = session?.items.length || 0
 
-              console.log("[BackgroundTasksWidget Results] selectedSessionId:", selectedSessionId)
-              console.log("[BackgroundTasksWidget Results] session:", session)
-              console.log("[BackgroundTasksWidget Results] items:", session?.items)
-
               return (
                 <>
                   <div className="mb-6">

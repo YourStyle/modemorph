@@ -16,6 +16,7 @@ import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
+import { useBackgroundTasks } from "@/contexts/background-tasks-context"
 
 interface ResponseItem {
     index: number
@@ -203,7 +204,9 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
 export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onReset, onLoadingChange}: PhotoAnalysisFormProps) {
     const aiAnalysis = useAIAnalysis()
     const { startAnalysis } = useBackgroundPhotoAnalysis()
+    const { addTask, updateTask, tasks } = useBackgroundTasks()
     const sessionIdRef = useRef<string | null>(null)
+    const taskIdRef = useRef<string | null>(null)
 
     const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
 
@@ -304,6 +307,28 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 setError(existingSession.error)
 
                 console.log("[PhotoAnalysisForm] Restored session from context:", existingSession.id)
+
+                // Восстановить или создать background task для этой сессии
+                if (existingSession.status === "analyzing") {
+                    // Проверяем, есть ли уже task для этой сессии
+                    const existingTask = tasks.find(t => t.data?.sessionId === existingSession.id)
+
+                    if (!existingTask) {
+                        // Создаем новый task для отслеживания существующей сессии
+                        const newTaskId = addTask({
+                            type: "photo_analysis",
+                            status: "processing",
+                            progress: existingSession.progress,
+                            data: { sessionId: existingSession.id },
+                        })
+                        taskIdRef.current = newTaskId
+                        console.log("[PhotoAnalysisForm] Created task for restored session:", newTaskId)
+                    } else {
+                        taskIdRef.current = existingTask.id
+                        console.log("[PhotoAnalysisForm] Found existing task for session:", existingTask.id)
+                    }
+                }
+
                 return
             }
         }
@@ -383,6 +408,60 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         syncSessionState()
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [progress, progressText, results, analysisResults, error, loading, hasAnalyzed])
+
+    // Subscribe to session progress updates and sync with background task
+    useEffect(() => {
+        if (!sessionIdRef.current || !loading) return
+
+        const checkProgressInterval = setInterval(() => {
+            const session = aiAnalysis.getSession(sessionIdRef.current!)
+            if (session) {
+                // Update local state from session
+                setProgress(session.progress)
+                setProgressText(session.progressText)
+
+                // Update background task if it exists
+                if (taskIdRef.current) {
+                    updateTask(taskIdRef.current, {
+                        progress: session.progress,
+                    })
+                }
+
+                if (session.status === "completed") {
+                    clearInterval(checkProgressInterval)
+                    setResults(session.items)
+                    setLoading(false)
+
+                    // Update task to completed
+                    if (taskIdRef.current) {
+                        updateTask(taskIdRef.current, {
+                            status: "completed",
+                            progress: 100,
+                            data: {
+                                items: session.items,
+                                itemsCount: session.items.length,
+                                sessionId: session.id,
+                            },
+                        })
+                    }
+                } else if (session.status === "error") {
+                    clearInterval(checkProgressInterval)
+                    setError(session.error || "Ошибка анализа")
+                    setLoading(false)
+
+                    // Update task to error
+                    if (taskIdRef.current) {
+                        updateTask(taskIdRef.current, {
+                            status: "error",
+                            error: session.error || "Ошибка анализа",
+                        })
+                    }
+                }
+            }
+        }, 100)
+
+        return () => clearInterval(checkProgressInterval)
+    }, [sessionIdRef.current, loading, aiAnalysis, updateTask])
 
     // Handler for selecting files from the hidden input
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -559,22 +638,13 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 }
             })
 
-            // Подписываемся на обновления прогресса из сессии
-            const checkProgressInterval = setInterval(() => {
-                const session = aiAnalysis.getSessionByBatchId(batchId)
-                if (session) {
-                    setProgress(session.progress)
-                    setProgressText(session.progressText)
+            // Сохраняем taskId для синхронизации прогресса
+            if (analysisResult && analysisResult.taskId) {
+                taskIdRef.current = analysisResult.taskId
+                console.log("[PhotoAnalysisForm] Started analysis with taskId:", analysisResult.taskId)
+            }
 
-                    if (session.status === "completed") {
-                        clearInterval(checkProgressInterval)
-                    } else if (session.status === "error") {
-                        clearInterval(checkProgressInterval)
-                        setError(session.error || "Ошибка анализа")
-                        setLoading(false)
-                    }
-                }
-            }, 300)
+            // Прогресс теперь обновляется через useEffect, который подписан на изменения сессии
 
         } catch (err) {
             console.error("Analysis error:", err)
