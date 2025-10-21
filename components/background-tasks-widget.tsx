@@ -2,6 +2,7 @@
 
 import { useBackgroundTasks } from "@/contexts/background-tasks-context"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
+import { useAddToCloset } from "@/contexts/add-to-closet-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
@@ -50,13 +51,10 @@ const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: nu
   )
 }
 
-interface BackgroundTasksWidgetProps {
-  onOpenSheet?: () => void
-}
-
-export function BackgroundTasksWidget({ onOpenSheet }: BackgroundTasksWidgetProps) {
+export function BackgroundTasksWidget() {
   const { tasks, removeTask } = useBackgroundTasks()
   const aiAnalysis = useAIAnalysis()
+  const { openSheet } = useAddToCloset()
   const [showTooltip, setShowTooltip] = useState<string | null>(null)
   const [showResultsSheet, setShowResultsSheet] = useState(false)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
@@ -92,16 +90,16 @@ export function BackgroundTasksWidget({ onOpenSheet }: BackgroundTasksWidgetProp
           setShowResultsSheet(true)
         }
         // Если задача в процессе - открываем шторку для просмотра прогресса
-        else if (task.status === "processing" && onOpenSheet) {
-          onOpenSheet()
+        else if (task.status === "processing") {
+          openSheet()
         }
       }
     } else {
       // Если нет sessionId, но есть активная сессия - используем её
       const activeSession = aiAnalysis.getActiveSession()
 
-      if (activeSession && task.status === "processing" && onOpenSheet) {
-        onOpenSheet()
+      if (activeSession && task.status === "processing") {
+        openSheet()
       }
     }
   }

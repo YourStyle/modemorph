@@ -11,6 +11,7 @@ import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { Progress } from "@/components/ui/progress"
 import { Plus, ChevronDown, ChevronUp, Search } from "lucide-react"
+import { useAddToCloset } from "@/contexts/add-to-closet-context"
 
 import { Input } from "@/components/ui/input"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
@@ -127,6 +128,7 @@ export default function WardrobePage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const { toast } = useToast()
+  const { registerOpenHandler, unregisterOpenHandler } = useAddToCloset()
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
   const [searchQuery, setSearchQuery] = useState("")
@@ -134,6 +136,12 @@ export default function WardrobePage() {
   useReconcileLimits(true)
 
   const { log, consume } = useFeature()
+
+  // Регистрируем обработчик открытия шторки для виджета
+  useEffect(() => {
+    registerOpenHandler(() => setIsAddSheetOpen(true))
+    return () => unregisterOpenHandler()
+  }, [registerOpenHandler, unregisterOpenHandler])
 
   const [userGender, setUserGender] = useState("")
 

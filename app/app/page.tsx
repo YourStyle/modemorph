@@ -10,6 +10,7 @@ import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
 import { PaywallModal } from "@/components/paywall-modal";
 import { api } from "@/lib/api-client";
+import { useAddToCloset } from "@/contexts/add-to-closet-context";
 
 
 interface OutfitItem {
@@ -117,7 +118,14 @@ export default function HomePage() {
   const [userLooks, setUserLooks] = useState<any[]>([])
   const [paywallOpen, setPaywallOpen] = useState(false);
   const { log, consume } = useFeature()
+  const { registerOpenHandler, unregisterOpenHandler } = useAddToCloset()
   useReconcileLimits(true);
+
+  // Регистрируем обработчик открытия шторки для виджета
+  useEffect(() => {
+    registerOpenHandler(() => setIsAddSheetOpen(true))
+    return () => unregisterOpenHandler()
+  }, [registerOpenHandler, unregisterOpenHandler])
 
 
   const loadUserLooks = async () => {
