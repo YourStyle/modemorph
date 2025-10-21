@@ -15,6 +15,7 @@ import { api } from "@/lib/api-client"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
+import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
 
 interface ResponseItem {
     index: number
@@ -201,6 +202,7 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
 
 export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onReset, onLoadingChange}: PhotoAnalysisFormProps) {
     const aiAnalysis = useAIAnalysis()
+    const { startAnalysis } = useBackgroundPhotoAnalysis()
     const sessionIdRef = useRef<string | null>(null)
 
     const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
@@ -488,83 +490,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         return session?.access_token
     }
 
-    // Send a single photo to the AI for analysis
-    const analyzePhoto = async (file: File): Promise<PhotoAnalysisResult> => {
-        const formData = new FormData()
-        formData.append("image", file)
-        const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
-        const controller = new AbortController()
-        // Allow requests to run for a little longer than two minutes before aborting
-        const timeoutId = setTimeout(() => controller.abort(), ANALYSIS_REQUEST_TIMEOUT_MS)
-        try {
-            const authToken = await getAuthToken()
-            const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
-                method: "POST",
-                body: formData,
-                signal: controller.signal,
-                headers: {
-                    Accept: "application/json",
-                    ...(authToken && {Authorization: `Bearer ${authToken}`}),
-                },
-            })
-            clearTimeout(timeoutId)
-            if (!response.ok) {
-                const errorText = await response.text()
-                console.error("AI API Error Response:", errorText)
-                return {
-                    success: false,
-                    items: [],
-                    error: `Ошибка анализа: ${response.status} ${response.statusText}`,
-                    fileName: file.name,
-                }
-            }
-            const data = await response.json()
-            // Handle rejection format
-            if (Array.isArray(data) && data.length > 0 && data[0].acceptable === false) {
-                const rejected = data[0] as RejectedPhoto
-                return {
-                    success: false,
-                    items: [],
-                    rejectionReason: rejected.reason,
-                    fileName: file.name,
-                }
-            }
-            // Handle items format
-            if (Array.isArray(data) && data.length > 0 && data[0].item_name) {
-                const itemsWithImages = await loadBasicItemImages(data as ResponseItem[])
-                return {
-                    success: true,
-                    items: itemsWithImages,
-                    fileName: file.name,
-                }
-            }
-            // Unknown format
-            return {
-                success: false,
-                items: [],
-                error: "Не удалось найти вещи на изображении",
-                fileName: file.name,
-            }
-        } catch (error: any) {
-            clearTimeout(timeoutId)
-            if (error.name === "AbortError") {
-                return {
-                    success: false,
-                    items: [],
-                    error: "Превышено время ожидания анализа изображения",
-                    fileName: file.name,
-                }
-            }
-            console.error("AI Analysis Error:", error)
-            return {
-                success: false,
-                items: [],
-                error: `Ошибка анализа: ${error.message}`,
-                fileName: file.name,
-            }
-        }
-    }
-
     // Main handler that analyzes all selected photos
     const handleAnalyze = async (photosToAnalyze?: UploadedPhoto[]) => {
         const photos = photosToAnalyze || selectedFiles
@@ -599,106 +524,67 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         setResults([])
         setAnalysisResults([])
         setProgress(10)
-        setProgressText(`Анализируем ${photos.length} фото `)
+        setProgressText(`Анализируем ${photos.length} фото`)
+
+        // Используем useBackgroundPhotoAnalysis для анализа
+        // Это обеспечит единый путь выполнения независимо от того, свернута шторка или нет
         try {
-            const total = photos.length
-            // Track completed photos
-            let done = 0
-            // Smooth progress timer: stretch to match the longer processing window
-            const duration = total === 1 ? MAX_ANALYSIS_DURATION_MS : ANALYSIS_REQUEST_TIMEOUT_MS
-            const startTime = Date.now()
-            if (progressTimerRef.current) {
-                clearInterval(progressTimerRef.current)
-                progressTimerRef.current = null
-            }
-            progressTimerRef.current = setInterval(() => {
-                const elapsed = Date.now() - startTime
-                const fraction = Math.min(elapsed / duration, 1)
-                const eased = 1 - Math.pow(1 - fraction, 2)
-                const target = 10 + eased * 75
-                setProgress((prev) => (target > prev ? target : prev))
-                if (elapsed >= duration && progressTimerRef.current) {
-                    clearInterval(progressTimerRef.current)
-                    progressTimerRef.current = null
+            const analysisResult = await startAnalysis({
+                files: photos.map(p => p.file),
+                batchId: batchId,
+                onComplete: (data) => {
+                    // Обработка завершения анализа
+                    if (data.items && data.items.length > 0) {
+                        setResults(data.items)
+                        setProgress(100)
+                        setProgressText("Готово!")
+                        setLoading(false)
+
+                        // Вызываем колбэк успеха
+                        if (onSuccess) {
+                            onSuccess({
+                                items: data.items,
+                                photos: photos,
+                                analysisResults: [{ success: true, items: data.items }]
+                            })
+                        }
+                    }
+                },
+                onError: (error) => {
+                    setError(error)
+                    setLoading(false)
+                    if (error.toLowerCase().includes("лимит")) {
+                        setShowPaywall(true)
+                    }
                 }
-            }, 200)
-            // Analyze all photos in parallel
-            const tasks = photos.map(({file}) =>
-                analyzePhoto(file).finally(() => {
-                    done += 1
-                    // Ensure progress never decreases and caps at 85 using easing
-                    setProgress((prev) => {
-                        const completed = done / total
-                        const easedCompleted = 1 - Math.pow(1 - completed, 2)
-                        const tentative = 10 + easedCompleted * 75
-                        const clamped = Math.min(tentative, 85)
-                        return clamped > prev ? clamped : prev
-                    })
-                    setProgressText(`Готово ${done} из ${total}`)
-                }),
-            )
-            const settled = await Promise.allSettled(tasks)
-            const analysisResults: PhotoAnalysisResult[] = settled.map((s, idx) =>
-                s.status === "fulfilled"
-                    ? (s.value as PhotoAnalysisResult)
-                    : {
-                        success: false,
-                        items: [],
-                        error: "Ошибка анализа",
-                        fileName: photos[idx].file.name,
-                    },
-            )
-            // Stop timer and finish progress
-            if (progressTimerRef.current) {
-                clearInterval(progressTimerRef.current)
-                progressTimerRef.current = null
-            }
-            setProgress(90)
-            setProgressText("Собираем результаты...")
-            const allSuccessfulItems = analysisResults.flatMap((r) => (r.success ? r.items : []))
-            const failedAnalyses = analysisResults.filter((r) => !r.success)
-            setResults(allSuccessfulItems)
-            setAnalysisResults(analysisResults)
-            if (allSuccessfulItems.length > 0) {
-                try {
-                    onSuccess?.({items: allSuccessfulItems, photos, analysisResults})
-                } catch {
-                    /* noop */
+            })
+
+            // Подписываемся на обновления прогресса из сессии
+            const checkProgressInterval = setInterval(() => {
+                const session = aiAnalysis.getSessionByBatchId(batchId)
+                if (session) {
+                    setProgress(session.progress)
+                    setProgressText(session.progressText)
+
+                    if (session.status === "completed") {
+                        clearInterval(checkProgressInterval)
+                    } else if (session.status === "error") {
+                        clearInterval(checkProgressInterval)
+                        setError(session.error || "Ошибка анализа")
+                        setLoading(false)
+                    }
                 }
-            }
-            if (allSuccessfulItems.length === 0 && failedAnalyses.length > 0) {
-                setError("Не удалось проанализировать ни одно изображение")
-            }
-            setProgress(100)
-            setProgressText("Готово!")
-            setTimeout(() => {
-                setLoading(false)
-                setProgress(0)
-                setProgressText("")
-            }, 800)
+            }, 300)
+
         } catch (err) {
             console.error("Analysis error:", err)
-
-            // Проверяем, является ли это ошибкой лимита (402 или payment_required)
             const errorMessage = err instanceof Error ? err.message : String(err)
-            const isPaymentRequired =
-                errorMessage.includes("402") ||
-                errorMessage.includes("payment_required") ||
-                errorMessage.toLowerCase().includes("лимит")
-
-            if (isPaymentRequired) {
-                setShowPaywall(true)
-            } else {
-                setError("Произошла ошибка при анализе фото")
-            }
-
+            setError(errorMessage)
             setLoading(false)
-            if (progressTimerRef.current) {
-                clearInterval(progressTimerRef.current)
-                progressTimerRef.current = null
+
+            if (errorMessage.toLowerCase().includes("лимит")) {
+                setShowPaywall(true)
             }
-            setProgress(0)
-            setProgressText("")
         }
     }
 
