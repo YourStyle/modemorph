@@ -50,7 +50,11 @@ const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: nu
   )
 }
 
-export function BackgroundTasksWidget() {
+interface BackgroundTasksWidgetProps {
+  onOpenSheet?: () => void
+}
+
+export function BackgroundTasksWidget({ onOpenSheet }: BackgroundTasksWidgetProps) {
   const { tasks, removeTask } = useBackgroundTasks()
   const aiAnalysis = useAIAnalysis()
   const [showTooltip, setShowTooltip] = useState<string | null>(null)
@@ -77,11 +81,19 @@ export function BackgroundTasksWidget() {
   const activeTasks = tasks.filter((task) => task.status !== "error" || Date.now() - task.startedAt.getTime() < 10000)
 
   const handleTaskClick = (task: any) => {
-    if (task.status === "completed" && task.data?.sessionId) {
+    // Если задача в процессе или завершена - открываем шторку
+    if (task.data?.sessionId) {
       const session = aiAnalysis.getSession(task.data.sessionId)
-      if (session && session.items.length > 0) {
-        setSelectedSessionId(task.data.sessionId)
-        setShowResultsSheet(true)
+      if (session) {
+        // Если задача завершена и есть результаты - показываем результаты
+        if (task.status === "completed" && session.items.length > 0) {
+          setSelectedSessionId(task.data.sessionId)
+          setShowResultsSheet(true)
+        }
+        // Если задача в процессе - открываем шторку для просмотра прогресса
+        else if (task.status === "processing" && onOpenSheet) {
+          onOpenSheet()
+        }
       }
     }
   }
