@@ -249,27 +249,41 @@ export default function AIAssistantPage() {
       return
     }
 
-    // Генерируем requestId и логируем попытку (без списания)
-    const requestId = crypto.randomUUID()
-    void log("ai_requests", "attempt", {
-      pagePath: "/app/ai-assistant",
-      requestId,
-      chars: messageToSend.length,
-    })
-
     setMessages((prev) => [...prev, { role: "user", content: messageToSend }])
     setInputValue("")
     setIsLoading(true)
 
     try {
-      if (!userId) throw new Error("User ID not available")
+      // Получаем userId, если он еще не загружен
+      let currentUserId = userId
+      if (!currentUserId) {
+        console.log("User ID not loaded yet, fetching...")
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) {
+          throw new Error("User not authenticated")
+        }
+        currentUserId = user.id
+        setUserId(currentUserId)
+      }
+
+      console.log("Using user ID:", currentUserId)
+
+      // Генерируем requestId и логируем попытку (без списания)
+      const requestId = crypto.randomUUID()
+      void log("ai_requests", "attempt", {
+        pagePath: "/app/ai-assistant",
+        requestId,
+        chars: messageToSend.length,
+      })
 
       const weather = await getCurrentWeather()
       const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app"
       const requestUrl = `${aiApiUrl}/user-prompt-rec`
       const authToken = await getAuthToken()
 
-      console.log("Sending request to AI API:", { url: requestUrl, userId, promptLength: messageToSend.length })
+      console.log("Sending request to AI API:", { url: requestUrl, userId: currentUserId, promptLength: messageToSend.length })
 
       const response = await fetch(requestUrl, {
         method: "POST",
@@ -277,7 +291,7 @@ export default function AIAssistantPage() {
           "Content-Type": "application/json",
           ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
-        body: JSON.stringify({ user_id: userId, prompt: messageToSend, weather }),
+        body: JSON.stringify({ user_id: currentUserId, prompt: messageToSend, weather }),
       })
 
       console.log("AI API response status:", response.status)
