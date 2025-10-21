@@ -61,7 +61,6 @@ export function AddToClosetSheet({
 
       if (activeSession) {
         // Если есть активная сессия - используем её batchId и показываем форму
-        console.log("[AddToClosetSheet] Found active session, showing it:", activeSession.id)
         batchIdRef.current = activeSession.batchId
         setShowAnalysisForm(true)
         setIsAnalyzing(true)
@@ -84,7 +83,6 @@ export function AddToClosetSheet({
     // Проверяем, есть ли активная сессия
     const activeSession = aiAnalysis.getActiveSession()
     if (activeSession) {
-      console.log("[AddToClosetSheet] Cannot start new analysis, active session exists:", activeSession.id)
       toast({
         title: "Анализ уже выполняется",
         description: "Дождитесь завершения текущего анализа или сверните его в виджет",
@@ -107,7 +105,6 @@ export function AddToClosetSheet({
     // Проверяем, есть ли активная сессия перед открытием file input
     const activeSession = aiAnalysis.getActiveSession()
     if (activeSession) {
-      console.log("[AddToClosetSheet] Cannot upload, active session exists:", activeSession.id)
       toast({
         title: "Анализ уже выполняется",
         description: "Дождитесь завершения текущего анализа или сверните его в виджет",
@@ -155,13 +152,10 @@ export function AddToClosetSheet({
     const activeSession = aiAnalysis.getActiveSession()
 
     if (!activeSession) {
-      console.warn("[AddToClosetSheet] No active session to minimize")
       handleReset()
       onClose()
       return
     }
-
-    console.log("[AddToClosetSheet] Minimizing active session:", activeSession.id)
 
     // Анализ УЖЕ запущен из PhotoAnalysisForm через startAnalysis
     // НЕ нужно вызывать startAnalysis снова - это создаст дубликаты запросов!

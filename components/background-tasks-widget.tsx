@@ -81,38 +81,26 @@ export function BackgroundTasksWidget({ onOpenSheet }: BackgroundTasksWidgetProp
   const activeTasks = tasks.filter((task) => task.status !== "error" || Date.now() - task.startedAt.getTime() < 10000)
 
   const handleTaskClick = (task: any) => {
-    console.log("[BackgroundTasksWidget] Task clicked:", task)
-    console.log("[BackgroundTasksWidget] Task.data:", task.data)
-    console.log("[BackgroundTasksWidget] onOpenSheet available:", !!onOpenSheet)
-
     // Если задача в процессе или завершена - открываем шторку
     if (task.data?.sessionId) {
-      console.log("[BackgroundTasksWidget] Task has sessionId:", task.data.sessionId)
       const session = aiAnalysis.getSession(task.data.sessionId)
-      console.log("[BackgroundTasksWidget] Session found:", session)
 
       if (session) {
         // Если задача завершена и есть результаты - показываем результаты
         if (task.status === "completed" && session.items.length > 0) {
-          console.log("[BackgroundTasksWidget] Opening results sheet")
           setSelectedSessionId(task.data.sessionId)
           setShowResultsSheet(true)
         }
         // Если задача в процессе - открываем шторку для просмотра прогресса
         else if (task.status === "processing" && onOpenSheet) {
-          console.log("[BackgroundTasksWidget] Opening analysis sheet")
           onOpenSheet()
         }
       }
     } else {
-      console.warn("[BackgroundTasksWidget] Task has no sessionId, task.data:", task.data)
-
       // Если нет sessionId, но есть активная сессия - используем её
       const activeSession = aiAnalysis.getActiveSession()
-      console.log("[BackgroundTasksWidget] Active session:", activeSession)
 
       if (activeSession && task.status === "processing" && onOpenSheet) {
-        console.log("[BackgroundTasksWidget] Opening analysis sheet using active session")
         onOpenSheet()
       }
     }
@@ -180,10 +168,7 @@ export function BackgroundTasksWidget({ onOpenSheet }: BackgroundTasksWidgetProp
           <div key={task.id} className="relative">
             {/* Компактный круглый виджет с liquid glass эффектом */}
             <div
-              onClick={() => {
-                console.log("[BackgroundTasksWidget] Widget div clicked")
-                handleTaskClick(task)
-              }}
+              onClick={() => handleTaskClick(task)}
               className="relative w-16 h-16 rounded-full shadow-xl transition-all duration-300 cursor-pointer hover:scale-105"
               style={{
                 background: isCompleted

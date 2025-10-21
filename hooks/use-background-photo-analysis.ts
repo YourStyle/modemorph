@@ -22,7 +22,6 @@ export function useBackgroundPhotoAnalysis() {
 
       if (existingSession && existingSession.status === "analyzing") {
         // Сессия уже существует и анализ идет - просто создаем background task для отслеживания
-        console.log("[useBackgroundPhotoAnalysis] Found active session, attaching to it:", existingSession.id)
 
         const taskId = addTask({
           type: "photo_analysis",
@@ -79,7 +78,12 @@ export function useBackgroundPhotoAnalysis() {
           id: Math.random().toString(36).substr(2, 9),
         }))
         sessionId = aiAnalysis.createSession(batchId, photos)
-        console.log("[useBackgroundPhotoAnalysis] Created new AI analysis session:", sessionId)
+
+        // Обновляем статус сессии на "analyzing"
+        aiAnalysis.updateSession(sessionId, {
+          status: "analyzing",
+          progressText: "Начинаем анализ..."
+        })
       }
 
       // Создаём задачу
