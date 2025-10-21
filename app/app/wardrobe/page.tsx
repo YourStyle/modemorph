@@ -183,7 +183,7 @@ export default function WardrobePage() {
     if (!res.ok && res.code === "payment_required") {
       setPaywallOpen(true)
     }
-  }, [consume, selectedPhotos, fetchUserItems, setRefreshUserItems])
+  }, [consume, selectedPhotos, setRefreshUserItems])
 
   // Регистрируем обработчик анализа в контексте
   useEffect(() => {
