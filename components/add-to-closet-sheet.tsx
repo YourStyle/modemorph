@@ -160,18 +160,18 @@ export function AddToClosetSheet({
       return
     }
 
-    // Сначала закрываем шторку
+    // Закрываем шторку
     handleReset()
     onClose()
 
-    // Затем запускаем фоновый анализ
+    // startAnalysis проверит, есть ли уже активная сессия с этим batchId
+    // Если есть - подключится к ней и НЕ запустит новые запросы
+    // Если нет - запустит новый анализ
     try {
       await startAnalysis({
         files: filesToAnalyze.map(p => p.file),
         batchId: batchIdRef.current,
         onComplete: (data) => {
-          // Tooltip показывается автоматически в виджете, toast не нужен
-          // Если был передан onAnalysisSuccess, вызываем его
           if (onAnalysisSuccess && data.items) {
             onAnalysisSuccess({
               items: data.items,
@@ -182,7 +182,6 @@ export function AddToClosetSheet({
           }
         },
         onError: (error) => {
-          // Если ошибка связана с лимитами, открываем paywall
           if (error.toLowerCase().includes("лимит")) {
             setShowPaywall(true)
           } else {

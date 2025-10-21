@@ -17,7 +17,60 @@ export function useBackgroundPhotoAnalysis() {
 
   const startAnalysis = useCallback(
     async ({ files, batchId, onComplete, onError }: PhotoAnalysisOptions) => {
-      // Создаём сессию AI анализа, если указан batchId
+      // Проверяем, есть ли уже активная сессия с этим batchId
+      const existingSession = batchId ? aiAnalysis.getSessionByBatchId(batchId) : null
+
+      if (existingSession && existingSession.status === "analyzing") {
+        // Сессия уже существует и анализ идет - просто создаем background task для отслеживания
+        console.log("[useBackgroundPhotoAnalysis] Found active session, attaching to it:", existingSession.id)
+
+        const taskId = addTask({
+          type: "photo_analysis",
+          status: "processing",
+          progress: existingSession.progress,
+          data: { sessionId: existingSession.id },
+        })
+
+        // Отслеживаем прогресс сессии и обновляем task
+        const checkInterval = setInterval(() => {
+          const session = aiAnalysis.getSession(existingSession.id)
+          if (!session) {
+            clearInterval(checkInterval)
+            return
+          }
+
+          updateTask(taskId, { progress: session.progress })
+
+          if (session.status === "completed") {
+            clearInterval(checkInterval)
+            updateTask(taskId, {
+              status: "completed",
+              progress: 100,
+              data: {
+                items: session.items,
+                itemsCount: session.items.length,
+                sessionId: session.id,
+              },
+            })
+            if (onComplete) {
+              onComplete({ items: session.items })
+            }
+          } else if (session.status === "error") {
+            clearInterval(checkInterval)
+            updateTask(taskId, {
+              status: "error",
+              error: session.error || "Ошибка анализа",
+            })
+            if (onError) {
+              onError(session.error || "Ошибка анализа")
+            }
+          }
+        }, 500)
+
+        return { success: true, taskId, result: { items: existingSession.items } }
+      }
+
+      // Нет активной сессии - создаём новую
       let sessionId: string | null = null
       if (batchId) {
         const photos = files.map((file) => ({
@@ -26,7 +79,7 @@ export function useBackgroundPhotoAnalysis() {
           id: Math.random().toString(36).substr(2, 9),
         }))
         sessionId = aiAnalysis.createSession(batchId, photos)
-        console.log("[useBackgroundPhotoAnalysis] Created AI analysis session:", sessionId)
+        console.log("[useBackgroundPhotoAnalysis] Created new AI analysis session:", sessionId)
       }
 
       // Создаём задачу
@@ -46,11 +99,16 @@ export function useBackgroundPhotoAnalysis() {
         // Примечание: лимиты УЖЕ проверены в photo-analysis-form.tsx перед началом анализа
         // Здесь просто продолжаем анализ в фоновом режиме после сворачивания шторки
 
-        // Подготавливаем FormData
-        const formData = new FormData()
-        files.forEach((file) => {
-          formData.append("files", file)
-        })
+        // Получаем токен авторизации
+        const { sessionAuth } = await import("@/lib/tma/session-auth")
+        const accessToken = sessionAuth.getAccessToken()
+
+        if (!accessToken) {
+          throw new Error("No access token available")
+        }
+
+        // AI API URL
+        const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
 
         // Симулируем плавный прогресс до 20%
         let currentProgress = 0
@@ -63,11 +121,40 @@ export function useBackgroundPhotoAnalysis() {
           }
         }, 100)
 
-        // Отправляем запрос
-        const response = await fetch("/api/analyze-photos", {
-          method: "POST",
-          body: formData,
+        // Анализируем каждое фото напрямую через AI API
+        const analysisPromises = files.map(async (file) => {
+          const formData = new FormData()
+          formData.append("image", file)
+
+          try {
+            const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+              method: "POST",
+              body: formData,
+              headers: {
+                Accept: "application/json",
+                Authorization: `Bearer ${accessToken}`,
+              },
+            })
+
+            if (!response.ok) {
+              throw new Error(`AI API error: ${response.status}`)
+            }
+
+            const data = await response.json()
+
+            // Проверяем на rejection
+            if (Array.isArray(data) && data.length > 0 && data[0].acceptable === false) {
+              return { success: false, error: data[0].reason, isRejection: true }
+            }
+
+            return { success: true, data }
+          } catch (error) {
+            console.error("Error analyzing photo:", error)
+            return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+          }
         })
+
+        const results = await Promise.all(analysisPromises)
 
         clearInterval(progressInterval)
 
@@ -83,19 +170,23 @@ export function useBackgroundPhotoAnalysis() {
           }
         }, 50)
 
-        if (!response.ok) {
-          clearInterval(midProgressInterval)
-          const errorData = await response.json().catch(() => ({}))
-          throw new Error(errorData.reason || errorData.error || "Failed to analyze photos")
-        }
+        // Собираем все успешные результаты
+        const allItems: any[] = []
+        const errors: string[] = []
 
-        const result = await response.json()
+        for (const result of results) {
+          if (result.success && Array.isArray(result.data)) {
+            allItems.push(...result.data)
+          } else if (!result.success && result.error) {
+            errors.push(result.error)
+          }
+        }
 
         clearInterval(midProgressInterval)
 
         // Проверяем, есть ли items в результате
-        if (!result.items || result.items.length === 0) {
-          throw new Error(result.reason || result.error || "Не удалось найти вещи на фото")
+        if (allItems.length === 0) {
+          throw new Error(errors[0] || "Не удалось найти вещи на фото")
         }
 
         // Плавный переход 60% -> 95%
@@ -120,8 +211,8 @@ export function useBackgroundPhotoAnalysis() {
             updateTask(taskId, {
               status: "completed",
               data: {
-                items: result.items,
-                itemsCount: result.items.length,
+                items: allItems,
+                itemsCount: allItems.length,
                 sessionId,
               },
             })
@@ -130,19 +221,19 @@ export function useBackgroundPhotoAnalysis() {
             if (sessionId) {
               aiAnalysis.updateSession(sessionId, {
                 status: "completed",
-                items: result.items,
+                items: allItems,
                 progress: 100,
                 progressText: "Готово!",
               })
             }
 
             if (onComplete) {
-              onComplete(result)
+              onComplete({ items: allItems })
             }
           }, 300)
         }, 500)
 
-        return { success: true, taskId, result }
+        return { success: true, taskId, result: { items: allItems } }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : "Произошла ошибка при анализе"
 
