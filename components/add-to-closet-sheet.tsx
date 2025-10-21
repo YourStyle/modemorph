@@ -152,60 +152,28 @@ export function AddToClosetSheet({
     // Свернуть анализ в фоновый режим
     setShowConfirmDialog(false)
 
-    const filesToAnalyze = selectedFiles.length > 0 ? selectedFiles : initialPhotos
+    const activeSession = aiAnalysis.getActiveSession()
 
-    if (filesToAnalyze.length === 0) {
+    if (!activeSession) {
+      console.warn("[AddToClosetSheet] No active session to minimize")
       handleReset()
       onClose()
       return
     }
 
-    // Закрываем шторку
-    handleReset()
+    console.log("[AddToClosetSheet] Minimizing active session:", activeSession.id)
+
+    // Анализ УЖЕ запущен из PhotoAnalysisForm через startAnalysis
+    // НЕ нужно вызывать startAnalysis снова - это создаст дубликаты запросов!
+    // Просто закрываем шторку, виджет продолжит отслеживать прогресс из AIAnalysisContext
+
+    // Закрываем шторку БЕЗ вызова handleReset (чтобы не очистить состояние)
     onClose()
 
-    // startAnalysis проверит, есть ли уже активная сессия с этим batchId
-    // Если есть - подключится к ней и НЕ запустит новые запросы
-    // Если нет - запустит новый анализ
-    try {
-      await startAnalysis({
-        files: filesToAnalyze.map(p => p.file),
-        batchId: batchIdRef.current,
-        onComplete: (data) => {
-          if (onAnalysisSuccess && data.items) {
-            onAnalysisSuccess({
-              items: data.items,
-              photos: filesToAnalyze,
-              analysisResults: [{ success: true, items: data.items }],
-              batchId: batchIdRef.current,
-            })
-          }
-        },
-        onError: (error) => {
-          if (error.toLowerCase().includes("лимит")) {
-            setShowPaywall(true)
-          } else {
-            toast({
-              title: "Ошибка",
-              description: error,
-              variant: "destructive",
-            })
-          }
-        },
-      })
-
-      toast({
-        title: "Анализ свёрнут",
-        description: "Вы можете продолжить работу с приложением. Прогресс отображается в виджете.",
-      })
-    } catch (error) {
-      console.error("Error starting background analysis:", error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось начать фоновый анализ",
-        variant: "destructive",
-      })
-    }
+    toast({
+      title: "Анализ свёрнут",
+      description: "Вы можете продолжить работу с приложением. Прогресс отображается в виджете.",
+    })
   }
 
   const handleCancelClose = () => {

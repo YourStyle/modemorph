@@ -4,10 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="fix analysis">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/photo-analysis-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/photo-analysis-form.tsx" afterDir="false" />
-    </list>
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="fix analysis" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -78,7 +75,7 @@
       <workItem from="1758181225645" duration="7731000" />
       <workItem from="1758459635130" duration="2251000" />
       <workItem from="1760268637464" duration="1297000" />
-      <workItem from="1760878256889" duration="15362000" />
+      <workItem from="1760878256889" duration="15850000" />
     </task>
     <task id="LOCAL-00001" summary="update auth">
       <option name="closed" value="true" />
@@ -360,7 +357,15 @@
       <option name="project" value="LOCAL" />
       <updated>1761052743137</updated>
     </task>
-    <option name="localTasksCounter" value="36" />
+    <task id="LOCAL-00036" summary="fix analysis">
+      <option name="closed" value="true" />
+      <created>1761055475442</created>
+      <option name="number" value="00036" />
+      <option name="presentableId" value="LOCAL-00036" />
+      <option name="project" value="LOCAL" />
+      <updated>1761055475442</updated>
+    </task>
+    <option name="localTasksCounter" value="37" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
