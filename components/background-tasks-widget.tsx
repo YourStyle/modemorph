@@ -82,6 +82,7 @@ export function BackgroundTasksWidget({ onOpenSheet }: BackgroundTasksWidgetProp
 
   const handleTaskClick = (task: any) => {
     console.log("[BackgroundTasksWidget] Task clicked:", task)
+    console.log("[BackgroundTasksWidget] Task.data:", task.data)
     console.log("[BackgroundTasksWidget] onOpenSheet available:", !!onOpenSheet)
 
     // Если задача в процессе или завершена - открываем шторку
@@ -104,7 +105,16 @@ export function BackgroundTasksWidget({ onOpenSheet }: BackgroundTasksWidgetProp
         }
       }
     } else {
-      console.warn("[BackgroundTasksWidget] Task has no sessionId")
+      console.warn("[BackgroundTasksWidget] Task has no sessionId, task.data:", task.data)
+
+      // Если нет sessionId, но есть активная сессия - используем её
+      const activeSession = aiAnalysis.getActiveSession()
+      console.log("[BackgroundTasksWidget] Active session:", activeSession)
+
+      if (activeSession && task.status === "processing" && onOpenSheet) {
+        console.log("[BackgroundTasksWidget] Opening analysis sheet using active session")
+        onOpenSheet()
+      }
     }
   }
 
