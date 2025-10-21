@@ -296,7 +296,7 @@ export function BackgroundTasksWidget() {
                   <CardContent className="flex flex-col sm:flex-row gap-4 p-4">
                     {/* Изображение */}
                     {(item.finalImageUrl || item.image_url || item.img_url) ? (
-                      <div className="relative w-full sm:w-24 h-40 sm:h-24 flex-shrink-0">
+                      <div className="relative w-24 h-24 flex-shrink-0">
                         <Image
                           src={item.finalImageUrl || item.image_url || item.img_url}
                           alt={item.item_name || item.name}
@@ -305,7 +305,7 @@ export function BackgroundTasksWidget() {
                         />
                       </div>
                     ) : (
-                      <div className="w-full sm:w-24 h-40 sm:h-24 bg-white/10 rounded-md flex items-center justify-center text-3xl">
+                      <div className="w-24 h-24 bg-white/10 rounded-md flex items-center justify-center text-3xl">
                         👕
                       </div>
                     )}

@@ -208,6 +208,9 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
     const sessionIdRef = useRef<string | null>(null)
     const taskIdRef = useRef<string | null>(null)
 
+    // Добавляем sessionId как state чтобы триггерить useEffect
+    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+
     const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
 
     const [loading, setLoading] = useState(false)
@@ -297,6 +300,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             if (existingSession) {
                 // Восстановить состояние из существующей сессии
                 sessionIdRef.current = existingSession.id
+                setCurrentSessionId(existingSession.id)
                 setSelectedFiles(existingSession.photos)
                 setResults(existingSession.items)
                 setAnalysisResults(existingSession.analysisResults)
@@ -332,6 +336,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             if (batchId) {
                 const sessionId = aiAnalysis.createSession(batchId, limitedPhotos)
                 sessionIdRef.current = sessionId
+                setCurrentSessionId(sessionId)
                 console.log("[PhotoAnalysisForm] Created new session:", sessionId)
             }
 
@@ -401,14 +406,18 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
 
     // Subscribe to session progress updates and sync with background task
     useEffect(() => {
-        if (!sessionIdRef.current || !loading) return
+        if (!currentSessionId || !loading) {
+            console.log("[PhotoAnalysisForm] Not setting up interval - sessionId:", currentSessionId, "loading:", loading)
+            return
+        }
 
-        console.log("[PhotoAnalysisForm] Setting up progress interval for session:", sessionIdRef.current)
+        console.log("[PhotoAnalysisForm] Setting up progress interval for session:", currentSessionId)
 
         const checkProgressInterval = setInterval(() => {
-            const session = aiAnalysis.getSession(sessionIdRef.current!)
+            const session = aiAnalysis.getSession(currentSessionId)
             if (session) {
                 // Update local state from session
+                console.log("[PhotoAnalysisForm] Progress update:", session.progress, session.progressText)
                 setProgress(session.progress)
                 setProgressText(session.progressText)
 
@@ -452,15 +461,15 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                     }
                 }
             } else {
-                console.warn("[PhotoAnalysisForm] Session not found in interval check")
+                console.warn("[PhotoAnalysisForm] Session not found in interval check:", currentSessionId)
             }
         }, 100)
 
         return () => {
-            console.log("[PhotoAnalysisForm] Cleaning up progress interval")
+            console.log("[PhotoAnalysisForm] Cleaning up progress interval for session:", currentSessionId)
             clearInterval(checkProgressInterval)
         }
-    }, [loading, updateTask])
+    }, [currentSessionId, loading, updateTask, aiAnalysis])
 
     // Handler for selecting files from the hidden input
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {

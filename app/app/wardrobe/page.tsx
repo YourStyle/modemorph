@@ -436,7 +436,6 @@ export default function WardrobePage() {
         {/* User's Wardrobe */}
         <div className="mb-8">
           <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Ваши вещи</h2>
-          <SelectedPhotosPreview photos={selectedPhotos} onRemove={handleRemovePhoto} />
           {isLoadingUserItems ? (
             <UserWardrobeSkeleton />
           ) : (
