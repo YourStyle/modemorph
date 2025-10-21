@@ -179,7 +179,6 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
                         </div>
                     </div>
                 </GameShell>
-                <ProgressBlock progress={progress} progressText={progressText}/>
             </>
         )
     }
@@ -194,7 +193,6 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
                     onRequestReturnToPicker={() => setViewMode("choose")}
                 />
             </GameShell>
-            <ProgressBlock progress={progress} progressText={progressText}/>
         </>
     )
 }
@@ -308,7 +306,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             }
         }
 
-        // Только если нет существующей сессии, начинаем новый анализ
+        // Сразу начинаем анализ без формы выбора
         if (initialPhotos && initialPhotos.length > 0 && !hasAnalyzed) {
             const limitedPhotos = initialPhotos.slice(0, 10)
             setSelectedFiles(limitedPhotos)
@@ -320,6 +318,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 console.log("[PhotoAnalysisForm] Created new session:", sessionId)
             }
 
+            // СРАЗУ начинаем анализ
             handleAnalyze(limitedPhotos)
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -519,6 +518,13 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
     const handleAnalyze = async (photosToAnalyze?: UploadedPhoto[]) => {
         const photos = photosToAnalyze || selectedFiles
         if (photos.length === 0) return
+
+        // Проверяем есть ли активный анализ
+        const activeSession = aiAnalysis.getActiveSession()
+        if (activeSession && activeSession.id !== sessionIdRef.current) {
+            setError("Дождитесь завершения текущего анализа")
+            return
+        }
 
         // ПРОВЕРКА ЛИМИТОВ ДО выполнения анализа
         setCheckingLimits(true)
@@ -770,84 +776,12 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             )}
 
             {/* Header with clear button */}
-            {(hasAnalyzed || selectedFiles.length > 0) && !loading && !checkingLimits && (
+            {hasAnalyzed && !loading && !checkingLimits && (
                 <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-semibold">
-                        {selectedFiles.length > 0 ? "Анализ фото" : "Результаты анализа"}
-                    </h2>
+                    <h2 className="text-xl font-semibold">Результаты анализа</h2>
                     <Button variant="default" size="sm" onClick={handleClear}>Очистить</Button>
                 </div>
             )}
-            {/* Photos section */}
-            {selectedFiles.length > 0 && !loading && !checkingLimits && (
-                <div className="space-y-4">
-                    <p className="font-medium">Загруженные фото ({selectedFiles.length})</p>
-                    <div className="grid grid-cols-2 gap-4">
-                        {selectedFiles.map((photo) => (
-                            <div key={photo.id} className="relative border rounded-md">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
-                                    src={photo.preview}
-                                    alt="Предпросмотр"
-                                    className="w-full h-40 object-cover"
-                                    onError={() => {
-                                        console.error("Image load error")
-                                        removePhoto(photo.id)
-                                    }}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => removePhoto(photo.id)}
-                                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
-                                >
-                                    <X className="w-3 h-3"/>
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                    {selectedFiles.length < 10 && (
-                        <Button
-                            type="button"
-                            variant="default"
-                            onClick={() => fileInputRef.current?.click()}
-                        >
-                            <Plus className="w-4 h-4 mr-2"/> Добавить еще
-                        </Button>
-                    )}
-                    {(!hasAnalyzed || needsReanalysis) && selectedFiles.length > 0 && (
-                        <Button type="button" onClick={() => handleAnalyze()} disabled={loading} className="w-full"
-                                size="sm">
-                            {loading ? "Анализируем..." : `Найти вещи на ${selectedFiles.length} ${selectedFiles.length === 1 ? "фото" : "фото"}`}
-                        </Button>
-                    )}
-                    {error && (
-                        <div className="text-red-600 text-sm flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4"/> {error}
-                        </div>
-                    )}
-                </div>
-            )}
-            {/* Upload section */}
-            {selectedFiles.length === 0 && !loading && !checkingLimits && (
-                <div className="flex flex-col items-center justify-center space-y-4 p-8 border rounded-md">
-                    <Upload className="w-8 h-8 text-gray-500"/>
-                    <p className="font-medium">Загрузить фото одежды</p>
-                    <p className="text-sm text-gray-500">Максимум 10 фото для анализа</p>
-                    <Button type="button" variant="default" onClick={() => fileInputRef.current?.click()}>
-                        <Plus className="w-4 h-4 mr-2"/> Нажмите для выбора фото
-                    </Button>
-                    <p className="text-xs text-gray-400">HEIC, JPEG, JPG, WebP, PNG</p>
-                </div>
-            )}
-            {/* Hidden file input */}
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                multiple
-                onChange={handleFileSelect}
-            />
             {/* Loading section */}
             {loading && (
                 <LoadingExperience

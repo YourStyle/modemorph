@@ -9,7 +9,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { CommonSheet } from "./common-sheet"
-import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { PaywallModal } from "./paywall-modal"
@@ -65,7 +64,6 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
-  const supabase = createClient()
   const [isPaywallOpen, setIsPaywallOpen] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
 
@@ -89,25 +87,26 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const loadProfile = async () => {
     setIsLoading(true)
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (!user) return
-      const { data: profileData } = await supabase.from("user_profiles").select("*").eq("user_id", user.id).single()
+      const data = await api.get("/api/me/profile-session")
+
+      if (!data.user || !data.profile) {
+        toast.error("Не удалось загрузить профиль")
+        return
+      }
 
       const userProfile: UserProfile = {
-        id: profileData?.id || "",
-        user_id: user.id,
-        email: user.email || "",
-        full_name: profileData?.full_name || user.user_metadata?.full_name || "",
-        gender: profileData?.gender || "",
-        avatar_url: profileData?.avatar_url || "",
-        height: profileData?.height || undefined,
-        weight: profileData?.weight || undefined,
-        top_size: profileData?.top_size || "",
-        bottom_size: profileData?.bottom_size || "",
-        shoe_size: profileData?.shoe_size || undefined,
-        is_admin: profileData?.is_admin || false,
+        id: data.profile?.id || "",
+        user_id: data.user.id,
+        email: data.user.email || "",
+        full_name: data.profile?.full_name || data.user.user_metadata?.full_name || "",
+        gender: data.profile?.gender || "",
+        avatar_url: data.profile?.avatar_url || "",
+        height: data.profile?.height || undefined,
+        weight: data.profile?.weight || undefined,
+        top_size: data.profile?.top_size || "",
+        bottom_size: data.profile?.bottom_size || "",
+        shoe_size: data.profile?.shoe_size || undefined,
+        is_admin: data.profile?.is_admin || false,
       }
 
       setProfile(userProfile)
@@ -172,31 +171,18 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
       // 3) Загрузка в хранилище
       const fd = new FormData()
-      fd.append("file", fileForUpload, fileForUpload.name) // важно передать имя
+      fd.append("file", fileForUpload, fileForUpload.name)
       fd.append("folder", "avatars")
 
       const result = await api.post("/api/upload-to-yandex", fd, {
-        headers: {} // Убираем Content-Type для FormData
+        headers: {}
       })
       if (!result.success) throw new Error(result.error || 'Upload failed')
 
-      // 4) Обновление профиля
-      if (profile.id) {
-        const { error } = await supabase
-          .from("user_profiles")
-          .update({ avatar_url: result.url, updated_at: new Date().toISOString() })
-          .eq("id", profile.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from("user_profiles").insert({
-          user_id: profile.user_id,
-          avatar_url: result.url,
-          is_admin: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        if (error) throw error
-      }
+      // 4) Обновление профиля через API
+      await api.post("/api/me/profile-session", {
+        avatar_url: result.url
+      })
 
       setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
       toast.success("Аватар успешно обновлён")
@@ -212,28 +198,16 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
     if (!profile) return
     setIsSaving(true)
     try {
-      const updateData = {
+      await api.post("/api/me/profile-session", {
         full_name: formData.full_name || null,
         gender: formData.gender || null,
-        height: formData.height ? Number.parseInt(formData.height) : null,
-        weight: formData.weight ? Number.parseInt(formData.weight) : null,
+        height: formData.height || null,
+        weight: formData.weight || null,
         top_size: formData.top_size || null,
         bottom_size: formData.bottom_size || null,
-        shoe_size: formData.shoe_size ? Number.parseInt(formData.shoe_size) : null,
-        updated_at: new Date().toISOString(),
-      }
-      if (profile.id) {
-        const { error } = await supabase.from("user_profiles").update(updateData).eq("id", profile.id)
-        if (error) throw error
-      } else {
-        const { error } = await supabase.from("user_profiles").insert({
-          user_id: profile.user_id,
-          ...updateData,
-          is_admin: false,
-          created_at: new Date().toISOString(),
-        })
-        if (error) throw error
-      }
+        shoe_size: formData.shoe_size || null,
+      })
+
       toast.success("Профиль успешно обновлен")
       loadProfile()
     } catch (e: any) {

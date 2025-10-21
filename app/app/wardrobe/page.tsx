@@ -11,6 +11,7 @@ import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { Progress } from "@/components/ui/progress"
 import { Plus, ChevronDown, ChevronUp, Search } from "lucide-react"
 import { useAddToCloset } from "@/contexts/add-to-closet-context"
+import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 
 import { Input } from "@/components/ui/input"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
@@ -127,6 +128,7 @@ export default function WardrobePage() {
   const [paywallOpen, setPaywallOpen] = useState(false)
   const { toast } = useToast()
   const { openSheet, setOnAnalysisSuccess } = useAddToCloset()
+  const aiAnalysis = useAIAnalysis()
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
   const [searchQuery, setSearchQuery] = useState("")
@@ -264,6 +266,16 @@ export default function WardrobePage() {
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length === 0) return
+
+    // Проверяем есть ли активный анализ
+    const activeSession = aiAnalysis.getActiveSession()
+    if (activeSession) {
+      toast.error("Дождитесь завершения текущего анализа")
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+      return
+    }
 
     const prepared = await Promise.all(
       files.map(async (file) => {
