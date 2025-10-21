@@ -207,6 +207,8 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
 
     const [loading, setLoading] = useState(false)
 
+    const [checkingLimits, setCheckingLimits] = useState(false)
+
     const [progress, setProgress] = useState(0)
 
     const [progressText, setProgressText] = useState("")
@@ -569,22 +571,42 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         if (photos.length === 0) return
 
         // ПРОВЕРКА ЛИМИТОВ ДО выполнения анализа
+        setCheckingLimits(true)
         try {
-            const limitCheck = await api.post("/api/check-limits", {
-                featureType: "wardrobe_items_anlyzed",
-                count: photos.length,
-                meta: {},
+            // Получаем токен авторизации
+            const supabase = createClient()
+            const {
+                data: { session },
+            } = await supabase.auth.getSession()
+            const authToken = session?.access_token
+
+            const limitCheckResponse = await fetch("/api/check-limits", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(authToken && { Authorization: `Bearer ${authToken}` }),
+                },
+                body: JSON.stringify({
+                    featureType: "wardrobe_items_anlyzed",
+                    count: photos.length,
+                    meta: {},
+                }),
             })
 
+            const limitCheck = await limitCheckResponse.json()
+
             if (!limitCheck.canUse) {
+                setCheckingLimits(false)
                 setShowPaywall(true)
                 return
             }
         } catch (err) {
             console.error("Error checking limits:", err)
+            setCheckingLimits(false)
             setError("Не удалось проверить лимиты")
             return
         }
+        setCheckingLimits(false)
 
         setLoading(true)
         setError(null)
@@ -781,8 +803,82 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
 
     return (
         <div className="space-y-6">
+            {/* Checking Limits Loader */}
+            {checkingLimits && (
+                <div className="flex flex-col items-center justify-center space-y-6 py-12">
+                    <div className="relative w-32 h-32">
+                        {/* Анимированные иконки одежды */}
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <svg
+                                className="w-16 h-16 text-purple-400 animate-pulse"
+                                style={{ animationDelay: "0ms", animationDuration: "1500ms" }}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                                />
+                            </svg>
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <svg
+                                className="w-12 h-12 text-pink-400 animate-pulse"
+                                style={{ animationDelay: "300ms", animationDuration: "1500ms" }}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M21 15.546c-.523 0-1.046.151-1.5.454a2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0 2.701 2.701 0 00-1.5-.454M9 6v2m3-2v2m3-2v2M9 3h.01M12 3h.01M15 3h.01M21 21v-7a2 2 0 00-2-2H5a2 2 0 00-2 2v7h18zm-3-9v-2a2 2 0 00-2-2H8a2 2 0 00-2 2v2h12z"
+                                />
+                            </svg>
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <svg
+                                className="w-10 h-10 text-blue-400 animate-pulse"
+                                style={{ animationDelay: "600ms", animationDuration: "1500ms" }}
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
+                                />
+                            </svg>
+                        </div>
+                    </div>
+                    <div className="text-center space-y-2">
+                        <p className="text-lg font-medium text-neutral-100">Проверяем лимиты</p>
+                        <div className="flex items-center justify-center space-x-1">
+                            <div
+                                className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
+                                style={{ animationDelay: "0ms" }}
+                            />
+                            <div
+                                className="w-2 h-2 bg-pink-400 rounded-full animate-bounce"
+                                style={{ animationDelay: "150ms" }}
+                            />
+                            <div
+                                className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
+                                style={{ animationDelay: "300ms" }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header with clear button */}
-            {(hasAnalyzed || selectedFiles.length > 0) && !loading && (
+            {(hasAnalyzed || selectedFiles.length > 0) && !loading && !checkingLimits && (
                 <div className="flex items-center justify-between">
                     <h2 className="text-xl font-semibold">
                         {selectedFiles.length > 0 ? "Анализ фото" : "Результаты анализа"}
@@ -791,7 +887,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 </div>
             )}
             {/* Photos section */}
-            {selectedFiles.length > 0 && !loading && (
+            {selectedFiles.length > 0 && !loading && !checkingLimits && (
                 <div className="space-y-4">
                     <p className="font-medium">Загруженные фото ({selectedFiles.length})</p>
                     <div className="grid grid-cols-2 gap-4">
@@ -840,7 +936,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 </div>
             )}
             {/* Upload section */}
-            {selectedFiles.length === 0 && !loading && (
+            {selectedFiles.length === 0 && !loading && !checkingLimits && (
                 <div className="flex flex-col items-center justify-center space-y-4 p-8 border rounded-md">
                     <Upload className="w-8 h-8 text-gray-500"/>
                     <p className="font-medium">Загрузить фото одежды</p>
@@ -873,7 +969,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 />
             )}
             {/* Error and rejection messages after analysis */}
-            {!loading && hasAnalyzed && analysisResults.some((r) => !r.success) && (
+            {!loading && !checkingLimits && hasAnalyzed && analysisResults.some((r) => !r.success) && (
                 <div className="space-y-4">
                     <h3 className="font-semibold text-lg">Проблемы с анализом</h3>
                     {analysisResults.map((result, index) => {
@@ -890,7 +986,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 </div>
             )}
             {/* Results section */}
-            {!loading && results.length > 0 && (
+            {!loading && !checkingLimits && results.length > 0 && (
                 <div className="space-y-4">
                     <h3 className="font-semibold text-lg">Найденные вещи ({results.length})</h3>
                     {results.map((item, index) => (
