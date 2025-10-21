@@ -123,8 +123,22 @@ export function AddToClosetSheet({
 
   // ⚠️ Не закрываем шторку по успешному анализу — отдаём данные наверх
   const handleAnalysisSuccess = (payload?: AnalysisSuccessPayload) => {
-    if (!payload) return
-    onAnalysisSuccess?.({ ...payload, batchId: batchIdRef.current })
+    console.log("[AddToClosetSheet] handleAnalysisSuccess called with payload:", payload)
+    console.log("[AddToClosetSheet] onAnalysisSuccess exists:", !!onAnalysisSuccess)
+    console.log("[AddToClosetSheet] batchId:", batchIdRef.current)
+
+    if (!payload) {
+      console.warn("[AddToClosetSheet] No payload provided to handleAnalysisSuccess")
+      return
+    }
+
+    if (onAnalysisSuccess) {
+      const fullPayload = { ...payload, batchId: batchIdRef.current }
+      console.log("[AddToClosetSheet] Calling onAnalysisSuccess with:", fullPayload)
+      onAnalysisSuccess(fullPayload)
+    } else {
+      console.warn("[AddToClosetSheet] onAnalysisSuccess is not defined")
+    }
   }
 
   const handleClose = () => {

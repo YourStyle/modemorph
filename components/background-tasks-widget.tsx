@@ -79,27 +79,43 @@ export function BackgroundTasksWidget() {
   const activeTasks = tasks.filter((task) => task.status !== "error" || Date.now() - task.startedAt.getTime() < 10000)
 
   const handleTaskClick = (task: any) => {
+    console.log("[BackgroundTasksWidget] handleTaskClick called")
+    console.log("[BackgroundTasksWidget] Task:", task)
+    console.log("[BackgroundTasksWidget] Task status:", task.status)
+    console.log("[BackgroundTasksWidget] Task data:", task.data)
+
     // Если задача в процессе или завершена - открываем шторку
     if (task.data?.sessionId) {
+      console.log("[BackgroundTasksWidget] Task has sessionId:", task.data.sessionId)
       const session = aiAnalysis.getSession(task.data.sessionId)
+      console.log("[BackgroundTasksWidget] Session found:", session)
 
       if (session) {
         // Если задача завершена и есть результаты - показываем результаты
         if (task.status === "completed" && session.items.length > 0) {
+          console.log("[BackgroundTasksWidget] Opening results sheet for completed task")
           setSelectedSessionId(task.data.sessionId)
           setShowResultsSheet(true)
         }
         // Если задача в процессе - открываем шторку для просмотра прогресса
         else if (task.status === "processing") {
+          console.log("[BackgroundTasksWidget] Opening analysis sheet for processing task")
           openSheet()
         }
+      } else {
+        console.warn("[BackgroundTasksWidget] Session not found for sessionId:", task.data.sessionId)
       }
     } else {
+      console.log("[BackgroundTasksWidget] Task has no sessionId")
       // Если нет sessionId, но есть активная сессия - используем её
       const activeSession = aiAnalysis.getActiveSession()
+      console.log("[BackgroundTasksWidget] Active session:", activeSession)
 
       if (activeSession && task.status === "processing") {
+        console.log("[BackgroundTasksWidget] Opening sheet using active session")
         openSheet()
+      } else {
+        console.warn("[BackgroundTasksWidget] Cannot open sheet - no active session or task not processing")
       }
     }
   }
@@ -263,6 +279,10 @@ export function BackgroundTasksWidget() {
               const session = selectedSessionId ? aiAnalysis.getSession(selectedSessionId) : null
               const itemsCount = session?.items.length || 0
 
+              console.log("[BackgroundTasksWidget Results] selectedSessionId:", selectedSessionId)
+              console.log("[BackgroundTasksWidget Results] session:", session)
+              console.log("[BackgroundTasksWidget Results] items:", session?.items)
+
               return (
                 <>
                   <div className="mb-6">
@@ -279,10 +299,10 @@ export function BackgroundTasksWidget() {
                 <Card key={index} className="bg-white/5 border-white/10 overflow-hidden">
                   <CardContent className="flex flex-col sm:flex-row gap-4 p-4">
                     {/* Изображение */}
-                    {(item.finalImageUrl || item.image_url) ? (
+                    {(item.finalImageUrl || item.image_url || item.img_url) ? (
                       <div className="relative w-full sm:w-24 h-40 sm:h-24 flex-shrink-0">
                         <Image
-                          src={item.finalImageUrl || item.image_url}
+                          src={item.finalImageUrl || item.image_url || item.img_url}
                           alt={item.item_name || item.name}
                           fill
                           className="rounded-md object-cover"

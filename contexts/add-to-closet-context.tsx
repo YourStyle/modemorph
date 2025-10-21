@@ -2,37 +2,49 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from "react"
 
+interface UploadedPhoto {
+  file: File
+  preview: string
+  id: string
+}
+
 interface AddToClosetContextType {
-  registerOpenHandler: (handler: () => void) => void
-  unregisterOpenHandler: () => void
-  openSheet: () => void
+  isOpen: boolean
+  initialPhotos: UploadedPhoto[]
+  openSheet: (photos?: UploadedPhoto[]) => void
+  closeSheet: () => void
+  onAnalysisSuccess: ((payload: any) => void) | null
+  setOnAnalysisSuccess: (callback: ((payload: any) => void) | null) => void
 }
 
 const AddToClosetContext = createContext<AddToClosetContextType | undefined>(undefined)
 
 export function AddToClosetProvider({ children }: { children: ReactNode }) {
-  const [openHandler, setOpenHandler] = useState<(() => void) | null>(null)
+  const [isOpen, setIsOpen] = useState(false)
+  const [initialPhotos, setInitialPhotos] = useState<UploadedPhoto[]>([])
+  const [onAnalysisSuccess, setOnAnalysisSuccess] = useState<((payload: any) => void) | null>(null)
 
-  const registerOpenHandler = useCallback((handler: () => void) => {
-    setOpenHandler(() => handler)
+  const openSheet = useCallback((photos?: UploadedPhoto[]) => {
+    console.log("[AddToClosetContext] openSheet called with photos:", photos)
+    setInitialPhotos(photos || [])
+    setIsOpen(true)
   }, [])
 
-  const unregisterOpenHandler = useCallback(() => {
-    setOpenHandler(null)
+  const closeSheet = useCallback(() => {
+    console.log("[AddToClosetContext] closeSheet called")
+    setIsOpen(false)
+    setInitialPhotos([])
   }, [])
-
-  const openSheet = useCallback(() => {
-    if (openHandler) {
-      openHandler()
-    }
-  }, [openHandler])
 
   return (
     <AddToClosetContext.Provider
       value={{
-        registerOpenHandler,
-        unregisterOpenHandler,
+        isOpen,
+        initialPhotos,
         openSheet,
+        closeSheet,
+        onAnalysisSuccess,
+        setOnAnalysisSuccess,
       }}
     >
       {children}

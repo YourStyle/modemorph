@@ -2,12 +2,11 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
-import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { Progress } from "@/components/ui/progress"
 import { Plus, ChevronDown, ChevronUp, Search } from "lucide-react"
@@ -115,7 +114,6 @@ const SelectedPhotosPreview = ({ photos, onRemove }: { photos: UploadedPhoto[]; 
 }
 
 export default function WardrobePage() {
-  const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
   const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false)
   const [basicItems, setBasicItems] = useState<BasicWardrobeItem[]>([])
   const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(true)
@@ -128,7 +126,7 @@ export default function WardrobePage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [paywallOpen, setPaywallOpen] = useState(false)
   const { toast } = useToast()
-  const { registerOpenHandler, unregisterOpenHandler } = useAddToCloset()
+  const { openSheet, setOnAnalysisSuccess } = useAddToCloset()
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
   const [searchQuery, setSearchQuery] = useState("")
@@ -137,13 +135,65 @@ export default function WardrobePage() {
 
   const { log, consume } = useFeature()
 
-  // Регистрируем обработчик открытия шторки для виджета
-  useEffect(() => {
-    registerOpenHandler(() => setIsAddSheetOpen(true))
-    return () => unregisterOpenHandler()
-  }, [registerOpenHandler, unregisterOpenHandler])
-
   const [userGender, setUserGender] = useState("")
+
+  // Обработчик успешного анализа
+  const handleAnalysisSuccess = useCallback(async (payload: any) => {
+    console.log("[WardrobePage] handleAnalysisSuccess called with payload:", payload)
+
+    if (!payload) {
+      console.warn("[WardrobePage] handleAnalysisSuccess called with null/undefined payload")
+      return
+    }
+
+    const { photos, analysisResults, batchId } = payload
+
+    if (!photos || !analysisResults || !batchId) {
+      console.warn("[WardrobePage] Missing required fields in payload:", { photos, analysisResults, batchId })
+      return
+    }
+
+    // Очищаем selectedPhotos
+    if (typeof window !== "undefined") {
+      selectedPhotos.forEach((photo) => {
+        URL.revokeObjectURL(photo.preview)
+      })
+    }
+    setSelectedPhotos([])
+
+    // Обновляем данные пользователя
+    fetchUserItems()
+    setRefreshUserItems((prev) => prev + 1)
+
+    // считаем, сколько фото проанализировано успешно (есть items)
+    const succeeded = analysisResults.filter((r: any) => r.success && r.items && r.items.length > 0).length
+    if (succeeded <= 0) return
+
+    // спишем по 1 за каждое удачное фото (наш API сейчас списывает по 1 за вызов)
+    const res = await consume(
+      "wardrobe_items_anlyzed",
+      {
+        pagePath: "/app/wardrobe",
+        requestId: batchId,
+        photosCount: photos.length,
+        succeeded,
+      },
+      photos.length,
+    )
+    if (!res.ok && res.code === "payment_required") {
+      setPaywallOpen(true)
+    }
+  }, [consume, selectedPhotos, fetchUserItems, setRefreshUserItems])
+
+  // Регистрируем обработчик анализа в контексте
+  useEffect(() => {
+    console.log("[WardrobePage] Registering analysis success handler")
+    setOnAnalysisSuccess(handleAnalysisSuccess)
+    return () => {
+      console.log("[WardrobePage] Unregistering analysis success handler")
+      setOnAnalysisSuccess(null)
+    }
+  }, [setOnAnalysisSuccess, handleAnalysisSuccess])
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -241,26 +291,13 @@ export default function WardrobePage() {
     )
 
     setSelectedPhotos(prepared)
-    setIsAddSheetOpen(true)
+    console.log("[WardrobePage] Opening sheet with photos:", prepared)
+    openSheet(prepared)
 
     // Очищаем input для возможности повторного выбора тех же файлов
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
     }
-  }
-
-  const handleSheetClose = () => {
-    if (typeof window !== "undefined") {
-      selectedPhotos.forEach((photo) => {
-        URL.revokeObjectURL(photo.preview)
-      })
-    }
-    setSelectedPhotos([])
-    setIsAddSheetOpen(false)
-
-    // Обновляем данные пользователя после закрытия шторки
-    fetchUserItems()
-    setRefreshUserItems((prev) => prev + 1)
   }
 
   const handleAddBaseItem = async (item: BasicWardrobeItem) => {
@@ -322,35 +359,6 @@ export default function WardrobePage() {
       }
       return prev.filter((p) => p.id !== photoId)
     })
-  }
-
-  const handleAnalysisSuccess = async ({
-    photos,
-    analysisResults,
-    batchId,
-  }: {
-    photos: UploadedPhoto[]
-    analysisResults: { success: boolean; items: any[] }[]
-    batchId: string
-  }) => {
-    // считаем, сколько фото проанализировано успешно (есть items)
-    const succeeded = analysisResults.filter((r) => r.success && r.items && r.items.length > 0).length
-    if (succeeded <= 0) return
-
-    // спишем по 1 за каждое удачное фото (наш API сейчас списывает по 1 за вызов)
-    const res = await consume(
-      "wardrobe_items_anlyzed",
-      {
-        pagePath: "/app/wardrobe",
-        requestId: batchId,
-        photosCount: photos.length,
-        succeeded,
-      },
-      photos.length,
-    )
-    if (!res.ok && res.code === "payment_required") {
-      setPaywallOpen(true)
-    }
   }
 
   return (
@@ -527,13 +535,6 @@ export default function WardrobePage() {
           )}
         </div>
       </div>
-
-      <AddToClosetSheet
-        isOpen={isAddSheetOpen}
-        onClose={handleSheetClose}
-        initialPhotos={selectedPhotos || []}
-        onAnalysisSuccess={handleAnalysisSuccess}
-      />
 
       <CategoryProgressSheet isOpen={isCategorySheetOpen} onClose={() => setIsCategorySheetOpen(false)} />
 

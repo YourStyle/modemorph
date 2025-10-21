@@ -5,7 +5,6 @@ import { OutfitCard } from "@/components/outfit-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Sparkles, Star, Plus } from "lucide-react"
-import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
 import { PaywallModal } from "@/components/paywall-modal";
@@ -109,7 +108,6 @@ const RecommendationsSkeleton = () => {
 }
 
 export default function HomePage() {
-  const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
   const [outfitSections, setOutfitSections] = useState<LookSection[]>([])
   const [loading, setLoading] = useState(true)
   const [userItemsCount, setUserItemsCount] = useState(0)
@@ -118,14 +116,8 @@ export default function HomePage() {
   const [userLooks, setUserLooks] = useState<any[]>([])
   const [paywallOpen, setPaywallOpen] = useState(false);
   const { log, consume } = useFeature()
-  const { registerOpenHandler, unregisterOpenHandler } = useAddToCloset()
+  const { openSheet } = useAddToCloset()
   useReconcileLimits(true);
-
-  // Регистрируем обработчик открытия шторки для виджета
-  useEffect(() => {
-    registerOpenHandler(() => setIsAddSheetOpen(true))
-    return () => unregisterOpenHandler()
-  }, [registerOpenHandler, unregisterOpenHandler])
 
 
   const loadUserLooks = async () => {
@@ -381,7 +373,10 @@ export default function HomePage() {
                       {[...Array(6)].map((_, index) => (
                           <button
                               key={index}
-                              onClick={() => setIsAddSheetOpen(true)}
+                              onClick={() => {
+                                console.log("[HomePage] Opening sheet from wardrobe progress")
+                                openSheet()
+                              }}
                               className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center transition-all duration-300 ${
                                   index < userItemsCount
                                       ? "bg-gray-200 border-gray-300 text-gray-600 cursor-default"
@@ -411,7 +406,10 @@ export default function HomePage() {
                 <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
                   <CardContent className="p-8 text-center">
                     <Button
-                        onClick={() => setIsAddSheetOpen(true)}
+                        onClick={() => {
+                          console.log("[HomePage] Opening sheet from add item button")
+                          openSheet()
+                        }}
                         className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
                     >
                       + добавить в гардероб
@@ -495,8 +493,6 @@ export default function HomePage() {
               </>
           )}
         </div>
-
-        <AddToClosetSheet isOpen={isAddSheetOpen} onClose={() => setIsAddSheetOpen(false)} />
 
         <PaywallModal
             isOpen={paywallOpen}

@@ -82,6 +82,7 @@ export function useBackgroundPhotoAnalysis() {
         // Обновляем статус сессии на "analyzing"
         aiAnalysis.updateSession(sessionId, {
           status: "analyzing",
+          progress: 0,
           progressText: "Начинаем анализ..."
         })
       }
@@ -94,10 +95,35 @@ export function useBackgroundPhotoAnalysis() {
         data: { sessionId },
       })
 
-      // Функция нелинейного изменения прогресса (easing)
-      const easeOutQuad = (t: number): number => {
-        return 1 - Math.pow(1 - t, 3) // Cubic easing out - быстрее в начале, медленнее в конце
+      // Функция нелинейного изменения прогресса (easing) - быстрее в начале, медленнее в конце
+      const easeOutCubic = (t: number): number => {
+        return 1 - Math.pow(1 - t, 3)
       }
+
+      // Единый таймер для прогресса: от 0 до 95% за 2 минуты
+      const PROGRESS_DURATION = 120000 // 2 минуты
+      const startTime = Date.now()
+      let progressCompleted = false
+
+      const updateProgress = () => {
+        if (progressCompleted) return
+
+        const elapsed = Date.now() - startTime
+        const linearProgress = Math.min(elapsed / PROGRESS_DURATION, 1) // 0 to 1
+        const easedProgress = easeOutCubic(linearProgress) * 95 // 0 to 95%
+
+        // Обновляем и задачу, и сессию одновременно
+        updateTask(taskId, { progress: easedProgress })
+        if (sessionId) {
+          aiAnalysis.updateSession(sessionId, {
+            progress: easedProgress,
+            progressText: `Анализируем ${files.length} фото...`,
+          })
+        }
+      }
+
+      // Запускаем таймер обновления прогресса каждые 100мс
+      const progressTimer = setInterval(updateProgress, 100)
 
       try {
         // Примечание: лимиты УЖЕ проверены в photo-analysis-form.tsx перед началом анализа
@@ -113,17 +139,6 @@ export function useBackgroundPhotoAnalysis() {
 
         // AI API URL
         const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
-
-        // Симулируем плавный прогресс до 20%
-        let currentProgress = 0
-        const progressInterval = setInterval(() => {
-          currentProgress += 1
-          const easedProgress = easeOutQuad(currentProgress / 20) * 20
-          updateTask(taskId, { progress: Math.min(easedProgress, 20) })
-          if (currentProgress >= 20) {
-            clearInterval(progressInterval)
-          }
-        }, 100)
 
         // Анализируем каждое фото напрямую через AI API
         const analysisPromises = files.map(async (file) => {
@@ -160,91 +175,81 @@ export function useBackgroundPhotoAnalysis() {
 
         const results = await Promise.all(analysisPromises)
 
-        clearInterval(progressInterval)
-
-        // Плавный переход 20% -> 60%
-        currentProgress = 20
-        const midProgressInterval = setInterval(() => {
-          currentProgress += 1
-          const normalized = (currentProgress - 20) / 40 // 0 to 1
-          const easedProgress = 20 + easeOutQuad(normalized) * 40
-          updateTask(taskId, { progress: Math.min(easedProgress, 60) })
-          if (currentProgress >= 60) {
-            clearInterval(midProgressInterval)
-          }
-        }, 50)
-
         // Собираем все успешные результаты
         const allItems: any[] = []
         const errors: string[] = []
 
+        console.log("[useBackgroundPhotoAnalysis] Processing results:", results)
+
         for (const result of results) {
           if (result.success && Array.isArray(result.data)) {
+            console.log("[useBackgroundPhotoAnalysis] Adding items from result:", result.data)
             allItems.push(...result.data)
           } else if (!result.success && result.error) {
+            console.log("[useBackgroundPhotoAnalysis] Error in result:", result.error)
             errors.push(result.error)
           }
         }
 
-        clearInterval(midProgressInterval)
+        console.log("[useBackgroundPhotoAnalysis] All items collected:", allItems)
 
         // Проверяем, есть ли items в результате
         if (allItems.length === 0) {
           throw new Error(errors[0] || "Не удалось найти вещи на фото")
         }
 
-        // Плавный переход 60% -> 95%
-        currentProgress = 60
-        const finalProgressInterval = setInterval(() => {
-          currentProgress += 1
-          const normalized = (currentProgress - 60) / 35 // 0 to 1
-          const easedProgress = 60 + easeOutQuad(normalized) * 35
-          updateTask(taskId, { progress: Math.min(easedProgress, 95) })
-          if (currentProgress >= 95) {
-            clearInterval(finalProgressInterval)
-          }
-        }, 80)
+        // Останавливаем таймер прогресса
+        clearInterval(progressTimer)
+        progressCompleted = true
 
-        // Финальный скачок до 100%
-        setTimeout(() => {
-          clearInterval(finalProgressInterval)
-          updateTask(taskId, { progress: 100 })
+        // Моментально поднимаем до 100%
+        console.log("[useBackgroundPhotoAnalysis] Analysis complete, setting progress to 100%")
 
-          // Небольшая задержка перед завершением для плавности
-          setTimeout(() => {
-            updateTask(taskId, {
-              status: "completed",
-              data: {
-                items: allItems,
-                itemsCount: allItems.length,
-                sessionId,
-              },
-            })
+        updateTask(taskId, {
+          status: "completed",
+          progress: 100,
+          data: {
+            items: allItems,
+            itemsCount: allItems.length,
+            sessionId,
+          },
+        })
 
-            // Обновляем сессию AI анализа
-            if (sessionId) {
-              aiAnalysis.updateSession(sessionId, {
-                status: "completed",
-                items: allItems,
-                progress: 100,
-                progressText: "Готово!",
-              })
-            }
+        // Обновляем сессию AI анализа
+        if (sessionId) {
+          console.log("[useBackgroundPhotoAnalysis] Updating session", sessionId, "with items:", allItems)
+          aiAnalysis.updateSession(sessionId, {
+            status: "completed",
+            items: allItems,
+            progress: 100,
+            progressText: "Готово!",
+          })
+        }
 
-            if (onComplete) {
-              onComplete({ items: allItems })
-            }
-          }, 300)
-        }, 500)
+        if (onComplete) {
+          console.log("[useBackgroundPhotoAnalysis] Calling onComplete with items:", allItems)
+          onComplete({ items: allItems })
+        }
 
         return { success: true, taskId, result: { items: allItems } }
       } catch (error) {
+        // Останавливаем таймер прогресса при ошибке
+        clearInterval(progressTimer)
+        progressCompleted = true
+
         const errorMessage = error instanceof Error ? error.message : "Произошла ошибка при анализе"
 
         updateTask(taskId, {
           status: "error",
           error: errorMessage,
         })
+
+        if (sessionId) {
+          aiAnalysis.updateSession(sessionId, {
+            status: "error",
+            error: errorMessage,
+          })
+        }
 
         if (onError) {
           onError(errorMessage)
