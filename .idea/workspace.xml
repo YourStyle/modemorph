@@ -6,8 +6,8 @@
   <component name="ChangeListManager">
     <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="fix analysis">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/app/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/page.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/app/wardrobe/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/wardrobe/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/background-tasks-widget.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/background-tasks-widget.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/hooks/use-background-photo-analysis.ts" beforeDir="false" afterPath="$PROJECT_DIR$/hooks/use-background-photo-analysis.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -79,7 +79,7 @@
       <workItem from="1758181225645" duration="7731000" />
       <workItem from="1758459635130" duration="2251000" />
       <workItem from="1760268637464" duration="1297000" />
-      <workItem from="1760878256889" duration="20452000" />
+      <workItem from="1760878256889" duration="21129000" />
     </task>
     <task id="LOCAL-00001" summary="update auth">
       <option name="closed" value="true" />
@@ -135,8 +135,6 @@
       <option name="number" value="00007" />
       <option name="presentableId" value="LOCAL-00007" />
       <option name="project" value="LOCAL" />
-      <updated>1760301402038</updated>
-    </task>
     <task id="LOCAL-00008" summary="update bottom menu">
       <option name="closed" value="true" />
       <created>1760306961979</created>
@@ -425,7 +423,15 @@
       <option name="project" value="LOCAL" />
       <updated>1761060461651</updated>
     </task>
-    <option name="localTasksCounter" value="44" />
+    <task id="LOCAL-00044" summary="fix analysis">
+      <option name="closed" value="true" />
+      <created>1761061229690</created>
+      <option name="number" value="00044" />
+      <option name="presentableId" value="LOCAL-00044" />
+      <option name="project" value="LOCAL" />
+      <updated>1761061229690</updated>
+    </task>
+    <option name="localTasksCounter" value="45" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">

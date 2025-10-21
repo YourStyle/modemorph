@@ -279,6 +279,10 @@ export function BackgroundTasksWidget() {
               const session = selectedSessionId ? aiAnalysis.getSession(selectedSessionId) : null
               const itemsCount = session?.items.length || 0
 
+              console.log("[BackgroundTasksWidget Results] selectedSessionId:", selectedSessionId)
+              console.log("[BackgroundTasksWidget Results] session:", session)
+              console.log("[BackgroundTasksWidget Results] items:", session?.items)
+
               return (
                 <>
                   <div className="mb-6">
@@ -295,10 +299,10 @@ export function BackgroundTasksWidget() {
                 <Card key={index} className="bg-white/5 border-white/10 overflow-hidden">
                   <CardContent className="flex flex-col sm:flex-row gap-4 p-4">
                     {/* Изображение */}
-                    {(item.finalImageUrl || item.image_url) ? (
+                    {(item.finalImageUrl || item.image_url || item.img_url) ? (
                       <div className="relative w-full sm:w-24 h-40 sm:h-24 flex-shrink-0">
                         <Image
-                          src={item.finalImageUrl || item.image_url}
+                          src={item.finalImageUrl || item.image_url || item.img_url}
                           alt={item.item_name || item.name}
                           fill
                           className="rounded-md object-cover"

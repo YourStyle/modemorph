@@ -138,16 +138,21 @@ export default function WardrobePage() {
   const [userGender, setUserGender] = useState("")
 
   // Обработчик успешного анализа
-  const handleAnalysisSuccess = useCallback(async ({
-    photos,
-    analysisResults,
-    batchId,
-  }: {
-    photos: UploadedPhoto[]
-    analysisResults: { success: boolean; items: any[] }[]
-    batchId: string
-  }) => {
-    console.log("[WardrobePage] handleAnalysisSuccess called")
+ const handleAnalysisSuccess = useCallback(async (payload: any) => {
+    console.log("[WardrobePage] handleAnalysisSuccess called with payload:", payload)
+
+    if (!payload) {
+      console.warn("[WardrobePage] handleAnalysisSuccess called with null/undefined payload")
+      return
+    }
+
+    const { photos, analysisResults, batchId } = payload
+
+    if (!photos || !analysisResults || !batchId) {
+      console.warn("[WardrobePage] Missing required fields in payload:", { photos, analysisResults, batchId })
+      return
+    }
+
     // Очищаем selectedPhotos
     if (typeof window !== "undefined") {
       selectedPhotos.forEach((photo) => {
@@ -161,7 +166,7 @@ export default function WardrobePage() {
     setRefreshUserItems((prev) => prev + 1)
 
     // считаем, сколько фото проанализировано успешно (есть items)
-    const succeeded = analysisResults.filter((r) => r.success && r.items && r.items.length > 0).length
+    const succeeded = analysisResults.filter((r: any) => r.success && r.items && r.items.length > 0).length
     if (succeeded <= 0) return
 
     // спишем по 1 за каждое удачное фото (наш API сейчас списывает по 1 за вызов)
@@ -178,7 +183,7 @@ export default function WardrobePage() {
     if (!res.ok && res.code === "payment_required") {
       setPaywallOpen(true)
     }
-  }, [consume, selectedPhotos])
+  }, [consume, selectedPhotos, fetchUserItems, setRefreshUserItems])
 
   // Регистрируем обработчик анализа в контексте
   useEffect(() => {

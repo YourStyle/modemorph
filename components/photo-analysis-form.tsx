@@ -523,7 +523,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         setNeedsReanalysis(false)
         setResults([])
         setAnalysisResults([])
-        setProgress(10)
+        setProgress(0)
         setProgressText(`Анализируем ${photos.length} фото`)
 
         // Используем useBackgroundPhotoAnalysis для анализа
