@@ -626,10 +626,9 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                         // Загружаем изображения для items
                         const itemsWithImages = await loadBasicItemImages(data.items)
 
+                        // НЕ вызываем setLoading(false) здесь - это сделает useEffect когда сессия станет completed
+                        // Обновляем только results и прогресс
                         setResults(itemsWithImages)
-                        setProgress(100)
-                        setProgressText("Готово!")
-                        setLoading(false)
 
                         // Обновляем сессию с обработанными items
                         if (sessionIdRef.current) {
@@ -661,6 +660,16 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             if (analysisResult && analysisResult.taskId) {
                 taskIdRef.current = analysisResult.taskId
                 console.log("[PhotoAnalysisForm] Started analysis with taskId:", analysisResult.taskId)
+            }
+
+            // Находим созданную сессию и устанавливаем currentSessionId для запуска useEffect
+            if (batchId && !currentSessionId) {
+                const session = aiAnalysis.getSessionByBatchId(batchId)
+                if (session) {
+                    sessionIdRef.current = session.id
+                    setCurrentSessionId(session.id)
+                    console.log("[PhotoAnalysisForm] Set currentSessionId after startAnalysis:", session.id)
+                }
             }
 
             // Прогресс теперь обновляется через useEffect, который подписан на изменения сессии
@@ -947,6 +956,24 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             {/* Results section */}
             {!loading && !checkingLimits && results.length > 0 && (
                 <div className="space-y-4">
+                    {/* Original photos */}
+                    {selectedFiles.length > 0 && (
+                        <div className="space-y-2">
+                            <h3 className="font-medium text-sm text-neutral-300">Проанализированные фото ({selectedFiles.length})</h3>
+                            <div className="flex gap-2 overflow-x-auto pb-2">
+                                {selectedFiles.map((photo) => (
+                                    <div key={photo.id} className="relative flex-shrink-0">
+                                        <img
+                                            src={photo.preview}
+                                            alt="Проанализированное фото"
+                                            className="w-20 h-20 object-cover rounded-lg border border-white/20"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <h3 className="font-semibold text-lg">Найденные вещи ({results.length})</h3>
                     {results.map((item, index) => (
                         <Card key={index} className="overflow-hidden">
