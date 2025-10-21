@@ -138,7 +138,7 @@ export default function WardrobePage() {
   const [userGender, setUserGender] = useState("")
 
   // Обработчик успешного анализа
- const handleAnalysisSuccess = useCallback(async (payload: any) => {
+  const handleAnalysisSuccess = useCallback(async (payload: any) => {
     console.log("[WardrobePage] handleAnalysisSuccess called with payload:", payload)
 
     if (!payload) {
@@ -153,12 +153,12 @@ export default function WardrobePage() {
       return
     }
 
-    // Очищаем selectedPhotos
-    if (typeof window !== "undefined") {
-      selectedPhotos.forEach((photo) => {
+    // Очищаем selectedPhotos СРАЗУ после успешного анализа
+    selectedPhotos.forEach((photo) => {
+      if (typeof window !== "undefined") {
         URL.revokeObjectURL(photo.preview)
-      })
-    }
+      }
+    })
     setSelectedPhotos([])
 
     // Обновляем данные пользователя

@@ -308,24 +308,14 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
 
                 console.log("[PhotoAnalysisForm] Restored session from context:", existingSession.id)
 
-                // Восстановить или создать background task для этой сессии
+                // Находим существующий task для этой сессии (НЕ создаем новый - он уже создан в useBackgroundPhotoAnalysis)
                 if (existingSession.status === "analyzing") {
-                    // Проверяем, есть ли уже task для этой сессии
                     const existingTask = tasks.find(t => t.data?.sessionId === existingSession.id)
-
-                    if (!existingTask) {
-                        // Создаем новый task для отслеживания существующей сессии
-                        const newTaskId = addTask({
-                            type: "photo_analysis",
-                            status: "processing",
-                            progress: existingSession.progress,
-                            data: { sessionId: existingSession.id },
-                        })
-                        taskIdRef.current = newTaskId
-                        console.log("[PhotoAnalysisForm] Created task for restored session:", newTaskId)
-                    } else {
+                    if (existingTask) {
                         taskIdRef.current = existingTask.id
                         console.log("[PhotoAnalysisForm] Found existing task for session:", existingTask.id)
+                    } else {
+                        console.warn("[PhotoAnalysisForm] No task found for analyzing session - this shouldn't happen")
                     }
                 }
 
@@ -413,6 +403,8 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
     useEffect(() => {
         if (!sessionIdRef.current || !loading) return
 
+        console.log("[PhotoAnalysisForm] Setting up progress interval for session:", sessionIdRef.current)
+
         const checkProgressInterval = setInterval(() => {
             const session = aiAnalysis.getSession(sessionIdRef.current!)
             if (session) {
@@ -428,6 +420,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 }
 
                 if (session.status === "completed") {
+                    console.log("[PhotoAnalysisForm] Session completed, stopping interval")
                     clearInterval(checkProgressInterval)
                     setResults(session.items)
                     setLoading(false)
@@ -445,6 +438,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                         })
                     }
                 } else if (session.status === "error") {
+                    console.log("[PhotoAnalysisForm] Session error, stopping interval")
                     clearInterval(checkProgressInterval)
                     setError(session.error || "Ошибка анализа")
                     setLoading(false)
@@ -457,11 +451,16 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                         })
                     }
                 }
+            } else {
+                console.warn("[PhotoAnalysisForm] Session not found in interval check")
             }
         }, 100)
 
-        return () => clearInterval(checkProgressInterval)
-    }, [sessionIdRef.current, loading, aiAnalysis, updateTask])
+        return () => {
+            console.log("[PhotoAnalysisForm] Cleaning up progress interval")
+            clearInterval(checkProgressInterval)
+        }
+    }, [loading, updateTask])
 
     // Handler for selecting files from the hidden input
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -611,20 +610,31 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             const analysisResult = await startAnalysis({
                 files: photos.map(p => p.file),
                 batchId: batchId,
-                onComplete: (data) => {
+                onComplete: async (data) => {
                     // Обработка завершения анализа
                     if (data.items && data.items.length > 0) {
-                        setResults(data.items)
+                        console.log("[PhotoAnalysisForm] onComplete - loading item images")
+                        // Загружаем изображения для items
+                        const itemsWithImages = await loadBasicItemImages(data.items)
+
+                        setResults(itemsWithImages)
                         setProgress(100)
                         setProgressText("Готово!")
                         setLoading(false)
 
+                        // Обновляем сессию с обработанными items
+                        if (sessionIdRef.current) {
+                            aiAnalysis.updateSession(sessionIdRef.current, {
+                                items: itemsWithImages,
+                            })
+                        }
+
                         // Вызываем колбэк успеха
                         if (onSuccess) {
                             onSuccess({
-                                items: data.items,
+                                items: itemsWithImages,
                                 photos: photos,
-                                analysisResults: [{ success: true, items: data.items }]
+                                analysisResults: [{ success: true, items: itemsWithImages }]
                             })
                         }
                     }
