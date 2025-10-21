@@ -16,7 +16,6 @@ import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
-import { useBackgroundTasks } from "@/contexts/background-tasks-context"
 
 interface ResponseItem {
     index: number
@@ -204,12 +203,7 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
 export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onReset, onLoadingChange}: PhotoAnalysisFormProps) {
     const aiAnalysis = useAIAnalysis()
     const { startAnalysis } = useBackgroundPhotoAnalysis()
-    const { addTask, updateTask, tasks } = useBackgroundTasks()
     const sessionIdRef = useRef<string | null>(null)
-    const taskIdRef = useRef<string | null>(null)
-
-    // Добавляем sessionId как state чтобы триггерить useEffect
-    const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
 
     const [selectedFiles, setSelectedFiles] = useState<UploadedPhoto[]>([])
 
@@ -300,7 +294,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             if (existingSession) {
                 // Восстановить состояние из существующей сессии
                 sessionIdRef.current = existingSession.id
-                setCurrentSessionId(existingSession.id)
                 setSelectedFiles(existingSession.photos)
                 setResults(existingSession.items)
                 setAnalysisResults(existingSession.analysisResults)
@@ -311,18 +304,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 setError(existingSession.error)
 
                 console.log("[PhotoAnalysisForm] Restored session from context:", existingSession.id)
-
-                // Находим существующий task для этой сессии (НЕ создаем новый - он уже создан в useBackgroundPhotoAnalysis)
-                if (existingSession.status === "analyzing") {
-                    const existingTask = tasks.find(t => t.data?.sessionId === existingSession.id)
-                    if (existingTask) {
-                        taskIdRef.current = existingTask.id
-                        console.log("[PhotoAnalysisForm] Found existing task for session:", existingTask.id)
-                    } else {
-                        console.warn("[PhotoAnalysisForm] No task found for analyzing session - this shouldn't happen")
-                    }
-                }
-
                 return
             }
         }
@@ -336,7 +317,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             if (batchId) {
                 const sessionId = aiAnalysis.createSession(batchId, limitedPhotos)
                 sessionIdRef.current = sessionId
-                setCurrentSessionId(sessionId)
                 console.log("[PhotoAnalysisForm] Created new session:", sessionId)
             }
 
@@ -404,72 +384,30 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [progress, progressText, results, analysisResults, error, loading, hasAnalyzed])
 
-    // Subscribe to session progress updates and sync with background task
+    // Простой polling прогресса из сессии
     useEffect(() => {
-        if (!currentSessionId || !loading) {
-            console.log("[PhotoAnalysisForm] Not setting up interval - sessionId:", currentSessionId, "loading:", loading)
-            return
-        }
+        if (!sessionIdRef.current || !loading) return
 
-        console.log("[PhotoAnalysisForm] Setting up progress interval for session:", currentSessionId)
-
-        const checkProgressInterval = setInterval(() => {
-            const session = aiAnalysis.getSession(currentSessionId)
+        const interval = setInterval(() => {
+            const session = aiAnalysis.getSession(sessionIdRef.current!)
             if (session) {
-                // Update local state from session
-                console.log("[PhotoAnalysisForm] Progress update:", session.progress, session.progressText)
                 setProgress(session.progress)
                 setProgressText(session.progressText)
 
-                // Update background task if it exists
-                if (taskIdRef.current) {
-                    updateTask(taskIdRef.current, {
-                        progress: session.progress,
-                    })
-                }
-
                 if (session.status === "completed") {
-                    console.log("[PhotoAnalysisForm] Session completed, stopping interval")
-                    clearInterval(checkProgressInterval)
+                    clearInterval(interval)
                     setResults(session.items)
                     setLoading(false)
-
-                    // Update task to completed
-                    if (taskIdRef.current) {
-                        updateTask(taskIdRef.current, {
-                            status: "completed",
-                            progress: 100,
-                            data: {
-                                items: session.items,
-                                itemsCount: session.items.length,
-                                sessionId: session.id,
-                            },
-                        })
-                    }
                 } else if (session.status === "error") {
-                    console.log("[PhotoAnalysisForm] Session error, stopping interval")
-                    clearInterval(checkProgressInterval)
+                    clearInterval(interval)
                     setError(session.error || "Ошибка анализа")
                     setLoading(false)
-
-                    // Update task to error
-                    if (taskIdRef.current) {
-                        updateTask(taskIdRef.current, {
-                            status: "error",
-                            error: session.error || "Ошибка анализа",
-                        })
-                    }
                 }
-            } else {
-                console.warn("[PhotoAnalysisForm] Session not found in interval check:", currentSessionId)
             }
         }, 100)
 
-        return () => {
-            console.log("[PhotoAnalysisForm] Cleaning up progress interval for session:", currentSessionId)
-            clearInterval(checkProgressInterval)
-        }
-    }, [currentSessionId, loading, updateTask, aiAnalysis])
+        return () => clearInterval(interval)
+    }, [loading, aiAnalysis])
 
     // Handler for selecting files from the hidden input
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -613,22 +551,15 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         setProgress(0)
         setProgressText(`Анализируем ${photos.length} фото`)
 
-        // Используем useBackgroundPhotoAnalysis для анализа
-        // Это обеспечит единый путь выполнения независимо от того, свернута шторка или нет
+        // Простой анализ с общим прогрессом
         try {
-            const analysisResult = await startAnalysis({
+            await startAnalysis({
                 files: photos.map(p => p.file),
                 batchId: batchId,
                 onComplete: async (data) => {
-                    // Обработка завершения анализа
                     if (data.items && data.items.length > 0) {
-                        console.log("[PhotoAnalysisForm] onComplete - loading item images")
                         // Загружаем изображения для items
                         const itemsWithImages = await loadBasicItemImages(data.items)
-
-                        // НЕ вызываем setLoading(false) здесь - это сделает useEffect когда сессия станет completed
-                        // Обновляем только results и прогресс
-                        setResults(itemsWithImages)
 
                         // Обновляем сессию с обработанными items
                         if (sessionIdRef.current) {
@@ -655,25 +586,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                     }
                 }
             })
-
-            // Сохраняем taskId для синхронизации прогресса
-            if (analysisResult && analysisResult.taskId) {
-                taskIdRef.current = analysisResult.taskId
-                console.log("[PhotoAnalysisForm] Started analysis with taskId:", analysisResult.taskId)
-            }
-
-            // Находим созданную сессию и устанавливаем currentSessionId для запуска useEffect
-            if (batchId && !currentSessionId) {
-                const session = aiAnalysis.getSessionByBatchId(batchId)
-                if (session) {
-                    sessionIdRef.current = session.id
-                    setCurrentSessionId(session.id)
-                    console.log("[PhotoAnalysisForm] Set currentSessionId after startAnalysis:", session.id)
-                }
-            }
-
-            // Прогресс теперь обновляется через useEffect, который подписан на изменения сессии
-
         } catch (err) {
             console.error("Analysis error:", err)
             const errorMessage = err instanceof Error ? err.message : String(err)
