@@ -43,11 +43,20 @@ export function useBackgroundPhotoAnalysis() {
       }
 
       try {
+        // Получаем токен авторизации
+        const { createClient } = await import("@/lib/supabase/client")
+        const supabase = createClient()
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        const authToken = session?.access_token
+
         // ПРОВЕРКА ЛИМИТОВ ДО выполнения анализа
         const limitCheckResponse = await fetch("/api/check-limits", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(authToken && { Authorization: `Bearer ${authToken}` }),
           },
           body: JSON.stringify({
             featureType: "wardrobe_items_anlyzed",
