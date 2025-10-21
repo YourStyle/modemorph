@@ -542,6 +542,8 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         }
         setCheckingLimits(false)
 
+        // СБРОС состояния перед новым анализом
+        sessionIdRef.current = null
         setLoading(true)
         setError(null)
         setHasAnalyzed(true)
@@ -586,6 +588,16 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                     }
                 }
             })
+
+            // ВАЖНО: Устанавливаем sessionIdRef после startAnalysis
+            // startAnalysis создает сессию, нужно найти её и запомнить
+            if (batchId && !sessionIdRef.current) {
+                const session = aiAnalysis.getSessionByBatchId(batchId)
+                if (session) {
+                    sessionIdRef.current = session.id
+                    console.log("[PhotoAnalysisForm] Set sessionIdRef after startAnalysis:", session.id)
+                }
+            }
         } catch (err) {
             console.error("Analysis error:", err)
             const errorMessage = err instanceof Error ? err.message : String(err)
