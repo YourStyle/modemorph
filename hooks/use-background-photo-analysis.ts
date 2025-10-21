@@ -43,42 +43,8 @@ export function useBackgroundPhotoAnalysis() {
       }
 
       try {
-        // Получаем токен авторизации
-        const { createClient } = await import("@/lib/supabase/client")
-        const supabase = createClient()
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-        const authToken = session?.access_token
-
-        // ПРОВЕРКА ЛИМИТОВ ДО выполнения анализа
-        const limitCheckResponse = await fetch("/api/check-limits", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(authToken && { Authorization: `Bearer ${authToken}` }),
-          },
-          body: JSON.stringify({
-            featureType: "wardrobe_items_anlyzed",
-            count: files.length,
-            meta: {},
-          }),
-        })
-
-        const limitCheck = await limitCheckResponse.json()
-
-        if (!limitCheck.canUse) {
-          updateTask(taskId, {
-            status: "error",
-            error: "Лимит анализа фотографий исчерпан. Пожалуйста, оформите подписку.",
-          })
-
-          if (onError) {
-            onError("Лимит анализа фотографий исчерпан. Пожалуйста, оформите подписку.")
-          }
-
-          return { success: false, taskId, error: "Лимит исчерпан" }
-        }
+        // Примечание: лимиты УЖЕ проверены в photo-analysis-form.tsx перед началом анализа
+        // Здесь просто продолжаем анализ в фоновом режиме после сворачивания шторки
 
         // Подготавливаем FormData
         const formData = new FormData()

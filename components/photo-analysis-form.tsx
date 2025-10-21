@@ -573,27 +573,11 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         // ПРОВЕРКА ЛИМИТОВ ДО выполнения анализа
         setCheckingLimits(true)
         try {
-            // Получаем токен авторизации
-            const supabase = createClient()
-            const {
-                data: { session },
-            } = await supabase.auth.getSession()
-            const authToken = session?.access_token
-
-            const limitCheckResponse = await fetch("/api/check-limits", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(authToken && { Authorization: `Bearer ${authToken}` }),
-                },
-                body: JSON.stringify({
-                    featureType: "wardrobe_items_anlyzed",
-                    count: photos.length,
-                    meta: {},
-                }),
+            const limitCheck = await api.post("/api/check-limits", {
+                featureType: "wardrobe_items_anlyzed",
+                count: photos.length,
+                meta: {},
             })
-
-            const limitCheck = await limitCheckResponse.json()
 
             if (!limitCheck.canUse) {
                 setCheckingLimits(false)

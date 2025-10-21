@@ -32,8 +32,12 @@ class ApiClient {
 
     // Добавляем токен авторизации если есть
     const accessToken = sessionAuth.getAccessToken()
+    console.log('[API Client] getHeaders - accessToken:', accessToken ? `${accessToken.substring(0, 20)}...` : 'null')
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`
+      console.log('[API Client] Authorization header added')
+    } else {
+      console.warn('[API Client] No access token available - request will be unauthorized')
     }
 
     return headers

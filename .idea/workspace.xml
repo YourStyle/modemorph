@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="big context and outfit update">
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="fix analysis">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -77,7 +77,7 @@
       <workItem from="1758181225645" duration="7731000" />
       <workItem from="1758459635130" duration="2251000" />
       <workItem from="1760268637464" duration="1297000" />
-      <workItem from="1760878256889" duration="4365000" />
+      <workItem from="1760878256889" duration="11631000" />
     </task>
     <task id="LOCAL-00001" summary="update auth">
       <option name="closed" value="true" />
@@ -319,7 +319,31 @@
       <option name="project" value="LOCAL" />
       <updated>1760975671316</updated>
     </task>
-    <option name="localTasksCounter" value="31" />
+    <task id="LOCAL-00031" summary="fix bug">
+      <option name="closed" value="true" />
+      <created>1761043933169</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1761043933169</updated>
+    </task>
+    <task id="LOCAL-00032" summary="fix analysis">
+      <option name="closed" value="true" />
+      <created>1761046161076</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1761046161076</updated>
+    </task>
+    <task id="LOCAL-00033" summary="fix analysis">
+      <option name="closed" value="true" />
+      <created>1761047036029</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1761047036029</updated>
+    </task>
+    <option name="localTasksCounter" value="34" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -358,6 +382,8 @@
     <MESSAGE value="fix edit item" />
     <MESSAGE value="fix add item" />
     <MESSAGE value="big context and outfit update" />
-    <option name="LAST_COMMIT_MESSAGE" value="big context and outfit update" />
+    <MESSAGE value="fix bug" />
+    <MESSAGE value="fix analysis" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix analysis" />
   </component>
 </project>
