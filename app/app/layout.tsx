@@ -2,6 +2,7 @@ import type React from "react"
 import AppClientLayout from "./layout-client"
 import { BackgroundTasksProvider } from "@/contexts/background-tasks-context"
 import { AIAnalysisProvider } from "@/contexts/ai-analysis-context"
+import { AddToClosetProvider } from "@/contexts/add-to-closet-context"
 
 export default function AppLayout({
   children,
@@ -12,7 +13,9 @@ export default function AppLayout({
   return (
     <BackgroundTasksProvider>
       <AIAnalysisProvider>
-        <AppClientLayout>{children}</AppClientLayout>
+        <AddToClosetProvider>
+          <AppClientLayout>{children}</AppClientLayout>
+        </AddToClosetProvider>
       </AIAnalysisProvider>
     </BackgroundTasksProvider>
   )
