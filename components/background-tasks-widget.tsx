@@ -81,10 +81,10 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
           <div className="w-full px-4 sm:px-6 max-w-2xl mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
             <p className="text-sm text-neutral-300 mb-3">Пока ИИ работает, выберите, что показать:</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button className="h-11 rounded-xl bg-primary text-white px-4" onPointerUp={pickGame}>
+              <button className="h-11 rounded-2xl bg-[#292929] text-white px-4" onPointerUp={pickGame}>
                 Сыграть в игру
               </button>
-              <button className="h-11 rounded-xl border px-4" onPointerUp={pickQuotes}>
+              <button className="h-11 rounded-2xl border px-4 text-[#101010]" onPointerUp={pickQuotes}>
                 Посмотреть цитаты
               </button>
             </div>
@@ -107,7 +107,7 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
             </QuoteCard>
             <p className="mt-3 text-xs text-neutral-400">Можно переключиться на игру в любой момент</p>
             <div className="mt-3">
-              <button className="border rounded px-3 py-1 text-white" onPointerUp={pickGame}>
+              <button className="border rounded-2xl px-3 py-1 text-white" onPointerUp={pickGame}>
                 Переключиться на игру
               </button>
             </div>
