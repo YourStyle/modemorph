@@ -128,10 +128,10 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
                          style={{touchAction: "manipulation"}}>
                         <p className="text-sm text-neutral-300 mb-3">Пока ИИ работает, выберите, что показать:</p>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <button className="h-11 rounded-xl bg-primary text-white px-4"
+                            <button className="h-11 rounded-2xl bg-[#292929] text-white px-4"
                                     onPointerUp={pickGame}>Сыграть в игру
                             </button>
-                            <button className="h-11 rounded-xl border px-4" onPointerUp={pickQuotes}>Посмотреть цитаты
+                            <button className="h-11 rounded-2xl border px-4 text-[#101010]" onPointerUp={pickQuotes}>Посмотреть цитаты
                             </button>
                         </div>
                     </div>
@@ -153,7 +153,7 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
                         </QuoteCard>
                         <p className="mt-3 text-xs text-neutral-400">Можно переключиться на игру в любой момент</p>
                         <div className="mt-3">
-                            <button className="border rounded px-3 py-1" onPointerUp={pickGame}>Переключиться на игру
+                            <button className="border rounded-2xl px-3 py-1" onPointerUp={pickGame}>Переключиться на игру
                             </button>
                         </div>
                     </div>
@@ -711,8 +711,8 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             {/* Header with clear button */}
             {hasAnalyzed && !loading && !checkingLimits && (
                 <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-semibold">Результаты анализа</h2>
-                    <Button variant="default" size="sm" onClick={handleClear}>Очистить</Button>
+                    <h2 className="text-xl font-semibold text-[#101010]">Результаты анализа</h2>
+                    <Button variant="default" size="sm" onClick={handleClear} className="rounded-2xl">Очистить</Button>
                 </div>
             )}
             {/* Loading section */}
@@ -765,7 +765,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                         </div>
                     )}
 
-                    <h3 className="font-semibold text-lg">Найденные вещи ({results.length})</h3>
+                    <h3 className="font-semibold text-lg text-[#101010]">Найденные вещи ({results.length})</h3>
                     {results.map((item, index) => (
                         <Card key={index} className="overflow-hidden">
                             <CardContent className="flex flex-col sm:flex-row gap-4 p-4">
@@ -779,10 +779,10 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                                 )}
                                 {/* Info */}
                                 <div className="flex-1 space-y-2">
-                                    <p className="font-semibold">{item.item_name}</p>
+                                    <p className="font-semibold text-[#101010]">{item.item_name}</p>
                                     {item.basic_item_id && <Badge>Базовая</Badge>}
-                                    <p className="text-sm">{item.material}</p>
-                                    {item.shade && <p className="text-sm text-gray-500">{item.shade}</p>}
+                                    <p className="text-sm text-[#101010]">{item.material}</p>
+                                    {item.shade && <p className="text-sm text-[#101010]">{item.shade}</p>}
                                 </div>
                                 {/* Actions */}
                                 <div className="flex flex-col gap-2 items-stretch">
@@ -791,7 +791,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                                         disabled={item.isAdding || item.isAdded}
                                         variant={item.isAdded ? "secondary" : "default"}
                                         size="sm"
-                                        className="w-full"
+                                        className="w-full rounded-2xl"
                                     >
                                         {item.isAdding ? "Добавляем..." : item.isAdded ? "Добавлено" : "Добавить"}
                                     </Button>

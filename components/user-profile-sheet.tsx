@@ -263,7 +263,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
                         {/* Внутри Plan Info Block; на мобилке всё в одну колонку — кнопка снизу */}
                         <div
-                          className="p-4 rounded-xl border-2 backdrop-blur-sm bg-white/50"
+                          className="p-4 rounded-2xl border-2 backdrop-blur-sm bg-white/50"
                           style={{
                             borderImage: "linear-gradient(to right, #EC9DE2, #89AEFF) 1"
                           }}
