@@ -4,6 +4,7 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { usePaymentStatus } from "@/hooks/use-payment-status"
 import { Loader2, XCircle, CheckCircle2 } from "lucide-react"
+import { api } from "@/lib/api-client"
 
 export default function WaitingPage() {
   const sp = useSearchParams()
@@ -14,8 +15,7 @@ export default function WaitingPage() {
 
   useEffect(() => {
     if (!paymentId && invId) {
-      fetch(`/api/payments/by-inv?invId=${encodeURIComponent(invId)}`)
-        .then(r => r.ok ? r.json() : Promise.reject())
+      api.get(`/api/payments/by-inv?invId=${encodeURIComponent(invId)}`)
         .then(d => setPaymentId(d.paymentId))
         .catch(() => {})
     }

@@ -461,6 +461,46 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
     // Download an image from a URL and re-upload it to our storage
     const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
         try {
+            // Handle base64 images
+            if (imageUrl.startsWith("data:image/") || /^[A-Za-z0-9+/]+=*$/.test(imageUrl)) {
+                console.log("Processing base64 image...")
+
+                let base64Data: string
+                let mimeType = "image/jpeg"
+
+                if (imageUrl.startsWith("data:image/")) {
+                    const matches = imageUrl.match(/^data:image\/([^;]+);base64,(.+)$/)
+                    if (matches) {
+                        mimeType = `image/${matches[1]}`
+                        base64Data = matches[2]
+                    } else {
+                        throw new Error("Invalid base64 image format")
+                    }
+                } else {
+                    base64Data = imageUrl
+                }
+
+                // Convert base64 to blob
+                const { Buffer } = await import("buffer")
+                const buffer = Buffer.from(base64Data, "base64")
+                const blob = new Blob([buffer], { type: mimeType })
+                const file = new File([blob], "image.jpg", { type: mimeType })
+
+                const formData = new FormData()
+                formData.append("file", file)
+
+                const uploadResult = await api.post("/api/upload-image", formData, {
+                    headers: {} // Убираем Content-Type для FormData
+                })
+                if (!uploadResult) {
+                    throw new Error("Failed to upload base64 image")
+                }
+
+                const {url} = uploadResult
+                return url
+            }
+
+            // Handle regular URLs
             const response = await fetch(imageUrl)
             if (!response.ok) {
                 throw new Error("Failed to download image")
@@ -505,13 +545,10 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         )
     }
 
-    // Retrieve the current user's auth token from Supabase
+    // Retrieve the current user's auth token from session storage
     const getAuthToken = async () => {
-        const supabase = createClient()
-        const {
-            data: {session},
-        } = await supabase.auth.getSession()
-        return session?.access_token
+        const { sessionAuth } = await import("@/lib/tma/session-auth")
+        return sessionAuth.getAccessToken()
     }
 
     // Main handler that analyzes all selected photos

@@ -186,11 +186,8 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
   }
 
   const getAuthToken = async () => {
-    const supabase = createClient()
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    return session?.access_token
+    const { sessionAuth } = await import("@/lib/tma/session-auth")
+    return sessionAuth.getAccessToken()
   }
 
   const handleAnalyze = async () => {

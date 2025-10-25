@@ -215,10 +215,8 @@ export default function AIAssistantPage() {
   }
 
   const getAuthToken = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    return session?.access_token
+    const { sessionAuth } = await import("@/lib/tma/session-auth")
+    return sessionAuth.getAccessToken()
   }
 
   const handleSend = async (customPrompt?: string) => {

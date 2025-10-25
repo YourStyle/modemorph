@@ -4,9 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="fix analysis">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-    </list>
+    <list default="true" id="0f959cde-e4e5-47b4-aca4-af82d2525aa4" name="Changes" comment="fix progress" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -15,18 +13,18 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "YourStyle"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;YourStyle&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "git@github.com:YourStyle/modemorph.git",
-    "accountId": "0bafc748-9d5d-41de-9a2b-0321a7a9079c"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;git@github.com:YourStyle/modemorph.git&quot;,
+    &quot;accountId&quot;: &quot;0bafc748-9d5d-41de-9a2b-0321a7a9079c&quot;
   }
-}]]></component>
+}</component>
   <component name="MarkdownSettingsMigration">
     <option name="stateVersion" value="1" />
   </component>
@@ -55,7 +53,7 @@
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "pnpm",
     "settings.editor.selected.configurable": "preferences.pluginManager",
-    "ts.external.directory.path": "/Applications/WebStorm.app/Contents/plugins/javascript-plugin/jsLanguageServicesImpl/external",
+    "ts.external.directory.path": "/Users/antoncukseev/modemorph/node_modules/typescript/lib",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
@@ -78,30 +76,7 @@
       <workItem from="1758459635130" duration="2251000" />
       <workItem from="1760268637464" duration="1297000" />
       <workItem from="1760878256889" duration="23611000" />
-    </task>
-    <task id="LOCAL-00001" summary="update auth">
-      <option name="closed" value="true" />
-      <created>1758467884573</created>
-      <option name="number" value="00001" />
-      <option name="presentableId" value="LOCAL-00001" />
-      <option name="project" value="LOCAL" />
-      <updated>1758467884573</updated>
-    </task>
-    <task id="LOCAL-00002" summary="update auth">
-      <option name="closed" value="true" />
-      <created>1758633075018</created>
-      <option name="number" value="00002" />
-      <option name="presentableId" value="LOCAL-00002" />
-      <option name="project" value="LOCAL" />
-      <updated>1758633075018</updated>
-    </task>
-    <task id="LOCAL-00003" summary="update api routes">
-      <option name="closed" value="true" />
-      <created>1758636109502</created>
-      <option name="number" value="00003" />
-      <option name="presentableId" value="LOCAL-00003" />
-      <option name="project" value="LOCAL" />
-      <updated>1758636109502</updated>
+      <workItem from="1761076438395" duration="6291000" />
     </task>
     <task id="LOCAL-00004" summary="update api routes">
       <option name="closed" value="true" />
@@ -431,7 +406,71 @@
       <option name="project" value="LOCAL" />
       <updated>1761061229690</updated>
     </task>
-    <option name="localTasksCounter" value="45" />
+    <task id="LOCAL-00045" summary="fix">
+      <option name="closed" value="true" />
+      <created>1761076624182</created>
+      <option name="number" value="00045" />
+      <option name="presentableId" value="LOCAL-00045" />
+      <option name="project" value="LOCAL" />
+      <updated>1761076624182</updated>
+    </task>
+    <task id="LOCAL-00046" summary="fix progress">
+      <option name="closed" value="true" />
+      <created>1761077458732</created>
+      <option name="number" value="00046" />
+      <option name="presentableId" value="LOCAL-00046" />
+      <option name="project" value="LOCAL" />
+      <updated>1761077458732</updated>
+    </task>
+    <task id="LOCAL-00047" summary="fix progress">
+      <option name="closed" value="true" />
+      <created>1761077924042</created>
+      <option name="number" value="00047" />
+      <option name="presentableId" value="LOCAL-00047" />
+      <option name="project" value="LOCAL" />
+      <updated>1761077924042</updated>
+    </task>
+    <task id="LOCAL-00048" summary="fix progress">
+      <option name="closed" value="true" />
+      <created>1761078508822</created>
+      <option name="number" value="00048" />
+      <option name="presentableId" value="LOCAL-00048" />
+      <option name="project" value="LOCAL" />
+      <updated>1761078508822</updated>
+    </task>
+    <task id="LOCAL-00049" summary="fix progress">
+      <option name="closed" value="true" />
+      <created>1761079093431</created>
+      <option name="number" value="00049" />
+      <option name="presentableId" value="LOCAL-00049" />
+      <option name="project" value="LOCAL" />
+      <updated>1761079093431</updated>
+    </task>
+    <task id="LOCAL-00050" summary="fix progress">
+      <option name="closed" value="true" />
+      <created>1761079624305</created>
+      <option name="number" value="00050" />
+      <option name="presentableId" value="LOCAL-00050" />
+      <option name="project" value="LOCAL" />
+      <updated>1761079624306</updated>
+    </task>
+    <task id="LOCAL-00051" summary="fix progress">
+      <option name="closed" value="true" />
+      <created>1761080444662</created>
+      <option name="number" value="00051" />
+      <option name="presentableId" value="LOCAL-00051" />
+      <option name="project" value="LOCAL" />
+      <updated>1761080444662</updated>
+    </task>
+    <task id="LOCAL-00052" summary="fix progress">
+      <option name="closed" value="true" />
+      <created>1761081300845</created>
+      <option name="number" value="00052" />
+      <option name="presentableId" value="LOCAL-00052" />
+      <option name="project" value="LOCAL" />
+      <updated>1761081300845</updated>
+    </task>
+    <option name="localTasksCounter" value="53" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -463,7 +502,6 @@
     <MESSAGE value="update bottom menu" />
     <MESSAGE value="update bg task and excel download" />
     <MESSAGE value="update bg task widget" />
-    <MESSAGE value="fix" />
     <MESSAGE value="update widget and photo count" />
     <MESSAGE value="update paywall screen usage" />
     <MESSAGE value="fix admin pages" />
@@ -472,6 +510,8 @@
     <MESSAGE value="big context and outfit update" />
     <MESSAGE value="fix bug" />
     <MESSAGE value="fix analysis" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix analysis" />
+    <MESSAGE value="fix" />
+    <MESSAGE value="fix progress" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix progress" />
   </component>
 </project>
