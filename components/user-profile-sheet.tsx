@@ -67,6 +67,9 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const [isPaywallOpen, setIsPaywallOpen] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
 
+  // Проверяем, запущено ли приложение в Telegram Mini App
+  const isTMA = typeof window !== 'undefined' && window.Telegram?.WebApp?.initData
+
   const [formData, setFormData] = useState({
     full_name: "",
     gender: "",
@@ -256,34 +259,36 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                   <>
                     {profile && !profile.is_admin && (
                       <div className="space-y-3">
-                        <h3 className="text-white font-medium text-sm">Ваш текущий план</h3>
+                        <h3 className="text-[#101010] font-medium text-sm">Ваш текущий план</h3>
 
                         {/* Внутри Plan Info Block; на мобилке всё в одну колонку — кнопка снизу */}
                         <div
-                          className={`p-4 rounded-xl border backdrop-blur-sm ${
-                            subscriptionData?.subscription?.status === "active"
-                              ? "bg-gradient-to-r from-purple-600/20 to-pink-600/20 border-purple-400/30"
-                              : "bg-white/5 border-gray-700/50"
-                          }`}
+                          className="p-4 rounded-xl border-2 backdrop-blur-sm bg-white/50"
+                          style={{
+                            borderImage: "linear-gradient(to right, #EC9DE2, #89AEFF) 1"
+                          }}
                         >
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                             <div>
-                              <div className="text-white font-medium text-base mb-1">
+                              <div className="text-[#101010] font-medium text-base mb-1">
                                 {subscriptionData?.subscription?.status === "active" ? "Pro" : "Бесплатно"}
                               </div>
-                              <div className="text-gray-400 text-sm">
+                              <div className="text-[#101010]/70 text-sm">
                                 {subscriptionData?.subscription?.status === "active"
                                   ? "40 кредитов каждый месяц"
                                   : "30 кредитов каждый месяц"}
                               </div>
-                              <div className="text-white/70 text-xs mt-2">
+                              <div className="text-[#101010]/70 text-xs mt-2">
                                 {subscriptionData?.credits?.credits_balance || 0} кредитов доступно
                               </div>
                             </div>
 
                             <Button
                               onClick={() => setIsPaywallOpen(true)}
-                              className="w-full md:w-auto bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white border-0 px-6 py-3 rounded-xl font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
+                              className="w-full md:w-auto text-white border-0 px-6 py-3 rounded-xl font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
+                              style={{
+                                background: "linear-gradient(to right, #EC9DE2, #89AEFF)"
+                              }}
                             >
                               {subscriptionData?.subscription?.status === "active" ? "Управление" : "Оформить подписку"}
                               <svg
@@ -308,12 +313,12 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     )}
 
                     <div className="space-y-2">
-                      <Label className="text-white">Email</Label>
-                      <Input value={profile?.email || ""} disabled className="bg-gray-700 border-gray-600 text-white" />
+                      <Label className="text-[#101010]">Email</Label>
+                      <Input value={profile?.email || ""} disabled className="bg-gray-200 border-gray-300 text-gray-600" />
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-white">Имя</Label>
+                      <Label className="text-[#101010]">Имя</Label>
                       <Input
                         value={formData.full_name}
                         onChange={(e) => handleInputChange("full_name", e.target.value)}
@@ -323,7 +328,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-white">Пол</Label>
+                      <Label className="text-[#101010]">Пол</Label>
                       <div className="flex gap-2">
                         <Button
                           type="button"
@@ -353,7 +358,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-white">Рост (см)</Label>
+                      <Label className="text-[#101010]">Рост (см)</Label>
                       <Input
                         type="text"
                         inputMode="numeric"
@@ -365,7 +370,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-white">Вес (кг)</Label>
+                      <Label className="text-[#101010]">Вес (кг)</Label>
                       <Input
                         type="text"
                         inputMode="numeric"
@@ -377,7 +382,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-white">Размер верхней одежды</Label>
+                      <Label className="text-[#101010]">Размер верхней одежды</Label>
                       <Select value={formData.top_size} onValueChange={(v) => handleInputChange("top_size", v)}>
                         <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                           <SelectValue placeholder="Выберите размер" />
@@ -393,7 +398,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-white">Размер нижней одежды</Label>
+                      <Label className="text-[#101010]">Размер нижней одежды</Label>
                       <Select value={formData.bottom_size} onValueChange={(v) => handleInputChange("bottom_size", v)}>
                         <SelectTrigger className="bg-white border-gray-300 text-gray-900">
                           <SelectValue placeholder="Выберите размер" />
@@ -409,7 +414,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-white">Размер обуви</Label>
+                      <Label className="text-[#101010]">Размер обуви</Label>
                       <Input
                         type="text"
                         inputMode="numeric"
@@ -437,7 +442,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
               <TabsContent value="avatars" className="space-y-6 mt-6">
                 <div className="space-y-4">
                   <div>
-                    <Label className="text-white mb-3 block">Текущий аватар</Label>
+                    <Label className="text-[#101010] mb-3 block">Текущий аватар</Label>
                     <div className="flex items-center space-x-4">
                       <Avatar className="h-16 w-16">
                         <AvatarImage src={profile?.avatar_url || "/placeholder-user.jpg"} />
@@ -465,7 +470,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-white mb-3 block">Прошлые аватары</Label>
+                    <Label className="text-[#101010] mb-3 block">Прошлые аватары</Label>
                     <div className="grid grid-cols-4 gap-3">
                       {[1, 2, 3, 4].map((i) => (
                         <div key={i} className="aspect-square bg-gray-600 rounded-lg flex items-center justify-center">
@@ -480,19 +485,31 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
           </div>
 
           {/* Sticky-футер ВНУТРИ скролла: всегда виден и не обрезается */}
-          <div className="sticky bottom-0 z-20 border-t border-gray-600 bg-slate-800/95 backdrop-blur-sm px-4 py-3 footer-safe">
-            <div className="flex gap-4">
+          <div className="sticky bottom-0 z-20 border-t border-gray-300 bg-[#F9FAFB] px-4 py-3 footer-safe">
+            {isTMA ? (
+              // В TMA показываем только кнопку "Сохранить"
               <Button
-                variant="outline"
-                onClick={onClose}
-                className="flex-1 bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white hover:border-gray-400"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
               >
-                Закрыть
+                {isSaving ? "Сохранение..." : "Сохранить изменения"}
               </Button>
-              <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
-                Выйти
-              </Button>
-            </div>
+            ) : (
+              // В обычном режиме показываем все кнопки
+              <div className="flex gap-4">
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  className="flex-1 bg-transparent border-gray-500 text-gray-600 hover:bg-gray-200 hover:text-gray-900 hover:border-gray-400"
+                >
+                  Закрыть
+                </Button>
+                <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
+                  Выйти
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -504,6 +521,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
           loadSubscriptionData()
           toast.success("Данные обновлены!")
         }}
+        variant="explore"
       />
 
       {/* Ютилити: скрываем скроллбар; учитываем safe-area снизу, чтобы футер не перекрывался iOS-панелью */}

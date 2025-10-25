@@ -15,6 +15,7 @@ interface SubscriptionSheetProps {
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
+  variant?: "limitReached" | "explore" // limitReached = "У тебя закончились лимиты", explore = "Открой для себя безлимитные возможности"
 }
 
 const SUBSCRIPTION_PLANS = {
@@ -41,10 +42,17 @@ const CREDIT_PACKS = [
   { id: "pack_200", name: "200 кредитов", price: 999, credits: 200 },
 ]
 
-export function SubscriptionSheet({ isOpen, onClose, onSuccess }: SubscriptionSheetProps) {
+export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limitReached" }: SubscriptionSheetProps) {
   const [selectedPlan, setSelectedPlan] = useState<Plan>("yearly")
   const [currentView, setCurrentView] = useState<View>("subscription")
   const [isProcessing, setIsProcessing] = useState(false)
+
+  const title = variant === "limitReached"
+    ? "У тебя закончились лимиты"
+    : "Открой для себя безлимитные возможности"
+  const subtitle = variant === "limitReached"
+    ? "Открой безграничные возможности"
+    : "Выбери подходящий план"
 
   const handleGetAccess = async () => {
     if (currentView === "subscription") {
@@ -100,8 +108,8 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess }: SubscriptionSh
       <SheetContent
         side="bottom"
         className={cn(
-          "rounded-t-3xl border-0 p-0 bg-[#F9FAFB] transition-all duration-300",
-          currentView === "credits" ? "h-[90vh]" : "h-[70vh]"
+          "rounded-t-3xl border-0 p-0 bg-[#F9FAFB] transition-all duration-300 overflow-hidden",
+          currentView === "credits" ? "h-[85vh]" : "h-[65vh]"
         )}
         onInteractOutside={(e) => e.preventDefault()}
       >
@@ -121,27 +129,27 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess }: SubscriptionSh
           </button>
         )}
 
-        <div className="px-6 pb-6 h-full overflow-y-auto text-[#101010]">
+        <div className="px-6 pb-6 h-full flex flex-col text-[#101010]">
           {currentView === "subscription" ? (
-            <div className="space-y-6">
+            <div className="flex flex-col h-full space-y-4">
               {/* Header */}
-              <div className="text-center space-y-2 pt-4">
-                <h2 className="text-2xl font-bold text-[#101010]">
-                  У тебя закончились лимиты
+              <div className="text-center space-y-1 pt-2 flex-shrink-0">
+                <h2 className="text-xl font-bold text-[#101010]">
+                  {title}
                 </h2>
-                <p className="text-base text-[#101010]/70">
-                  Открой безграничные возможности
+                <p className="text-sm text-[#101010]/70">
+                  {subtitle}
                 </p>
               </div>
 
               {/* Plan selection */}
-              <div className="space-y-3">
+              <div className="space-y-2 flex-shrink-0">
                 {(Object.entries(SUBSCRIPTION_PLANS) as [Plan, typeof SUBSCRIPTION_PLANS.yearly][]).map(([key, plan]) => (
                   <button
                     key={key}
                     onClick={() => setSelectedPlan(key)}
                     className={cn(
-                      "w-full p-4 rounded-2xl bg-[#F5F4FF] transition-all relative",
+                      "w-full p-3 rounded-xl bg-[#F5F4FF] transition-all relative",
                       selectedPlan === key && "bg-gradient-to-r from-[#EC9DE2]/10 to-[#89AEFF]/10"
                     )}
                     style={
@@ -157,11 +165,11 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess }: SubscriptionSh
                   >
                     <div className="flex items-center justify-between">
                       <div className="text-left">
-                        <div className="font-semibold text-[#101010]">{plan.name}</div>
-                        <div className="text-sm text-[#101010]/60">{plan.description}</div>
+                        <div className="font-semibold text-sm text-[#101010]">{plan.name}</div>
+                        <div className="text-xs text-[#101010]/60">{plan.description}</div>
                       </div>
                       <div className="text-right">
-                        <div className="font-bold text-lg text-[#101010]">{plan.price} ₽</div>
+                        <div className="font-bold text-base text-[#101010]">{plan.price} ₽</div>
                         <div className="text-xs text-[#101010]/60">{plan.credits} кредитов</div>
                       </div>
                     </div>
@@ -169,33 +177,36 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess }: SubscriptionSh
                 ))}
               </div>
 
-              {/* Get Access button */}
-              <Button
-                onClick={handleGetAccess}
-                disabled={isProcessing}
-                className="w-full h-14 text-base font-semibold rounded-2xl text-white border-0"
-                style={{
-                  background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-                }}
-              >
-                {isProcessing ? "Обработка..." : "Получить доступ"}
-              </Button>
+              {/* Bottom section - fixed at bottom */}
+              <div className="space-y-3 flex-shrink-0 mt-auto">
+                {/* Get Access button */}
+                <Button
+                  onClick={handleGetAccess}
+                  disabled={isProcessing}
+                  className="w-full h-12 text-sm font-semibold rounded-xl text-white border-0"
+                  style={{
+                    background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
+                  }}
+                >
+                  {isProcessing ? "Обработка..." : "Получить доступ"}
+                </Button>
 
-              {/* View credit packs link */}
-              <button
-                onClick={() => setCurrentView("credits")}
-                className="w-full text-center text-[#101010]/70 hover:text-[#101010] transition-colors underline"
-              >
-                Посмотреть пакеты кредитов
-              </button>
+                {/* View credit packs link */}
+                <button
+                  onClick={() => setCurrentView("credits")}
+                  className="w-full text-center text-sm text-[#101010]/70 hover:text-[#101010] transition-colors underline"
+                >
+                  Посмотреть пакеты кредитов
+                </button>
 
-              {/* Continue free button */}
-              <button
-                onClick={handleContinueFree}
-                className="w-full text-center text-[#101010] hover:text-[#101010]/70 transition-colors font-medium"
-              >
-                Продолжить бесплатно
-              </button>
+                {/* Continue free button */}
+                <button
+                  onClick={handleContinueFree}
+                  className="w-full text-center text-sm text-[#101010] hover:text-[#101010]/70 transition-colors font-medium"
+                >
+                  Продолжить бесплатно
+                </button>
+              </div>
             </div>
           ) : (
             <div className="space-y-6">
