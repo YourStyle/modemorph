@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Sparkles, Star, Plus } from "lucide-react"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
-import { PaywallModal } from "@/components/paywall-modal";
+import { SubscriptionSheet } from "@/components/subscription-sheet";
 import { api } from "@/lib/api-client";
 import { useAddToCloset } from "@/contexts/add-to-closet-context";
 
@@ -494,7 +494,7 @@ export default function HomePage() {
           )}
         </div>
 
-        <PaywallModal
+        <SubscriptionSheet
             isOpen={paywallOpen}
             onClose={() => setPaywallOpen(false)}
             onSuccess={() => setPaywallOpen(false)}

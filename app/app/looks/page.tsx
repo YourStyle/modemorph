@@ -11,7 +11,7 @@ import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collect
 import { CollectionFilterModal } from "@/components/collection-filter-modal"
 import { toast } from "sonner"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
-import { PaywallModal } from "@/components/paywall-modal"
+import { SubscriptionSheet } from "@/components/subscription-sheet"
 import { useFeature } from "@/hooks/use-feature"
 import { api } from "@/lib/api-client"
 
@@ -279,7 +279,7 @@ export default function LooksPage() {
         </div>
 
         {paywallOpen && (
-          <PaywallModal
+          <SubscriptionSheet
             isOpen={paywallOpen}
             onClose={() => setPaywallOpen(false)}
             onSuccess={() => setPaywallOpen(false)}

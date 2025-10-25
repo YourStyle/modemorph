@@ -10,7 +10,7 @@ import {AIAssistantLoader} from "@/components/ai-assistant-loader"
 import Image from "next/image"
 import {createClient} from "@/lib/supabase/client"
 import {PhotoRegenerationModal} from "./photo-regeneration-modal"
-import {PaywallModal} from "./paywall-modal"
+import {SubscriptionSheet} from "./subscription-sheet"
 import { api } from "@/lib/api-client"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
@@ -53,6 +53,7 @@ interface PhotoAnalysisFormProps {
     }) => void
     onReset?: () => void
     onLoadingChange?: (isLoading: boolean) => void
+    onAnalysisStart?: () => void
 }
 
 type ViewMode = "choose" | "quotes" | "game" | null
@@ -176,7 +177,7 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
 }
 
 
-export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onReset, onLoadingChange}: PhotoAnalysisFormProps) {
+export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onReset, onLoadingChange, onAnalysisStart}: PhotoAnalysisFormProps) {
     const aiAnalysis = useAIAnalysis()
     const { startAnalysis } = useBackgroundPhotoAnalysis()
     const sessionIdRef = useRef<string | null>(null)
@@ -475,6 +476,10 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             return
         }
         setCheckingLimits(false)
+
+        // Вызываем колбэк о начале анализа ПЕРЕД началом анализа
+        // Это позволит AddToClosetSheet минимизироваться
+        onAnalysisStart?.()
 
         // СБРОС состояния перед новым анализом
         sessionIdRef.current = null
@@ -805,8 +810,8 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 />
             )}
 
-            {/* Paywall Modal */}
-            <PaywallModal
+            {/* Subscription Sheet */}
+            <SubscriptionSheet
                 isOpen={showPaywall}
                 onClose={() => setShowPaywall(false)}
                 onSuccess={() => {

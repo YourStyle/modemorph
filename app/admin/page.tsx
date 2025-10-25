@@ -4,28 +4,15 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Shirt, FolderIcon as Hanger, Plus, TrendingUp, Package, Palette, Zap } from "lucide-react"
 import Link from "next/link"
-import { useAuth } from "@/contexts/auth-context"
 
 export default function AdminDashboard() {
-  const { user, loading: authLoading } = useAuth()
-
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-lg font-semibold">Загрузка...</div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto space-y-8">
           {/* Приветствие */}
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Добро пожаловать, {user?.email?.split("@")[0]}!</h2>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2">Добро пожаловать в админ панель!</h2>
             <p className="text-xl text-gray-600">Управляйте системой гардероба и базовыми элементами</p>
           </div>
 

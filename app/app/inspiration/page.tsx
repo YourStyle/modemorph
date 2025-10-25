@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
-import { PaywallModal } from "@/components/paywall-modal"
+import { SubscriptionSheet } from "@/components/subscription-sheet"
 import { OutfitItemsSheet } from "@/components/outfit-items-sheet"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
 import { api } from "@/lib/api-client"
@@ -803,7 +803,7 @@ export default function InspirationPage(): ReactElement {
         <BottomNavigation />
       </div>
 
-      <PaywallModal
+      <SubscriptionSheet
         isOpen={showPaywall}
         onClose={() => setShowPaywall(false)}
         onSuccess={() => {

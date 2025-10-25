@@ -21,23 +21,18 @@ export function CommonSheet({ isOpen, onClose, title, children, backgroundColor 
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent
         side="bottom"
-        className={cn("h-[80vh] rounded-t-3xl border-0 p-0", isDark ? "bg-slate-800" : "bg-white")}
+        className="h-[80vh] rounded-t-3xl border-0 p-0 bg-[#F9FAFB]"
       >
         {/* Drag handle */}
         <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
-          <div className={cn("w-12 h-1 rounded-full", isDark ? "bg-gray-600" : "bg-gray-300")} />
+          <div className="w-12 h-1 rounded-full bg-gray-300" />
         </div>
 
         {/* Кнопка сворачивания (если передана) */}
         {onMinimize && (
           <button
             onClick={onMinimize}
-            className={cn(
-              "absolute top-4 right-16 p-2 rounded-full transition-colors z-10",
-              isDark
-                ? "text-gray-300 hover:text-white hover:bg-gray-700"
-                : "text-gray-500 hover:text-gray-700 hover:bg-gray-100",
-            )}
+            className="absolute top-4 right-16 p-2 rounded-full transition-colors z-10 text-[#101010] hover:bg-gray-200"
             aria-label="Свернуть в виджет"
           >
             <ChevronDown className="w-5 h-5" />
@@ -46,25 +41,20 @@ export function CommonSheet({ isOpen, onClose, title, children, backgroundColor 
 
         <button
           onClick={onClose}
-          className={cn(
-            "absolute top-4 right-4 p-2 rounded-full transition-colors z-10",
-            isDark
-              ? "text-gray-300 hover:text-white hover:bg-gray-700"
-              : "text-gray-500 hover:text-gray-700 hover:bg-gray-100",
-          )}
+          className="absolute top-4 right-4 p-2 rounded-full transition-colors z-10 text-[#101010] hover:bg-gray-200"
         >
           <X className="w-5 h-5" />
         </button>
 
         {title && (
           <SheetHeader className="px-6 pb-4">
-            <SheetTitle className={cn("text-center text-xl font-semibold", isDark ? "text-white" : "text-gray-900")}>
+            <SheetTitle className="text-center text-xl font-semibold text-[#101010]">
               {title}
             </SheetTitle>
           </SheetHeader>
         )}
 
-        <div className={cn("px-6 pb-6 h-full overflow-y-auto", !title && "pt-4")}>{children}</div>
+        <div className={cn("px-6 pb-6 h-full overflow-y-auto text-[#101010]", !title && "pt-4")}>{children}</div>
       </SheetContent>
     </Sheet>
   )

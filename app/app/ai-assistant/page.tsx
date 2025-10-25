@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { createClient } from "@/lib/supabase/client"
 import { PhotoAnalysisForm } from "@/components/photo-analysis-form"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
-import { PaywallModal } from "@/components/paywall-modal"
+import { SubscriptionSheet } from "@/components/subscription-sheet"
 import { useFeature } from "@/hooks/use-feature"
 import { api } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
@@ -586,8 +586,8 @@ export default function AIAssistantPage() {
         </div>
       )}
 
-      {/* PaywallModal */}
-      <PaywallModal
+      {/* SubscriptionSheet */}
+      <SubscriptionSheet
         isOpen={paywallOpen}
         onClose={() => setPaywallOpen(false)}
         onSuccess={() => setPaywallOpen(false)}

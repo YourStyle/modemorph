@@ -15,7 +15,7 @@ import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 
 import { Input } from "@/components/ui/input"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
-import { PaywallModal } from "@/components/paywall-modal"
+import { SubscriptionSheet } from "@/components/subscription-sheet"
 
 import { useToast } from "@/hooks/use-toast"
 import { useFeature } from "@/hooks/use-feature"
@@ -549,7 +549,7 @@ export default function WardrobePage() {
 
       <CategoryProgressSheet isOpen={isCategorySheetOpen} onClose={() => setIsCategorySheetOpen(false)} />
 
-      <PaywallModal
+      <SubscriptionSheet
         isOpen={paywallOpen}
         onClose={() => setPaywallOpen(false)}
         onSuccess={() => setPaywallOpen(false)}

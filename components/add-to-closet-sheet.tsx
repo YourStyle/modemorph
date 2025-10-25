@@ -17,7 +17,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { PaywallModal } from "./paywall-modal"
+import { SubscriptionSheet } from "./subscription-sheet"
 
 interface UploadedPhoto {
   file: File
@@ -211,6 +211,11 @@ export function AddToClosetSheet({
               onSuccess={handleAnalysisSuccess}
               onReset={handleReset}
               onLoadingChange={setIsAnalyzing}
+              onAnalysisStart={() => {
+                // Автоматически минимизируем шторку при начале анализа
+                console.log("[AddToClosetSheet] onAnalysisStart - minimizing sheet")
+                handleMinimize()
+              }}
             />
           </div>
         </CommonSheet>
@@ -262,8 +267,8 @@ export function AddToClosetSheet({
         </div>
       </CommonSheet>
 
-      {/* Paywall Modal */}
-      <PaywallModal
+      {/* Subscription Sheet */}
+      <SubscriptionSheet
         isOpen={showPaywall}
         onClose={() => setShowPaywall(false)}
         onSuccess={() => {

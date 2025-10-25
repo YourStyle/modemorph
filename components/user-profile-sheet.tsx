@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CommonSheet } from "./common-sheet"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { PaywallModal } from "./paywall-modal"
+import { SubscriptionSheet } from "./subscription-sheet"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
 
@@ -497,7 +497,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         </div>
       </div>
 
-      <PaywallModal
+      <SubscriptionSheet
         isOpen={isPaywallOpen}
         onClose={() => setIsPaywallOpen(false)}
         onSuccess={() => {

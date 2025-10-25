@@ -332,6 +332,27 @@ export function BackgroundTasksWidget() {
     }
   }, [showProgressSheet])
 
+  // Automatically open progress sheet when a new processing task is created
+  const prevTasksRef = useRef<typeof tasks>([])
+  useEffect(() => {
+    const newProcessingTasks = tasks.filter(
+      (task) =>
+        task.status === "processing" &&
+        !prevTasksRef.current.find((prevTask) => prevTask.id === task.id)
+    )
+
+    if (newProcessingTasks.length > 0 && !showProgressSheet && !showResultsSheet) {
+      // New processing task detected - auto-open progress sheet
+      const firstTask = newProcessingTasks[0]
+      console.log("[BackgroundTasksWidget] Auto-opening progress sheet for new task:", firstTask.id)
+      setSelectedSessionId(firstTask.data.sessionId)
+      setShowProgressSheet(true)
+      if (!viewMode) setViewMode("choose")
+    }
+
+    prevTasksRef.current = tasks
+  }, [tasks, showProgressSheet, showResultsSheet, viewMode])
+
   if (activeTasks.length === 0) return null
 
   return (

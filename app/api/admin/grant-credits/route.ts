@@ -39,40 +39,36 @@ export async function POST(req: NextRequest) {
       if (creditsError) throw creditsError
     }
 
-    // 5) Начисление подписки (ВСТАВИТЬ В ЭТОТ БЛОК)
+    // 5) Начисление подписки
     if (subscriptionType && subscriptionDuration) {
       const startDate = new Date()
-      const endDate = new Date()
+      const expiresAt = new Date()
 
       if (subscriptionDuration === "monthly") {
-        endDate.setMonth(endDate.getMonth() + 1)
+        expiresAt.setMonth(expiresAt.getMonth() + 1)
       } else if (subscriptionDuration === "yearly") {
-        endDate.setFullYear(endDate.getFullYear() + 1)
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1)
       }
 
       const { data: targetProfile, error: pErr } = await supabase
-  .from("user_profiles")
-  .select("id")
-  .eq("user_id", userId)
-  .single();
-if (pErr || !targetProfile) throw pErr ?? new Error("Target profile not found");
+        .from("user_profiles")
+        .select("id")
+        .eq("user_id", userId)
+        .single()
 
-const { error: subError } = await supabase
-  .from("user_subscriptions")
-  .upsert(
-    {
-      user_profile_id: targetProfile.id,
-      subscription_type: subscriptionType,
-      status: "active",
-      start_date: startDate.toISOString(),
-      end_date: endDate.toISOString(),
-      credits_included: subscriptionType === "pro" ? 40 : 0,
-      updated_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-    },
-    { onConflict: "user_profile_id", returning: "minimal" }
-  );
-if (subError) throw subError;
+      if (pErr || !targetProfile) throw pErr ?? new Error("Target profile not found")
+
+      const { error: subError } = await supabase
+        .from("user_subscriptions")
+        .insert({
+          user_profile_id: targetProfile.id,
+          subscription_type: subscriptionType,
+          status: "active",
+          start_date: startDate.toISOString(),
+          expires_at: expiresAt.toISOString(),
+        })
+
+      if (subError) throw subError
     }
 
     // 6) Ответ

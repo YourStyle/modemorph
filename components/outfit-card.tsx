@@ -9,7 +9,7 @@ import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucid
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
-import { PaywallModal } from "./paywall-modal"
+import { SubscriptionSheet } from "./subscription-sheet"
 import { api } from "@/lib/api-client"
 
 interface OutfitItem {
@@ -408,8 +408,8 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
         />
       )}
 
-      {/* Paywall Modal */}
-      <PaywallModal
+      {/* Subscription Sheet */}
+      <SubscriptionSheet
         isOpen={showPaywall}
         onClose={() => setShowPaywall(false)}
         onSuccess={() => {

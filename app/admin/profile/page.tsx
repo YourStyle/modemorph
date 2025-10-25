@@ -1,27 +1,64 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { User, Mail, Calendar, Shield, LogOut } from "lucide-react"
-import { useAuth } from "@/contexts/auth-context"
-import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
+import { sessionAuth } from "@/lib/tma/session-auth"
+import { api } from "@/lib/api-client"
+
+interface UserData {
+  id: string
+  email: string
+  created_at: string
+  email_confirmed_at?: string
+  last_sign_in_at?: string
+  app_metadata?: { provider?: string }
+}
 
 export default function ProfilePage() {
-  const { user, loading: authLoading } = useAuth()
+  const router = useRouter()
+  const [user, setUser] = useState<UserData | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    window.location.href = "/auth/login"
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const data = await api.get("/api/me")
+        setUser(data.user)
+      } catch (error) {
+        console.error("Error loading profile:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadProfile()
+  }, [])
+
+  const handleSignOut = () => {
+    sessionAuth.clearSession()
+    router.push("/")
   }
 
-  if (authLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="text-lg font-semibold">Загрузка...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="text-lg font-semibold">Не удалось загрузить профиль</div>
         </div>
       </div>
     )
