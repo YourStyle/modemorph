@@ -14,6 +14,124 @@ import { CommonSheet } from "@/components/common-sheet"
 import { api } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
 import Image from "next/image"
+import FallingObjectsGame from "@/components/falling-objects-game"
+import QuoteCard from "@/components/quote-card"
+
+type ViewMode = "choose" | "quotes" | "game" | null
+
+function shuffleArray<T>(array: T[]): T[] {
+  const arr = [...array]
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[arr[i], arr[j]] = [arr[j], arr[i]]
+  }
+  return arr
+}
+
+const GameShell: React.FC<React.PropsWithChildren<{ height: number }>> = ({ children, height }) => (
+  <div
+    className="w-full rounded-xl border border-white/10 bg-white/5 flex items-center justify-center"
+    style={{ height: `${height}px` }}
+  >
+    {children}
+  </div>
+)
+
+const ProgressBlock: React.FC<{ progress: number; progressText: string }> = ({ progress, progressText }) => (
+  <div className="w-full max-w-sm mx-auto mt-4">
+    <div className="relative h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+      <div
+        className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-[width] duration-200"
+        style={{ width: `${progress}%` }}
+      />
+    </div>
+    <div className="flex justify-between text-xs mt-2 text-neutral-400">
+      <span>{progressText}</span>
+      <span>{Math.round(progress)}%</span>
+    </div>
+  </div>
+)
+
+type LoadingExperienceProps = {
+  viewMode: ViewMode
+  setViewMode: (m: ViewMode) => void
+  gameHeight: number
+  quotes: { text: string; author: string }[]
+  quoteIndex: number
+  progress: number
+  progressText: string
+}
+
+const LoadingExperience: React.FC<LoadingExperienceProps> = ({
+  viewMode,
+  setViewMode,
+  gameHeight,
+  quotes,
+  quoteIndex,
+  progress,
+  progressText,
+}) => {
+  const pickGame = () => setViewMode("game")
+  const pickQuotes = () => setViewMode("quotes")
+
+  if (viewMode === null || viewMode === "choose") {
+    return (
+      <>
+        <GameShell height={gameHeight}>
+          <div className="w-full px-4 sm:px-6 max-w-2xl mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
+            <p className="text-sm text-neutral-300 mb-3">Пока ИИ работает, выберите, что показать:</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button className="h-11 rounded-xl bg-primary text-white px-4" onPointerUp={pickGame}>
+                Сыграть в игру
+              </button>
+              <button className="h-11 rounded-xl border px-4" onPointerUp={pickQuotes}>
+                Посмотреть цитаты
+              </button>
+            </div>
+          </div>
+        </GameShell>
+        <ProgressBlock progress={progress} progressText={progressText} />
+      </>
+    )
+  }
+
+  if (viewMode === "quotes") {
+    return (
+      <>
+        <GameShell height={gameHeight}>
+          <div className="text-center max-w-md w-full">
+            <h2 className="text-lg font-semibold mb-2 text-white">ИИ анализирует ваши фото</h2>
+            <QuoteCard className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md text-center shadow mx-4">
+              <p className="italic text-black">"{quotes[quoteIndex].text}"</p>
+              <p className="mt-2 font-medium text-black">— {quotes[quoteIndex].author}</p>
+            </QuoteCard>
+            <p className="mt-3 text-xs text-neutral-400">Можно переключиться на игру в любой момент</p>
+            <div className="mt-3">
+              <button className="border rounded px-3 py-1 text-white" onPointerUp={pickGame}>
+                Переключиться на игру
+              </button>
+            </div>
+          </div>
+        </GameShell>
+        <ProgressBlock progress={progress} progressText={progressText} />
+      </>
+    )
+  }
+
+  // game
+  return (
+    <>
+      <GameShell height={gameHeight}>
+        <FallingObjectsGame
+          analysisDone={progress >= 100}
+          onRequestFinish={() => setViewMode(null)}
+          onRequestReturnToPicker={() => setViewMode("choose")}
+        />
+      </GameShell>
+      <ProgressBlock progress={progress} progressText={progressText} />
+    </>
+  )
+}
 
 // Компонент кругового прогресса
 const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: number }) => {
@@ -57,10 +175,30 @@ export function BackgroundTasksWidget() {
   const { openSheet } = useAddToCloset()
   const [showTooltip, setShowTooltip] = useState<string | null>(null)
   const [showResultsSheet, setShowResultsSheet] = useState(false)
+  const [showProgressSheet, setShowProgressSheet] = useState(false)
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [addingItems, setAddingItems] = useState<Set<number>>(new Set())
   const [addedItems, setAddedItems] = useState<Set<number>>(new Set())
   const shownTooltipsRef = useRef<Set<string>>(new Set())
+
+  // States for LoadingExperience
+  const [viewMode, setViewMode] = useState<ViewMode>(null)
+  const [quoteIndex, setQuoteIndex] = useState(0)
+  const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const GAME_AREA_HEIGHT = 300
+
+  const quotes = [
+    { text: "Мода проходит, стиль остаётся", author: "Коко Шанель" },
+    { text: "Мода проходит, стиль вечен", author: "Ив Сен-Лоран" },
+    { text: "Элегантность — это не быть замеченным, а быть запомненным", author: "Джорджио Армани" },
+    { text: "То, что вы носите, — это то, как вы представляете себя миру… Мода — мгновенный язык", author: "Миучча Прада" },
+    { text: "Не гонитесь за трендами. Не позволяйте моде владеть вами, решайте сами, кто вы и что хотите выразить своим обликом", author: "Джанни Версаче" },
+    { text: "Счастье — секрет любой красоты. Нет красоты привлекательной без счастья", author: "Кристиан Диор" },
+    { text: "Стиль — очень личное. Он не связан с модой. Мода быстро проходит. Стиль — навсегда", author: "Ральф Лорен" },
+    { text: "Хорошо одеваться — это форма хороших манер", author: "Том Форд" },
+    { text: "Стиль — это способ сказать, кто вы, не произнося ни слова", author: "Рейчел Зои" },
+  ]
+  const [shuffledQuotes, setShuffledQuotes] = useState(() => shuffleArray(quotes))
 
   // Показываем tooltip когда задача завершена
   useEffect(() => {
@@ -99,8 +237,10 @@ export function BackgroundTasksWidget() {
         }
         // Если задача в процессе - открываем шторку для просмотра прогресса
         else if (task.status === "processing") {
-          console.log("[BackgroundTasksWidget] Opening analysis sheet for processing task")
-          openSheet()
+          console.log("[BackgroundTasksWidget] Opening progress sheet for processing task")
+          setSelectedSessionId(task.data.sessionId)
+          setShowProgressSheet(true)
+          if (!viewMode) setViewMode("choose")
         }
       } else {
         console.warn("[BackgroundTasksWidget] Session not found for sessionId:", task.data.sessionId)
@@ -167,6 +307,30 @@ export function BackgroundTasksWidget() {
   const handleMinimizeSheet = () => {
     setShowResultsSheet(false)
   }
+
+  // Rotate quotes every 10 seconds while progress sheet is open
+  useEffect(() => {
+    if (showProgressSheet) {
+      const newOrder = shuffleArray(quotes)
+      setShuffledQuotes(newOrder)
+      setQuoteIndex(0)
+      quoteTimerRef.current = setInterval(() => {
+        setQuoteIndex((prev) => (prev + 1) % newOrder.length)
+      }, 10000)
+    } else {
+      if (quoteTimerRef.current) {
+        clearInterval(quoteTimerRef.current)
+        quoteTimerRef.current = null
+      }
+      setQuoteIndex(0)
+    }
+    return () => {
+      if (quoteTimerRef.current) {
+        clearInterval(quoteTimerRef.current)
+        quoteTimerRef.current = null
+      }
+    }
+  }, [showProgressSheet])
 
   if (activeTasks.length === 0) return null
 
@@ -369,6 +533,39 @@ export function BackgroundTasksWidget() {
               )
             })()}
           </div>
+      </CommonSheet>
+
+      {/* Шторка с прогрессом анализа */}
+      <CommonSheet
+        isOpen={showProgressSheet}
+        onClose={() => {
+          setShowProgressSheet(false)
+          setViewMode(null)
+        }}
+        backgroundColor="dark"
+        onMinimize={() => setShowProgressSheet(false)}
+      >
+        <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe">
+          {(() => {
+            const session = selectedSessionId ? aiAnalysis.getSession(selectedSessionId) : null
+            const progress = session?.progress || 0
+            const progressText = session?.progressText || "Анализируем..."
+
+            return (
+              <div className="text-neutral-100">
+                <LoadingExperience
+                  viewMode={viewMode}
+                  setViewMode={setViewMode}
+                  gameHeight={GAME_AREA_HEIGHT}
+                  quotes={shuffledQuotes}
+                  quoteIndex={quoteIndex}
+                  progress={progress}
+                  progressText={progressText}
+                />
+              </div>
+            )
+          })()}
+        </div>
       </CommonSheet>
     </>
   )

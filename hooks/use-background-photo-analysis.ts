@@ -198,6 +198,12 @@ export function useBackgroundPhotoAnalysis() {
           throw new Error(errors[0] || "Не удалось найти вещи на фото")
         }
 
+        // ВАЖНО: Обрабатываем изображения (загружаем base64 в S3) ПЕРЕД сохранением
+        console.log("[useBackgroundPhotoAnalysis] Processing images...")
+        const { loadBasicItemImages } = await import("@/lib/image-processing")
+        const itemsWithImages = await loadBasicItemImages(allItems)
+        console.log("[useBackgroundPhotoAnalysis] Items with processed images:", itemsWithImages)
+
         // Останавливаем таймер прогресса
         clearInterval(progressTimer)
         progressCompleted = true
@@ -209,29 +215,29 @@ export function useBackgroundPhotoAnalysis() {
           status: "completed",
           progress: 100,
           data: {
-            items: allItems,
-            itemsCount: allItems.length,
+            items: itemsWithImages,
+            itemsCount: itemsWithImages.length,
             sessionId,
           },
         })
 
-        // Обновляем сессию AI анализа
+        // Обновляем сессию AI анализа с обработанными items
         if (sessionId) {
-          console.log("[useBackgroundPhotoAnalysis] Updating session", sessionId, "with items:", allItems)
+          console.log("[useBackgroundPhotoAnalysis] Updating session", sessionId, "with items:", itemsWithImages)
           aiAnalysis.updateSession(sessionId, {
             status: "completed",
-            items: allItems,
+            items: itemsWithImages,
             progress: 100,
             progressText: "Готово!",
           })
         }
 
         if (onComplete) {
-          console.log("[useBackgroundPhotoAnalysis] Calling onComplete with items:", allItems)
-          onComplete({ items: allItems })
+          console.log("[useBackgroundPhotoAnalysis] Calling onComplete with items:", itemsWithImages)
+          onComplete({ items: itemsWithImages })
         }
 
-        return { success: true, taskId, result: { items: allItems } }
+        return { success: true, taskId, result: { items: itemsWithImages } }
       } catch (error) {
         // Останавливаем таймер прогресса при ошибке
         clearInterval(progressTimer)

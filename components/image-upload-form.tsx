@@ -9,31 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Upload, X, Loader2, Check, Plus } from "lucide-react"
 import Image from "next/image"
 import { createClient } from "@/lib/supabase/client"
-import { Buffer } from "buffer"
-import {api} from "@/lib/api-client";
-
-interface ResponseItem {
-  index: number
-  basic_item_id: number | null
-  need_gen: boolean
-  clothing_item: string
-  description: string
-  item_name: string
-  material: string
-  style: string
-  has_print: string
-  color: string
-  shade: string
-  has_details: string
-  img_url?: string
-  image_url?: string
-}
-
-interface ItemWithImage extends ResponseItem {
-  finalImageUrl?: string
-  isAdding?: boolean
-  isAdded?: boolean
-}
+import { api } from "@/lib/api-client"
+import { type ResponseItem, type ItemWithImage, loadBasicItemImages } from "@/lib/image-processing"
 
 interface ImageUploadFormProps {
   onSuccess?: () => void
@@ -80,109 +57,6 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
       }
       return prev.filter((p) => p.id !== id)
     })
-  }
-
-  const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
-    try {
-      if (imageUrl.startsWith("data:image/") || /^[A-Za-z0-9+/]+=*$/.test(imageUrl)) {
-        console.log("Processing base64 image...")
-
-        let base64Data: string
-        let mimeType = "image/jpeg"
-
-        if (imageUrl.startsWith("data:image/")) {
-          const matches = imageUrl.match(/^data:image\/([^;]+);base64,(.+)$/)
-          if (matches) {
-            mimeType = `image/${matches[1]}`
-            base64Data = matches[2]
-          } else {
-            throw new Error("Invalid base64 image format")
-          }
-        } else {
-          base64Data = imageUrl
-        }
-
-        // Convert base64 to blob
-        const buffer = Buffer.from(base64Data, "base64")
-        const blob = new Blob([buffer], { type: mimeType })
-        const file = new File([blob], "image.jpg", { type: mimeType })
-
-        // Upload to S3
-        const formData = new FormData()
-        formData.append("file", file)
-
-        const uploadResponse = await fetch("/api/upload-image", {
-          method: "POST",
-          body: formData,
-        })
-
-        if (!uploadResponse.ok) {
-          throw new Error("Failed to upload base64 image")
-        }
-
-        const { url } = await uploadResponse.json()
-        return url
-      }
-
-      const response = await fetch(imageUrl)
-      if (!response.ok) {
-        throw new Error("Failed to download image")
-      }
-
-      const blob = await response.blob()
-      const file = new File([blob], "image.jpg", { type: blob.type })
-
-      // Загружаем в blob storage
-      const formData = new FormData()
-      formData.append("file", file)
-
-      const uploadResponse = await fetch("/api/upload-image", {
-        method: "POST",
-        body: formData,
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload image")
-      }
-
-      const { url } = await uploadResponse.json()
-      return url
-    } catch (error) {
-      console.error("Error downloading and uploading image:", error)
-      throw error
-    }
-  }
-
-  const loadBasicItemImages = async (items: ResponseItem[]): Promise<ItemWithImage[]> => {
-    const itemsWithImages: ItemWithImage[] = []
-
-    for (const item of items) {
-      let finalImageUrl = item.image_url || item.img_url
-
-      try {
-        // Если есть img_url, скачиваем и загружаем в blob
-        if (item.img_url && !item.image_url) {
-          finalImageUrl = await downloadAndUploadImage(item.img_url)
-        }
-        // Если есть basic_item_id, получаем изображение базовой вещи
-        else if (item.basic_item_id && !finalImageUrl) {
-          const response = await fetch(`/api/basic-items/${item.basic_item_id}`)
-          if (response.ok) {
-            const basicItem = await response.json()
-            finalImageUrl = basicItem.image_url
-          }
-        }
-      } catch (error) {
-        console.error("Error loading image for item:", item.item_name, error)
-      }
-
-      itemsWithImages.push({
-        ...item,
-        finalImageUrl,
-      })
-    }
-
-    return itemsWithImages
   }
 
   const getAuthToken = async () => {

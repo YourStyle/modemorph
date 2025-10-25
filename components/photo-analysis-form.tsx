@@ -16,23 +16,7 @@ import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
-
-interface ResponseItem {
-    index: number
-    basic_item_id: number | null
-    need_gen: boolean
-    clothing_item: string
-    description: string
-    item_name: string
-    material: string
-    style: string
-    has_print: string
-    color: string
-    shade: string
-    has_details: string
-    img_url?: string
-    image_url?: string
-}
+import { type ResponseItem, type ItemWithImage, loadBasicItemImages } from "@/lib/image-processing"
 
 interface RejectedPhoto {
     acceptable: false
@@ -43,12 +27,6 @@ interface RejectedPhoto {
     body?: any
     webhookUrl?: string
     executionMode?: string
-}
-
-interface ItemWithImage extends ResponseItem {
-    finalImageUrl?: string
-    isAdding?: boolean
-    isAdded?: boolean
 }
 
 interface UploadedPhoto {
@@ -456,93 +434,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             }
             return remaining
         })
-    }
-
-    // Download an image from a URL and re-upload it to our storage
-    const downloadAndUploadImage = async (imageUrl: string): Promise<string> => {
-        try {
-            // Handle base64 images
-            if (imageUrl.startsWith("data:image/") || /^[A-Za-z0-9+/]+=*$/.test(imageUrl)) {
-                console.log("Processing base64 image...")
-
-                let base64Data: string
-                let mimeType = "image/jpeg"
-
-                if (imageUrl.startsWith("data:image/")) {
-                    const matches = imageUrl.match(/^data:image\/([^;]+);base64,(.+)$/)
-                    if (matches) {
-                        mimeType = `image/${matches[1]}`
-                        base64Data = matches[2]
-                    } else {
-                        throw new Error("Invalid base64 image format")
-                    }
-                } else {
-                    base64Data = imageUrl
-                }
-
-                // Convert base64 to blob
-                const { Buffer } = await import("buffer")
-                const buffer = Buffer.from(base64Data, "base64")
-                const blob = new Blob([buffer], { type: mimeType })
-                const file = new File([blob], "image.jpg", { type: mimeType })
-
-                const formData = new FormData()
-                formData.append("file", file)
-
-                const uploadResult = await api.post("/api/upload-image", formData, {
-                    headers: {} // Убираем Content-Type для FormData
-                })
-                if (!uploadResult) {
-                    throw new Error("Failed to upload base64 image")
-                }
-
-                const {url} = uploadResult
-                return url
-            }
-
-            // Handle regular URLs
-            const response = await fetch(imageUrl)
-            if (!response.ok) {
-                throw new Error("Failed to download image")
-            }
-            const blob = await response.blob()
-            const file = new File([blob], "image.jpg", {type: blob.type})
-            const formData = new FormData()
-            formData.append("file", file)
-            const uploadResult = await api.post("/api/upload-image", formData, {
-                headers: {} // Убираем Content-Type для FormData
-            })
-            if (!uploadResult) {
-                throw new Error("Failed to upload image")
-            }
-            const {url} = uploadResult
-            return url
-        } catch (error) {
-            console.error("Error downloading and uploading image:", error)
-            throw error
-        }
-    }
-
-    // Load images for each item returned by the AI
-    const loadBasicItemImages = async (items: ResponseItem[]): Promise<ItemWithImage[]> => {
-        const jobs = items.map(async (item) => {
-            let finalImageUrl = item.image_url || item.img_url
-            try {
-                if (item.img_url && !item.image_url) {
-                    finalImageUrl = await downloadAndUploadImage(item.img_url)
-                } else if (item.basic_item_id && !finalImageUrl) {
-                    const basicItem = await api.get(`/api/basic-items/${item.basic_item_id}`)
-                    finalImageUrl = basicItem.image_url
-                }
-            } catch (e) {
-                console.error("Error loading image for item:", item.item_name, e)
-            }
-            return {...item, finalImageUrl}
-        })
-        const settled = await Promise.allSettled(jobs)
-        return settled.map((s, i) =>
-            s.status === "fulfilled" ? s.value : {...items[i], finalImageUrl: items[i].image_url || items[i].img_url},
-        )
     }
 
     // Retrieve the current user's auth token from session storage
