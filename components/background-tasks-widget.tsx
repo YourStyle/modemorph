@@ -107,7 +107,7 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({
             </QuoteCard>
             <p className="mt-3 text-xs text-neutral-400">Можно переключиться на игру в любой момент</p>
             <div className="mt-3">
-              <button className="border rounded-2xl px-3 py-1 text-white" onPointerUp={pickGame}>
+              <button className="border rounded-2xl px-3 py-1 text-[#101010]" onPointerUp={pickGame}>
                 Переключиться на игру
               </button>
             </div>
@@ -467,8 +467,8 @@ export function BackgroundTasksWidget() {
               return (
                 <>
                   <div className="mb-6">
-                    <h2 className="text-2xl font-semibold text-white mb-2">Результаты анализа</h2>
-                    <p className="text-neutral-300 text-sm">
+                    <h2 className="text-2xl font-semibold text-[#101010] mb-2">Результаты анализа</h2>
+                    <p className="text-[#101010] text-sm">
                       {itemsCount > 0
                         ? `Найдено ${itemsCount} ${itemsCount === 1 ? "вещь" : itemsCount < 5 ? "вещи" : "вещей"}`
                         : "Результаты анализа фотографий"}
@@ -499,7 +499,7 @@ export function BackgroundTasksWidget() {
                     <div className="flex-1 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1">
-                          <h3 className="font-semibold text-white text-base">
+                          <h3 className="font-semibold text-[#101010] text-base">
                             {item.item_name || item.name}
                           </h3>
                           {item.basic_item_id && (
@@ -510,18 +510,18 @@ export function BackgroundTasksWidget() {
                         </div>
                       </div>
 
-                      <div className="text-sm text-neutral-300 space-y-1">
+                      <div className="text-sm text-[#C9C9C9] space-y-1">
                         {item.material && (
-                          <p>Материал: <span className="text-white">{item.material}</span></p>
+                          <p>Материал: <span className="text-[#101010]">{item.material}</span></p>
                         )}
                         {item.color && (
-                          <p>Цвет: <span className="text-white">{item.color}</span></p>
+                          <p>Цвет: <span className="text-[#101010]">{item.color}</span></p>
                         )}
                         {item.shade && (
-                          <p>Оттенок: <span className="text-white">{item.shade}</span></p>
+                          <p>Оттенок: <span className="text-[#101010]">{item.shade}</span></p>
                         )}
                         {item.style && (
-                          <p>Стиль: <span className="text-white">{item.style}</span></p>
+                          <p>Стиль: <span className="text-[#101010]">{item.style}</span></p>
                         )}
                       </div>
 
@@ -531,7 +531,7 @@ export function BackgroundTasksWidget() {
                         disabled={addingItems.has(index) || addedItems.has(index)}
                         variant={addedItems.has(index) ? "secondary" : "default"}
                         size="sm"
-                        className="w-full mt-3"
+                        className="w-full mt-3 rounded-2xl"
                       >
                         {addingItems.has(index) && (
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
