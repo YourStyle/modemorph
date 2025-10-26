@@ -22,7 +22,7 @@ pnpm lint                   # Run ESLint
 
 ### Tech Stack
 - **Framework**: Next.js 15 (App Router)
-- **Database/Auth**: Supabase (PostgreSQL)
+- **Database/Auth**: Supabase (PostgreSQL) - See [DATABASE_SCHEMA.md](./DATABASE_SCHEMA.md) for complete schema documentation
 - **UI**: React 19, Tailwind CSS, Radix UI, shadcn/ui
 - **State**: React Context API
 - **Package Manager**: pnpm 9.15.0

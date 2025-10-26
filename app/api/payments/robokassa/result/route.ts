@@ -129,27 +129,16 @@ export async function POST(req: Request) {
       }
       // если уже активна — просто проставим post_applied ниже
 
-    } else if (meta?.action === "buy_credits" && Number.isFinite(+meta?.packId)) {
-      // === Ветка buy_credits (точно как в твоём POST) ===
-      const packId = Number(meta.packId)
-      const { data: pack, error: packErr } = await admin
-        .from("credit_packs")
-        .select("id, name, credits")
-        .eq("id", packId)
-        .single()
-
-      if (packErr || !pack) {
-        await admin.from("payments").update({
-          meta: { ...meta, post_applied:true, post_error:"pack_not_found" }
-        }).eq("invoice_id", invId)
-        return new Response(`OK${rawInv}`, { status:200 })
-      }
+    } else if (meta?.action === "buy_credits" && Number.isFinite(+meta?.credits)) {
+      // === Ветка buy_credits ===
+      const credits = Number(meta.credits)
+      const packName = meta.packName || `${credits} кредитов`
 
       const { error: addErr } = await admin.rpc("add_credits", {
         p_user_profile_id: profile.id,
-        p_amount: pack.credits,
+        p_amount: credits,
         p_reason: "purchase",
-        p_description: `Покупка пака "${pack.name}"`,
+        p_description: `Покупка пака "${packName}"`,
       })
       if (addErr) {
         await admin.from("payments").update({

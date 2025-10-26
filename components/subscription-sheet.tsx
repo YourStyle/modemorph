@@ -62,7 +62,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
         await startRoboPayment(
           plan.price,
           `Подписка ${plan.name}`,
-          { type: selectedPlan, credits: plan.credits }
+          { action: "subscribe", type: selectedPlan }
         )
         onSuccess?.()
       } catch (error) {
@@ -84,7 +84,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
       await startRoboPayment(
         pack.price,
         `Покупка ${pack.credits} кредитов`,
-        { type: "credits", credits: pack.credits }
+        { action: "buy_credits", credits: pack.credits, packName: pack.name }
       )
       onSuccess?.()
     } catch (error) {

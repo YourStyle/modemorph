@@ -472,7 +472,13 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         } catch (err) {
             console.error("Error checking limits:", err)
             setCheckingLimits(false)
-            setError("Не удалось проверить лимиты")
+            // Проверяем на 402 (Payment Required) - показываем paywall
+            const errorMessage = err instanceof Error ? err.message : String(err)
+            if (errorMessage.includes('402') || errorMessage.toLowerCase().includes('payment_required')) {
+                setShowPaywall(true)
+            } else {
+                setError("Не удалось проверить лимиты")
+            }
             return
         }
         setCheckingLimits(false)
