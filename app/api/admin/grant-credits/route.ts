@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
         .from("user_subscriptions")
         .insert({
           user_profile_id: targetProfile.id,
-          subscription_type: subscriptionType,
+          subscription_type: subscriptionDuration,
           status: "active",
           start_date: startDate.toISOString(),
           expires_at: expiresAt.toISOString(),

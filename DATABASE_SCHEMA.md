@@ -277,6 +277,11 @@ POST /api/check-limits
 **Cause:** Missing `action: "subscribe"` in payment meta
 **Fix:** Ensure meta includes action field
 
+### Issue: Admin grant subscription fails with check constraint error
+**Cause:** Using wrong field for `subscription_type` - was using `subscriptionType: "pro"` instead of `subscriptionDuration: "monthly"|"yearly"`
+**Fix:** Use `subscriptionDuration` field which contains valid values ("monthly" or "yearly")
+**File:** app/api/admin/grant-credits/route.ts:65
+
 ### Issue: 402 errors not showing paywall
 **Cause:** Error not properly caught/checked in frontend
 **Fix:** Check for `errorMessage.includes('402')` in catch block
