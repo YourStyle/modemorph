@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AlertTriangle, Wifi, WifiOff, ArrowRight } from "lucide-react"
+import { AlertTriangle, Wifi, ArrowRight } from "lucide-react"
 import { useRouter } from "next/navigation"
 
 export default function Error({
@@ -51,18 +51,21 @@ export default function Error({
           <div className="mx-auto mb-4 w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
             <AlertTriangle className="w-8 h-8 text-red-600" />
           </div>
-          <CardTitle className="text-2xl font-serif font-bold text-gray-900">Ошибка подключения</CardTitle>
-          <CardDescription className="text-gray-600 mt-2">Возникла проблема при загрузке приложения</CardDescription>
+          <CardTitle className="text-2xl font-serif font-bold text-gray-900">Возникла ошибка</CardTitle>
+          <CardDescription className="text-gray-600 mt-2">При выполнении операции произошла ошибка</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-6">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-start space-x-3">
-              <WifiOff className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <AlertTriangle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
               <div>
-                <h3 className="font-medium text-amber-800 mb-1">Отключите VPN</h3>
-                <p className="text-sm text-amber-700">
-                  Для нормальной работы приложения рекомендуется отключить VPN и прокси-серверы
+                <h3 className="font-medium text-blue-800 mb-2">Если ошибка повторится</h3>
+                <p className="text-sm text-blue-700 mb-3">
+                  Напишите в поддержку, указав что вы пытались сделать в момент возникновения ошибки.
+                </p>
+                <p className="text-sm text-blue-700 font-medium">
+                  При подтверждении ошибки мы начислим вам месяц подписки бесплатно.
                 </p>
               </div>
             </div>
