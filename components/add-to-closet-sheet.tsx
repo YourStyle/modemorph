@@ -278,6 +278,7 @@ export function AddToClosetSheet({
             description: "Попробуйте еще раз",
           })
         }}
+        variant="limitReached"
       />
     </>
   )

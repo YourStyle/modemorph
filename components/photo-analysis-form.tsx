@@ -823,6 +823,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 onSuccess={() => {
                     setShowPaywall(false)
                 }}
+                variant="limitReached"
             />
         </div>
     )

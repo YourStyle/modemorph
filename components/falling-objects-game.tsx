@@ -245,7 +245,7 @@ export default function FallingObjectsGame({
             <div className="grid grid-cols-1 gap-3">
               <button
                 onClick={startGame}
-                className="w-full px-6 py-3 bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 border-0"
+                className="w-full px-6 py-3 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-lg transition-colors duration-200 border-0"
               >
                 Начать игру
               </button>
@@ -253,7 +253,7 @@ export default function FallingObjectsGame({
               {/* Возврат к выбору (но НЕ показ цитат здесь) */}
               <button
                 onClick={onRequestReturnToPicker}
-                className="w-full px-6 py-3 bg-white hover:bg-slate-50 text-purple-700 font-medium rounded-lg shadow-lg transition-colors duration-200 border"
+                className="w-full px-6 py-3 bg-white hover:bg-slate-50 text-[#EC9DE2] font-medium rounded-2xl shadow-lg transition-colors duration-200 border border-[#EC9DE2]"
               >
                 Назад к выбору
               </button>
@@ -283,7 +283,7 @@ export default function FallingObjectsGame({
               <button
                 onClick={onRequestFinish}
                 title="Завершить игру и показать вещи"
-                className="bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-sm px-3 h-8 flex items-center border-0 transition-colors"
+                className="bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-sm px-3 h-8 flex items-center border-0 transition-colors"
               >
                 Завершить
               </button>
@@ -340,7 +340,7 @@ export default function FallingObjectsGame({
                 </p>
                 <button
                   onClick={resetGame}
-                  className="w-full px-6 py-3 bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg shadow-lg transition-colors duration-200 border-0"
+                  className="w-full px-6 py-3 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-lg transition-colors duration-200 border-0"
                 >
                   Играть снова
                 </button>
@@ -360,13 +360,13 @@ export default function FallingObjectsGame({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <button
                     onClick={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
-                    className="w-full px-4 py-2 bg-purple-700 hover:bg-purple-800 text-white font-medium rounded-lg transition-colors"
+                    className="w-full px-4 py-2 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl transition-colors"
                   >
                     Да
                   </button>
                   <button
                     onClick={() => setShowFinishOverlay(false)}
-                    className="w-full px-4 py-2 bg-white hover:bg-slate-50 text-purple-700 font-medium rounded-lg border transition-colors"
+                    className="w-full px-4 py-2 bg-white hover:bg-slate-50 text-[#EC9DE2] font-medium rounded-2xl border border-[#EC9DE2] transition-colors"
                   >
                     Продолжить
                   </button>

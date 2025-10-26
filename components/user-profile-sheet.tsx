@@ -285,7 +285,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
                             <Button
                               onClick={() => setIsPaywallOpen(true)}
-                              className="w-full md:w-auto text-white border-0 px-6 py-3 rounded-xl font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
+                              className="w-full md:w-auto text-white border-0 px-6 py-3 rounded-2xl font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
                               style={{
                                 background: "linear-gradient(to right, #EC9DE2, #89AEFF)"
                               }}
@@ -425,16 +425,18 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                       />
                     </div>
 
-                    {/* Кнопка сохранения */}
-                    <div>
-                      <Button
-                        onClick={handleSave}
-                        disabled={isSaving}
-                        className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
-                      >
-                        {isSaving ? "Сохранение..." : "Сохранить изменения"}
-                      </Button>
-                    </div>
+                    {/* Кнопка сохранения - скрываем в TMA, т.к. есть фиксированная кнопка внизу */}
+                    {!isTMA && (
+                      <div>
+                        <Button
+                          onClick={handleSave}
+                          disabled={isSaving}
+                          className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
+                        >
+                          {isSaving ? "Сохранение..." : "Сохранить изменения"}
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
               </TabsContent>
@@ -491,7 +493,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
               <Button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
+                className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0 rounded-2xl"
               >
                 {isSaving ? "Сохранение..." : "Сохранить изменения"}
               </Button>
