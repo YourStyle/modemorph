@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
+import { Button } from "@/components/ui/button"
 
 interface FeatureCost {
   id: number
@@ -19,21 +20,50 @@ interface FeatureCost {
   is_active: boolean
 }
 
+interface CreditPack {
+  id: number
+  name: string
+  credits: number
+  price_rub: number
+  is_active: boolean
+}
+
+interface SubscriptionPricing {
+  id: number
+  plan_type: string
+  price_rub: number
+  credits: number
+  display_name: string
+  description: string
+  is_active: boolean
+}
+
 export default function FeatureCostsPage() {
   const [featureCosts, setFeatureCosts] = useState<FeatureCost[]>([])
+  const [creditPacks, setCreditPacks] = useState<CreditPack[]>([])
+  const [subscriptionPricing, setSubscriptionPricing] = useState<SubscriptionPricing[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
   const supabase = createClient()
 
   useEffect(() => {
-    fetchFeatureCosts()
+    fetchAllData()
   }, [])
+
+  const fetchAllData = async () => {
+    setLoading(true)
+    await Promise.all([
+      fetchFeatureCosts(),
+      fetchCreditPacks(),
+      fetchSubscriptionPricing(),
+    ])
+    setLoading(false)
+  }
 
   const fetchFeatureCosts = async () => {
     try {
       const { data, error } = await supabase.from("feature_costs").select("*").order("feature_name")
-
       if (error) throw error
       setFeatureCosts(data || [])
     } catch (error) {
@@ -43,8 +73,36 @@ export default function FeatureCostsPage() {
         description: "Не удалось загрузить настройки стоимости",
         variant: "destructive",
       })
-    } finally {
-      setLoading(false)
+    }
+  }
+
+  const fetchCreditPacks = async () => {
+    try {
+      const { data, error } = await supabase.from("credit_packs").select("*").order("credits")
+      if (error) throw error
+      setCreditPacks(data || [])
+    } catch (error) {
+      console.error(error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось загрузить пакеты кредитов",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const fetchSubscriptionPricing = async () => {
+    try {
+      const { data, error } = await supabase.from("subscription_pricing").select("*").order("plan_type")
+      if (error) throw error
+      setSubscriptionPricing(data || [])
+    } catch (error) {
+      console.error(error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось загрузить цены подписок",
+        variant: "destructive",
+      })
     }
   }
 
@@ -76,6 +134,62 @@ export default function FeatureCostsPage() {
     }
   }
 
+  const updateCreditPack = async (id: number, updates: Partial<CreditPack>) => {
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from("credit_packs")
+        .update(updates)
+        .eq("id", id)
+
+      if (error) throw error
+
+      setCreditPacks((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)))
+
+      toast({
+        title: "Успешно",
+        description: "Пакет кредитов обновлен",
+      })
+    } catch (error) {
+      console.error("Error updating credit pack:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось обновить пакет",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const updateSubscriptionPricing = async (id: number, updates: Partial<SubscriptionPricing>) => {
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from("subscription_pricing")
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq("id", id)
+
+      if (error) throw error
+
+      setSubscriptionPricing((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)))
+
+      toast({
+        title: "Успешно",
+        description: "Цены подписки обновлены",
+      })
+    } catch (error) {
+      console.error("Error updating subscription pricing:", error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось обновить цены",
+        variant: "destructive",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -87,13 +201,142 @@ export default function FeatureCostsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6 space-y-12">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Настройка стоимости функций</h1>
-        <p className="text-muted-foreground mt-2">Управление стоимостью различных функций приложения в кредитах</p>
+        <h1 className="text-3xl font-bold">Управление ценами и стоимостью</h1>
+        <p className="text-muted-foreground mt-2">Настройка цен подписок, пакетов кредитов и стоимости функций</p>
       </div>
 
-      <div className="grid gap-6">
+      {/* Subscription Pricing Section */}
+      <section>
+        <h2 className="text-2xl font-bold mb-4">Цены подписок</h2>
+        <div className="grid gap-4">
+          {subscriptionPricing.map((pricing) => (
+            <Card key={pricing.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>{pricing.display_name}</CardTitle>
+                    <CardDescription>{pricing.description}</CardDescription>
+                  </div>
+                  <Switch
+                    checked={pricing.is_active}
+                    onCheckedChange={(checked) => updateSubscriptionPricing(pricing.id, { is_active: checked })}
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor={`price-${pricing.id}`}>Цена (₽)</Label>
+                    <Input
+                      id={`price-${pricing.id}`}
+                      type="number"
+                      min="0"
+                      value={pricing.price_rub}
+                      onChange={(e) =>
+                        updateSubscriptionPricing(pricing.id, {
+                          price_rub: Number.parseInt(e.target.value) || 0,
+                        })
+                      }
+                      disabled={saving}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`credits-${pricing.id}`}>Кредиты в подписке</Label>
+                    <Input
+                      id={`credits-${pricing.id}`}
+                      type="number"
+                      min="0"
+                      value={pricing.credits}
+                      onChange={(e) =>
+                        updateSubscriptionPricing(pricing.id, {
+                          credits: Number.parseInt(e.target.value) || 0,
+                        })
+                      }
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {pricing.plan_type === 'yearly' && `≈ ${Math.round(pricing.price_rub / 12)} ₽ в месяц`}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      {/* Credit Packs Section */}
+      <section>
+        <h2 className="text-2xl font-bold mb-4">Пакеты кредитов</h2>
+        <div className="grid gap-4">
+          {creditPacks.map((pack) => (
+            <Card key={pack.id}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>{pack.name}</CardTitle>
+                  <Switch
+                    checked={pack.is_active}
+                    onCheckedChange={(checked) => updateCreditPack(pack.id, { is_active: checked })}
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor={`pack-name-${pack.id}`}>Название</Label>
+                    <Input
+                      id={`pack-name-${pack.id}`}
+                      value={pack.name}
+                      onChange={(e) => updateCreditPack(pack.id, { name: e.target.value })}
+                      disabled={saving}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`pack-credits-${pack.id}`}>Кредиты</Label>
+                    <Input
+                      id={`pack-credits-${pack.id}`}
+                      type="number"
+                      min="0"
+                      value={pack.credits}
+                      onChange={(e) =>
+                        updateCreditPack(pack.id, {
+                          credits: Number.parseInt(e.target.value) || 0,
+                        })
+                      }
+                      disabled={saving}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor={`pack-price-${pack.id}`}>Цена (₽)</Label>
+                    <Input
+                      id={`pack-price-${pack.id}`}
+                      type="number"
+                      min="0"
+                      value={pack.price_rub}
+                      onChange={(e) =>
+                        updateCreditPack(pack.id, {
+                          price_rub: Number.parseInt(e.target.value) || 0,
+                        })
+                      }
+                      disabled={saving}
+                    />
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {pack.credits > 0 && `≈ ${(pack.price_rub / pack.credits).toFixed(1)} ₽ за кредит`}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      {/* Feature Costs Section */}
+      <section>
+        <h2 className="text-2xl font-bold mb-4">Стоимость функций</h2>
+        <div className="grid gap-6">
         {featureCosts.map((feature) => (
           <Card key={feature.id}>
             <CardHeader>
@@ -154,7 +397,8 @@ export default function FeatureCostsPage() {
             </CardContent>
           </Card>
         ))}
-      </div>
+        </div>
+      </section>
     </div>
   )
 }

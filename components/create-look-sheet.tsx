@@ -28,6 +28,7 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
   const [wardrobeItems, setWardrobeItems] = useState<WardrobeItem[]>([])
   const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
@@ -66,21 +67,28 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
       return
     }
 
-    const items = Array.from(selectedItems).map((id) => ({
-      type: "user",
-      id,
-    }))
+    if (saving) return
 
-    await onSave({
-      name: name.trim() || "Новый образ",
-      description: "",
-      items,
-    })
+    setSaving(true)
+    try {
+      const items = Array.from(selectedItems).map((id) => ({
+        type: "user",
+        id,
+      }))
 
-    // Reset form
-    setName("")
-    setSelectedItems(new Set())
-    onClose()
+      await onSave({
+        name: name.trim() || "Новый образ",
+        description: "",
+        items,
+      })
+
+      // Reset form
+      setName("")
+      setSelectedItems(new Set())
+      onClose()
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleClose = () => {
@@ -173,10 +181,10 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={selectedItems.size === 0}
+            disabled={selectedItems.size === 0 || saving}
             className="flex-1 bg-white hover:bg-gray-100 text-gray-900"
           >
-            Сохранить образ
+            {saving ? "Сохраняем..." : "Сохранить образ"}
           </Button>
         </div>
       </div>
