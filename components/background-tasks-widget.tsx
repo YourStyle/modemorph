@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { X, CheckCircle2, Loader2, AlertCircle, Shirt, ChevronDown } from "lucide-react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { CommonSheet } from "@/components/common-sheet"
 import { api } from "@/lib/api-client"
@@ -199,6 +199,15 @@ export function BackgroundTasksWidget() {
     { text: "Стиль — это способ сказать, кто вы, не произнося ни слова", author: "Рейчел Зои" },
   ]
   const [shuffledQuotes, setShuffledQuotes] = useState(() => shuffleArray(quotes))
+  const [now, setNow] = useState(Date.now())
+
+  // Update 'now' every second to check for expired error tasks
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   // Показываем tooltip когда задача завершена
   useEffect(() => {
@@ -214,7 +223,9 @@ export function BackgroundTasksWidget() {
     })
   }, [tasks])
 
-  const activeTasks = tasks.filter((task) => task.status !== "error" || Date.now() - task.startedAt.getTime() < 10000)
+  const activeTasks = useMemo(() => {
+    return tasks.filter((task) => task.status !== "error" || now - task.startedAt.getTime() < 10000)
+  }, [tasks, now])
 
   const handleTaskClick = (task: any) => {
     console.log("[BackgroundTasksWidget] handleTaskClick called")
@@ -285,10 +296,8 @@ export function BackgroundTasksWidget() {
         return newSet
       })
 
-      toast({
-        title: "Вещь добавлена",
-        description: `${item.item_name || item.name} добавлена в ваш гардероб`,
-      })
+      // Dispatch event to refresh wardrobe items
+      window.dispatchEvent(new CustomEvent("wardrobe-item-added"))
     } catch (error) {
       console.error("Error adding item:", error)
       setAddingItems((prev) => {
@@ -352,6 +361,18 @@ export function BackgroundTasksWidget() {
 
     prevTasksRef.current = tasks
   }, [tasks, showProgressSheet, showResultsSheet, viewMode])
+
+  // Automatically transition from progress sheet to results sheet when analysis completes
+  useEffect(() => {
+    if (showProgressSheet && selectedSessionId) {
+      const session = aiAnalysis.getSession(selectedSessionId)
+      if (session && session.status === "completed" && session.items.length > 0) {
+        console.log("[BackgroundTasksWidget] Analysis completed, switching to results sheet")
+        setShowProgressSheet(false)
+        setShowResultsSheet(true)
+      }
+    }
+  }, [showProgressSheet, selectedSessionId, aiAnalysis, tasks])
 
   if (activeTasks.length === 0) return null
 

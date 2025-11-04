@@ -529,16 +529,6 @@ export default function AIAssistantPage() {
               <Sparkles className="h-3 w-3 mr-1.5" />
               Подобрать образ
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => handleQuickAction("photo")}
-              disabled={isLoading}
-              className="w-full sm:w-auto whitespace-nowrap justify-center"
-            >
-              <ImageIcon className="h-3 w-3 mr-1.5" />
-              Проанализировать фото
-            </Button>
           </div>
 
           {/* Input */}

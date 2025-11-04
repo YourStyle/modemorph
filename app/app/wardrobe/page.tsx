@@ -218,6 +218,19 @@ export default function WardrobePage() {
     fetchBasicItems()
   }, [sortBy, searchQuery, userGender])
 
+  // Listen for wardrobe item additions from background widget
+  useEffect(() => {
+    const handleWardrobeItemAdded = () => {
+      console.log("[WardrobePage] Wardrobe item added, refreshing items")
+      setRefreshUserItems((prev) => prev + 1)
+    }
+
+    window.addEventListener("wardrobe-item-added", handleWardrobeItemAdded)
+    return () => {
+      window.removeEventListener("wardrobe-item-added", handleWardrobeItemAdded)
+    }
+  }, [])
+
   const fetchBasicItems = async () => {
     try {
       setIsLoadingBasicItems(true)
