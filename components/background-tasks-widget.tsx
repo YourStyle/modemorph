@@ -366,15 +366,29 @@ export function BackgroundTasksWidget() {
   useEffect(() => {
     if (showProgressSheet && selectedSessionId) {
       const session = aiAnalysis.getSession(selectedSessionId)
-      if (session && session.status === "completed" && session.items.length > 0) {
-        console.log("[BackgroundTasksWidget] Analysis completed, switching to results sheet")
+      // Find the corresponding task
+      const task = tasks.find(t => t.data?.sessionId === selectedSessionId)
+
+      // Check multiple conditions for completion
+      const isCompleted = task?.status === "completed" ||
+                         (session?.status === "completed") ||
+                         (session?.progress === 100 && session?.items && session.items.length > 0)
+
+      if (isCompleted && session && session.items && session.items.length > 0) {
+        console.log("[BackgroundTasksWidget] Analysis completed, switching to results sheet", {
+          taskStatus: task?.status,
+          sessionStatus: session?.status,
+          progress: session?.progress,
+          itemsCount: session?.items?.length
+        })
         setShowProgressSheet(false)
         setShowResultsSheet(true)
       }
     }
   }, [showProgressSheet, selectedSessionId, aiAnalysis, tasks])
 
-  if (activeTasks.length === 0) return null
+  // Don't hide widget if results or progress sheet is open
+  if (activeTasks.length === 0 && !showResultsSheet && !showProgressSheet) return null
 
   return (
     <>
