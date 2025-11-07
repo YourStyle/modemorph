@@ -505,22 +505,23 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 batchId: batchId,
                 onComplete: async (data) => {
                     if (data.items && data.items.length > 0) {
-                        // Загружаем изображения для items
-                        const itemsWithImages = await loadBasicItemImages(data.items)
+                        // НЕ загружаем изображения в S3 здесь - они будут загружены при сохранении
+                        // Просто передаём items с временными URL/base64
+                        const itemsWithTempImages = data.items
 
-                        // Обновляем сессию с обработанными items
+                        // Обновляем сессию с items
                         if (sessionIdRef.current) {
                             aiAnalysis.updateSession(sessionIdRef.current, {
-                                items: itemsWithImages,
+                                items: itemsWithTempImages,
                             })
                         }
 
                         // Вызываем колбэк успеха
                         if (onSuccess) {
                             onSuccess({
-                                items: itemsWithImages,
+                                items: itemsWithTempImages,
                                 photos: photos,
-                                analysisResults: [{ success: true, items: itemsWithImages }]
+                                analysisResults: [{ success: true, items: itemsWithTempImages }]
                             })
                         }
                     }
@@ -559,6 +560,24 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
     const handleSaveItem = async (item: ItemWithImage, index: number) => {
         try {
             setResults((prev) => prev.map((r, i) => (i === index ? {...r, isAdding: true} : r)))
+
+            // Загружаем изображение в S3 перед сохранением в базу данных
+            let imageUrl = item.finalImageUrl
+            if (item.img_url || item.image_url) {
+                const { downloadAndUploadImage } = await import("@/lib/image-processing")
+                const imageToUpload = item.img_url || item.image_url
+
+                // Загружаем только если это base64 или требуется обработка
+                if (imageToUpload && (imageToUpload.startsWith("data:image/") || /^[A-Za-z0-9+/]+=*$/.test(imageToUpload))) {
+                    console.log("[PhotoAnalysisForm] Uploading image to S3...")
+                    imageUrl = await downloadAndUploadImage(imageToUpload)
+                } else if (item.basic_item_id && !imageUrl) {
+                    // Загружаем из базовых items если нужно
+                    const basicItem = await api.get(`/api/basic-items/${item.basic_item_id}`)
+                    imageUrl = basicItem.image_url
+                }
+            }
+
             const itemData = {
                 item_name: item.item_name,
                 material: item.material,
@@ -567,7 +586,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 has_print: item.has_print === "yes" ? "есть" : "нет",
                 shade: item.shade,
                 has_details: item.has_details,
-                image_url: item.finalImageUrl,
+                image_url: imageUrl,
                 basic_item_id: item.basic_item_id,
             }
             await api.post("/api/wardrobe-user-items", itemData)

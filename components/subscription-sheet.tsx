@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Sheet, SheetContent } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetOverlay, SheetPortal } from "@/components/ui/sheet"
+import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -136,14 +137,18 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent
-        side="bottom"
-        className={cn(
-          "rounded-t-3xl border-0 p-0 bg-[#F9FAFB] transition-all duration-300 overflow-hidden",
-          currentView === "credits" ? "h-[85vh]" : "h-[65vh]"
-        )}
-        onInteractOutside={(e) => e.preventDefault()}
-      >
+      <SheetPortal>
+        {/* Custom dark overlay */}
+        <SheetPrimitive.Overlay
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+        />
+        <SheetPrimitive.Content
+          className={cn(
+            "fixed z-50 inset-x-0 bottom-0 rounded-t-3xl border-0 p-0 bg-[#F9FAFB] transition-all duration-300 overflow-hidden shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+            currentView === "credits" ? "h-[85vh]" : "h-[65vh]"
+          )}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
         {/* Drag handle */}
         <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
           <div className="w-12 h-1 rounded-full bg-gray-300" />
@@ -308,7 +313,8 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
             </div>
           )}
         </div>
-      </SheetContent>
+        </SheetPrimitive.Content>
+      </SheetPortal>
     </Sheet>
   )
 }

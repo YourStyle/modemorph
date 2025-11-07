@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -46,6 +46,22 @@ export default function FeatureCostsPage() {
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
   const supabase = createClient()
+
+  // Debounce timers for auto-save
+  const debounceTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
+
+  // Debounce function for auto-saving after user stops typing
+  const debouncedUpdate = useCallback((key: string, updateFn: () => Promise<void>, delay = 1000) => {
+    // Clear existing timer for this field
+    if (debounceTimersRef.current[key]) {
+      clearTimeout(debounceTimersRef.current[key])
+    }
+
+    // Set new timer
+    debounceTimersRef.current[key] = setTimeout(() => {
+      updateFn()
+    }, delay)
+  }, [])
 
   useEffect(() => {
     fetchAllData()
@@ -231,14 +247,28 @@ export default function FeatureCostsPage() {
                     <Label htmlFor={`price-${pricing.id}`}>Цена (₽)</Label>
                     <Input
                       id={`price-${pricing.id}`}
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={pricing.price_rub}
-                      onChange={(e) =>
-                        updateSubscriptionPricing(pricing.id, {
-                          price_rub: Number.parseInt(e.target.value) || 0,
-                        })
-                      }
+                      onChange={(e) => {
+                        // Allow only numbers
+                        const value = e.target.value.replace(/[^0-9]/g, '')
+                        const numValue = value === '' ? 0 : Number.parseInt(value)
+
+                        // Update local state immediately
+                        setSubscriptionPricing((prev) =>
+                          prev.map((item) =>
+                            item.id === pricing.id ? { ...item, price_rub: numValue } : item
+                          )
+                        )
+
+                        // Debounce the database update
+                        debouncedUpdate(
+                          `sub-price-${pricing.id}`,
+                          () => updateSubscriptionPricing(pricing.id, { price_rub: numValue })
+                        )
+                      }}
                       disabled={saving}
                     />
                   </div>
@@ -246,14 +276,28 @@ export default function FeatureCostsPage() {
                     <Label htmlFor={`credits-${pricing.id}`}>Кредиты в подписке</Label>
                     <Input
                       id={`credits-${pricing.id}`}
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={pricing.credits}
-                      onChange={(e) =>
-                        updateSubscriptionPricing(pricing.id, {
-                          credits: Number.parseInt(e.target.value) || 0,
-                        })
-                      }
+                      onChange={(e) => {
+                        // Allow only numbers
+                        const value = e.target.value.replace(/[^0-9]/g, '')
+                        const numValue = value === '' ? 0 : Number.parseInt(value)
+
+                        // Update local state immediately
+                        setSubscriptionPricing((prev) =>
+                          prev.map((item) =>
+                            item.id === pricing.id ? { ...item, credits: numValue } : item
+                          )
+                        )
+
+                        // Debounce the database update
+                        debouncedUpdate(
+                          `sub-credits-${pricing.id}`,
+                          () => updateSubscriptionPricing(pricing.id, { credits: numValue })
+                        )
+                      }}
                       disabled={saving}
                     />
                   </div>
@@ -297,14 +341,25 @@ export default function FeatureCostsPage() {
                     <Label htmlFor={`pack-credits-${pack.id}`}>Кредиты</Label>
                     <Input
                       id={`pack-credits-${pack.id}`}
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={pack.credits}
-                      onChange={(e) =>
-                        updateCreditPack(pack.id, {
-                          credits: Number.parseInt(e.target.value) || 0,
-                        })
-                      }
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, '')
+                        const numValue = value === '' ? 0 : Number.parseInt(value)
+
+                        setCreditPacks((prev) =>
+                          prev.map((item) =>
+                            item.id === pack.id ? { ...item, credits: numValue } : item
+                          )
+                        )
+
+                        debouncedUpdate(
+                          `pack-credits-${pack.id}`,
+                          () => updateCreditPack(pack.id, { credits: numValue })
+                        )
+                      }}
                       disabled={saving}
                     />
                   </div>
@@ -312,14 +367,25 @@ export default function FeatureCostsPage() {
                     <Label htmlFor={`pack-price-${pack.id}`}>Цена (₽)</Label>
                     <Input
                       id={`pack-price-${pack.id}`}
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={pack.price_rub}
-                      onChange={(e) =>
-                        updateCreditPack(pack.id, {
-                          price_rub: Number.parseInt(e.target.value) || 0,
-                        })
-                      }
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[^0-9]/g, '')
+                        const numValue = value === '' ? 0 : Number.parseInt(value)
+
+                        setCreditPacks((prev) =>
+                          prev.map((item) =>
+                            item.id === pack.id ? { ...item, price_rub: numValue } : item
+                          )
+                        )
+
+                        debouncedUpdate(
+                          `pack-price-${pack.id}`,
+                          () => updateCreditPack(pack.id, { price_rub: numValue })
+                        )
+                      }}
                       disabled={saving}
                     />
                   </div>

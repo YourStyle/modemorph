@@ -198,11 +198,15 @@ export function useBackgroundPhotoAnalysis() {
           throw new Error(errors[0] || "Не удалось найти вещи на фото")
         }
 
-        // ВАЖНО: Обрабатываем изображения (загружаем base64 в S3) ПЕРЕД сохранением
-        console.log("[useBackgroundPhotoAnalysis] Processing images...")
-        const { loadBasicItemImages } = await import("@/lib/image-processing")
-        const itemsWithImages = await loadBasicItemImages(allItems)
-        console.log("[useBackgroundPhotoAnalysis] Items with processed images:", itemsWithImages)
+        // ВАЖНО: НЕ загружаем изображения в S3 на этапе анализа
+        // Изображения будут загружены только при сохранении вещи в гардероб
+        console.log("[useBackgroundPhotoAnalysis] Processing complete, items ready for user selection")
+        const itemsWithImages = allItems.map(item => ({
+          ...item,
+          // Сохраняем base64/URL без загрузки в S3
+          finalImageUrl: item.image_url || item.img_url
+        }))
+        console.log("[useBackgroundPhotoAnalysis] Items with temporary images:", itemsWithImages)
 
         // Останавливаем таймер прогресса
         clearInterval(progressTimer)

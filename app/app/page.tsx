@@ -297,59 +297,13 @@ export default function HomePage() {
         <div className="px-4 py-6">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-2xl font-serif font-bold text-gray-900 mb-2">Добро пожаловать</h1>
-            <p className="text-gray-600 text-sm">Создавайте стильные образы с помощью ИИ</p>
+            <h1 className="text-2xl font-serif font-bold text-gray-900">Добро пожаловать</h1>
           </div>
 
           {/* Show wardrobe section only if user has less than 6 items */}
           {showWardrobeSection && !itemsLoading && (
               <>
-                {/* Wardrobe Video */}
-                <div className="flex justify-center mb-8">
-                  <div className="relative">
-                    <div className="w-80 h-[28rem] bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl shadow-2xl flex items-center justify-center overflow-hidden">
-                      <video
-                          className="w-full h-full object-cover rounded-3xl"
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                          controls={false}
-                          preload="auto"
-                      >
-                        <source
-                            src="https://storage.yandexcloud.net/modemorphs3/static/main.mp4"
-                            type="video/mp4"
-                        />
-                        {/* Fallback for browsers without video support */}
-                        <div className="relative w-64 h-64">
-                          <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl shadow-inner">
-                            <div className="absolute top-4 left-4 right-4 h-2 bg-gray-300 rounded-full"></div>
-                            <div className="absolute top-8 left-6 right-6 flex justify-between">
-                              <div className="w-8 h-24 bg-gradient-to-b from-green-200 to-green-300 rounded-lg shadow-sm"></div>
-                              <div className="w-8 h-20 bg-gradient-to-b from-blue-200 to-blue-300 rounded-lg shadow-sm"></div>
-                              <div className="w-8 h-28 bg-gradient-to-b from-yellow-200 to-yellow-300 rounded-lg shadow-sm"></div>
-                              <div className="w-8 h-22 bg-gradient-to-b from-pink-200 to-pink-300 rounded-lg shadow-sm"></div>
-                              <div className="w-8 h-26 bg-gradient-to-b from-purple-200 to-purple-300 rounded-lg shadow-sm"></div>
-                            </div>
-                            <div className="absolute bottom-8 left-6 right-6">
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
-                                  <div className="w-4 h-4 bg-blue-400 rounded"></div>
-                                </div>
-                                <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
-                                  <div className="w-6 h-3 bg-white rounded"></div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </video>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Progress Section */}
+                {/* Progress Section - moved above video */}
                 <Card className="p-6 mb-6 bg-gradient-to-r from-gray-50 to-gray-100 border-0 shadow-sm">
                   <CardContent className="p-0">
                     <div className="flex items-center justify-between mb-4">
@@ -402,20 +356,50 @@ export default function HomePage() {
                   </CardContent>
                 </Card>
 
-                {/* Секция добавления */}
-                <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
-                  <CardContent className="p-8 text-center">
-                    <Button
-                        onClick={() => {
-                          console.log("[HomePage] Opening sheet from add item button")
-                          openSheet()
-                        }}
-                        className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
-                    >
-                      + добавить в гардероб
-                    </Button>
-                  </CardContent>
-                </Card>
+                {/* Wardrobe Video */}
+                <div className="flex justify-center mb-8">
+                  <div className="relative">
+                    <div className="w-80 h-[28rem] bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl shadow-2xl flex items-center justify-center overflow-hidden">
+                      <video
+                          className="w-full h-full object-cover rounded-3xl"
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          controls={false}
+                          preload="auto"
+                      >
+                        <source
+                            src="https://storage.yandexcloud.net/modemorphs3/static/main.mp4"
+                            type="video/mp4"
+                        />
+                        {/* Fallback for browsers without video support */}
+                        <div className="relative w-64 h-64">
+                          <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl shadow-inner">
+                            <div className="absolute top-4 left-4 right-4 h-2 bg-gray-300 rounded-full"></div>
+                            <div className="absolute top-8 left-6 right-6 flex justify-between">
+                              <div className="w-8 h-24 bg-gradient-to-b from-green-200 to-green-300 rounded-lg shadow-sm"></div>
+                              <div className="w-8 h-20 bg-gradient-to-b from-blue-200 to-blue-300 rounded-lg shadow-sm"></div>
+                              <div className="w-8 h-28 bg-gradient-to-b from-yellow-200 to-yellow-300 rounded-lg shadow-sm"></div>
+                              <div className="w-8 h-22 bg-gradient-to-b from-pink-200 to-pink-300 rounded-lg shadow-sm"></div>
+                              <div className="w-8 h-26 bg-gradient-to-b from-purple-200 to-purple-300 rounded-lg shadow-sm"></div>
+                            </div>
+                            <div className="absolute bottom-8 left-6 right-6">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
+                                  <div className="w-4 h-4 bg-blue-400 rounded"></div>
+                                </div>
+                                <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
+                                  <div className="w-6 h-3 bg-white rounded"></div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </video>
+                    </div>
+                  </div>
+                </div>
               </>
           )}
 

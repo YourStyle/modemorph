@@ -112,11 +112,35 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         // Подтверждение закрытия
         try { tg.enableClosingConfirmation?.() } catch {}
 
-        // 1) Хэндшейк
-        const user = await tmaHandshake()
+        // 1) Хэндшейк с повторными попытками
+        let user = null
+        let handshakeAttempts = 0
+        const maxHandshakeAttempts = 3
 
-        // 2) Если нет пользователя — пускаем на форму ТОЛЬКО если мы не на ней
+        while (!user && handshakeAttempts < maxHandshakeAttempts) {
+          handshakeAttempts++
+          console.log(`[MiniAppRegistrationGate] Handshake attempt ${handshakeAttempts}/${maxHandshakeAttempts}`)
+
+          try {
+            user = await tmaHandshake()
+            if (user) break
+
+            // Если не получилось, ждем перед повторной попыткой
+            if (handshakeAttempts < maxHandshakeAttempts) {
+              console.log(`[MiniAppRegistrationGate] Handshake failed, retrying in 1 second...`)
+              await new Promise(resolve => setTimeout(resolve, 1000))
+            }
+          } catch (error) {
+            console.error(`[MiniAppRegistrationGate] Handshake attempt ${handshakeAttempts} error:`, error)
+            if (handshakeAttempts < maxHandshakeAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 1000))
+            }
+          }
+        }
+
+        // 2) Если нет пользователя после всех попыток — пускаем на форму ТОЛЬКО если мы не на ней
         if (!user) {
+          console.log("[MiniAppRegistrationGate] All handshake attempts failed, redirecting to registration")
           if (!onMiniReg) {
             redirecting = true
             router.replace("/auth/mini-registration?from=tma")
@@ -138,6 +162,8 @@ export default function MiniAppRegistrationGate({ children }: Props) {
             return
           }
 
+          console.log("[MiniAppRegistrationGate] Fetching profile with access token")
+
           // Используем универсальный API клиент или session-based endpoint
           const profileResponse = await fetchWithRetry(
             "/api/me/profile",
@@ -148,9 +174,10 @@ export default function MiniAppRegistrationGate({ children }: Props) {
               cache: "no-store",
             },
             {
-              timeout: 10000,  // 10 секунд
-              retries: 2,
-              retryDelay: 1000
+              timeout: 15000,  // Увеличено до 15 секунд
+              retries: 3,      // Увеличено до 3 попыток
+              retryDelay: 1000,
+              backoff: true    // Экспоненциальная задержка
             }
           )
 

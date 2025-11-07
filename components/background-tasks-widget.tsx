@@ -275,6 +275,23 @@ export function BackgroundTasksWidget() {
     try {
       setAddingItems((prev) => new Set(prev).add(index))
 
+      // Загружаем изображение в S3 перед сохранением в базу данных
+      let imageUrl = item.finalImageUrl || item.image_url
+      if (item.img_url || item.image_url) {
+        const imageToUpload = item.img_url || item.image_url
+
+        // Загружаем только если это base64 или требуется обработка
+        if (imageToUpload && (imageToUpload.startsWith("data:image/") || /^[A-Za-z0-9+/]+=*$/.test(imageToUpload))) {
+          console.log("[BackgroundTasksWidget] Uploading image to S3...")
+          const { downloadAndUploadImage } = await import("@/lib/image-processing")
+          imageUrl = await downloadAndUploadImage(imageToUpload)
+        } else if (item.basic_item_id && !imageUrl) {
+          // Загружаем из базовых items если нужно
+          const basicItem = await api.get(`/api/basic-items/${item.basic_item_id}`)
+          imageUrl = basicItem.image_url
+        }
+      }
+
       const itemData = {
         item_name: item.item_name || item.name,
         material: item.material || "",
@@ -283,7 +300,7 @@ export function BackgroundTasksWidget() {
         has_print: item.has_print === "yes" ? "есть" : "нет",
         shade: item.shade || "",
         has_details: item.has_details || "",
-        image_url: item.finalImageUrl || item.image_url,
+        image_url: imageUrl,
         basic_item_id: item.basic_item_id || null,
       }
 
@@ -315,6 +332,13 @@ export function BackgroundTasksWidget() {
 
   const handleMinimizeSheet = () => {
     setShowResultsSheet(false)
+    // Если пользователь добавил хотя бы 1 вещь и закрыл шторку, удаляем соответствующий task
+    if (selectedSessionId && addedItems.size > 0) {
+      const task = tasks.find(t => t.data?.sessionId === selectedSessionId)
+      if (task) {
+        removeTask(task.id)
+      }
+    }
   }
 
   // Rotate quotes every 10 seconds while progress sheet is open
@@ -460,6 +484,10 @@ export function BackgroundTasksWidget() {
               <button
                 onClick={(e) => {
                   e.stopPropagation()
+                  // Если это завершённая задача и открыта шторка с результатами, закрываем шторку
+                  if (isCompleted && showResultsSheet && task.data?.sessionId === selectedSessionId) {
+                    setShowResultsSheet(false)
+                  }
                   removeTask(task.id)
                 }}
                 className="absolute -top-1 -right-1 w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center hover:bg-gray-700 transition-colors shadow-md"
