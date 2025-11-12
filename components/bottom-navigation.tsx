@@ -9,9 +9,9 @@ import {AIAssistantLoader} from "./ai-assistant-loader"
 
 const navItems = [
     {href: "/app", icon: Home, label: "Главная"},
-    {href: "/app/inspiration", icon: Sparkles, label: "Идеи"},
+    {href: "/app/wardrobe", icon: Shirt, label: "Одежда"},
     {href: "/app/ai-assistant", icon: Bot, label: "ИИ", isAI: true},
-    {href: "/app/wardrobe", icon: Shirt, label: "Гардероб"},
+    {href: "/app/inspiration", icon: Sparkles, label: "Идеи"},
     {href: "/app/looks", icon: Bookmark, label: "Образы"},
 ]
 

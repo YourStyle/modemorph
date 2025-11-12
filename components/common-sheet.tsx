@@ -2,7 +2,8 @@
 
 import type React from "react"
 import { useState, useRef, useEffect } from "react"
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetPortal } from "@/components/ui/sheet"
+import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { cn } from "@/lib/utils"
 import { X, ChevronDown } from "lucide-react"
 
@@ -80,18 +81,28 @@ export function CommonSheet({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent
-        ref={contentRef}
-        side="bottom"
-        className="h-[80vh] rounded-t-3xl border-0 p-0 bg-[#F9FAFB]"
-        style={{
-          transform: `translateY(${dragY}px)`,
-          transition: isDragging ? 'none' : 'transform 0.2s ease-out',
-        }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
+      <SheetPortal>
+        {/* Dark overlay like in subscription sheet */}
+        <SheetPrimitive.Overlay
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+        />
+        <SheetPrimitive.Content
+          ref={contentRef}
+          className={cn(
+            "fixed z-50 inset-x-0 bottom-0 h-[80vh] rounded-t-3xl border-0 p-0 bg-[#F9FAFB]",
+            "transition-all duration-300 overflow-hidden shadow-lg",
+            "data-[state=open]:animate-in data-[state=closed]:animate-out",
+            "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom"
+          )}
+          style={{
+            transform: `translateY(${dragY}px)`,
+            transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+          }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onInteractOutside={(e) => e.preventDefault()}
+        >
         {/* Drag handle */}
         <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
           <div className="w-12 h-1 rounded-full bg-gray-300" />
@@ -124,7 +135,8 @@ export function CommonSheet({
         )}
 
         <div className={cn("px-6 pb-6 h-full overflow-y-auto text-[#101010]", !title && "pt-4")}>{children}</div>
-      </SheetContent>
+        </SheetPrimitive.Content>
+      </SheetPortal>
     </Sheet>
   )
 }

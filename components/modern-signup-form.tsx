@@ -15,7 +15,10 @@ function SubmitButton() {
     <Button
       type="submit"
       disabled={pending}
-      className="w-full bg-gray-900 hover:bg-gray-800 text-white py-3 text-base font-medium rounded-xl h-12 shadow-sm transition-all duration-200 hover:shadow-md disabled:opacity-50"
+      className="w-full text-white py-3 text-base font-medium rounded-xl h-12 border-0 transition-all duration-200 disabled:opacity-50"
+      style={{
+        backgroundColor: '#292929',
+      }}
     >
       {pending ? (
         <>
@@ -61,7 +64,10 @@ export default function ModernSignupForm() {
               type="email"
               placeholder="ваш@email.com"
               required
-              className="h-11 text-base border-gray-300 focus:border-gray-900 focus:ring-gray-900 rounded-xl"
+              className="h-11 text-base border-gray-300 rounded-xl"
+              style={{
+                borderColor: '#292929',
+              }}
             />
           </div>
           <div className="space-y-2">
@@ -73,7 +79,10 @@ export default function ModernSignupForm() {
               name="password"
               type="password"
               required
-              className="h-11 text-base border-gray-300 focus:border-gray-900 focus:ring-gray-900 rounded-xl"
+              className="h-11 text-base border-gray-300 rounded-xl"
+              style={{
+                borderColor: '#292929',
+              }}
             />
           </div>
         </div>
@@ -84,7 +93,10 @@ export default function ModernSignupForm() {
           <Button
             type="button"
             variant="outline"
-            className="w-full py-3 text-base font-medium rounded-xl h-12 border-gray-300 hover:border-gray-400 hover:bg-gray-50 transition-all duration-200"
+            className="w-full py-3 text-base font-medium rounded-xl h-12 hover:bg-gray-50 transition-all duration-200"
+            style={{
+              borderColor: '#292929',
+            }}
             asChild
           >
             <Link href="/auth/login">Уже есть аккаунт? Войти</Link>

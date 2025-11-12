@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Felidae Font - для заголовков */
+@font-face {
+  font-family: 'Felidae';
+  src: url('/fonts/Felidae.woff2') format('woff2'),
+       url('/fonts/Felidae.woff') format('woff'),
+       url('/fonts/Felidae.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
@@ -72,5 +83,16 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+  }
+
+  /* Felidae для больших заголовков h1, h2 */
+  h1, h2 {
+    font-family: 'Felidae', 'Inter', sans-serif;
+  }
+
+  /* Inter для маленьких заголовков h3, h4, h5, h6 и текстов */
+  h3, h4, h5, h6, p, span, div {
+    font-family: 'Inter', sans-serif;
   }
 }

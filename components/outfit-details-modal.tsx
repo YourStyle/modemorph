@@ -126,9 +126,16 @@ export function OutfitDetailsModal({
                             style={{ backgroundColor: item.color.startsWith("#") ? item.color : `#${item.color}` }}
                           />
                         )}
-                        <Badge variant="outline" className="text-xs">
+                        <span
+                          className="text-xs px-2 py-1 rounded-md text-white font-medium"
+                          style={
+                            item.user_id
+                              ? { backgroundColor: '#292929' }
+                              : { background: 'linear-gradient(to right, #EC9DE2, #89AEFF)' }
+                          }
+                        >
                           {item.user_id ? "Ваше" : "Рекомендуем"}
-                        </Badge>
+                        </span>
                       </div>
                     </div>
                   </div>

@@ -147,7 +147,7 @@ export function InspirationOutfitCard({
             ) : safeItems.length === 1 ? (
               // Один элемент - показываем на весь контейнер
               <div
-                className="w-full h-full bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200 relative"
+                className="w-full h-full bg-white rounded-[24px] overflow-hidden hover:scale-105 transition-transform duration-200 relative"
                 onClick={(e) => handleItemClick(safeItems[0], e)}
               >
                 {safeItems[0].image_url && !imageErrors[safeItems[0].id] ? (
@@ -171,7 +171,7 @@ export function InspirationOutfitCard({
                 {safeItems.map((item, index) => (
                   <div
                     key={`${item.id}-${index}`}
-                    className="relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200"
+                    className="relative bg-white rounded-[24px] overflow-hidden hover:scale-105 transition-transform duration-200"
                     onClick={(e) => handleItemClick(item, e)}
                   >
                     {item.image_url && !imageErrors[item.id] ? (
@@ -195,7 +195,7 @@ export function InspirationOutfitCard({
               // Три элемента - первый большой, два маленьких
               <div className="grid grid-cols-2 gap-2 h-full">
                 <div
-                  className="relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200"
+                  className="relative bg-white rounded-[24px] overflow-hidden hover:scale-105 transition-transform duration-200"
                   onClick={(e) => handleItemClick(safeItems[0], e)}
                 >
                   {safeItems[0].image_url && !imageErrors[safeItems[0].id] ? (
@@ -217,7 +217,7 @@ export function InspirationOutfitCard({
                   {safeItems.slice(1, 3).map((item, index) => (
                     <div
                       key={`${item.id}-${index + 1}`}
-                      className="relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200"
+                      className="relative bg-white rounded-[24px] overflow-hidden hover:scale-105 transition-transform duration-200"
                       onClick={(e) => handleItemClick(item, e)}
                     >
                       {item.image_url && !imageErrors[item.id] ? (
@@ -244,7 +244,7 @@ export function InspirationOutfitCard({
                 {safeItems.slice(0, 4).map((item, index) => (
                   <div
                     key={`${item.id}-${index}`}
-                    className="relative bg-white rounded-lg overflow-hidden hover:scale-105 transition-transform duration-200"
+                    className="relative bg-white rounded-[24px] overflow-hidden hover:scale-105 transition-transform duration-200"
                     onClick={(e) => handleItemClick(item, e)}
                   >
                     {item.image_url && !imageErrors[item.id] ? (

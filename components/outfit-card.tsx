@@ -9,6 +9,7 @@ import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucid
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
+import { OutfitDetailsModal } from "./outfit-details-modal"
 import { SubscriptionSheet } from "./subscription-sheet"
 import { api } from "@/lib/api-client"
 
@@ -56,6 +57,7 @@ interface OutfitCardProps {
 export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showTryOnModal, setShowTryOnModal] = useState(false)
+  const [showOutfitDetails, setShowOutfitDetails] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
   const [vtonLoading, setVtonLoading] = useState(false)
@@ -256,17 +258,23 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
                     {/* Item type indicator */}
                     {!item.user_id ? (
                       <div className="absolute top-2 right-2">
-                        <Badge className="bg-orange-500 text-white text-xs px-1.5 py-0.5">
+                        <span
+                          className="inline-flex items-center text-white text-xs px-1.5 py-0.5 rounded-md font-medium"
+                          style={{ background: 'linear-gradient(to right, #EC9DE2, #89AEFF)' }}
+                        >
                           <Sparkles className="w-2.5 h-2.5 mr-0.5" />
                           Рекомендуем
-                        </Badge>
+                        </span>
                       </div>
                     ) : (
                       <div className="absolute top-2 right-2">
-                        <Badge className="bg-blue-500 text-white text-xs px-1.5 py-0.5">
+                        <span
+                          className="inline-flex items-center text-white text-xs px-1.5 py-0.5 rounded-md font-medium"
+                          style={{ backgroundColor: '#292929' }}
+                        >
                           <User className="w-2.5 h-2.5 mr-0.5" />
                           Ваше
-                        </Badge>
+                        </span>
                       </div>
                     )}
                   </div>
@@ -289,11 +297,19 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
           )}
 
           {/* Action buttons */}
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="flex-1 text-gray-700 border-gray-200 bg-transparent"
+              className="w-full text-gray-700 border-gray-200 bg-transparent"
+              onClick={() => setShowOutfitDetails(true)}
+            >
+              Весь образ
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-gray-700 border-gray-200 bg-transparent"
               onClick={openTryOnModal} // ⬅️ карточка только сообщает и открывает модалку
               disabled={vtonLoading}
             >
@@ -407,6 +423,26 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
           onClose={() => setSelectedItem(null)}
         />
       )}
+
+      {/* Outfit Details Modal */}
+      <OutfitDetailsModal
+        isOpen={showOutfitDetails}
+        onClose={() => setShowOutfitDetails(false)}
+        outfit={{
+          id: suggestion.id,
+          title: title,
+          description: "",
+          items: items,
+          tags: [],
+          likes: 0,
+          isLiked: false,
+        }}
+        onLike={() => {}}
+        onSave={handleSaveOutfit}
+        isLiking={false}
+        isSaving={saving}
+        isSaved={isSaved}
+      />
 
       {/* Subscription Sheet */}
       <SubscriptionSheet

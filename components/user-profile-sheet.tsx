@@ -261,11 +261,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                       <div className="space-y-3">
                         <h3 className="text-[#101010] font-medium text-sm">Ваш текущий план</h3>
 
-                        {/* Внутри Plan Info Block; на мобилке всё в одну колонку — кнопка снизу */}
-                        <div
-                          className="p-4 rounded-2xl border-2 backdrop-blur-sm bg-white/50"
+                        {/* Plan Info Block with 16px border radius and no animation */}
+                        <div className="p-4 rounded-[16px] border-2 bg-white/50"
                           style={{
-                            borderImage: "linear-gradient(to right, #EC9DE2, #89AEFF) 1"
+                            borderImageSource: "linear-gradient(to right, #EC9DE2, #89AEFF)",
+                            borderImageSlice: 1
                           }}
                         >
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -285,7 +285,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
 
                             <Button
                               onClick={() => setIsPaywallOpen(true)}
-                              className="w-full md:w-auto text-white border-0 px-6 py-3 rounded-2xl font-medium text-sm shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2"
+                              className="w-full md:w-auto text-white border-0 px-6 py-3 rounded-[16px] font-medium text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                               style={{
                                 background: "linear-gradient(to right, #EC9DE2, #89AEFF)"
                               }}
@@ -475,8 +475,8 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     <Label className="text-[#101010] mb-3 block">Прошлые аватары</Label>
                     <div className="grid grid-cols-4 gap-3">
                       {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="aspect-square bg-gray-600 rounded-lg flex items-center justify-center">
-                          <span className="text-gray-400 text-xs">Нет фото</span>
+                        <div key={i} className="aspect-square bg-transparent border-2 border-black rounded-lg flex items-center justify-center">
+                          <span className="text-gray-600 text-xs">Нет фото</span>
                         </div>
                       ))}
                     </div>

@@ -5,13 +5,18 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="dd81a70e-dd6f-48c2-8308-2f8e056ad82a" name="Changes" comment="fix bugs">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/public/fonts/Felidae.ttf" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/add-to-closet-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/add-to-closet-sheet.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/components/background-tasks-widget.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/background-tasks-widget.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/auth/mini-registration/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/globals.css" beforeDir="false" afterPath="$PROJECT_DIR$/app/globals.css" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/bottom-navigation.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/bottom-navigation.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/components/common-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/common-sheet.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/inspiration-outfit-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/inspiration-outfit-card.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/modern-signup-form.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/modern-signup-form.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/outfit-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/outfit-card.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/outfit-details-modal.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/outfit-details-modal.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/subscription-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/subscription-sheet.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/components/user-profile-sheet.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/components/user-profile-sheet.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -46,6 +51,7 @@
   "keyToString": {
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "git-widget-placeholder": "main",
+    "last_opened_file_path": "/Users/achukseev/WebstormProjects/modemorph/public/fonts",
     "node.js.detected.package.eslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
     "node.js.selected.package.tslint": "(autodetect)",
@@ -69,7 +75,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1762762234723</updated>
-      <workItem from="1762762235912" duration="2745000" />
+      <workItem from="1762762235912" duration="5940000" />
     </task>
     <servers />
   </component>

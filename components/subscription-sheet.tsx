@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Sheet, SheetContent, SheetOverlay, SheetPortal } from "@/components/ui/sheet"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { Button } from "@/components/ui/button"
@@ -42,6 +42,12 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([])
   const [creditPacks, setCreditPacks] = useState<CreditPack[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Swipe-to-dismiss states
+  const [dragY, setDragY] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const startYRef = useRef<number>(0)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -135,6 +141,43 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
     onClose()
   }
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const target = e.target as HTMLElement
+    if (!target.closest('.drag-handle')) return
+
+    startYRef.current = e.touches[0].clientY
+    setIsDragging(true)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return
+
+    const currentY = e.touches[0].clientY
+    const deltaY = currentY - startYRef.current
+
+    if (deltaY > 0) {
+      setDragY(deltaY)
+    }
+  }
+
+  const handleTouchEnd = () => {
+    if (!isDragging) return
+    setIsDragging(false)
+
+    if (dragY > 100) {
+      onClose()
+    }
+
+    setDragY(0)
+  }
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDragY(0)
+      setIsDragging(false)
+    }
+  }, [isOpen])
+
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetPortal>
@@ -143,14 +186,22 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
           className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
         />
         <SheetPrimitive.Content
+          ref={contentRef}
           className={cn(
             "fixed z-50 inset-x-0 bottom-0 rounded-t-3xl border-0 p-0 bg-[#F9FAFB] transition-all duration-300 overflow-hidden shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
             currentView === "credits" ? "h-[85vh]" : "h-[65vh]"
           )}
+          style={{
+            transform: `translateY(${dragY}px)`,
+            transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+          }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
           onInteractOutside={(e) => e.preventDefault()}
         >
         {/* Drag handle */}
-        <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
+        <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
           <div className="w-12 h-1 rounded-full bg-gray-300" />
         </div>
 
