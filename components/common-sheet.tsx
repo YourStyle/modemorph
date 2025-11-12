@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useState, useRef, useEffect } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { X, ChevronDown } from "lucide-react"
@@ -12,19 +13,87 @@ interface CommonSheetProps {
   children: React.ReactNode
   backgroundColor?: "white" | "dark"
   onMinimize?: () => void
+  /** Поведение при свайпе вниз: 'close' (по умолчанию) или 'minimize' */
+  swipeAction?: 'close' | 'minimize'
 }
 
-export function CommonSheet({ isOpen, onClose, title, children, backgroundColor = "white", onMinimize }: CommonSheetProps) {
+export function CommonSheet({
+  isOpen,
+  onClose,
+  title,
+  children,
+  backgroundColor = "white",
+  onMinimize,
+  swipeAction = 'close'
+}: CommonSheetProps) {
   const isDark = backgroundColor === "dark"
+  const [dragY, setDragY] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const startYRef = useRef<number>(0)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    // Начинаем отслеживать только если касание на drag handle
+    const target = e.target as HTMLElement
+    if (!target.closest('.drag-handle')) return
+
+    startYRef.current = e.touches[0].clientY
+    setIsDragging(true)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return
+
+    const currentY = e.touches[0].clientY
+    const deltaY = currentY - startYRef.current
+
+    // Позволяем свайпить только вниз
+    if (deltaY > 0) {
+      setDragY(deltaY)
+    }
+  }
+
+  const handleTouchEnd = () => {
+    if (!isDragging) return
+    setIsDragging(false)
+
+    // Если протащили больше 100px - выполняем действие
+    if (dragY > 100) {
+      if (swipeAction === 'minimize' && onMinimize) {
+        onMinimize()
+      } else {
+        onClose()
+      }
+    }
+
+    // Сбрасываем позицию
+    setDragY(0)
+  }
+
+  // Сбрасываем dragY при закрытии шторки
+  useEffect(() => {
+    if (!isOpen) {
+      setDragY(0)
+      setIsDragging(false)
+    }
+  }, [isOpen])
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
       <SheetContent
+        ref={contentRef}
         side="bottom"
         className="h-[80vh] rounded-t-3xl border-0 p-0 bg-[#F9FAFB]"
+        style={{
+          transform: `translateY(${dragY}px)`,
+          transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {/* Drag handle */}
-        <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
+        <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
           <div className="w-12 h-1 rounded-full bg-gray-300" />
         </div>
 

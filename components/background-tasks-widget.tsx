@@ -16,6 +16,14 @@ import { toast } from "@/hooks/use-toast"
 import Image from "next/image"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
 type ViewMode = "choose" | "quotes" | "game" | null
 
@@ -179,6 +187,8 @@ export function BackgroundTasksWidget() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
   const [addingItems, setAddingItems] = useState<Set<number>>(new Set())
   const [addedItems, setAddedItems] = useState<Set<number>>(new Set())
+  const [showCloseConfirmDialog, setShowCloseConfirmDialog] = useState(false)
+  const [hasShownCloseConfirm, setHasShownCloseConfirm] = useState(false)
   const shownTooltipsRef = useRef<Set<string>>(new Set())
 
   // States for LoadingExperience
@@ -330,15 +340,46 @@ export function BackgroundTasksWidget() {
     }
   }
 
-  const handleMinimizeSheet = () => {
-    setShowResultsSheet(false)
-    // Если пользователь добавил хотя бы 1 вещь и закрыл шторку, удаляем соответствующий task
-    if (selectedSessionId && addedItems.size > 0) {
+  const handleCleanupSession = () => {
+    if (selectedSessionId) {
+      // Удаляем task
       const task = tasks.find(t => t.data?.sessionId === selectedSessionId)
       if (task) {
         removeTask(task.id)
       }
+      // Удаляем сессию из контекста
+      aiAnalysis.removeSession(selectedSessionId)
     }
+    // Очищаем стейты
+    setAddedItems(new Set())
+    setAddingItems(new Set())
+    setHasShownCloseConfirm(false)
+    setSelectedSessionId(null)
+  }
+
+  const handleResultsSheetClose = () => {
+    const session = selectedSessionId ? aiAnalysis.getSession(selectedSessionId) : null
+
+    // Если анализ завершён и это первая попытка закрытия - показываем подтверждение
+    if (session?.status === "completed" && !hasShownCloseConfirm) {
+      setShowCloseConfirmDialog(true)
+      return
+    }
+
+    // Иначе просто закрываем и очищаем
+    setShowResultsSheet(false)
+    handleCleanupSession()
+  }
+
+  const handleConfirmClose = () => {
+    setShowCloseConfirmDialog(false)
+    setShowResultsSheet(false)
+    handleCleanupSession()
+  }
+
+  const handleCancelClose = () => {
+    setShowCloseConfirmDialog(false)
+    setHasShownCloseConfirm(true)
   }
 
   // Rotate quotes every 10 seconds while progress sheet is open
@@ -407,9 +448,23 @@ export function BackgroundTasksWidget() {
         })
         setShowProgressSheet(false)
         setShowResultsSheet(true)
+        // Сбрасываем флаг при переходе к результатам
+        setHasShownCloseConfirm(false)
       }
     }
   }, [showProgressSheet, selectedSessionId, aiAnalysis, tasks])
+
+  // Отслеживаем смену сессии для очистки стейтов
+  const prevSessionIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    // Если сменилась сессия - очищаем стейты добавленных вещей
+    if (selectedSessionId && selectedSessionId !== prevSessionIdRef.current) {
+      setAddedItems(new Set())
+      setAddingItems(new Set())
+      setHasShownCloseConfirm(false)
+    }
+    prevSessionIdRef.current = selectedSessionId
+  }, [selectedSessionId])
 
   // Don't hide widget if results or progress sheet is open
   if (activeTasks.length === 0 && !showResultsSheet && !showProgressSheet) return null
@@ -518,9 +573,9 @@ export function BackgroundTasksWidget() {
       {/* Шторка с результатами */}
       <CommonSheet
         isOpen={showResultsSheet}
-        onClose={() => setShowResultsSheet(false)}
+        onClose={handleResultsSheetClose}
         backgroundColor="dark"
-        onMinimize={handleMinimizeSheet}
+        swipeAction="close"
       >
         <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100">
             {(() => {
@@ -627,7 +682,11 @@ export function BackgroundTasksWidget() {
           setViewMode(null)
         }}
         backgroundColor="dark"
-        onMinimize={() => setShowProgressSheet(false)}
+        swipeAction="minimize"
+        onMinimize={() => {
+          setShowProgressSheet(false)
+          setViewMode(null)
+        }}
       >
         <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe">
           {(() => {
@@ -651,6 +710,27 @@ export function BackgroundTasksWidget() {
           })()}
         </div>
       </CommonSheet>
+
+      {/* Диалог подтверждения закрытия результатов */}
+      <Dialog open={showCloseConfirmDialog} onOpenChange={setShowCloseConfirmDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Вы добавили все вещи?</DialogTitle>
+            <DialogDescription>
+              Вы уверены, что добавили все понравившиеся вещи в гардероб?
+              После закрытия результаты анализа будут удалены.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-col gap-2">
+            <Button onClick={handleCancelClose} variant="outline" className="w-full">
+              Вернуться к результатам
+            </Button>
+            <Button onClick={handleConfirmClose} variant="default" className="w-full">
+              Да, закрыть
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

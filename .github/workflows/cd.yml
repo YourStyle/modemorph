@@ -1,0 +1,113 @@
+name: CD - Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Позволяет запускать деплой вручную
+
+jobs:
+  deploy:
+    name: Deploy to VPS with Docker
+    runs-on: self-hosted  # Запускается на вашем self-hosted runner
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create .env file for Docker
+        run: |
+          cat > .env << EOF
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEXT_PUBLIC_AI_API_URL=${{ secrets.NEXT_PUBLIC_AI_API_URL }}
+          YANDEX_S3_ACCESS_KEY_ID=${{ secrets.YANDEX_S3_ACCESS_KEY_ID }}
+          YANDEX_S3_SECRET_ACCESS_KEY=${{ secrets.YANDEX_S3_SECRET_ACCESS_KEY }}
+          YANDEX_S3_BUCKET_NAME=${{ secrets.YANDEX_S3_BUCKET_NAME }}
+          YANDEX_S3_REGION=${{ secrets.YANDEX_S3_REGION }}
+          YANDEX_S3_ENDPOINT=${{ secrets.YANDEX_S3_ENDPOINT }}
+          DOMAIN=${{ secrets.DOMAIN }}
+          CADDY_EMAIL=${{ secrets.CADDY_EMAIL }}
+          EOF
+
+      - name: Stop old containers
+        run: |
+          docker compose --profile prod down || true
+
+      - name: Build and start containers
+        run: |
+          docker compose --profile prod up -d --build
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services to start..."
+          sleep 20
+
+          echo "Checking if containers are running..."
+          docker ps | grep modemorph-app
+          docker ps | grep modemorph-caddy
+
+          echo "Checking app health directly..."
+          docker exec modemorph-app wget -q -O- http://localhost:3000/api/health || exit 1
+
+          echo "✅ Containers are healthy!"
+
+      - name: Check Caddy proxy
+        run: |
+          sleep 5
+          echo "Testing Caddy proxy..."
+          # Try HTTP first (works immediately)
+          curl -f http://localhost/api/health || echo "⚠️  Caddy HTTP check failed, might be SSL provisioning"
+
+          # Check if HTTPS is ready (might take time for SSL cert)
+          if curl -f -k https://localhost/api/health 2>/dev/null; then
+            echo "✅ HTTPS is working!"
+          else
+            echo "⚠️  HTTPS not ready yet (SSL cert provisioning in progress)"
+          fi
+
+      - name: Clean up old images
+        run: |
+          docker image prune -f
+
+      - name: Show deployment status
+        run: |
+          echo ""
+          echo "=== Deployment Status ==="
+          echo ""
+          echo "📦 Containers:"
+          docker ps | grep modemorph
+          echo ""
+          echo "📊 App Logs (last 20 lines):"
+          docker logs modemorph-app --tail 20
+          echo ""
+          echo "🌐 Caddy Logs (last 10 lines):"
+          docker logs modemorph-caddy --tail 10
+          echo ""
+          DOMAIN="${{ secrets.DOMAIN }}"
+          if [ "$DOMAIN" = "localhost" ]; then
+            echo "✅ Deployment successful!"
+            echo "🔗 Site: http://localhost"
+            echo "🏥 Health: http://localhost/api/health"
+          else
+            echo "✅ Deployment successful!"
+            echo "🔗 Site: https://$DOMAIN"
+            echo "🏥 Health: https://$DOMAIN/api/health"
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo ""
+          echo "❌ Deployment failed!"
+          echo ""
+          echo "=== Debug Information ==="
+          echo ""
+          echo "App container logs:"
+          docker logs modemorph-app --tail 50 || echo "App container not found"
+          echo ""
+          echo "Caddy container logs:"
+          docker logs modemorph-caddy --tail 50 || echo "Caddy container not found"
+          echo ""
+          echo "Container status:"
+          docker ps -a | grep modemorph || echo "No modemorph containers found"

@@ -199,7 +199,13 @@ export function AddToClosetSheet({
   if (showAnalysisForm || (initialPhotos && initialPhotos.length > 0)) {
     return (
       <>
-        <CommonSheet isOpen={isOpen} onClose={handleClose} backgroundColor="dark" onMinimize={handleMinimize}>
+        <CommonSheet
+          isOpen={isOpen}
+          onClose={handleClose}
+          backgroundColor="dark"
+          swipeAction="minimize"
+          onMinimize={handleMinimize}
+        >
           {/* скролл контейнер, стабильный скроллбар, хороший контраст текста */}
           <div
             className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100"
