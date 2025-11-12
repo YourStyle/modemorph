@@ -89,6 +89,9 @@
   /* Felidae для больших заголовков h1, h2 */
   h1, h2 {
     font-family: 'Felidae', 'Inter', sans-serif;
+    font-size: 32px;
+    font-weight: 400;
+    letter-spacing: 0.04em;
   }
 
   /* Inter для маленьких заголовков h3, h4, h5, h6 и текстов */

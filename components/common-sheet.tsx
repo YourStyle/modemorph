@@ -128,7 +128,14 @@ export function CommonSheet({
 
         {title && (
           <SheetHeader className="px-6 pb-4">
-            <SheetTitle className="text-center text-xl font-semibold text-[#101010]">
+            <SheetTitle
+              className="text-center text-[#101010]"
+              style={{
+                fontSize: '32px',
+                fontWeight: 400,
+                letterSpacing: '0.04em'
+              }}
+            >
               {title}
             </SheetTitle>
           </SheetHeader>

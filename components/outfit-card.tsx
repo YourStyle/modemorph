@@ -9,7 +9,7 @@ import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucid
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
-import { OutfitDetailsModal } from "./outfit-details-modal"
+import { CommonSheet } from "./common-sheet"
 import { SubscriptionSheet } from "./subscription-sheet"
 import { api } from "@/lib/api-client"
 
@@ -301,15 +301,16 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
             <Button
               variant="outline"
               size="sm"
-              className="w-full text-gray-700 border-gray-200 bg-transparent"
+              className="w-full text-gray-700 bg-transparent"
+              style={{ borderColor: '#292929', borderRadius: '16px', borderWidth: '1px' }}
               onClick={() => setShowOutfitDetails(true)}
             >
               Весь образ
             </Button>
             <Button
-              variant="outline"
               size="sm"
-              className="w-full text-gray-700 border-gray-200 bg-transparent"
+              className="w-full text-white border-0"
+              style={{ backgroundColor: '#292929', borderRadius: '16px' }}
               onClick={openTryOnModal} // ⬅️ карточка только сообщает и открывает модалку
               disabled={vtonLoading}
             >
@@ -424,25 +425,89 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
         />
       )}
 
-      {/* Outfit Details Modal */}
-      <OutfitDetailsModal
+      {/* Outfit Details Sheet */}
+      <CommonSheet
         isOpen={showOutfitDetails}
         onClose={() => setShowOutfitDetails(false)}
-        outfit={{
-          id: suggestion.id,
-          title: title,
-          description: "",
-          items: items,
-          tags: [],
-          likes: 0,
-          isLiked: false,
-        }}
-        onLike={() => {}}
-        onSave={handleSaveOutfit}
-        isLiking={false}
-        isSaving={saving}
-        isSaved={isSaved}
-      />
+        title={title}
+        backgroundColor="white"
+      >
+        <div className="space-y-4">
+          {/* Items Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            {items.map((item, index) => (
+              <div
+                key={`${item.id}-${index}`}
+                className="group cursor-pointer bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition-all duration-200"
+                onClick={() => setSelectedItem(item)}
+              >
+                <div className="aspect-square relative">
+                  {item.image_url && !imageErrors[item.id] ? (
+                    <Image
+                      src={item.image_url || "/placeholder.svg"}
+                      alt={item.name}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-200"
+                      onError={() => setImageErrors((prev) => ({ ...prev, [item.id]: true }))}
+                      sizes="(max-width: 768px) 50vw, 25vw"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                      <Package className="h-8 w-8 text-gray-400" />
+                    </div>
+                  )}
+                </div>
+                <div className="p-3">
+                  <h4 className="font-medium text-sm line-clamp-2 mb-1">{item.name}</h4>
+                  <div className="flex items-center gap-2">
+                    {item.color && (
+                      <div
+                        className="w-3 h-3 rounded-full border border-gray-200"
+                        style={{ backgroundColor: item.color.startsWith("#") ? item.color : `#${item.color}` }}
+                      />
+                    )}
+                    <span
+                      className="text-xs px-2 py-1 rounded-md text-white font-medium"
+                      style={
+                        item.user_id
+                          ? { backgroundColor: '#292929' }
+                          : { background: 'linear-gradient(to right, #EC9DE2, #89AEFF)' }
+                      }
+                    >
+                      {item.user_id ? "Ваше" : "Рекомендуем"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Save Button */}
+          <Button
+            onClick={handleSaveOutfit}
+            disabled={saving || isSaved}
+            className="w-full text-white border-0"
+            style={{ backgroundColor: '#292929', borderRadius: '16px' }}
+          >
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Сохранение...
+              </>
+            ) : isSaved ? (
+              <>
+                <BookmarkCheck className="w-4 h-4 mr-2" />
+                Сохранено
+              </>
+            ) : (
+              <>
+                <Bookmark className="w-4 h-4 mr-2" />
+                Сохранить образ
+              </>
+            )}
+          </Button>
+        </div>
+      </CommonSheet>
 
       {/* Subscription Sheet */}
       <SubscriptionSheet
