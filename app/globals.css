@@ -90,7 +90,7 @@
   h1, h2 {
     font-family: 'Felidae', 'Inter', sans-serif;
     font-size: 32px;
-    font-weight: 400;
+    font-weight: 400 !important;
     letter-spacing: 0.04em;
   }
 

@@ -4,7 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="dd81a70e-dd6f-48c2-8308-2f8e056ad82a" name="Changes" comment="change main screen representation">
+    <list default="true" id="dd81a70e-dd6f-48c2-8308-2f8e056ad82a" name="Changes" comment="update design and desktop behaviour">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -69,7 +69,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1762762234723</updated>
-      <workItem from="1762762235912" duration="8564000" />
+      <workItem from="1762762235912" duration="9476000" />
     </task>
     <task id="LOCAL-00001" summary="add font and consistent colors">
       <option name="closed" value="true" />
@@ -87,7 +87,15 @@
       <option name="project" value="LOCAL" />
       <updated>1762964356825</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="update design and desktop behaviour">
+      <option name="closed" value="true" />
+      <created>1762966430362</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1762966430362</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TerminalProjectNonSharedOptionsProvider">
@@ -102,6 +110,7 @@
     <MESSAGE value="fix bugs" />
     <MESSAGE value="add font and consistent colors" />
     <MESSAGE value="change main screen representation" />
-    <option name="LAST_COMMIT_MESSAGE" value="change main screen representation" />
+    <MESSAGE value="update design and desktop behaviour" />
+    <option name="LAST_COMMIT_MESSAGE" value="update design and desktop behaviour" />
   </component>
 </project>

@@ -431,6 +431,7 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
         onClose={() => setShowOutfitDetails(false)}
         title={title}
         backgroundColor="white"
+        swipeAction="close"
       >
         <div className="space-y-4">
           {/* Items Grid */}

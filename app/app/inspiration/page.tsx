@@ -200,6 +200,7 @@ export default function InspirationPage(): ReactElement {
   const [selectedOutfitTitle, setSelectedOutfitTitle] = useState<string>("")
 
   const [index, setIndex] = useState(0) // Declare index and setIndex variables
+  const [isDesktop, setIsDesktop] = useState(false)
 
   // Ссылки на скролл-контейнер и карточки
   const scrollerRef = useRef<HTMLDivElement | null>(null)
@@ -212,6 +213,13 @@ export default function InspirationPage(): ReactElement {
   const current = filtered[index]
 
   useReconcileLimits(true)
+
+  // Определяем десктопную платформу Telegram
+  useEffect(() => {
+    const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
+    const platform = tg?.platform || ""
+    setIsDesktop(platform === "tdesktop" || platform === "macos" || platform === "windows" || platform === "linux")
+  }, [])
 
   useEffect(() => {
     saveViewedOutfits(viewedOutfits)
@@ -569,7 +577,7 @@ export default function InspirationPage(): ReactElement {
       className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none box-border"
       style={{
         paddingBottom: "var(--sab, env(safe-area-inset-bottom, 0px))",
-        paddingTop: "var(--sat, env(safe-area-inset-top, 0px))",
+        paddingTop: isDesktop ? "0" : "var(--sat, env(safe-area-inset-top, 0px))",
       }}
     >
       {/* Верхние вкладки */}
@@ -581,6 +589,7 @@ export default function InspirationPage(): ReactElement {
                 "px-2 pb-1 text-sm font-semibold transition-colors",
                 activeTab === "popular" ? "text-white" : "text-neutral-400 hover:text-white",
               )}
+              style={{ fontFamily: 'Felidae, Inter, sans-serif' }}
               onClick={() => setActiveTab("popular")}
             >
               Популярные
@@ -591,6 +600,7 @@ export default function InspirationPage(): ReactElement {
                 "px-2 pb-1 text-sm font-semibold transition-colors",
                 activeTab === "liked" ? "text-white" : "text-neutral-400 hover:text-white",
               )}
+              style={{ fontFamily: 'Felidae, Inter, sans-serif' }}
               onClick={() => setActiveTab("liked")}
             >
               Понравившиеся
