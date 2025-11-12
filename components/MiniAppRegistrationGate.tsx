@@ -49,13 +49,6 @@ function detectTMA() {
   return { inTMA: !!tg && hasInit && hasUser && platformOk, tg }
 }
 
-function canRequestFullscreen(tg: NonNullable<typeof window.Telegram>["WebApp"]) {
-  const p = (tg?.platform || "").toLowerCase()
-  const desktop = p.includes("tdesktop") || p.includes("macos") || p.includes("linux") || p === "web"
-  const apiOk = typeof tg?.isVersionAtLeast === "function" && tg.isVersionAtLeast("8.0")
-  return apiOk && !desktop
-}
-
 interface Props {
   children: ReactNode
 }
@@ -69,15 +62,12 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const [networkError, setNetworkError] = useState<string | null>(null)
 
   const fsTried = useRef(false)
-  const askFullscreen = (tg: NonNullable<typeof window.Telegram>["WebApp"]) => {
+  const askFullscreen = (tg: any) => {
     if (fsTried.current) return
     fsTried.current = true
-    if (!canRequestFullscreen(tg)) return
+    // Только expand, без fullscreen для всех платформ
     try {
-      tg.requestFullscreen?.()
-    } catch {}
-    try {
-      tg.expand?.()
+      tg?.expand?.()
     } catch {}
   }
 

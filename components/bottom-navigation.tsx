@@ -23,7 +23,7 @@ export function BottomNavigation() {
             <div className="max-w-md mx-auto px-4">
                 <nav className="flex items-center justify-center">
                     <div
-                        className="relative rounded-full px-6 py-3 md:px-8 md:py-4 flex items-center justify-between overflow-hidden"
+                        className="relative rounded-full px-6 py-3 md:px-8 md:py-4 flex items-center justify-center gap-2 overflow-hidden"
                         style={{
                             background: 'rgba(17, 24, 39, 0.7)',
                             backdropFilter: 'blur(20px) saturate(180%)',
