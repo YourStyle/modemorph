@@ -103,7 +103,7 @@ export default function AdminLayout({
     { href: "/admin", label: "Главная", icon: Home },
     { href: "/admin/users", label: "Пользователи", icon: UserCheck },
     { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
-    { href: "/admin/feature-costs", label: "Стоимость функций", icon: DollarSign },
+    { href: "/admin/feature-costs", label: "Стоимость", icon: DollarSign },
     { href: "/admin/settings", label: "Настройки", icon: Settings },
   ]
 
@@ -125,7 +125,7 @@ export default function AdminLayout({
               </Link>
 
               {/* Desktop Navigation */}
-              <nav className="hidden md:flex ml-8 space-x-1">
+              <nav className="hidden md:flex ml-8 space-x-1 items-center">
                 {navigationItems.map((item) => {
                   const IconComponent = item.icon
                   return (
@@ -134,7 +134,7 @@ export default function AdminLayout({
                       href={item.href}
                       className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200"
                     >
-                      <IconComponent className="h-4 w-4" />
+                      <IconComponent className="h-4 w-4 flex-shrink-0" />
                       <span>{item.label}</span>
                     </Link>
                   )
@@ -210,7 +210,7 @@ export default function AdminLayout({
                             href={item.href}
                             className="flex items-center space-x-3 text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-3 py-3 rounded-md text-base font-medium transition-all duration-200"
                           >
-                            <IconComponent className="h-5 w-5" />
+                            <IconComponent className="h-5 w-5 flex-shrink-0" />
                             <span>{item.label}</span>
                           </Link>
                         )

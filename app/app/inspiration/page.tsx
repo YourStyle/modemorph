@@ -586,7 +586,7 @@ export default function InspirationPage(): ReactElement {
           <div className="flex justify-center gap-8 pt-[95px]">
             <button
               className={cn(
-                "px-2 pb-1 text-sm font-semibold transition-colors",
+                "px-2 pb-1 text-lg font-semibold transition-colors tracking-wide",
                 activeTab === "popular" ? "text-white" : "text-neutral-400 hover:text-white",
               )}
               style={{ fontFamily: 'Felidae, Inter, sans-serif' }}
@@ -597,7 +597,7 @@ export default function InspirationPage(): ReactElement {
             </button>
             <button
               className={cn(
-                "px-2 pb-1 text-sm font-semibold transition-colors",
+                "px-2 pb-1 text-lg font-semibold transition-colors tracking-wide",
                 activeTab === "liked" ? "text-white" : "text-neutral-400 hover:text-white",
               )}
               style={{ fontFamily: 'Felidae, Inter, sans-serif' }}

@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
+import { createClient } from "@/lib/supabase/client"
 
 interface FeatureCost {
   id: number
@@ -45,7 +45,7 @@ export default function FeatureCostsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient()
+  const supabase = createClient() // Still needed for fetching data
 
   // Debounce timers for auto-save
   const debounceTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
@@ -125,12 +125,16 @@ export default function FeatureCostsPage() {
   const updateFeatureCost = async (id: number, updates: Partial<FeatureCost>) => {
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from("feature_costs")
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq("id", id)
+      const response = await fetch('/api/admin/feature-costs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, updates }),
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to update')
+      }
 
       setFeatureCosts((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)))
 
@@ -153,12 +157,16 @@ export default function FeatureCostsPage() {
   const updateCreditPack = async (id: number, updates: Partial<CreditPack>) => {
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from("credit_packs")
-        .update(updates)
-        .eq("id", id)
+      const response = await fetch('/api/admin/credit-packs', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, updates }),
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to update')
+      }
 
       setCreditPacks((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)))
 
@@ -181,12 +189,16 @@ export default function FeatureCostsPage() {
   const updateSubscriptionPricing = async (id: number, updates: Partial<SubscriptionPricing>) => {
     setSaving(true)
     try {
-      const { error } = await supabase
-        .from("subscription_pricing")
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq("id", id)
+      const response = await fetch('/api/admin/subscription-pricing', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, updates }),
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to update')
+      }
 
       setSubscriptionPricing((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)))
 

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Plus, ExternalLink, Trash2, Search } from "lucide-react"
-import { PastelLoader } from "@/components/pastel-loader"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
 import { CreateLookSheet } from "@/components/create-look-sheet"
 import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collection-sheet"
@@ -370,8 +369,40 @@ export default function LooksPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <PastelLoader />
+      <div className="px-4 py-6 space-y-8 animate-pulse">
+        {/* Header Skeleton */}
+        <div className="space-y-4">
+          <div className="h-9 bg-gray-200 rounded-lg w-48" />
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="h-12 bg-gray-200 rounded-xl w-full sm:flex-1" />
+            <div className="h-12 bg-gray-200 rounded-xl w-full sm:flex-1" />
+          </div>
+        </div>
+
+        {/* All Looks Section Skeleton */}
+        <div className="space-y-4">
+          <div>
+            <div className="h-7 bg-gray-200 rounded-lg w-40 mb-2" />
+            <div className="h-5 bg-gray-200 rounded w-24" />
+          </div>
+          <div className="flex gap-4 overflow-x-hidden">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="flex-shrink-0 w-80">
+                <div className="p-4 bg-gray-100 rounded-lg border border-gray-200">
+                  <div className="grid grid-cols-3 gap-3 min-h-[240px]">
+                    {[1, 2, 3, 4, 5, 6].map((j) => (
+                      <div key={j} className="bg-gray-200 rounded-lg h-24" />
+                    ))}
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <div className="h-5 bg-gray-200 rounded w-3/4" />
+                    <div className="h-4 bg-gray-200 rounded w-1/2" />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }

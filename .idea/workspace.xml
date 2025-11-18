@@ -6,6 +6,10 @@
   <component name="ChangeListManager">
     <list default="true" id="dd81a70e-dd6f-48c2-8308-2f8e056ad82a" name="Changes" comment="update design and desktop behaviour">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/feature-costs/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/feature-costs/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/admin/layout.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/admin/layout.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/app/inspiration/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/inspiration/page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/app/app/looks/page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/app/looks/page.tsx" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -15,40 +19,40 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "YourStyle"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;YourStyle&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/YourStyle/modemorph.git",
-    "accountId": "dc7d3aa9-0491-4de0-9259-4aad49af1e48"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/YourStyle/modemorph.git&quot;,
+    &quot;accountId&quot;: &quot;dc7d3aa9-0491-4de0-9259-4aad49af1e48&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 0
-}]]></component>
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 0
+}</component>
   <component name="ProjectId" id="35HLpYnN0OITVhTCbVXePW6AP0c" />
   <component name="ProjectViewState">
     <option name="autoscrollFromSource" value="true" />
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "main",
-    "last_opened_file_path": "/Users/achukseev/WebstormProjects/modemorph/public/fonts",
-    "node.js.detected.package.eslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "pnpm",
-    "ts.external.directory.path": "/Applications/WebStorm.app/Contents/plugins/javascript-plugin/jsLanguageServicesImpl/external",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/achukseev/WebstormProjects/modemorph/public/fonts&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Applications/WebStorm.app/Contents/plugins/javascript-plugin/jsLanguageServicesImpl/external&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/public/fonts" />
@@ -69,7 +73,10 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1762762234723</updated>
-      <workItem from="1762762235912" duration="9476000" />
+      <workItem from="1762762235912" duration="10576000" />
+      <workItem from="1762971287758" duration="4599000" />
+      <workItem from="1763386467349" duration="648000" />
+      <workItem from="1763453325194" duration="1961000" />
     </task>
     <task id="LOCAL-00001" summary="add font and consistent colors">
       <option name="closed" value="true" />
@@ -95,12 +102,20 @@
       <option name="project" value="LOCAL" />
       <updated>1762966430362</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="update design and desktop behaviour">
+      <option name="closed" value="true" />
+      <created>1762967351130</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1762967351130</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TerminalProjectNonSharedOptionsProvider">
     <envs>
-      <env key="GSID" value="IDE:webstorm:0df81bb19828487a82c76d8d6be45e96 IDETERM:webstorm:0df81bb19828487a82c76d8d6be45e96" />
+      <env key="GSID" value="IDE:webstorm:e35e8b438f6d4590880e6253d9fb559e IDETERM:webstorm:e35e8b438f6d4590880e6253d9fb559e" />
     </envs>
   </component>
   <component name="TypeScriptGeneratedFilesManager">
