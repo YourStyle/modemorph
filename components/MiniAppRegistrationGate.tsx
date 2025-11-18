@@ -65,10 +65,22 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const askFullscreen = (tg: any) => {
     if (fsTried.current) return
     fsTried.current = true
-    // Только expand, без fullscreen для всех платформ
+
     try {
-      tg?.expand?.()
-    } catch {}
+      // Вызываем expand для всех платформ
+      if (typeof tg?.expand === 'function') {
+        tg.expand()
+        console.log('[MiniAppRegistrationGate] expand() called')
+      }
+
+      // Вызываем requestFullscreen для мобильных платформ
+      if (typeof tg?.requestFullscreen === 'function') {
+        tg.requestFullscreen()
+        console.log('[MiniAppRegistrationGate] requestFullscreen() called')
+      }
+    } catch (error) {
+      console.error('[MiniAppRegistrationGate] Error calling expand/requestFullscreen:', error)
+    }
   }
 
   useEffect(() => {
