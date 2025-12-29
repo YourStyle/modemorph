@@ -1,8 +1,7 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { tmaHandshake } from "@/lib/tma/handshake"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
 import { NetworkError as NetworkErrorComponent } from "@/components/network-error"
@@ -12,52 +11,62 @@ declare global {
     Telegram?: {
       WebApp?: {
         platform?: string
-        version?: string
-        colorScheme?: string
         initData?: string
         initDataUnsafe?: Record<string, any>
-        isExpanded?: boolean
-        viewportStableHeight?: number
-        onEvent?: (event: string, cb: (...args: any[]) => void) => void
-        offEvent?: (event: string, cb: (...args: any[]) => void) => void
         ready: () => void
         expand?: () => void
-        requestFullscreen?: () => void
         setHeaderColor?: (c: string) => void
         setBackgroundColor?: (c: string) => void
         isVersionAtLeast?: (ver: string) => boolean
-        enableClosingConfirmation?: () => void
-        disableClosingConfirmation?: () => void
-        enableVerticalSwipes?: () => void
         disableVerticalSwipes?: () => void
+        enableClosingConfirmation?: () => void
       }
     }
   }
 }
 
-function detectTMA() {
-  console.log("[detectTMA] START")
-  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
-  console.log("[detectTMA] window.Telegram:", typeof window !== "undefined" ? window.Telegram : "window undefined")
-  console.log("[detectTMA] window.Telegram.WebApp:", tg)
+// Extract initData from URL hash (Telegram passes it there before SDK parses it)
+function getInitDataFromHash(): string | null {
+  if (typeof window === "undefined") return null
   
-  const hasInit = !!(tg?.initData && tg.initData.trim().length > 0)
-  const hasUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
-  const platformOk = !!tg?.platform && tg.platform !== "unknown"
+  const hash = window.location.hash
+  if (!hash) return null
   
-  console.log("[detectTMA] Results:", { 
-    hasTg: !!tg, 
-    hasInit, 
-    hasUser, 
-    platformOk, 
-    platform: tg?.platform, 
-    initDataLength: tg?.initData?.length,
-    initDataUnsafe: tg?.initDataUnsafe
-  })
+  // Parse tgWebAppData from hash
+  const match = hash.match(/tgWebAppData=([^&]+)/)
+  if (match) {
+    try {
+      return decodeURIComponent(match[1])
+    } catch {
+      return match[1]
+    }
+  }
+  return null
+}
+
+// Check if we're in TMA context
+function checkTMAContext(): { inTMA: boolean; initData: string | null; tg: typeof window.Telegram.WebApp | undefined } {
+  if (typeof window === "undefined") {
+    return { inTMA: false, initData: null, tg: undefined }
+  }
   
-  const result = { inTMA: !!tg && hasInit && hasUser && platformOk, tg }
-  console.log("[detectTMA] Final result inTMA:", result.inTMA)
-  return result
+  const tg = window.Telegram?.WebApp
+  
+  // Try to get initData from Telegram SDK first
+  let initData = tg?.initData?.trim() || null
+  
+  // If not available, try to extract from URL hash
+  if (!initData) {
+    initData = getInitDataFromHash()
+  }
+  
+  console.log("[TMA Check] tg:", !!tg, "initData length:", initData?.length || 0)
+  
+  if (!initData || initData.length === 0) {
+    return { inTMA: false, initData: null, tg }
+  }
+  
+  return { inTMA: true, initData, tg }
 }
 
 interface Props {
@@ -65,8 +74,6 @@ interface Props {
 }
 
 export default function MiniAppRegistrationGate({ children }: Props) {
-  console.log("[MiniAppRegistrationGate] Component rendering")
-  
   const router = useRouter()
   const pathname = usePathname()
   const onMiniReg = (pathname || "").startsWith("/auth/mini-registration")
@@ -74,133 +81,134 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const [ready, setReady] = useState(false)
   const [networkError, setNetworkError] = useState<string | null>(null)
 
-  const fsTried = useRef(false)
-  
-  console.log("[MiniAppRegistrationGate] State:", { ready, pathname, onMiniReg })
-
   useEffect(() => {
-    console.log("[MiniAppRegistrationGate] useEffect START")
+    console.log("[MiniAppRegistrationGate] Starting...")
     
     let cancelled = false
-    let redirecting = false
-    
+
     async function boot() {
-      console.log("[MiniAppRegistrationGate] boot() START")
-      
       try {
-        const { inTMA, tg } = detectTMA()
-
-        if (!inTMA || !tg) {
-          console.log("[MiniAppRegistrationGate] Not in TMA, skipping handshake. inTMA:", inTMA, "tg:", !!tg)
-          return
-        }
-
-        console.log("[MiniAppRegistrationGate] In TMA, starting handshake flow")
-
-        // init TMA
-        try {
-          tg.ready()
-          tg.setHeaderColor?.("#FFFFFF")
-          tg.setBackgroundColor?.("#0e0e10")
-        } catch (e) {
-          console.log("[MiniAppRegistrationGate] TG init error:", e)
-        }
-
-        // 1) Хэндшейк
-        let user = null
-        let handshakeAttempts = 0
-        const maxHandshakeAttempts = 3
-
-        while (!user && handshakeAttempts < maxHandshakeAttempts) {
-          handshakeAttempts++
-          console.log("[MiniAppRegistrationGate] Handshake attempt", handshakeAttempts)
-
-          try {
-            user = await tmaHandshake()
-            console.log("[MiniAppRegistrationGate] Handshake result:", user)
-            if (user) break
-            
-            if (handshakeAttempts < maxHandshakeAttempts) {
-              await new Promise(resolve => setTimeout(resolve, 1000))
-            }
-          } catch (error) {
-            console.error("[MiniAppRegistrationGate] Handshake error:", error)
-            if (handshakeAttempts < maxHandshakeAttempts) {
-              await new Promise(resolve => setTimeout(resolve, 1000))
-            }
-          }
-        }
-
-        if (!user) {
-          console.log("[MiniAppRegistrationGate] No user after handshake, redirecting")
-          if (!onMiniReg) {
-            redirecting = true
-            router.replace("/auth/mini-registration?from=tma")
-          }
-          return
-        }
-
-        // 3) Проверяем профиль
-        console.log("[MiniAppRegistrationGate] User authenticated, checking profile")
-
-        const accessToken = sessionAuth.getAccessToken()
-        if (!accessToken) {
-          console.log("[MiniAppRegistrationGate] No access token")
-          if (!onMiniReg) {
-            redirecting = true
-            router.replace("/auth/mini-registration?from=tma")
-          }
-          return
-        }
-
-        console.log("[MiniAppRegistrationGate] Fetching profile")
+        const { inTMA, initData, tg } = checkTMAContext()
         
-        try {
-          const profileResponse = await fetchWithRetry(
-            "/api/me/profile",
-            {
-              headers: { "Authorization": "Bearer " + accessToken },
-              cache: "no-store",
-            },
-            { timeout: 15000, retries: 3, retryDelay: 1000, backoff: true }
-          )
+        console.log("[MiniAppRegistrationGate] TMA check:", { inTMA, hasInitData: !!initData })
 
-          console.log("[MiniAppRegistrationGate] Profile response:", profileResponse.status)
+        if (!inTMA || !initData) {
+          console.log("[MiniAppRegistrationGate] Not in TMA, skipping handshake")
+          if (!cancelled) setReady(true)
+          return
+        }
 
-          if (profileResponse.ok) {
-            const profileData = await profileResponse.json()
-            console.log("[MiniAppRegistrationGate] Profile data:", profileData)
-            
-            if (!profileData.profile && !onMiniReg) {
-              redirecting = true
-              router.replace("/auth/mini-registration?from=tma")
-              return
+        console.log("[MiniAppRegistrationGate] In TMA! Doing handshake...")
+
+        // Initialize Telegram UI
+        if (tg) {
+          try {
+            tg.ready()
+            tg.expand?.()
+            tg.setHeaderColor?.("#FFFFFF")
+            tg.setBackgroundColor?.("#0e0e10")
+            tg.enableClosingConfirmation?.()
+            if (tg.isVersionAtLeast?.("7.7")) {
+              tg.disableVerticalSwipes?.()
             }
-          }
-        } catch (error) {
-          console.error("[MiniAppRegistrationGate] Profile error:", error)
-          if (error instanceof NetworkError || error instanceof TimeoutError) {
-            setNetworkError("Проблема с сетью")
-            return
+          } catch (e) {
+            console.log("[MiniAppRegistrationGate] TG UI init error:", e)
           }
         }
 
-        console.log("[MiniAppRegistrationGate] All checks passed")
+        // Do handshake - send initData to backend
+        console.log("[MiniAppRegistrationGate] Calling miniapp-session API...")
+        
+        const response = await fetchWithRetry(
+          "/api/auth/telegram/miniapp-session",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initData }),
+            cache: "no-store",
+          },
+          { timeout: 15000, retries: 2, retryDelay: 1000, backoff: true }
+        )
+
+        console.log("[MiniAppRegistrationGate] API response status:", response.status)
+
+        if (!response.ok) {
+          console.error("[MiniAppRegistrationGate] Handshake failed:", response.status)
+          if (!onMiniReg && !cancelled) {
+            router.replace("/auth/mini-registration?from=tma&error=handshake")
+          }
+          return
+        }
+
+        const data = await response.json()
+        console.log("[MiniAppRegistrationGate] Handshake response:", { hasSession: !!data.session, hasUser: !!data.user })
+
+        if (data.session && data.user) {
+          // Parse expiration
+          let expiresAt: number
+          const exp = data.session.expires_at
+          if (typeof exp === "number") {
+            expiresAt = exp < 2000000000 ? exp * 1000 : exp
+          } else if (typeof exp === "string") {
+            expiresAt = new Date(exp).getTime()
+          } else {
+            expiresAt = Date.now() + 3600000
+          }
+
+          // Save session
+          sessionAuth.saveSession({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+            user_id: data.user.id,
+            expires_at: expiresAt
+          })
+
+          console.log("[MiniAppRegistrationGate] Session saved for user:", data.user.id)
+
+          // Check profile
+          try {
+            const profileRes = await fetchWithRetry(
+              "/api/me/profile",
+              {
+                headers: { "Authorization": "Bearer " + data.session.access_token },
+                cache: "no-store",
+              },
+              { timeout: 10000, retries: 2 }
+            )
+
+            if (profileRes.ok) {
+              const profileData = await profileRes.json()
+              if (!profileData.profile && !onMiniReg && !cancelled) {
+                router.replace("/auth/mini-registration?from=tma")
+                return
+              }
+            }
+          } catch (e) {
+            console.log("[MiniAppRegistrationGate] Profile check error:", e)
+          }
+
+          console.log("[MiniAppRegistrationGate] All done, rendering app")
+        } else {
+          console.log("[MiniAppRegistrationGate] No session in response")
+          if (!onMiniReg && !cancelled) {
+            router.replace("/auth/mini-registration?from=tma")
+          }
+          return
+        }
+      } catch (error) {
+        console.error("[MiniAppRegistrationGate] Boot error:", error)
+        if (error instanceof NetworkError || error instanceof TimeoutError) {
+          if (!cancelled) setNetworkError("Проблема с сетью")
+          return
+        }
       } finally {
-        console.log("[MiniAppRegistrationGate] boot() finally, cancelled:", cancelled, "redirecting:", redirecting)
-        if (!cancelled && !redirecting) setReady(true)
+        if (!cancelled) setReady(true)
       }
     }
 
     boot()
-    
-    return () => {
-      console.log("[MiniAppRegistrationGate] useEffect cleanup")
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [router, pathname, onMiniReg])
-
-  console.log("[MiniAppRegistrationGate] Before render, ready:", ready, "networkError:", networkError)
 
   if (networkError) {
     return (
@@ -216,14 +224,12 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   }
 
   if (!ready) {
-    console.log("[MiniAppRegistrationGate] Rendering loader")
     return (
-      <div className="fixed inset-0 bg-[#f9fafb]/50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-[#f9fafb] flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
   }
-  
-  console.log("[MiniAppRegistrationGate] Rendering children")
+
   return <>{children}</>
 }

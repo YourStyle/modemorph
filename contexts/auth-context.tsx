@@ -1,7 +1,5 @@
 // contexts/auth-context.tsx
-// Поведение: редирект на /auth/login ТОЛЬКО после двух подряд 401 в окне времени.
-// Убрано авто-перенаправление при отсутствии user — остаёмся на странице,
-// пока не будет двух подряд 401 или «битого» токена.
+// TMA-aware authentication context
 
 "use client";
 
@@ -9,13 +7,14 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
+import { sessionAuth } from "@/lib/tma/session-auth";
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  trackUnauthorizedError: () => void; // вызывать при перехвате 401
+  trackUnauthorizedError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,23 +25,24 @@ function onAuthPage() {
   return p === "/auth/login" || p.startsWith("/auth/");
 }
 
-// Порог и окно для подряд идущих 401
-const UNAUTH_REDIRECT_THRESHOLD = 2;       // после двух подряд 401
-const UNAUTH_WINDOW_MS = 60_000;           // окно (мс), в течение которого учитываются подряд идущие 401
+// Check if we're in Telegram Mini App
+function isInTMA() {
+  if (typeof window === "undefined") return false;
+  const tg = window.Telegram?.WebApp;
+  return !!(tg?.initData && tg.initData.trim().length > 0);
+}
+
+const UNAUTH_REDIRECT_THRESHOLD = 2;
+const UNAUTH_WINDOW_MS = 60_000;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = useRef(createClient()).current;
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Флаг «идём на редирект», чтобы не зациклиться
   const redirectingRef = useRef(false);
-
-  // Счётчик подряд идущих 401 в окне времени
   const unauthorizedCountRef = useRef(0);
   const unauthorizedTimerRef = useRef<number | null>(null);
 
-  // Сброс счётчика подряд 401
   const resetUnauthorizedSeries = () => {
     unauthorizedCountRef.current = 0;
     if (unauthorizedTimerRef.current) {
@@ -51,12 +51,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Жёсткий выход + редирект на /auth/login?next=...
   const hardLogout = async () => {
-    if (redirectingRef.current) return
-      redirectingRef.current = true
-      try { await fetch("/api/auth/signout", { method: "POST", credentials: "include" }) } catch {}
-      setUser(null)
+    if (redirectingRef.current) return;
+    redirectingRef.current = true;
+    
+    try { 
+      await fetch("/api/auth/signout", { method: "POST", credentials: "include" });
+    } catch {}
+    
+    sessionAuth.clearSession();
+    setUser(null);
+
+    // In TMA, don't redirect to login page
+    if (isInTMA()) {
+      redirectingRef.current = false;
+      return;
+    }
 
     if (!onAuthPage() && typeof window !== "undefined") {
       const next = window.location.pathname + window.location.search;
@@ -66,55 +76,91 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Вызывать в местах, где перехватываются 401 (например, в fetch-обёртке)
   const trackUnauthorizedError = () => {
+    // In TMA mode, don't track 401s - MiniAppRegistrationGate handles auth
+    if (isInTMA()) return;
     if (onAuthPage()) return;
 
-    // Если окна ещё нет — создаём
     if (!unauthorizedTimerRef.current) {
       unauthorizedTimerRef.current = window.setTimeout(() => {
         resetUnauthorizedSeries();
       }, UNAUTH_WINDOW_MS);
     }
 
-    // Увеличиваем счётчик подряд идущих 401
     unauthorizedCountRef.current += 1;
 
-    // Если достигли порога — сбрасываем счётчик и уходим в hardLogout
     if (unauthorizedCountRef.current >= UNAUTH_REDIRECT_THRESHOLD) {
       resetUnauthorizedSeries();
       void hardLogout();
     }
   };
 
-    useEffect(() => {
-      const init = async () => {
-        try {
-          const res = await fetchWithRetry(
-            "/api/auth/me",
-            { credentials: "include" },
-            {
-              timeout: 8000,   // 8 секунд для проверки auth
-              retries: 1,      // 1 повторная попытка
-              retryDelay: 500
-            }
-          )
-          const json = await res.json().catch(() => null)
-          setUser(json?.user ?? null)        // это уже user из куки-сессии
-          resetUnauthorizedSeries()
-        } catch (error) {
-          console.log("[AuthProvider] Failed to check auth:", error)
-          setUser(null)
-        } finally {
-          setLoading(false)
+  useEffect(() => {
+    const init = async () => {
+      // In TMA mode, wait for MiniAppRegistrationGate to set up session
+      if (isInTMA()) {
+        console.log("[AuthProvider] In TMA mode, waiting for session...");
+        
+        // Wait up to 5 seconds for TMA session to be established
+        let attempts = 0;
+        while (attempts < 50) {
+          const token = sessionAuth.getAccessToken();
+          if (token) {
+            console.log("[AuthProvider] TMA session found");
+            break;
+          }
+          await new Promise(r => setTimeout(r, 100));
+          attempts++;
         }
-      }
-      init()
-    }, [])
 
-  // ВНИМАНИЕ: Предыдущий «фолбэк-редирект при !user» УДАЛЁН.
-  // Теперь вход на /auth/login происходит ТОЛЬКО через hardLogout, который вызывается
-  // после двух подряд 401 (trackUnauthorizedError) или при «битом» токене.
+        // Try to get user from session
+        const token = sessionAuth.getAccessToken();
+        if (token) {
+          try {
+            const res = await fetchWithRetry(
+              "/api/me/profile-session",
+              { 
+                headers: { "Authorization": "Bearer " + token },
+                cache: "no-store" 
+              },
+              { timeout: 8000, retries: 1, retryDelay: 500 }
+            );
+            const json = await res.json().catch(() => null);
+            setUser(json?.user ?? null);
+            resetUnauthorizedSeries();
+          } catch (error) {
+            console.log("[AuthProvider] TMA auth check failed:", error);
+            setUser(null);
+          }
+        } else {
+          console.log("[AuthProvider] No TMA session after waiting");
+          setUser(null);
+        }
+        
+        setLoading(false);
+        return;
+      }
+
+      // Regular cookie-based auth
+      try {
+        const res = await fetchWithRetry(
+          "/api/auth/me",
+          { credentials: "include" },
+          { timeout: 8000, retries: 1, retryDelay: 500 }
+        );
+        const json = await res.json().catch(() => null);
+        setUser(json?.user ?? null);
+        resetUnauthorizedSeries();
+      } catch (error) {
+        console.log("[AuthProvider] Failed to check auth:", error);
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    init();
+  }, []);
 
   const signOut = async () => {
     await hardLogout();
@@ -128,7 +174,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       setUser(null);
     } finally {
-      // успешное обновление профиля также можно трактовать как «сброс серии 401»
       resetUnauthorizedSeries();
     }
   };
