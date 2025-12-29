@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { tmaHandshake } from "@/lib/tma/handshake"
 import { sessionAuth } from "@/lib/tma/session-auth"
@@ -18,20 +18,14 @@ declare global {
         initDataUnsafe?: Record<string, any>
         isExpanded?: boolean
         viewportStableHeight?: number
-         // events
         onEvent?: (event: string, cb: (...args: any[]) => void) => void
         offEvent?: (event: string, cb: (...args: any[]) => void) => void
-
-
-        // lifecycle
         ready: () => void
         expand?: () => void
         requestFullscreen?: () => void
         setHeaderColor?: (c: string) => void
         setBackgroundColor?: (c: string) => void
         isVersionAtLeast?: (ver: string) => boolean
-
-         // NEW: жесты/закрытие
         enableClosingConfirmation?: () => void
         disableClosingConfirmation?: () => void
         enableVerticalSwipes?: () => void
@@ -42,12 +36,28 @@ declare global {
 }
 
 function detectTMA() {
-  console.log("[detectTMA] Checking Telegram WebApp...")
+  console.log("[detectTMA] START")
   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
+  console.log("[detectTMA] window.Telegram:", typeof window !== "undefined" ? window.Telegram : "window undefined")
+  console.log("[detectTMA] window.Telegram.WebApp:", tg)
+  
   const hasInit = !!(tg?.initData && tg.initData.trim().length > 0)
   const hasUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
   const platformOk = !!tg?.platform && tg.platform !== "unknown"
-  console.log("[detectTMA] Results:", { hasTg: !!tg, hasInit, hasUser, platformOk, platform: tg?.platform, initDataLength: tg?.initData?.length }); return { inTMA: !!tg && hasInit && hasUser && platformOk, tg }
+  
+  console.log("[detectTMA] Results:", { 
+    hasTg: !!tg, 
+    hasInit, 
+    hasUser, 
+    platformOk, 
+    platform: tg?.platform, 
+    initDataLength: tg?.initData?.length,
+    initDataUnsafe: tg?.initDataUnsafe
+  })
+  
+  const result = { inTMA: !!tg && hasInit && hasUser && platformOk, tg }
+  console.log("[detectTMA] Final result inTMA:", result.inTMA)
+  return result
 }
 
 interface Props {
@@ -55,6 +65,8 @@ interface Props {
 }
 
 export default function MiniAppRegistrationGate({ children }: Props) {
+  console.log("[MiniAppRegistrationGate] Component rendering")
+  
   const router = useRouter()
   const pathname = usePathname()
   const onMiniReg = (pathname || "").startsWith("/auth/mini-registration")
@@ -63,88 +75,64 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   const [networkError, setNetworkError] = useState<string | null>(null)
 
   const fsTried = useRef(false)
-  const askFullscreen = (tg: any) => {
-    if (fsTried.current) return
-    fsTried.current = true
-
-    try {
-      // Вызываем expand для всех платформ
-      if (typeof tg?.expand === 'function') {
-        tg.expand()
-        console.log('[MiniAppRegistrationGate] expand() called')
-      }
-
-      // Вызываем requestFullscreen для мобильных платформ
-      if (typeof tg?.requestFullscreen === 'function') {
-        tg.requestFullscreen()
-        console.log('[MiniAppRegistrationGate] requestFullscreen() called')
-      }
-    } catch (error) {
-      console.error('[MiniAppRegistrationGate] Error calling expand/requestFullscreen:', error)
-    }
-  }
+  
+  console.log("[MiniAppRegistrationGate] State:", { ready, pathname, onMiniReg })
 
   useEffect(() => {
+    console.log("[MiniAppRegistrationGate] useEffect START")
+    
     let cancelled = false
     let redirecting = false
+    
     async function boot() {
+      console.log("[MiniAppRegistrationGate] boot() START")
+      
       try {
         const { inTMA, tg } = detectTMA()
 
         if (!inTMA || !tg) {
-          console.log("[MiniAppRegistrationGate] Not in TMA, skipping handshake")
-          return // outside TMA — просто рендерим контент
+          console.log("[MiniAppRegistrationGate] Not in TMA, skipping handshake. inTMA:", inTMA, "tg:", !!tg)
+          return
         }
+
+        console.log("[MiniAppRegistrationGate] In TMA, starting handshake flow")
 
         // init TMA
         try {
           tg.ready()
-          const c = "#FFFFFF"
-          const bgC = "#0e0e10"
-          tg.setHeaderColor?.(c)
-          tg.setBackgroundColor?.(bgC)
-          document.body.style.backgroundColor = c
-        } catch {}
+          tg.setHeaderColor?.("#FFFFFF")
+          tg.setBackgroundColor?.("#0e0e10")
+        } catch (e) {
+          console.log("[MiniAppRegistrationGate] TG init error:", e)
+        }
 
-        askFullscreen(tg)
-        const once = () => askFullscreen(tg)
-        window.addEventListener("touchstart", once, { once: true, passive: true })
-        window.addEventListener("click", once, { once: true })
-
-        try { if (tg.isVersionAtLeast?.("7.7")) tg.disableVerticalSwipes?.() } catch {}
-
-        // Подтверждение закрытия
-        try { tg.enableClosingConfirmation?.() } catch {}
-
-        // 1) Хэндшейк с повторными попытками
+        // 1) Хэндшейк
         let user = null
         let handshakeAttempts = 0
         const maxHandshakeAttempts = 3
 
         while (!user && handshakeAttempts < maxHandshakeAttempts) {
           handshakeAttempts++
-          console.log(`[MiniAppRegistrationGate] Handshake attempt ${handshakeAttempts}/${maxHandshakeAttempts}`)
+          console.log("[MiniAppRegistrationGate] Handshake attempt", handshakeAttempts)
 
           try {
             user = await tmaHandshake()
+            console.log("[MiniAppRegistrationGate] Handshake result:", user)
             if (user) break
-
-            // Если не получилось, ждем перед повторной попыткой
+            
             if (handshakeAttempts < maxHandshakeAttempts) {
-              console.log(`[MiniAppRegistrationGate] Handshake failed, retrying in 1 second...`)
               await new Promise(resolve => setTimeout(resolve, 1000))
             }
           } catch (error) {
-            console.error(`[MiniAppRegistrationGate] Handshake attempt ${handshakeAttempts} error:`, error)
+            console.error("[MiniAppRegistrationGate] Handshake error:", error)
             if (handshakeAttempts < maxHandshakeAttempts) {
               await new Promise(resolve => setTimeout(resolve, 1000))
             }
           }
         }
 
-        // 2) Если нет пользователя после всех попыток — пускаем на форму ТОЛЬКО если мы не на ней
         if (!user) {
-          console.log("[MiniAppRegistrationGate] All handshake attempts failed, redirecting to registration")
+          console.log("[MiniAppRegistrationGate] No user after handshake, redirecting")
           if (!onMiniReg) {
             redirecting = true
             router.replace("/auth/mini-registration?from=tma")
@@ -152,113 +140,68 @@ export default function MiniAppRegistrationGate({ children }: Props) {
           return
         }
 
-        // 3) Проверяем профиль с session-based авторизацией
-        console.log("[MiniAppRegistrationGate] User authenticated, checking profile...")
+        // 3) Проверяем профиль
+        console.log("[MiniAppRegistrationGate] User authenticated, checking profile")
 
-        try {
-          const accessToken = sessionAuth.getAccessToken()
-          if (!accessToken) {
-            console.log("[MiniAppRegistrationGate] No access token, redirecting to registration")
-            if (!onMiniReg) {
-              redirecting = true
-              router.replace("/auth/mini-registration?from=tma")
-            }
-            return
+        const accessToken = sessionAuth.getAccessToken()
+        if (!accessToken) {
+          console.log("[MiniAppRegistrationGate] No access token")
+          if (!onMiniReg) {
+            redirecting = true
+            router.replace("/auth/mini-registration?from=tma")
           }
+          return
+        }
 
-          console.log("[MiniAppRegistrationGate] Fetching profile with access token")
-
-          // Используем универсальный API клиент или session-based endpoint
+        console.log("[MiniAppRegistrationGate] Fetching profile")
+        
+        try {
           const profileResponse = await fetchWithRetry(
             "/api/me/profile",
             {
-              headers: {
-                "Authorization": `Bearer ${accessToken}`
-              },
+              headers: { "Authorization": "Bearer " + accessToken },
               cache: "no-store",
             },
-            {
-              timeout: 15000,  // Увеличено до 15 секунд
-              retries: 3,      // Увеличено до 3 попыток
-              retryDelay: 1000,
-              backoff: true    // Экспоненциальная задержка
-            }
+            { timeout: 15000, retries: 3, retryDelay: 1000, backoff: true }
           )
 
-          console.log("[MiniAppRegistrationGate] Profile response status:", profileResponse.status)
+          console.log("[MiniAppRegistrationGate] Profile response:", profileResponse.status)
 
-          if (!profileResponse.ok) {
-            if (profileResponse.status === 401) {
-              // Токен недействителен, очищаем сессию и редиректим
-              console.log("[MiniAppRegistrationGate] Invalid token, clearing session")
-              sessionAuth.clearSession()
-              if (!onMiniReg) {
-                redirecting = true
-                router.replace("/auth/mini-registration?from=tma")
-                return
-              }
-            } else {
-              // Другая ошибка - логируем и пропускаем пользователя (fail-open)
-              console.log("[MiniAppRegistrationGate] Profile API error, allowing access (fail-open)")
-            }
-          } else {
+          if (profileResponse.ok) {
             const profileData = await profileResponse.json()
-            console.log("[MiniAppRegistrationGate] Profile data received:", {
-              hasProfile: !!profileData.profile,
-              profile: profileData.profile
-            })
-
-            // Если профиль не найден (новый пользователь) - редиректим на онбординг
-            if (!profileData.profile) {
-              console.log("[MiniAppRegistrationGate] No profile found, redirecting new user to registration")
-              if (!onMiniReg) {
-                redirecting = true
-                router.replace("/auth/mini-registration?from=tma")
-                return
-              }
-            } else {
-              console.log("[MiniAppRegistrationGate] Profile found, allowing access to app")
+            console.log("[MiniAppRegistrationGate] Profile data:", profileData)
+            
+            if (!profileData.profile && !onMiniReg) {
+              redirecting = true
+              router.replace("/auth/mini-registration?from=tma")
+              return
             }
           }
-
-          console.log("[MiniAppRegistrationGate] Profile check successful, allowing access")
         } catch (error) {
-          console.error("[MiniAppRegistrationGate] Profile check failed:", error)
-
-          // Обрабатываем сетевые ошибки
-          if (error instanceof NetworkError) {
-            if (error.isOffline) {
-              setNetworkError("Нет подключения к интернету")
-            } else {
-              setNetworkError("Проблема с сетью")
-            }
-            return
-          } else if (error instanceof TimeoutError) {
-            setNetworkError("Превышено время ожидания")
+          console.error("[MiniAppRegistrationGate] Profile error:", error)
+          if (error instanceof NetworkError || error instanceof TimeoutError) {
+            setNetworkError("Проблема с сетью")
             return
           }
-
-          // При других ошибках - пропускаем пользователя (fail-open подход)
-          console.log("[MiniAppRegistrationGate] Non-network error, allowing access (fail-open)")
         }
 
-
-        // 5) Всё ок — пропускаем детей
-        return
+        console.log("[MiniAppRegistrationGate] All checks passed")
       } finally {
-        // КРИТИЧНО: никогда не держать экран серым
+        console.log("[MiniAppRegistrationGate] boot() finally, cancelled:", cancelled, "redirecting:", redirecting)
         if (!cancelled && !redirecting) setReady(true)
       }
     }
 
     boot()
+    
     return () => {
+      console.log("[MiniAppRegistrationGate] useEffect cleanup")
       cancelled = true
     }
-  }, [router, pathname])
+  }, [router, pathname, onMiniReg])
 
+  console.log("[MiniAppRegistrationGate] Before render, ready:", ready, "networkError:", networkError)
 
-  // Показываем ошибку сети
   if (networkError) {
     return (
       <NetworkErrorComponent
@@ -266,7 +209,6 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         onRetry={() => {
           setNetworkError(null)
           setReady(false)
-          // Перезагружаем страницу для повторной попытки
           window.location.reload()
         }}
       />
@@ -274,15 +216,14 @@ export default function MiniAppRegistrationGate({ children }: Props) {
   }
 
   if (!ready) {
+    console.log("[MiniAppRegistrationGate] Rendering loader")
     return (
       <div className="fixed inset-0 bg-[#f9fafb]/50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     )
   }
-  return (
-    <>
-      {children}
-    </>
-  )
+  
+  console.log("[MiniAppRegistrationGate] Rendering children")
+  return <>{children}</>
 }
