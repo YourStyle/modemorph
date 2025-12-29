@@ -42,11 +42,12 @@ declare global {
 }
 
 function detectTMA() {
+  console.log("[detectTMA] Checking Telegram WebApp...")
   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
   const hasInit = !!(tg?.initData && tg.initData.trim().length > 0)
   const hasUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
   const platformOk = !!tg?.platform && tg.platform !== "unknown"
-  return { inTMA: !!tg && hasInit && hasUser && platformOk, tg }
+  console.log("[detectTMA] Results:", { hasTg: !!tg, hasInit, hasUser, platformOk, platform: tg?.platform, initDataLength: tg?.initData?.length }); return { inTMA: !!tg && hasInit && hasUser && platformOk, tg }
 }
 
 interface Props {
@@ -91,6 +92,7 @@ export default function MiniAppRegistrationGate({ children }: Props) {
         const { inTMA, tg } = detectTMA()
 
         if (!inTMA || !tg) {
+          console.log("[MiniAppRegistrationGate] Not in TMA, skipping handshake")
           return // outside TMA — просто рендерим контент
         }
 

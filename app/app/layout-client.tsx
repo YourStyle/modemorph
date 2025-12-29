@@ -25,28 +25,39 @@ export default function AppClientLayout({
 
   console.log("[AppClientLayout] Rendering with isOpen:", isOpen, "initialPhotos:", initialPhotos)
 
-  // Проверка авторизации
+  // Проверка авторизации с ожиданием handshake
   useEffect(() => {
+    let attempts = 0
+    const maxAttempts = 10 // 10 попыток по 500ms = 5 секунд ожидания
+    
     const checkAuth = () => {
+      attempts++
+      console.log(`[AppClientLayout] Auth check attempt ${attempts}/${maxAttempts}`)
+      
       // Проверяем есть ли валидная сессия
-      if (!sessionAuth.hasValidSession()) {
-        console.log("[AppClientLayout] No valid session, redirecting to /")
-        router.replace("/")
+      if (sessionAuth.hasValidSession()) {
+        const accessToken = sessionAuth.getAccessToken()
+        if (accessToken) {
+          console.log("[AppClientLayout] User is authorized")
+          setIsCheckingAuth(false)
+          return
+        }
+      }
+      
+      // Если не авторизован и ещё есть попытки - ждём handshake
+      if (attempts < maxAttempts) {
+        console.log("[AppClientLayout] No session yet, waiting for handshake...")
+        setTimeout(checkAuth, 500)
         return
       }
-
-      const accessToken = sessionAuth.getAccessToken()
-      if (!accessToken) {
-        console.log("[AppClientLayout] No access token, redirecting to /")
-        router.replace("/")
-        return
-      }
-
-      console.log("[AppClientLayout] User is authorized")
-      setIsCheckingAuth(false)
+      
+      // Превышено количество попыток
+      console.log("[AppClientLayout] Max attempts reached, redirecting to /")
+      router.replace("/")
     }
 
-    checkAuth()
+    // Небольшая задержка перед первой проверкой чтобы дать handshake время
+    setTimeout(checkAuth, 300)
   }, [router])
 
   // Показываем loader пока проверяем авторизацию

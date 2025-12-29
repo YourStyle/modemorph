@@ -15,11 +15,11 @@
 	# Базовые заголовки безопасности
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-		X-Frame-Options "DENY"
+		# Разрешаем iframe для Telegram Mini App
+		Content-Security-Policy "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer-when-downgrade"
+		# Убираем X-Frame-Options — используем CSP frame-ancestors
+		-X-Frame-Options
 	}
-	# Авто TLS: для локалки с DOMAIN=localhost Caddy сам будет без TLS, для домена — LE.
-	# Можно принудительно включить локальный TLS:
-	# tls internal
 }
