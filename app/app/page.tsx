@@ -297,7 +297,7 @@ export default function HomePage() {
         <div className="px-4 py-6">
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-2xl font-serif font-bold text-gray-900">Добро пожаловать</h1>
+            <h1 className="text-2xl font-serif font-bold text-gray-900">ТЕСТ КЭША v2</h1>
           </div>
 
           {/* Show wardrobe section only if user has less than 6 items */}

@@ -16,7 +16,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Mode Morph - Умный гардероб",
   description: "Создавайте стильные образы с помощью ИИ",
-  generator: 'v0.app'
+  generator: "v0.app"
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -28,10 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
+        <script src="https://cdn.jsdelivr.net/npm/eruda" />
+        <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />
       </head>
       <body className={`${inter.className} bg-gray-50`} suppressHydrationWarning>
         <TmaBodyClass/>
-        {/* MiniAppRegistrationGate FIRST - does TMA handshake before AuthProvider runs */}
         <MiniAppRegistrationGate>
           <AuthProvider>
             <SelectedItemsProvider>

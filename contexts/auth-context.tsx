@@ -1,5 +1,5 @@
 // contexts/auth-context.tsx
-// TMA-aware authentication context
+// TMA-aware authentication context with built-in handshake
 
 "use client";
 
@@ -25,11 +25,38 @@ function onAuthPage() {
   return p === "/auth/login" || p.startsWith("/auth/");
 }
 
-// Check if we're in Telegram Mini App
-function isInTMA() {
-  if (typeof window === "undefined") return false;
+// Get initData from URL hash (Telegram passes it there)
+function getInitDataFromHash(): string | null {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash;
+  if (!hash) return null;
+  const match = hash.match(/tgWebAppData=([^&]+)/);
+  if (match) {
+    try {
+      return decodeURIComponent(match[1]);
+    } catch {
+      return match[1];
+    }
+  }
+  return null;
+}
+
+// Get initData from SDK or hash
+function getInitData(): string | null {
+  if (typeof window === "undefined") return null;
+  
+  // Try SDK first
   const tg = window.Telegram?.WebApp;
-  return !!(tg?.initData && tg.initData.trim().length > 0);
+  if (tg?.initData && tg.initData.trim().length > 0) {
+    return tg.initData;
+  }
+  
+  // Fallback to hash
+  return getInitDataFromHash();
+}
+
+function isInTMA(): boolean {
+  return !!getInitData();
 }
 
 const UNAUTH_REDIRECT_THRESHOLD = 2;
@@ -42,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const redirectingRef = useRef(false);
   const unauthorizedCountRef = useRef(0);
   const unauthorizedTimerRef = useRef<number | null>(null);
+  const initDoneRef = useRef(false);
 
   const resetUnauthorizedSeries = () => {
     unauthorizedCountRef.current = 0;
@@ -62,7 +90,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionAuth.clearSession();
     setUser(null);
 
-    // In TMA, don't redirect to login page
     if (isInTMA()) {
       redirectingRef.current = false;
       return;
@@ -77,7 +104,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const trackUnauthorizedError = () => {
-    // In TMA mode, don't track 401s - MiniAppRegistrationGate handles auth
     if (isInTMA()) return;
     if (onAuthPage()) return;
 
@@ -96,44 +122,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    const init = async () => {
-      // In TMA mode, wait for MiniAppRegistrationGate to set up session
-      if (isInTMA()) {
-        console.log("[AuthProvider] In TMA mode, waiting for session...");
-        
-        // Wait up to 5 seconds for TMA session to be established
-        let attempts = 0;
-        while (attempts < 50) {
-          const token = sessionAuth.getAccessToken();
-          if (token) {
-            console.log("[AuthProvider] TMA session found");
-            break;
-          }
-          await new Promise(r => setTimeout(r, 100));
-          attempts++;
-        }
+    if (initDoneRef.current) return;
+    initDoneRef.current = true;
 
-        // Try to get user from session
-        const token = sessionAuth.getAccessToken();
-        if (token) {
-          try {
-            const res = await fetchWithRetry(
-              "/api/me/profile-session",
-              { 
-                headers: { "Authorization": "Bearer " + token },
-                cache: "no-store" 
-              },
-              { timeout: 8000, retries: 1, retryDelay: 500 }
-            );
-            const json = await res.json().catch(() => null);
-            setUser(json?.user ?? null);
-            resetUnauthorizedSeries();
-          } catch (error) {
-            console.log("[AuthProvider] TMA auth check failed:", error);
+    const init = async () => {
+      const initData = getInitData();
+      
+      console.log("[AuthProvider] Init, hasInitData:", !!initData);
+
+      if (initData) {
+        // TMA mode - do handshake
+        console.log("[AuthProvider] TMA mode - doing handshake...");
+        
+        try {
+          const response = await fetchWithRetry(
+            "/api/auth/telegram/miniapp-session",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ initData }),
+              cache: "no-store",
+            },
+            { timeout: 15000, retries: 2, retryDelay: 1000, backoff: true }
+          );
+
+          console.log("[AuthProvider] Handshake response:", response.status);
+
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data.session && data.user) {
+              // Parse expiration
+              let expiresAt: number;
+              const exp = data.session.expires_at;
+              if (typeof exp === "number") {
+                expiresAt = exp < 2000000000 ? exp * 1000 : exp;
+              } else if (typeof exp === "string") {
+                expiresAt = new Date(exp).getTime();
+              } else {
+                expiresAt = Date.now() + 3600000;
+              }
+
+              // Save session
+              sessionAuth.saveSession({
+                access_token: data.session.access_token,
+                refresh_token: data.session.refresh_token,
+                user_id: data.user.id,
+                expires_at: expiresAt
+              });
+
+              console.log("[AuthProvider] Session saved for user:", data.user.id);
+              setUser(data.user);
+              resetUnauthorizedSeries();
+            } else {
+              console.log("[AuthProvider] No session in response");
+              setUser(null);
+            }
+          } else {
+            console.log("[AuthProvider] Handshake failed:", response.status);
             setUser(null);
           }
-        } else {
-          console.log("[AuthProvider] No TMA session after waiting");
+        } catch (error) {
+          console.error("[AuthProvider] Handshake error:", error);
           setUser(null);
         }
         
