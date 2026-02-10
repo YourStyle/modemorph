@@ -4,13 +4,15 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { createClient } from "@/lib/supabase/client";
-import type { User } from "@supabase/supabase-js";
 import { fetchWithRetry } from "@/lib/fetch-with-retry";
 import { sessionAuth } from "@/lib/tma/session-auth";
 
+interface AuthUser {
+  id: string;
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -44,13 +46,13 @@ function getInitDataFromHash(): string | null {
 // Get initData from SDK or hash
 function getInitData(): string | null {
   if (typeof window === "undefined") return null;
-  
+
   // Try SDK first
   const tg = window.Telegram?.WebApp;
   if (tg?.initData && tg.initData.trim().length > 0) {
     return tg.initData;
   }
-  
+
   // Fallback to hash
   return getInitDataFromHash();
 }
@@ -63,9 +65,9 @@ const UNAUTH_REDIRECT_THRESHOLD = 2;
 const UNAUTH_WINDOW_MS = 60_000;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const supabase = useRef(createClient()).current;
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+
   const redirectingRef = useRef(false);
   const unauthorizedCountRef = useRef(0);
   const unauthorizedTimerRef = useRef<number | null>(null);
@@ -82,12 +84,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hardLogout = async () => {
     if (redirectingRef.current) return;
     redirectingRef.current = true;
-    
-    try { 
-      await fetch("/api/auth/signout", { method: "POST", credentials: "include" });
-    } catch {}
-    
+
+    // Read token before clearing session
+    const token = sessionAuth.getAccessToken();
     sessionAuth.clearSession();
+
+    // Also try server-side signout (best-effort)
+    try {
+      await fetch("/api/auth/signout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
+      });
+    } catch {}
+
     setUser(null);
 
     if (isInTMA()) {
@@ -127,13 +139,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const init = async () => {
       const initData = getInitData();
-      
+
       console.log("[AuthProvider] Init, hasInitData:", !!initData);
 
       if (initData) {
         // TMA mode - do handshake
         console.log("[AuthProvider] TMA mode - doing handshake...");
-        
+
         try {
           const response = await fetchWithRetry(
             "/api/auth/telegram/miniapp-session",
@@ -150,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           if (response.ok) {
             const data = await response.json();
-            
+
             if (data.session && data.user) {
               // Parse expiration
               let expiresAt: number;
@@ -186,30 +198,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error("[AuthProvider] Handshake error:", error);
           setUser(null);
         }
-        
+
         setLoading(false);
         return;
       }
 
-      // Regular cookie-based auth
-      try {
-        const res = await fetchWithRetry(
-          "/api/auth/me",
-          { credentials: "include" },
-          { timeout: 8000, retries: 1, retryDelay: 500 }
-        );
-        const json = await res.json().catch(() => null);
-        setUser(json?.user ?? null);
+      // Regular session-based auth (email login)
+      const userId = sessionAuth.getUserId();
+      if (userId) {
+        setUser({ id: userId });
         resetUnauthorizedSeries();
-      } catch (error) {
-        console.log("[AuthProvider] Failed to check auth:", error);
-        setUser(null);
-      } finally {
-        setLoading(false);
+      }
+      setLoading(false);
+    };
+
+    init();
+  }, []);
+
+  // Listen for session-expired events from api-client.ts
+  useEffect(() => {
+    const handler = () => {
+      setUser(null);
+      if (!onAuthPage()) {
+        void hardLogout();
       }
     };
-    
-    init();
+    window.addEventListener("auth:session-expired", handler);
+    return () => window.removeEventListener("auth:session-expired", handler);
   }, []);
 
   const signOut = async () => {
@@ -218,13 +233,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async () => {
     try {
-      const { data, error } = await supabase.auth.getUser();
-      if (error) setUser(null);
-      else setUser(data.user ?? null);
+      await sessionAuth.refreshAccessToken();
+      const userId = sessionAuth.getUserId();
+      setUser(userId ? { id: userId } : null);
+      resetUnauthorizedSeries();
     } catch {
       setUser(null);
-    } finally {
-      resetUnauthorizedSeries();
     }
   };
 

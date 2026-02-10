@@ -1,0 +1,39 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+.next
+out
+build
+
+# Git
+.git
+.gitignore
+
+# Environment
+.env
+.env*.local
+
+# IDE
+.idea
+.vscode
+*.swp
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+.pnpm-debug.log*
+
+# OS
+.DS_Store
+
+# Debug scripts
+*.cjs
+
+# Supabase local
+supabase
+
+# Misc
+*.tsbuildinfo
+next-env.d.ts

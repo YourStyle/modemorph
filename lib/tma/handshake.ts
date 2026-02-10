@@ -2,6 +2,7 @@
 // TMA авторизация через sessionStorage вместо cookies для Safari/iOS совместимости
 
 import { sessionAuth } from "./session-auth"
+import { parseSupabaseExpiry } from "@/lib/auth-utils"
 import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
 
 declare global {
@@ -26,15 +27,10 @@ export interface TMAUser {
 let handshakePromise: Promise<TMAUser | null> | null = null
 
 export async function tmaHandshake(): Promise<TMAUser | null> {
-  // Если handshake уже выполняется, ждем его результат
   if (handshakePromise) {
-    console.log("[TMA Handshake] Handshake already in progress, waiting...")
     return await handshakePromise
   }
 
-  console.log("[TMA Handshake] Starting handshake process")
-
-  // Запускаем новый handshake
   handshakePromise = performHandshake()
 
   try {
@@ -47,31 +43,22 @@ export async function tmaHandshake(): Promise<TMAUser | null> {
 }
 
 async function performHandshake(): Promise<TMAUser | null> {
-  // 1) Проверяем существующую сессию
-  console.log("[TMA Handshake] Checking for existing session")
+  // 1) Check existing session
   if (sessionAuth.hasValidSession()) {
     const userId = sessionAuth.getUserId()
     if (userId) {
-      console.log("[TMA Handshake] Using existing session for user:", userId)
       return { id: userId, telegram_id: userId }
     }
   }
 
-  // 2) Получаем initData из Telegram WebApp
+  // 2) Get initData from Telegram WebApp
   const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined
   const initData = tg?.initData || ""
 
-  if (!initData) {
-    console.log("[TMA Handshake] No initData available")
-    return null
-  }
-
-  console.log("[TMA Handshake] Creating new session from initData")
+  if (!initData) return null
 
   try {
-    // 3) Отправляем initData на сервер для создания сессии
-    console.log("[TMA Handshake] Sending request to create session...")
-
+    // 3) Create session from initData
     const response = await fetchWithRetry(
       "/api/auth/telegram/miniapp-session",
       {
@@ -97,38 +84,13 @@ async function performHandshake(): Promise<TMAUser | null> {
     const data = await response.json()
 
     if (data.session && data.user) {
-      // 4) Сохраняем сессию в sessionStorage
-      console.log("[TMA Handshake] Raw session data:", {
-        expires_at: data.session.expires_at,
-        expires_at_type: typeof data.session.expires_at
-      })
-
-      // Правильно парсим дату истечения
-      let expiresAt: number
-      if (typeof data.session.expires_at === 'number') {
-        // Если это timestamp, проверяем в секундах или миллисекундах
-        const timestamp = data.session.expires_at
-        // Если timestamp меньше 2000000000 (примерно 2033 год), то это секунды
-        expiresAt = timestamp < 2000000000 ? timestamp * 1000 : timestamp
-      } else if (typeof data.session.expires_at === 'string') {
-        // Если это строка ISO
-        expiresAt = new Date(data.session.expires_at).getTime()
-      } else {
-        // Fallback - устанавливаем 1 час от текущего времени
-        expiresAt = Date.now() + (60 * 60 * 1000)
-        console.warn("[TMA Handshake] Unknown expires_at format, using fallback")
-      }
-
-      console.log("[TMA Handshake] Parsed expires_at:", new Date(expiresAt).toISOString())
-
       sessionAuth.saveSession({
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
         user_id: data.user.id,
-        expires_at: expiresAt
+        expires_at: parseSupabaseExpiry(data.session.expires_at)
       })
 
-      console.log("[TMA Handshake] Session created successfully")
       return {
         id: data.user.id,
         telegram_id: data.user.user_metadata?.telegram_id || data.user.id,

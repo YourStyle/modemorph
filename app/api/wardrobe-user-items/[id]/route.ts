@@ -86,10 +86,21 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       return NextResponse.json({ error: "Item not found or access denied" }, { status: 404 })
     }
 
+    // Whitelist allowed fields to prevent mass assignment
+    const allowedFields = [
+      "item_name", "item_name_en", "description", "description_en",
+      "material", "color", "style", "has_print", "has_details",
+      "image_url", "is_hidden", "size_type", "shade", "url",
+      "notes", "clothing_type", "basic_item_id",
+    ]
+    const updateData = Object.fromEntries(
+      Object.entries(body).filter(([key]) => allowedFields.includes(key))
+    )
+
     // Обновляем вещь
     const { data, error: updateError } = await supabase
       .from("wardrobe_user_items")
-      .update(body)
+      .update(updateData)
       .eq("id", itemId)
       .eq("user_id", user.id) // Дополнительная проверка безопасности
       .select()

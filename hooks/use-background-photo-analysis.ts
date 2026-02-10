@@ -140,20 +140,27 @@ export function useBackgroundPhotoAnalysis() {
         // AI API URL
         const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
 
-        // Анализируем каждое фото напрямую через AI API
+        // Анализируем каждое фото напрямую через AI API (с таймаутом)
+        const FETCH_TIMEOUT_MS = 150_000 // 2.5 минуты
         const analysisPromises = files.map(async (file) => {
           const formData = new FormData()
           formData.append("image", file)
+
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
           try {
             const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
               method: "POST",
               body: formData,
+              signal: controller.signal,
               headers: {
                 Accept: "application/json",
                 Authorization: `Bearer ${accessToken}`,
               },
             })
+
+            clearTimeout(timeoutId)
 
             if (!response.ok) {
               throw new Error(`AI API error: ${response.status}`)
@@ -168,8 +175,12 @@ export function useBackgroundPhotoAnalysis() {
 
             return { success: true, data }
           } catch (error) {
-            console.error("Error analyzing photo:", error)
-            return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+            clearTimeout(timeoutId)
+            const message = error instanceof DOMException && error.name === "AbortError"
+              ? "Превышено время ожидания ответа от AI. Попробуйте позже."
+              : error instanceof Error ? error.message : "Unknown error"
+            console.error("Error analyzing photo:", message)
+            return { success: false, error: message }
           }
         })
 
@@ -179,41 +190,34 @@ export function useBackgroundPhotoAnalysis() {
         const allItems: any[] = []
         const errors: string[] = []
 
-        console.log("[useBackgroundPhotoAnalysis] Processing results:", results)
-
         for (const result of results) {
           if (result.success && Array.isArray(result.data)) {
-            console.log("[useBackgroundPhotoAnalysis] Adding items from result:", result.data)
             allItems.push(...result.data)
           } else if (!result.success && result.error) {
-            console.log("[useBackgroundPhotoAnalysis] Error in result:", result.error)
             errors.push(result.error)
           }
         }
-
-        console.log("[useBackgroundPhotoAnalysis] All items collected:", allItems)
 
         // Проверяем, есть ли items в результате
         if (allItems.length === 0) {
           throw new Error(errors[0] || "Не удалось найти вещи на фото")
         }
 
-        // ВАЖНО: НЕ загружаем изображения в S3 на этапе анализа
-        // Изображения будут загружены только при сохранении вещи в гардероб
-        console.log("[useBackgroundPhotoAnalysis] Processing complete, items ready for user selection")
+        // Images will be uploaded to S3 when the user saves the item, not during analysis
         const itemsWithImages = allItems.map(item => ({
           ...item,
-          // Сохраняем base64/URL без загрузки в S3
           finalImageUrl: item.image_url || item.img_url
         }))
-        console.log("[useBackgroundPhotoAnalysis] Items with temporary images:", itemsWithImages)
 
-        // Останавливаем таймер прогресса
         clearInterval(progressTimer)
         progressCompleted = true
 
-        // Моментально поднимаем до 100%
-        console.log("[useBackgroundPhotoAnalysis] Analysis complete, setting progress to 100%")
+        // IMPORTANT: Call onComplete BEFORE updating session status to "completed",
+        // because photo-analysis-form.tsx polls session status every 100ms and will
+        // stop loading when it sees "completed" — we must deliver results first.
+        if (onComplete) {
+          onComplete({ items: itemsWithImages })
+        }
 
         updateTask(taskId, {
           status: "completed",
@@ -225,20 +229,13 @@ export function useBackgroundPhotoAnalysis() {
           },
         })
 
-        // Обновляем сессию AI анализа с обработанными items
         if (sessionId) {
-          console.log("[useBackgroundPhotoAnalysis] Updating session", sessionId, "with items:", itemsWithImages)
           aiAnalysis.updateSession(sessionId, {
             status: "completed",
             items: itemsWithImages,
             progress: 100,
             progressText: "Готово!",
           })
-        }
-
-        if (onComplete) {
-          console.log("[useBackgroundPhotoAnalysis] Calling onComplete with items:", itemsWithImages)
-          onComplete({ items: itemsWithImages })
         }
 
         return { success: true, taskId, result: { items: itemsWithImages } }

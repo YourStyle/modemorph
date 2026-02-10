@@ -30,14 +30,9 @@ class ApiClient {
       headers['Content-Type'] = 'application/json'
     }
 
-    // Добавляем токен авторизации если есть
     const accessToken = sessionAuth.getAccessToken()
-    console.log('[API Client] getHeaders - accessToken:', accessToken ? `${accessToken.substring(0, 20)}...` : 'null')
     if (accessToken) {
       headers['Authorization'] = `Bearer ${accessToken}`
-      console.log('[API Client] Authorization header added')
-    } else {
-      console.warn('[API Client] No access token available - request will be unauthorized')
     }
 
     return headers
@@ -59,11 +54,9 @@ class ApiClient {
       method,
       headers: this.getHeaders(customHeaders, body),
       cache,
-      credentials: 'include' // Fallback для cookie-based endpoints
     }
 
     if (body && method !== 'GET') {
-      // Для FormData не применяем JSON.stringify
       if (body instanceof FormData) {
         config.body = body
       } else {
@@ -71,16 +64,26 @@ class ApiClient {
       }
     }
 
-    console.log(`[API Client] ${method} ${url} (attempt ${attempt + 1})`, { hasToken: !!sessionAuth.getAccessToken() })
-
     const response = await fetch(url, config)
+
+    // Handle 401 — attempt token refresh once
+    if (response.status === 401 && attempt === 0) {
+      try {
+        await sessionAuth.refreshAccessToken()
+        return this.requestWithRetry<T>(url, options, 1)
+      } catch {
+        sessionAuth.clearSession()
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('auth:session-expired'))
+        }
+      }
+    }
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => 'Unknown error')
       throw new Error(`API Error ${response.status}: ${errorText}`)
     }
 
-    // Проверяем, есть ли контент для парсинга
     const contentType = response.headers.get('content-type')
     if (contentType?.includes('application/json')) {
       return await response.json()

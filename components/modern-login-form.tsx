@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Loader2 } from "lucide-react"
 import Link from "next/link"
 import { sessionAuth } from "@/lib/tma/session-auth"
+import { parseSupabaseExpiry } from "@/lib/auth-utils"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
 
 export default function ModernLoginForm() {
@@ -51,23 +52,12 @@ export default function ModernLoginForm() {
 
       console.log("[ModernLoginForm] Login successful, saving session...")
 
-      // Парсим expires_at
-      let expiresAt: number
-      if (typeof data.session.expires_at === "number") {
-        const timestamp = data.session.expires_at
-        expiresAt = timestamp < 2000000000 ? timestamp * 1000 : timestamp
-      } else if (typeof data.session.expires_at === "string") {
-        expiresAt = new Date(data.session.expires_at).getTime()
-      } else {
-        expiresAt = Date.now() + 60 * 60 * 1000 // 1 час fallback
-      }
-
       // Сохраняем сессию в sessionStorage через sessionAuth
       sessionAuth.saveSession({
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
         user_id: data.user.id,
-        expires_at: expiresAt,
+        expires_at: parseSupabaseExpiry(data.session.expires_at),
       })
 
       console.log("[ModernLoginForm] Session saved, redirecting to home...")

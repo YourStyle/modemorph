@@ -8,7 +8,6 @@ import {Badge} from "@/components/ui/badge"
 import {Upload, X, Loader2, Check, Plus, AlertCircle} from "lucide-react"
 import {AIAssistantLoader} from "@/components/ai-assistant-loader"
 import Image from "next/image"
-import {createClient} from "@/lib/supabase/client"
 import {PhotoRegenerationModal} from "./photo-regeneration-modal"
 import {SubscriptionSheet} from "./subscription-sheet"
 import { api } from "@/lib/api-client"
@@ -16,7 +15,7 @@ import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
-import { type ResponseItem, type ItemWithImage, loadBasicItemImages } from "@/lib/image-processing"
+import { type ItemWithImage } from "@/lib/image-processing"
 
 interface RejectedPhoto {
     acceptable: false

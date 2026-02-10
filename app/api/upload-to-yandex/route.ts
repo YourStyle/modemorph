@@ -1,35 +1,29 @@
 import {type NextRequest, NextResponse} from "next/server"
 import {S3Client, PutObjectCommand} from "@aws-sdk/client-s3"
 
-const s3Client = new S3Client({
-    region: "ru-central1",
-    endpoint: "https://storage.yandexcloud.net",
-    credentials: {
-        accessKeyId: process.env.YANDEX_ACCESS_KEY_ID || "",
-        secretAccessKey: process.env.YANDEX_SECRET_ACCESS_KEY || "",
-    },
-})
-const BUCKET_NAME = process.env.YANDEX_BUCKET_NAME || ""
-
 export async function POST(request: NextRequest) {
     try {
-        console.log("Upload to Yandex API called")
         const formData = await request.formData()
         const file = formData.get("file") as File
         const folder = formData.get("folder") as string
         if (!file) {
-            console.error("No file provided")
             return NextResponse.json({success: false, error: "No file provided"}, {status: 400})
         }
         if (!folder) {
-            console.error("No folder provided")
             return NextResponse.json({success: false, error: "No folder provided"}, {status: 400})
         }
-        console.log("File details:", {name: file.name, size: file.size, type: file.type, folder: folder,})
-        if (!process.env.YANDEX_ACCESS_KEY_ID || !process.env.YANDEX_SECRET_ACCESS_KEY || !BUCKET_NAME) {
-            console.error("Missing Yandex S3 credentials")
+        if (!process.env.YANDEX_ACCESS_KEY_ID || !process.env.YANDEX_SECRET_ACCESS_KEY || !process.env.YANDEX_BUCKET_NAME) {
             return NextResponse.json({success: false, error: "Missing Yandex S3 credentials"}, {status: 500})
         }
+        const s3Client = new S3Client({
+            region: "ru-central1",
+            endpoint: "https://storage.yandexcloud.net",
+            credentials: {
+                accessKeyId: process.env.YANDEX_ACCESS_KEY_ID,
+                secretAccessKey: process.env.YANDEX_SECRET_ACCESS_KEY,
+            },
+        })
+        const BUCKET_NAME = process.env.YANDEX_BUCKET_NAME
         const timestamp = Date.now()
         const randomString = Math.random().toString(36).substring(2, 15)
         const fileExtension = file.name.split(".").pop()

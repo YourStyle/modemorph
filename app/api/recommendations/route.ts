@@ -1,31 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getAuthUser } from "@/lib/auth-server";
 
 export async function GET(req: NextRequest) {
     try {
-        // 1) Достаём JWT пользователя из заголовка Authorization: Bearer <token>
-        const token = req.headers.get("authorization")?.replace("Bearer ", "");
-        if (!token) {
+        const user = await getAuthUser(req);
+        if (!user) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // 2) Создаём authenticated-клиент (RLS будет применяться)
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-        const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-        const supabase = createClient(supabaseUrl, anonKey, {
-            global: { headers: { Authorization: `Bearer ${token}` } },
-        });
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+        const supabase = createClient(supabaseUrl, serviceKey);
 
-        // 3) Валидируем пользователя (и получаем user.id)
-        const {
-            data: { user },
-            error: userError,
-        } = await supabase.auth.getUser(token);
-        if (userError || !user) {
-            return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-        }
-
-        // 4) Берём самую свежую запись и вытаскиваем только run_date и look_sections
         const { data: row, error } = await supabase
             .from("main_recommendations")
             .select("run_date, look_sections")

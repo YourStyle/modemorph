@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { sessionAuth } from "@/lib/tma/session-auth";
+import { parseSupabaseExpiry } from "@/lib/auth-utils";
 
 /**
  * Telegram login button with session storage support.
@@ -35,23 +36,11 @@ export function TelegramLoginButton({
           const data = await res.json();
 
           if (data.session && data.user) {
-            // Правильно парсим дату истечения
-            let expiresAt: number;
-            if (typeof data.session.expires_at === 'number') {
-              const timestamp = data.session.expires_at;
-              expiresAt = timestamp < 2000000000 ? timestamp * 1000 : timestamp;
-            } else if (typeof data.session.expires_at === 'string') {
-              expiresAt = new Date(data.session.expires_at).getTime();
-            } else {
-              expiresAt = Date.now() + (60 * 60 * 1000); // 1 час
-            }
-
-            // Сохраняем сессию в sessionStorage
             sessionAuth.saveSession({
               access_token: data.session.access_token,
               refresh_token: data.session.refresh_token,
               user_id: data.user.id,
-              expires_at: expiresAt
+              expires_at: parseSupabaseExpiry(data.session.expires_at)
             });
 
             console.log("[Telegram Login] Session saved, redirecting to home");

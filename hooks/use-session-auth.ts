@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { sessionAuth } from '@/lib/tma/session-auth'
+import { parseSupabaseExpiry } from '@/lib/auth-utils'
 
 export interface AuthUser {
   id: string
@@ -63,22 +64,11 @@ export function useSessionAuth(): AuthState & {
 
   const login = (sessionData: { session: any, user: any }) => {
     try {
-      // Правильно парсим дату истечения
-      let expiresAt: number
-      if (typeof sessionData.session.expires_at === 'number') {
-        const timestamp = sessionData.session.expires_at
-        expiresAt = timestamp < 2000000000 ? timestamp * 1000 : timestamp
-      } else if (typeof sessionData.session.expires_at === 'string') {
-        expiresAt = new Date(sessionData.session.expires_at).getTime()
-      } else {
-        expiresAt = Date.now() + (60 * 60 * 1000) // 1 час
-      }
-
       sessionAuth.saveSession({
         access_token: sessionData.session.access_token,
         refresh_token: sessionData.session.refresh_token,
         user_id: sessionData.user.id,
-        expires_at: expiresAt
+        expires_at: parseSupabaseExpiry(sessionData.session.expires_at)
       })
 
       setState({

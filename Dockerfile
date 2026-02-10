@@ -1,58 +1,56 @@
-# syntax=docker/dockerfile:1.7-labs
-
 FROM node:20-alpine AS base
-ENV NODE_ENV=production \
-    NEXT_TELEMETRY_DISABLED=1
-WORKDIR /app
 
-# ---------------------------
-# deps
-# ---------------------------
+# Install dependencies only when needed
 FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /src
+
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 COPY package.json pnpm-lock.yaml* ./
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
-# ---------------------------
-# build
-# ---------------------------
+# Rebuild the source code only when needed
 FROM base AS builder
+WORKDIR /src
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /src/node_modules ./node_modules
 COPY . .
-ENV NODE_OPTIONS="--max-old-space-size=2048"
-RUN pnpm run build
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm prune --prod
 
-# ---------------------------
-# runtime (prod)
-# ---------------------------
-FROM node:20-alpine AS runner
-USER node
-ENV PORT=3000 HOSTNAME=0.0.0.0
-WORKDIR /app
-COPY --chown=node:node --from=builder /app/.next/standalone ./
-COPY --chown=node:node --from=builder /app/.next/static ./.next/static
-COPY --chown=node:node --from=builder /app/public ./public
+# NEXT_PUBLIC_* vars are inlined at build time
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG NEXT_PUBLIC_AI_API_URL
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ENV NEXT_PUBLIC_AI_API_URL=$NEXT_PUBLIC_AI_API_URL
+
+RUN pnpm run build
+
+# Production image, copy all the files and run next
+FROM base AS runner
+WORKDIR /src
+
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /src/public ./public
+
+RUN mkdir .next
+RUN chown nextjs:nodejs .next
+
+COPY --from=builder --chown=nextjs:nodejs /src/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /src/.next/static ./.next/static
+
+USER nextjs
+
 EXPOSE 3000
 
-# Health check для мониторинга состояния контейнера
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" || exit 1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000 || exit 1
 
 CMD ["node", "server.js"]
-
-# ---------------------------
-# dev (для next dev)
-# ---------------------------
-FROM base AS dev
-ENV NODE_ENV=development
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
-COPY package.json pnpm-lock.yaml* ./
-RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
-    pnpm install
-COPY . .
-EXPOSE 3000
-# команду переопределяем в compose: ["pnpm","dev"]

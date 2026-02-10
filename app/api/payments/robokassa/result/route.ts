@@ -5,14 +5,16 @@ import crypto from "crypto"
 
 const md5 = (s: string) => crypto.createHash("md5").update(s).digest("hex")
 
-// Admin client (обходит RLS)
-const admin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+export const dynamic = "force-dynamic"
 
 export async function POST(req: Request) {
   try {
+    // Admin client (обходит RLS) — создаём внутри хендлера, чтобы env vars
+    // читались в runtime, а не при сборке (где service key недоступен)
+    const admin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
     const form = await req.formData()
     const OutSum = String(form.get("OutSum") ?? "")
     const rawInv = String(form.get("InvId") ?? form.get("InvoiceID") ?? "")

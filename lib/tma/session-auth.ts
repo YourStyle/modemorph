@@ -1,5 +1,7 @@
 // lib/tma/session-auth.ts
-// Авторизация через sessionStorage для решения проблем с cookies в Safari/iOS
+// Session-based auth for Safari/iOS compatibility (cookies blocked in TMA)
+
+import { parseSupabaseExpiry } from "@/lib/auth-utils"
 
 interface TMASession {
   access_token: string
@@ -12,8 +14,8 @@ const SESSION_KEY = 'tma_session'
 
 export class TMASessionAuth {
   private static instance: TMASessionAuth | null = null
-  private inMemorySession: TMASession | null = null  // Fallback для Safari private mode
-  private storageAvailable: boolean | null = null    // Кэш проверки доступности
+  private inMemorySession: TMASession | null = null
+  private storageAvailable: boolean | null = null
 
   static getInstance(): TMASessionAuth {
     if (!TMASessionAuth.instance) {
@@ -22,191 +24,110 @@ export class TMASessionAuth {
     return TMASessionAuth.instance
   }
 
-  // Проверяем доступность sessionStorage (может быть недоступен в Safari private mode)
   private isStorageAvailable(): boolean {
-    // Используем кэшированное значение, если доступно
-    if (this.storageAvailable !== null) {
-      return this.storageAvailable
-    }
-
+    if (this.storageAvailable !== null) return this.storageAvailable
     if (typeof window === 'undefined') {
       this.storageAvailable = false
       return false
     }
-
     try {
       const test = '__storage_test__'
       sessionStorage.setItem(test, test)
       sessionStorage.removeItem(test)
       this.storageAvailable = true
       return true
-    } catch (e) {
+    } catch {
       console.warn('[SessionAuth] sessionStorage not available, using in-memory fallback')
       this.storageAvailable = false
       return false
     }
   }
 
-  // Сохранить сессию в sessionStorage
   saveSession(session: TMASession): void {
-    if (typeof window === 'undefined') {
-      console.log('[SessionAuth] Window undefined, cannot save session')
-      return
-    }
+    if (typeof window === 'undefined') return
 
-    console.log('[SessionAuth] Saving session:', {
-      user_id: session.user_id,
-      expires_at: new Date(session.expires_at).toISOString(),
-      has_access_token: !!session.access_token,
-      has_refresh_token: !!session.refresh_token
-    })
-
-    // Пробуем сохранить в sessionStorage
     if (this.isStorageAvailable()) {
       try {
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
-        console.log('[SessionAuth] Session saved to sessionStorage')
         return
       } catch (error) {
         console.error('[SessionAuth] Failed to save to sessionStorage:', error)
       }
     }
 
-    // Fallback: сохраняем в памяти
     this.inMemorySession = session
-    console.log('[SessionAuth] Session saved to memory (fallback)')
   }
 
-  // Получить сессию из sessionStorage
   getSession(): TMASession | null {
-    if (typeof window === 'undefined') {
-      console.log('[SessionAuth] Window undefined, cannot get session')
-      return null
-    }
+    if (typeof window === 'undefined') return null
 
-    // Сначала пробуем из sessionStorage
     if (this.isStorageAvailable()) {
       try {
         const stored = sessionStorage.getItem(SESSION_KEY)
-        console.log('[SessionAuth] Reading from sessionStorage:', !!stored)
-
         if (stored) {
           const session: TMASession = JSON.parse(stored)
-          console.log('[SessionAuth] Parsed session from storage:', {
-            user_id: session.user_id,
-            expires_at: new Date(session.expires_at).toISOString(),
-            has_access_token: !!session.access_token,
-            has_refresh_token: !!session.refresh_token,
-            is_expired: Date.now() >= session.expires_at
-          })
-
-          // Проверяем, не истекла ли сессия
           if (Date.now() >= session.expires_at) {
-            console.log('[SessionAuth] Session expired, clearing')
             this.clearSession()
             return null
           }
-
-          console.log('[SessionAuth] Valid session found in storage')
           return session
         }
       } catch (error) {
-        console.error('[SessionAuth] Failed to get session from storage:', error)
+        console.error('[SessionAuth] Failed to read session:', error)
       }
     }
 
-    // Fallback: проверяем in-memory сессию
     if (this.inMemorySession) {
-      console.log('[SessionAuth] Using in-memory session')
-
-      // Проверяем, не истекла ли сессия
       if (Date.now() >= this.inMemorySession.expires_at) {
-        console.log('[SessionAuth] In-memory session expired, clearing')
         this.inMemorySession = null
         return null
       }
-
       return this.inMemorySession
     }
 
-    console.log('[SessionAuth] No session found')
     return null
   }
 
-  // Очистить сессию
   clearSession(): void {
-    if (typeof window === 'undefined') {
-      console.log('[SessionAuth] Window undefined, cannot clear session')
-      return
-    }
+    if (typeof window === 'undefined') return
 
-    console.log('[SessionAuth] Clearing session')
-
-    // Очищаем sessionStorage
     if (this.isStorageAvailable()) {
       try {
         sessionStorage.removeItem(SESSION_KEY)
-        console.log('[SessionAuth] Session cleared from storage')
       } catch (error) {
-        console.error('[SessionAuth] Failed to clear session from storage:', error)
+        console.error('[SessionAuth] Failed to clear session:', error)
       }
     }
 
-    // Очищаем in-memory сессию
     this.inMemorySession = null
-    console.log('[SessionAuth] Session cleared from memory')
   }
 
-  // Проверить, есть ли валидная сессия
   hasValidSession(): boolean {
-    console.log('[SessionAuth] Checking if session is valid')
-    const hasValid = this.getSession() !== null
-    console.log('[SessionAuth] Has valid session:', hasValid)
-    return hasValid
+    return this.getSession() !== null
   }
 
-  // Получить access token для API запросов
   getAccessToken(): string | null {
-    console.log('[SessionAuth] Getting access token')
-    const session = this.getSession()
-    const token = session?.access_token || null
-    console.log('[SessionAuth] Access token available:', !!token)
-    return token
+    return this.getSession()?.access_token || null
   }
 
-  // Получить user ID
   getUserId(): string | null {
-    console.log('[SessionAuth] Getting user ID')
-    const session = this.getSession()
-    const userId = session?.user_id || null
-    console.log('[SessionAuth] User ID:', userId)
-    return userId
+    return this.getSession()?.user_id || null
   }
 
-  // Получить refresh token
   getRefreshToken(): string | null {
-    console.log('[SessionAuth] Getting refresh token')
-    const session = this.getSession()
-    const token = session?.refresh_token || null
-    console.log('[SessionAuth] Refresh token available:', !!token)
-    return token
+    return this.getSession()?.refresh_token || null
   }
 
-  // Обновить access token через refresh token
   async refreshAccessToken(): Promise<void> {
     const refreshToken = this.getRefreshToken()
     if (!refreshToken) {
       throw new Error('No refresh token available')
     }
 
-    console.log('[SessionAuth] Attempting to refresh access token')
-
     try {
       const response = await fetch('/api/auth/refresh', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refresh_token: refreshToken }),
       })
 
@@ -214,11 +135,14 @@ export class TMASessionAuth {
         throw new Error(`Refresh failed: ${response.status}`)
       }
 
-      const newSession = await response.json()
-      console.log('[SessionAuth] Token refreshed successfully')
+      const data = await response.json()
 
-      // Обновляем сессию с новыми токенами
-      this.saveSession(newSession)
+      this.saveSession({
+        access_token: data.access_token,
+        refresh_token: data.refresh_token,
+        user_id: data.user_id,
+        expires_at: parseSupabaseExpiry(data.expires_at),
+      })
     } catch (error) {
       console.error('[SessionAuth] Failed to refresh token:', error)
       this.clearSession()
@@ -226,38 +150,30 @@ export class TMASessionAuth {
     }
   }
 
-  // Debug функция для проверки состояния сессии
   debug(): void {
-    if (typeof window === 'undefined') {
-      console.log('[SessionAuth Debug] Window undefined - running on server')
-      return
-    }
-
+    if (typeof window === 'undefined') return
     try {
       const stored = sessionStorage.getItem(SESSION_KEY)
       if (!stored) {
         console.log('[SessionAuth Debug] No session in storage')
         return
       }
-
       const session: TMASession = JSON.parse(stored)
-      console.log('[SessionAuth Debug] Session details:', {
+      console.log('[SessionAuth Debug]', {
         user_id: session.user_id,
         expires_at: new Date(session.expires_at).toISOString(),
         is_expired: Date.now() >= session.expires_at,
         access_token_length: session.access_token?.length,
         refresh_token_length: session.refresh_token?.length,
-        raw_storage: stored.slice(0, 100) + '...'
       })
     } catch (error) {
-      console.error('[SessionAuth Debug] Error reading session:', error)
+      console.error('[SessionAuth Debug] Error:', error)
     }
   }
 }
 
 export const sessionAuth = TMASessionAuth.getInstance()
 
-// Глобальная функция для отладки
 if (typeof window !== 'undefined') {
   (window as any).debugTMASession = () => sessionAuth.debug()
 }
