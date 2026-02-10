@@ -16,6 +16,7 @@ interface AuthContextType {
   loading: boolean;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  reloadSession: () => void;
   trackUnauthorizedError: () => void;
 }
 
@@ -242,9 +243,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Re-read session from storage (call after external login saves session)
+  const reloadSession = () => {
+    const userId = sessionAuth.getUserId();
+    if (userId) {
+      setUser({ id: userId });
+      resetUnauthorizedSeries();
+    }
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, loading, signOut, refreshUser, trackUnauthorizedError }}
+      value={{ user, loading, signOut, refreshUser, reloadSession, trackUnauthorizedError }}
     >
       {children}
     </AuthContext.Provider>

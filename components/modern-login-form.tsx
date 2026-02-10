@@ -9,9 +9,11 @@ import Link from "next/link"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { parseSupabaseExpiry } from "@/lib/auth-utils"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
+import { useAuth } from "@/contexts/auth-context"
 
 export default function ModernLoginForm() {
   const router = useRouter()
+  const { reloadSession } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -60,9 +62,12 @@ export default function ModernLoginForm() {
         expires_at: parseSupabaseExpiry(data.session.expires_at),
       })
 
-      console.log("[ModernLoginForm] Session saved, redirecting to home...")
+      console.log("[ModernLoginForm] Session saved, updating auth context...")
 
-      // Редиректим на главную
+      // Notify AuthProvider about new session before navigating
+      reloadSession()
+
+      // Redirect to home
       router.push("/")
     } catch (err: any) {
       console.error("[ModernLoginForm] Login error:", err)
