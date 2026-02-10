@@ -295,11 +295,6 @@ export default function HomePage() {
   return (
       <div className="min-h-screen bg-gray-50 pb-10">
         <div className="px-4 py-6">
-          {/* Header */}
-          <div className="mb-8">
-            <h1 className="text-2xl font-serif font-bold text-gray-900">ТЕСТ КЭША v2</h1>
-          </div>
-
           {/* Show wardrobe section only if user has less than 6 items */}
           {showWardrobeSection && !itemsLoading && (
               <>

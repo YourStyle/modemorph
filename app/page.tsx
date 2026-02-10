@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth-context"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { AnimatedLanding } from "@/components/animated-landing"
 import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
@@ -9,115 +10,77 @@ import { NetworkError as NetworkErrorComponent } from "@/components/network-erro
 
 export default function HomePage() {
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(true)
+  const { user, loading: authLoading } = useAuth()
   const [showLanding, setShowLanding] = useState(false)
   const [networkError, setNetworkError] = useState<string | null>(null)
 
   useEffect(() => {
-    const checkAuthAndRedirect = async () => {
+    // Wait for AuthProvider to finish (including TMA handshake)
+    if (authLoading) return
+
+    // No user after auth completed — show landing
+    if (!user) {
+      console.log("[HomePage] No user after auth, showing landing")
+      setShowLanding(true)
+      return
+    }
+
+    // User authenticated — check profile and redirect
+    const checkProfileAndRedirect = async () => {
       try {
-        // Проверяем сессию через sessionAuth (работает и для TMA, и для email login)
-        if (sessionAuth.hasValidSession()) {
-          const userId = sessionAuth.getUserId()
-          if (userId) {
-            console.log("[HomePage] User authenticated via sessionAuth, checking profile...")
+        const accessToken = sessionAuth.getAccessToken()
+        if (!accessToken) {
+          console.log("[HomePage] No access token, redirecting to /app")
+          router.replace("/app")
+          return
+        }
 
-            const accessToken = sessionAuth.getAccessToken()
-            if (accessToken) {
-              // Выполняем запросы параллельно
-              const [profileResponse, userInfoResponse] = await Promise.all([
-                fetchWithRetry(
-                  "/api/me/profile",
-                  {
-                    headers: { "Authorization": `Bearer ${accessToken}` }
-                  },
-                  { timeout: 8000, retries: 2 }
-                ),
-                fetchWithRetry(
-                  "/api/me",
-                  {
-                    headers: { "Authorization": `Bearer ${accessToken}` }
-                  },
-                  { timeout: 8000, retries: 2 }
-                )
-              ])
+        console.log("[HomePage] User authenticated, checking profile...")
+        const response = await fetchWithRetry(
+          "/api/me",
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+          { timeout: 8000, retries: 2 }
+        )
 
-              if (profileResponse.ok && userInfoResponse.ok) {
-                const [profileData, userData] = await Promise.all([
-                  profileResponse.json(),
-                  userInfoResponse.json()
-                ])
-
-                // Проверяем is_admin независимо от наличия заполненного профиля
-                console.log("[HomePage] User data:", {
-                  hasProfile: !!profileData.profile,
-                  hasUserData: !!userData.profile,
-                  isAdmin: userData.profile?.is_admin
-                })
-
-                if (userData.profile?.is_admin) {
-                  console.log("[HomePage] Admin user, redirecting to /admin")
-                  router.replace("/admin")
-                  return
-                }
-
-                // Если есть профиль - идем в /app, если нет - тоже в /app (там будет онбординг)
-                console.log("[HomePage] Regular user, redirecting to /app")
-                router.replace("/app")
-                return
-              }
-            }
+        if (response.ok) {
+          const userData = await response.json()
+          if (userData.profile?.is_admin) {
+            console.log("[HomePage] Admin user, redirecting to /admin")
+            router.replace("/admin")
+            return
           }
         }
 
-        // Если нет сессии - показываем лендинг
-        console.log("[HomePage] No valid session, showing landing")
-        setShowLanding(true)
+        console.log("[HomePage] Regular user, redirecting to /app")
+        router.replace("/app")
       } catch (error) {
-        console.error("[HomePage] Error checking auth:", error)
+        console.error("[HomePage] Error checking profile:", error)
 
-        // Обрабатываем сетевые ошибки
         if (error instanceof NetworkError) {
-          if (error.isOffline) {
-            setNetworkError("Нет подключения к интернету")
-          } else {
-            setNetworkError("Проблема с сетью")
-          }
+          setNetworkError(error.isOffline ? "Нет подключения к интернету" : "Проблема с сетью")
           return
         } else if (error instanceof TimeoutError) {
           setNetworkError("Превышено время ожидания")
           return
         }
 
-        // При других ошибках показываем лендинг
-        setShowLanding(true)
-      } finally {
-        setIsLoading(false)
+        // On other errors still redirect to app
+        router.replace("/app")
       }
     }
 
-    checkAuthAndRedirect()
-  }, [router])
+    checkProfileAndRedirect()
+  }, [authLoading, user, router])
 
-  // Показываем ошибку сети
   if (networkError) {
     return (
       <NetworkErrorComponent
         message={networkError}
         onRetry={() => {
           setNetworkError(null)
-          setIsLoading(true)
           window.location.reload()
         }}
       />
-    )
-  }
-
-  if (isLoading) {
-    return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
     )
   }
 
@@ -125,10 +88,10 @@ export default function HomePage() {
     return <AnimatedLanding />
   }
 
-  // Показываем загрузку во время редиректа
+  // Show spinner while auth is loading or during redirect
   return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+    </div>
   )
 }

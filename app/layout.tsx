@@ -10,6 +10,7 @@ import { AuthProvider } from "@/contexts/auth-context"
 import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
 import TmaBodyClass from "@/components/TmaBodyClass"
 import VpnWarning from "@/components/vpn-warning"
+import ErudaDebug from "@/components/ErudaDebug"
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -28,10 +29,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
-        <script src="https://cdn.jsdelivr.net/npm/eruda" />
-        <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />
       </head>
       <body className={`${inter.className} bg-gray-50`} suppressHydrationWarning>
+        <ErudaDebug />
         <TmaBodyClass/>
         <MiniAppRegistrationGate>
           <AuthProvider>
