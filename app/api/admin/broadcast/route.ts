@@ -108,6 +108,9 @@ export async function POST(req: NextRequest) {
       if (!profileMap.get(authUser.id)) continue
 
       // Apply filter
+      if (filter?.type === "user" && filter?.user_id) {
+        if (authUser.id !== filter.user_id) continue
+      }
       if (filter?.type === "subscribers" && subscriberUserIds) {
         const pid = profileIdMap.get(authUser.id)
         if (!pid || !subscriberUserIds.has(pid)) continue
