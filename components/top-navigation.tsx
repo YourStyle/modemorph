@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { MapPin, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -22,6 +23,7 @@ interface UserProfile {
 }
 
 export function TopNavigation() {
+  const router = useRouter()
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [currentTime, setCurrentTime] = useState("")
@@ -107,6 +109,12 @@ export function TopNavigation() {
       const data = await api.get("/api/me/profile-session")
 
       if (data?.profile) {
+        // Redirect to onboarding if admin reset the flag
+        if (data.profile.onboarding_complete === false) {
+          router.push("/auth/mini-registration")
+          return
+        }
+
         setProfile({
           id: data.profile.id,
           full_name: data.profile.full_name,

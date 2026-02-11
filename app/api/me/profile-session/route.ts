@@ -96,20 +96,19 @@ export async function POST(req: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle()
 
-    const updateData = {
-      full_name: body.full_name || null,
-      gender: body.gender || null,
-      height: body.height ? Number.parseInt(body.height) : null,
-      weight: body.weight ? Number.parseInt(body.weight) : null,
-      top_size: body.top_size || null,
-      bottom_size: body.bottom_size || null,
-      shoe_size: body.shoe_size ? Number.parseInt(body.shoe_size) : null,
-      avatar_url: body.avatar_url || existingProfile?.avatar_url || null,
-      updated_at: new Date().toISOString(),
-    }
-
     if (existingProfile) {
-      // Обновляем существующий профиль
+      // Partial update: only update fields explicitly present in the request
+      const updateData: Record<string, any> = { updated_at: new Date().toISOString() }
+      if (body.full_name !== undefined) updateData.full_name = body.full_name || null
+      if (body.gender !== undefined) updateData.gender = body.gender || null
+      if (body.height !== undefined) updateData.height = body.height ? Number.parseInt(body.height) : null
+      if (body.weight !== undefined) updateData.weight = body.weight ? Number.parseInt(body.weight) : null
+      if (body.top_size !== undefined) updateData.top_size = body.top_size || null
+      if (body.bottom_size !== undefined) updateData.bottom_size = body.bottom_size || null
+      if (body.shoe_size !== undefined) updateData.shoe_size = body.shoe_size ? Number.parseInt(body.shoe_size) : null
+      if (body.avatar_url !== undefined) updateData.avatar_url = body.avatar_url || null
+      if (body.onboarding_complete !== undefined) updateData.onboarding_complete = body.onboarding_complete
+
       const { error } = await supabase
         .from("user_profiles")
         .update(updateData)
@@ -117,15 +116,25 @@ export async function POST(req: NextRequest) {
 
       if (error) throw error
     } else {
-      // Создаем новый профиль
+      // New profile: set all fields (missing ones default to null)
+      const insertData = {
+        user_id: user.id,
+        full_name: body.full_name || null,
+        gender: body.gender || null,
+        height: body.height ? Number.parseInt(body.height) : null,
+        weight: body.weight ? Number.parseInt(body.weight) : null,
+        top_size: body.top_size || null,
+        bottom_size: body.bottom_size || null,
+        shoe_size: body.shoe_size ? Number.parseInt(body.shoe_size) : null,
+        avatar_url: body.avatar_url || null,
+        is_admin: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+
       const { error } = await supabase
         .from("user_profiles")
-        .insert({
-          user_id: user.id,
-          ...updateData,
-          is_admin: false,
-          created_at: new Date().toISOString(),
-        })
+        .insert(insertData)
 
       if (error) throw error
     }

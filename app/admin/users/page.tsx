@@ -14,7 +14,7 @@ import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
 import { api } from "@/lib/api-client"
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts"
-import { Users, TrendingUp, Calendar, CreditCard, Loader2, Download } from "lucide-react"
+import { Users, TrendingUp, Calendar, CreditCard, Loader2, Download, RotateCcw } from "lucide-react"
 import * as XLSX from "xlsx"
 
 interface User {
@@ -191,6 +191,23 @@ export default function AdminUsersPage() {
       toast({
         title: "Ошибка",
         description: "Не удалось начислить кредиты/подписку",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleResetOnboarding = async (userId: string) => {
+    if (!confirm("Сбросить онбординг для этого пользователя?")) return
+    try {
+      await api.post("/api/admin/reset-onboarding", { userId })
+      toast({
+        title: "Успешно",
+        description: "Онбординг сброшен. Пользователь увидит форму при следующем входе.",
+      })
+    } catch {
+      toast({
+        title: "Ошибка",
+        description: "Не удалось сбросить онбординг",
         variant: "destructive",
       })
     }
@@ -449,6 +466,16 @@ export default function AdminUsersPage() {
                       </span>
                     </TableCell>
                     <TableCell>
+                      <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleResetOnboarding(user.user_id)}
+                        disabled={user.is_admin}
+                        title="Сбросить онбординг"
+                      >
+                        <RotateCcw className="h-4 w-4" />
+                      </Button>
                       <Dialog>
                         <DialogTrigger asChild>
                           <Button
@@ -514,6 +541,7 @@ export default function AdminUsersPage() {
                           </div>
                         </DialogContent>
                       </Dialog>
+                      </div>
                     </TableCell>
                   </TableRow>
                 )

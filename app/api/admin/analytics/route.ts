@@ -11,7 +11,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Используем service role для админских операций
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
@@ -21,7 +20,6 @@ export async function GET(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, serviceKey)
 
-    // Проверяем админские права
     const { data: profile } = await supabase
       .from("user_profiles")
       .select("is_admin")
@@ -33,68 +31,47 @@ export async function GET(req: NextRequest) {
     }
 
     const now = new Date()
-    const today = now.toISOString().split("T")[0]
     const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-    const last30DaysDate = last30Days.toISOString().split("T")[0]
-    const last7Days = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const last7DaysDate = last7Days.toISOString().split("T")[0]
+
+    // ==================== SINGLE BATCH: ALL EVENTS ====================
+    // Instead of 5 separate queries, fetch all relevant events in ONE query
+    const { data: allUserEvents } = await supabase
+      .from("user_events")
+      .select("event_type, user_profile_id, event_data, created_at")
+
+    const eventsByType = (type: string) =>
+      allUserEvents?.filter((e) => e.event_type === type) || []
 
     // ==================== ONBOARDING METRICS ====================
 
-    // Получаем события онбординга
-    const { data: onboardingEvents } = await supabase
-      .from("user_events")
-      .select("event_type, user_profile_id, created_at")
-      .in("event_type", [
-        "first_item_added",
-        "onboarding_complete",
-        "wardrobe_30_percent",
-        "wardrobe_50_percent",
-        "wardrobe_100_percent",
-      ])
-
     const onboardingMetrics = {
-      users_with_first_item: new Set(onboardingEvents?.filter((e) => e.event_type === "first_item_added").map((e) => e.user_profile_id)).size,
-      users_onboarding_complete: new Set(onboardingEvents?.filter((e) => e.event_type === "onboarding_complete").map((e) => e.user_profile_id)).size,
-      users_wardrobe_30: new Set(onboardingEvents?.filter((e) => e.event_type === "wardrobe_30_percent").map((e) => e.user_profile_id)).size,
-      users_wardrobe_50: new Set(onboardingEvents?.filter((e) => e.event_type === "wardrobe_50_percent").map((e) => e.user_profile_id)).size,
-      users_wardrobe_100: new Set(onboardingEvents?.filter((e) => e.event_type === "wardrobe_100_percent").map((e) => e.user_profile_id)).size,
+      users_with_first_item: new Set(eventsByType("first_item_added").map((e) => e.user_profile_id)).size,
+      users_onboarding_complete: new Set(eventsByType("onboarding_complete").map((e) => e.user_profile_id)).size,
+      users_wardrobe_30: new Set(eventsByType("wardrobe_30_percent").map((e) => e.user_profile_id)).size,
+      users_wardrobe_50: new Set(eventsByType("wardrobe_50_percent").map((e) => e.user_profile_id)).size,
+      users_wardrobe_100: new Set(eventsByType("wardrobe_100_percent").map((e) => e.user_profile_id)).size,
     }
 
     // ==================== AHA-MOMENT METRICS ====================
 
-    const { data: ahaMomentEvents } = await supabase
-      .from("user_events")
-      .select("event_type, user_profile_id, created_at")
-      .in("event_type", [
-        "first_outfit_generated",
-        "first_tryon_opened",
-        "recommendation_clicked",
-      ])
-
     const ahaMomentMetrics = {
-      users_first_outfit: new Set(ahaMomentEvents?.filter((e) => e.event_type === "first_outfit_generated").map((e) => e.user_profile_id)).size,
-      users_first_tryon: new Set(ahaMomentEvents?.filter((e) => e.event_type === "first_tryon_opened").map((e) => e.user_profile_id)).size,
-      users_clicked_recommendation: new Set(ahaMomentEvents?.filter((e) => e.event_type === "recommendation_clicked").map((e) => e.user_profile_id)).size,
+      users_first_outfit: new Set(eventsByType("first_outfit_generated").map((e) => e.user_profile_id)).size,
+      users_first_tryon: new Set(eventsByType("first_tryon_opened").map((e) => e.user_profile_id)).size,
+      users_clicked_recommendation: new Set(eventsByType("recommendation_clicked").map((e) => e.user_profile_id)).size,
     }
 
     // ==================== VALUE DELIVERY METRICS ====================
 
-    const { data: valueEvents } = await supabase
-      .from("user_events")
-      .select("event_type, user_profile_id, created_at")
-      .in("event_type", ["outfit_saved", "outfit_shared", "session_task_completed"])
-
+    const outfitSavedEvents = eventsByType("outfit_saved")
     const valueMetrics = {
-      total_outfits_saved: valueEvents?.filter((e) => e.event_type === "outfit_saved").length || 0,
-      users_saved_outfits: new Set(valueEvents?.filter((e) => e.event_type === "outfit_saved").map((e) => e.user_profile_id)).size,
-      total_outfits_shared: valueEvents?.filter((e) => e.event_type === "outfit_shared").length || 0,
-      total_tasks_completed: valueEvents?.filter((e) => e.event_type === "session_task_completed").length || 0,
+      total_outfits_saved: outfitSavedEvents.length,
+      users_saved_outfits: new Set(outfitSavedEvents.map((e) => e.user_profile_id)).size,
+      total_outfits_shared: eventsByType("outfit_shared").length,
+      total_tasks_completed: eventsByType("session_task_completed").length,
     }
 
-    // Repeat task rate - пользователи, которые сохраняли образы более 1 раза
     const outfitSavesByUser: Record<number, number> = {}
-    valueEvents?.filter((e) => e.event_type === "outfit_saved").forEach((e) => {
+    outfitSavedEvents.forEach((e) => {
       outfitSavesByUser[e.user_profile_id] = (outfitSavesByUser[e.user_profile_id] || 0) + 1
     })
     const repeatUsers = Object.values(outfitSavesByUser).filter((count) => count > 1).length
@@ -103,74 +80,47 @@ export async function GET(req: NextRequest) {
 
     // ==================== ENGAGEMENT METRICS ====================
 
-    const { data: engagementEvents } = await supabase
-      .from("user_events")
-      .select("event_type, user_profile_id, created_at")
-      .in("event_type", [
-        "ai_assistant_used",
-        "wardrobe_viewed",
-        "inspiration_viewed",
-      ])
-
+    const aiEvents = eventsByType("ai_assistant_used")
     const engagementMetrics = {
-      users_used_ai: new Set(engagementEvents?.filter((e) => e.event_type === "ai_assistant_used").map((e) => e.user_profile_id)).size,
-      total_ai_sessions: engagementEvents?.filter((e) => e.event_type === "ai_assistant_used").length || 0,
+      users_used_ai: new Set(aiEvents.map((e) => e.user_profile_id)).size,
+      total_ai_sessions: aiEvents.length,
     }
 
-    // ==================== RETENTION METRICS ====================
+    // ==================== RETENTION METRICS (BATCH) ====================
 
-    // Получаем всех пользователей и их даты регистрации
     const { data: allProfiles } = await supabase
       .from("user_profiles")
       .select("id, user_id, created_at")
 
-    // D1 Retention - пользователи вернувшиеся на следующий день
+    // Fetch ALL activity data in ONE query instead of 3N queries
+    const { data: allActivity } = await supabase
+      .from("daily_user_activity")
+      .select("user_profile_id, activity_date")
+
+    // Build lookup: profileId -> Set of activity dates
+    const activityByUser = new Map<number, Set<string>>()
+    allActivity?.forEach((a) => {
+      if (!activityByUser.has(a.user_profile_id)) {
+        activityByUser.set(a.user_profile_id, new Set())
+      }
+      activityByUser.get(a.user_profile_id)!.add(a.activity_date)
+    })
+
     const d1RetentionUsers = new Set<number>()
     const d7RetentionUsers = new Set<number>()
     const d30RetentionUsers = new Set<number>()
 
     if (allProfiles) {
-      for (const profile of allProfiles) {
-        const registrationDate = new Date(profile.created_at)
-        const d1Date = new Date(registrationDate.getTime() + 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-        const d7Date = new Date(registrationDate.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-        const d30Date = new Date(registrationDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
-
-        // Проверяем активность на D1
-        const { data: d1Activity } = await supabase
-          .from("daily_user_activity")
-          .select("id")
-          .eq("user_profile_id", profile.id)
-          .eq("activity_date", d1Date)
-          .limit(1)
-
-        if (d1Activity && d1Activity.length > 0) {
-          d1RetentionUsers.add(profile.id)
-        }
-
-        // Проверяем активность на D7
-        const { data: d7Activity } = await supabase
-          .from("daily_user_activity")
-          .select("id")
-          .eq("user_profile_id", profile.id)
-          .eq("activity_date", d7Date)
-          .limit(1)
-
-        if (d7Activity && d7Activity.length > 0) {
-          d7RetentionUsers.add(profile.id)
-        }
-
-        // Проверяем активность на D30
-        const { data: d30Activity } = await supabase
-          .from("daily_user_activity")
-          .select("id")
-          .eq("user_profile_id", profile.id)
-          .eq("activity_date", d30Date)
-          .limit(1)
-
-        if (d30Activity && d30Activity.length > 0) {
-          d30RetentionUsers.add(profile.id)
-        }
+      for (const p of allProfiles) {
+        const dates = activityByUser.get(p.id)
+        if (!dates) continue
+        const reg = new Date(p.created_at)
+        const d1 = new Date(reg.getTime() + 86400000).toISOString().split("T")[0]
+        const d7 = new Date(reg.getTime() + 7 * 86400000).toISOString().split("T")[0]
+        const d30 = new Date(reg.getTime() + 30 * 86400000).toISOString().split("T")[0]
+        if (dates.has(d1)) d1RetentionUsers.add(p.id)
+        if (dates.has(d7)) d7RetentionUsers.add(p.id)
+        if (dates.has(d30)) d30RetentionUsers.add(p.id)
       }
     }
 
@@ -184,37 +134,28 @@ export async function GET(req: NextRequest) {
       d30_users: d30RetentionUsers.size,
     }
 
-    // Среднее количество образов на активного пользователя
     const outfitsPerActiveUser = totalUsersWithOutfits > 0
       ? Math.round((valueMetrics.total_outfits_saved / totalUsersWithOutfits) * 10) / 10
       : 0
 
     // ==================== MONETIZATION METRICS ====================
 
-    const { data: monetizationEvents } = await supabase
-      .from("user_events")
-      .select("event_type, user_profile_id, event_data, created_at")
-      .in("event_type", [
-        "paywall_shown",
-        "conversion_to_premium",
-        "premium_feature_used",
-      ])
-
-    const paywallShownCount = monetizationEvents?.filter((e) => e.event_type === "paywall_shown").length || 0
-    const conversionsCount = monetizationEvents?.filter((e) => e.event_type === "conversion_to_premium").length || 0
+    const paywallEvents = eventsByType("paywall_shown")
+    const conversionEvents = eventsByType("conversion_to_premium")
+    const paywallShownCount = paywallEvents.length
+    const conversionsCount = conversionEvents.length
     const conversionRate = paywallShownCount > 0 ? Math.round((conversionsCount / paywallShownCount) * 100) : 0
 
     const monetizationMetrics = {
       paywall_shown: paywallShownCount,
       conversions_to_premium: conversionsCount,
       conversion_rate: conversionRate,
-      premium_users: new Set(monetizationEvents?.filter((e) => e.event_type === "conversion_to_premium").map((e) => e.user_profile_id)).size,
-      premium_feature_uses: monetizationEvents?.filter((e) => e.event_type === "premium_feature_used").length || 0,
+      premium_users: new Set(conversionEvents.map((e) => e.user_profile_id)).size,
+      premium_feature_uses: eventsByType("premium_feature_used").length,
     }
 
     // ==================== FUNNEL DATA ====================
 
-    // Воронка конверсии
     const funnelData = [
       { stage: "Регистрация", users: totalUsers },
       { stage: "Первая вещь", users: onboardingMetrics.users_with_first_item },
@@ -225,12 +166,7 @@ export async function GET(req: NextRequest) {
     ]
 
     // ==================== TIMELINE DATA ====================
-
-    // Динамика ключевых событий за последние 30 дней
-    const { data: allEvents } = await supabase
-      .from("user_events")
-      .select("event_type, created_at")
-      .gte("created_at", last30Days.toISOString())
+    // Use already-fetched allUserEvents, filter by date in JS
 
     const timelineData: Record<string, Record<string, number>> = {}
 
@@ -245,12 +181,12 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    allEvents?.forEach((event) => {
+    const last30DaysIso = last30Days.toISOString()
+    allUserEvents?.forEach((event) => {
+      if (event.created_at < last30DaysIso) return
       const dateStr = event.created_at.split("T")[0]
-      if (timelineData[dateStr]) {
-        if (event.event_type in timelineData[dateStr]) {
-          timelineData[dateStr][event.event_type]++
-        }
+      if (timelineData[dateStr] && event.event_type in timelineData[dateStr]) {
+        timelineData[dateStr][event.event_type]++
       }
     })
 

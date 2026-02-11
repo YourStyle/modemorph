@@ -22,6 +22,8 @@ import {
   Sparkles,
   DollarSign,
   BarChart3,
+  Send,
+  Bell,
 } from "lucide-react"
 
 export default function AdminLayout({
@@ -104,6 +106,8 @@ export default function AdminLayout({
     { href: "/admin/users", label: "Пользователи", icon: UserCheck },
     { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
     { href: "/admin/feature-costs", label: "Стоимость", icon: DollarSign },
+    { href: "/admin/broadcasts", label: "Рассылки", icon: Send },
+    { href: "/admin/reminders", label: "Напоминания", icon: Bell },
     { href: "/admin/settings", label: "Настройки", icon: Settings },
   ]
 

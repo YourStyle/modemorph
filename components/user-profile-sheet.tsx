@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { CommonSheet } from "./common-sheet"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { Switch } from "@/components/ui/switch"
 import { SubscriptionSheet } from "./subscription-sheet"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
@@ -70,6 +71,9 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   // Проверяем, запущено ли приложение в Telegram Mini App
   const isTMA = typeof window !== 'undefined' && window.Telegram?.WebApp?.initData
 
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true)
+  const [notificationsLoading, setNotificationsLoading] = useState(false)
+
   const [formData, setFormData] = useState({
     full_name: "",
     gender: "",
@@ -84,6 +88,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
     if (isOpen) {
       loadProfile()
       loadSubscriptionData()
+      loadNotificationPreference()
     }
   }, [isOpen])
 
@@ -135,6 +140,28 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
       setSubscriptionData(data)
     } catch {
       // ignore
+    }
+  }
+
+  const loadNotificationPreference = async () => {
+    try {
+      const data = await api.get("/api/me/notifications")
+      setNotificationsEnabled(data.notifications_enabled !== false)
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleToggleNotifications = async (enabled: boolean) => {
+    setNotificationsLoading(true)
+    try {
+      await api.patch("/api/me/notifications", { notifications_enabled: enabled })
+      setNotificationsEnabled(enabled)
+      toast.success(enabled ? "Уведомления включены" : "Уведомления отключены")
+    } catch {
+      toast.error("Не удалось обновить настройку")
+    } finally {
+      setNotificationsLoading(false)
     }
   }
 
@@ -238,12 +265,15 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none pb-40 safe-bottom-padding">
           <div className="space-y-6">
             <Tabs defaultValue="about" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-white">
+              <TabsList className="grid w-full grid-cols-3 bg-white">
                 <TabsTrigger value="about" className="text-gray-900">
                   Обо мне
                 </TabsTrigger>
                 <TabsTrigger value="avatars" className="text-gray-600">
                   Аватары
+                </TabsTrigger>
+                <TabsTrigger value="notifications" className="text-gray-600">
+                  Уведомления
                 </TabsTrigger>
               </TabsList>
 
@@ -481,6 +511,27 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                       ))}
                     </div>
                   </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="notifications" className="space-y-6 mt-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-1">
+                      <Label className="text-[#101010] text-base">Получать уведомления</Label>
+                      <p className="text-sm text-gray-500">
+                        Напоминания и рассылки через Telegram
+                      </p>
+                    </div>
+                    <Switch
+                      checked={notificationsEnabled}
+                      onCheckedChange={handleToggleNotifications}
+                      disabled={notificationsLoading}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Вы также можете отключить уведомления командой /mute в боте
+                  </p>
                 </div>
               </TabsContent>
             </Tabs>
