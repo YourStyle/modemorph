@@ -8,6 +8,7 @@ declare global {
       WebApp?: {
         ready: () => void
         expand?: () => void
+        requestFullscreen?: () => void
         setHeaderColor?: (c: string) => void
         setBackgroundColor?: (c: string) => void
         isVersionAtLeast?: (ver: string) => boolean
@@ -36,6 +37,10 @@ export default function MiniAppRegistrationGate({ children }: Props) {
       try {
         tg.ready()
         tg.expand?.()
+        // For TG Bot API 7.8+, request true fullscreen (needed for inline button launches)
+        if (tg.isVersionAtLeast?.("7.8")) {
+          tg.requestFullscreen?.()
+        }
         tg.setHeaderColor?.("#FFFFFF")
         tg.setBackgroundColor?.("#0e0e10")
         tg.enableClosingConfirmation?.()

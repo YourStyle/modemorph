@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { OutfitCard } from "@/components/outfit-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Sparkles, Star, Plus } from "lucide-react"
+import { Sparkles, Camera } from "lucide-react"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
 import { SubscriptionSheet } from "@/components/subscription-sheet";
@@ -286,116 +286,35 @@ export default function HomePage() {
     }
   }
 
-  // Show wardrobe section only if user has less than 6 items
-  const showWardrobeSection = userItemsCount < 6
-
-  // Calculate progress percentage
-  const progressPercentage = Math.min((userItemsCount / 6) * 100, 100)
-
   return (
       <div className="min-h-screen bg-gray-50 pb-10">
         <div className="px-4 py-6">
-          {/* Show wardrobe section only if user has less than 6 items */}
-          {showWardrobeSection && !itemsLoading && (
-              <>
-                {/* Progress Section - moved above video */}
-                <Card className="p-6 mb-6 bg-gradient-to-r from-gray-50 to-gray-100 border-0 shadow-sm">
-                  <CardContent className="p-0">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-2">
-                        <Star className="w-5 h-5 text-yellow-500 fill-current" />
-                        <h3 className="text-lg font-semibold text-gray-900">Разблокируйте весь потенциал</h3>
-                      </div>
-                      <span className="text-sm font-medium text-gray-600">{userItemsCount}/6</span>
-                    </div>
-
-                    {/* Progress Bar */}
-                    <div className="w-full bg-gray-200 rounded-full h-3 mb-4 overflow-hidden">
-                      <div
-                          className="bg-gradient-to-r from-gray-400 to-gray-500 h-3 rounded-full transition-all duration-500 ease-out"
-                          style={{ width: `${progressPercentage}%` }}
-                      />
-                    </div>
-
-                    {/* Slots Visualization */}
-                    <div className="flex justify-between mb-4">
-                      {[...Array(6)].map((_, index) => (
-                          <button
-                              key={index}
-                              onClick={() => {
-                                console.log("[HomePage] Opening sheet from wardrobe progress")
-                                openSheet()
-                              }}
-                              className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center transition-all duration-300 ${
-                                  index < userItemsCount
-                                      ? "bg-gray-200 border-gray-300 text-gray-600 cursor-default"
-                                      : "bg-gray-100 border-gray-200 border-dashed hover:border-gray-400 hover:bg-gray-50 cursor-pointer"
-                              }`}
-                          >
-                            {index < userItemsCount ? (
-                                <Star className="w-6 h-6 text-yellow-500 fill-current" />
-                            ) : (
-                                <Plus className="w-5 h-5 text-gray-400 hover:text-gray-600 transition-colors" />
-                            )}
-                          </button>
-                      ))}
-                    </div>
-
-                    <p className="text-sm text-gray-600 text-center">
-                      {userItemsCount === 0
-                          ? "Добавьте первую вещь, чтобы начать персонализацию!"
-                          : userItemsCount < 6
-                              ? `Ещё ${6 - userItemsCount} ${6 - userItemsCount === 1 ? "вещь" : "вещи"} до полной персонализации`
-                              : "🎉 Поздравляем! Теперь доступны все функции приложения"}
-                    </p>
-                  </CardContent>
-                </Card>
-
-                {/* Wardrobe Video */}
-                <div className="flex justify-center mb-8">
-                  <div className="relative">
-                    <div className="w-80 h-[28rem] bg-gradient-to-br from-gray-100 to-gray-200 rounded-3xl shadow-2xl flex items-center justify-center overflow-hidden">
-                      <video
-                          className="w-full h-full object-cover rounded-3xl"
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                          controls={false}
-                          preload="auto"
-                      >
-                        <source
-                            src="https://storage.yandexcloud.net/modemorphs3/static/main.mp4"
-                            type="video/mp4"
-                        />
-                        {/* Fallback for browsers without video support */}
-                        <div className="relative w-64 h-64">
-                          <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 rounded-2xl shadow-inner">
-                            <div className="absolute top-4 left-4 right-4 h-2 bg-gray-300 rounded-full"></div>
-                            <div className="absolute top-8 left-6 right-6 flex justify-between">
-                              <div className="w-8 h-24 bg-gradient-to-b from-green-200 to-green-300 rounded-lg shadow-sm"></div>
-                              <div className="w-8 h-20 bg-gradient-to-b from-blue-200 to-blue-300 rounded-lg shadow-sm"></div>
-                              <div className="w-8 h-28 bg-gradient-to-b from-yellow-200 to-yellow-300 rounded-lg shadow-sm"></div>
-                              <div className="w-8 h-22 bg-gradient-to-b from-pink-200 to-pink-300 rounded-lg shadow-sm"></div>
-                              <div className="w-8 h-26 bg-gradient-to-b from-purple-200 to-purple-300 rounded-lg shadow-sm"></div>
-                            </div>
-                            <div className="absolute bottom-8 left-6 right-6">
-                              <div className="grid grid-cols-2 gap-2">
-                                <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
-                                  <div className="w-4 h-4 bg-blue-400 rounded"></div>
-                                </div>
-                                <div className="h-8 bg-gradient-to-r from-gray-200 to-gray-300 rounded shadow-sm flex items-center justify-center">
-                                  <div className="w-6 h-3 bg-white rounded"></div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </video>
-                    </div>
+          {/* Upload card for users with less than 6 items */}
+          {userItemsCount < 6 && !itemsLoading && (
+              <Card className="mb-6 border-0 shadow-sm overflow-hidden">
+                <CardContent className="p-6 text-center">
+                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <Camera className="w-8 h-8 text-gray-600" />
                   </div>
-                </div>
-              </>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    {userItemsCount === 0
+                        ? "Оцифруйте свой гардероб"
+                        : "Добавьте ещё вещи"}
+                  </h3>
+                  <p className="text-sm text-gray-500 mb-5 max-w-[260px] mx-auto">
+                    {userItemsCount === 0
+                        ? "Сфотографируйте вещи — AI распознает их и добавит в ваш цифровой гардероб"
+                        : `У вас ${userItemsCount} ${userItemsCount === 1 ? "вещь" : userItemsCount < 5 ? "вещи" : "вещей"}. Добавьте больше для персональных рекомендаций`}
+                  </p>
+                  <Button
+                      onClick={() => openSheet()}
+                      className="bg-gray-900 hover:bg-gray-800 text-white rounded-xl px-6 py-2.5"
+                  >
+                    <Camera className="w-4 h-4 mr-2" />
+                    {userItemsCount === 0 ? "Добавить первую вещь" : "Добавить вещи"}
+                  </Button>
+                </CardContent>
+              </Card>
           )}
 
           {/* Outfit Suggestions - only for users with 6+ items */}

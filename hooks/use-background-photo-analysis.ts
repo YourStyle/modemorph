@@ -11,6 +11,40 @@ interface PhotoAnalysisOptions {
   onError?: (error: string) => void
 }
 
+/**
+ * Extract clothing items from various AI response formats.
+ * Handles:
+ * 1. Direct array of items: [{clothing_item: ...}, ...]
+ * 2. GPT response (n8n wraps in array): [{"choices":[{"message":{"content":"[...]"}}]}]
+ * 3. Single GPT response object: {"choices":[{"message":{"content":"[...]"}}]}
+ */
+function extractItemsFromResponse(data: any): any[] {
+  // Direct array of items (old format / direct AI response)
+  if (Array.isArray(data) && data.length > 0 && data[0].clothing_item) {
+    return data
+  }
+
+  // GPT response format: n8n wraps response in an outer array
+  let gptResponse = data
+  if (Array.isArray(data) && data.length > 0 && data[0]?.choices) {
+    gptResponse = data[0]
+  }
+
+  // Extract items from GPT choices[].message.content (stringified JSON)
+  if (gptResponse?.choices?.[0]?.message?.content) {
+    try {
+      const content = gptResponse.choices[0].message.content
+      const parsed = JSON.parse(content)
+      if (Array.isArray(parsed)) return parsed
+    } catch (e) {
+      console.warn("[extractItemsFromResponse] Failed to parse GPT content:", e)
+    }
+  }
+
+  // Fallback: return as-is
+  return Array.isArray(data) ? data : [data]
+}
+
 export function useBackgroundPhotoAnalysis() {
   const { addTask, updateTask } = useBackgroundTasks()
   const aiAnalysis = useAIAnalysis()
@@ -142,14 +176,27 @@ export function useBackgroundPhotoAnalysis() {
 
         // Анализируем каждое фото напрямую через AI API (с таймаутом)
         const FETCH_TIMEOUT_MS = 150_000 // 2.5 минуты
-        const analysisPromises = files.map(async (file) => {
+
+        console.log("[PhotoAnalysis] Starting analysis for", files.length, "files")
+        console.log("[PhotoAnalysis] AI URL:", aiApiUrl)
+        console.log("[PhotoAnalysis] Token present:", !!accessToken)
+
+        const analysisPromises = files.map(async (file, index) => {
           const formData = new FormData()
           formData.append("image", file)
+
+          console.log(`[PhotoAnalysis] File ${index}:`, {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+          })
 
           const controller = new AbortController()
           const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
           try {
+            console.log(`[PhotoAnalysis] Sending fetch to ${aiApiUrl}/ai-photo-parse for file ${index}`)
+
             const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
               method: "POST",
               body: formData,
@@ -162,24 +209,31 @@ export function useBackgroundPhotoAnalysis() {
 
             clearTimeout(timeoutId)
 
+            console.log(`[PhotoAnalysis] Response for file ${index}: status=${response.status}`)
+
             if (!response.ok) {
               throw new Error(`AI API error: ${response.status}`)
             }
 
             const data = await response.json()
 
+            console.log(`[PhotoAnalysis] Data received for file ${index}:`, typeof data, Array.isArray(data) ? `array(${data.length})` : "object")
+
+            // Extract items from potentially wrapped GPT response
+            const items = extractItemsFromResponse(data)
+
             // Проверяем на rejection
-            if (Array.isArray(data) && data.length > 0 && data[0].acceptable === false) {
-              return { success: false, error: data[0].reason, isRejection: true }
+            if (items.length > 0 && items[0].acceptable === false) {
+              return { success: false, error: items[0].reason, isRejection: true }
             }
 
-            return { success: true, data }
+            return { success: true, data: items }
           } catch (error) {
             clearTimeout(timeoutId)
             const message = error instanceof DOMException && error.name === "AbortError"
               ? "Превышено время ожидания ответа от AI. Попробуйте позже."
               : error instanceof Error ? error.message : "Unknown error"
-            console.error("Error analyzing photo:", message)
+            console.error(`[PhotoAnalysis] Error analyzing file ${index}:`, message, error)
             return { success: false, error: message }
           }
         })
