@@ -1,7 +1,8 @@
 "use client"
 
-import { Camera, Sparkles, Shirt, Eye } from "lucide-react"
+import { Camera, Sparkles, Eye } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import Image from "next/image"
 
 interface HomeHeroSectionProps {
   userItemsCount: number
@@ -18,10 +19,10 @@ export function HomeHeroSection({
   const progress = Math.min(userItemsCount / 6, 1)
 
   return (
-    <div className="mb-6 bg-white rounded-2xl shadow-lg overflow-hidden">
+    <div className="mb-6 bg-white rounded-2xl shadow-lg">
       {/* Gradient top bar */}
       <div
-        className="h-1"
+        className="h-1 rounded-t-2xl"
         style={{
           background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
         }}
@@ -40,6 +41,36 @@ export function HomeHeroSection({
             ? "Добавь вещи — и получи персональные образы от нейросети"
             : `Добавь ещё ${6 - userItemsCount} ${pluralItems(6 - userItemsCount)}, чтобы AI подобрал образы`}
         </p>
+
+        {/* Try-on photo showcase */}
+        <div className="relative flex justify-center items-center h-52 mb-6">
+          {/* Clothes flatlay — behind, tilted right */}
+          <div
+            className="absolute right-4 bottom-2 w-36 h-44 rounded-2xl overflow-hidden shadow-md"
+            style={{ transform: "rotate(5deg)", zIndex: 1 }}
+          >
+            <Image
+              src="/img_1.png"
+              alt="Вещи образа"
+              fill
+              className="object-cover"
+              sizes="144px"
+            />
+          </div>
+          {/* Girl photo — front, tilted left */}
+          <div
+            className="absolute left-4 bottom-0 w-40 h-52 rounded-2xl overflow-hidden shadow-lg"
+            style={{ transform: "rotate(-4deg)", zIndex: 2 }}
+          >
+            <Image
+              src="/img.png"
+              alt="Виртуальная примерка"
+              fill
+              className="object-cover"
+              sizes="160px"
+            />
+          </div>
+        </div>
 
         {/* Feature bullets */}
         <div className="space-y-3 mb-6">
