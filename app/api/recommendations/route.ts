@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAuthUser } from "@/lib/auth-server";
+import { filterSections } from "@/lib/recommendation-filters";
 
 export async function GET(req: NextRequest) {
     try {
@@ -45,7 +46,27 @@ export async function GET(req: NextRequest) {
             }
         };
 
-        const sections = normalize(row.look_sections);
+        const raw = normalize(row.look_sections);
+        const { sections, stats } = filterSections(raw, 2);
+
+        if (stats.totalRemoved > 0) {
+            console.log("[Recommendations GET] Filtered anomalies:", stats);
+
+            // Self-heal: write cleaned data back (fire-and-forget)
+            void supabase
+                .from("main_recommendations")
+                .update({ look_sections: sections })
+                .eq("user_id", user.id)
+                .eq("run_date", row.run_date)
+                .then(({ error: updateErr }) => {
+                    if (updateErr) {
+                        console.error("[Recommendations GET] Self-heal write failed:", updateErr);
+                    } else {
+                        console.log("[Recommendations GET] Self-heal: cleaned data written back");
+                    }
+                });
+        }
+
         return NextResponse.json(sections);
     } catch (e) {
         console.error("[Recommendations GET] Error:", e);

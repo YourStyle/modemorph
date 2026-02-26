@@ -67,7 +67,9 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
 
   if (!suggestion) return null
 
-  const items = suggestion.items || []
+  const items = (suggestion.items || []).filter(
+    (item) => item.image_url && item.image_url.trim().length > 0,
+  )
   const title = suggestion.title || "Без названия"
   const suggestedItemsCount = suggestion.suggested_items_count || 0
 

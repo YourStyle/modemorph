@@ -3,13 +3,15 @@
 import { useState, useEffect } from "react"
 import { OutfitCard } from "@/components/outfit-card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Sparkles, Camera } from "lucide-react"
+import { Card } from "@/components/ui/card"
+import { Sparkles } from "lucide-react"
+import { HomeHeroSection } from "@/components/home-hero-section"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
 import { SubscriptionSheet } from "@/components/subscription-sheet";
 import { api } from "@/lib/api-client";
 import { useAddToCloset } from "@/contexts/add-to-closet-context";
+import { filterSections } from "@/lib/recommendation-filters";
 
 
 interface OutfitItem {
@@ -239,7 +241,9 @@ export default function HomePage() {
               : [],
         }))
 
-        setOutfitSections(processedRecommendations)
+        // Client-side defensive filter
+        const { sections: cleaned } = filterSections(processedRecommendations, 2)
+        setOutfitSections(cleaned)
       } catch (error) {
         console.error("Error loading outfit suggestions:", error)
         setOutfitSections([])
@@ -277,7 +281,9 @@ export default function HomePage() {
             : [],
       }))
 
-      setOutfitSections(processedRecommendations)
+      // Client-side defensive filter
+      const { sections: cleaned } = filterSections(processedRecommendations, 2)
+      setOutfitSections(cleaned)
     } catch (error) {
       console.error("Error getting recommendations:", error)
       setOutfitSections([])
@@ -289,32 +295,13 @@ export default function HomePage() {
   return (
       <div className="min-h-screen bg-gray-50 pb-10">
         <div className="px-4 py-6">
-          {/* Upload card for users with less than 6 items */}
+          {/* Hero for users with less than 6 items */}
           {userItemsCount < 6 && !itemsLoading && (
-              <Card className="mb-6 border-0 shadow-sm overflow-hidden">
-                <CardContent className="p-6 text-center">
-                  <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <Camera className="w-8 h-8 text-gray-600" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    {userItemsCount === 0
-                        ? "Оцифруйте свой гардероб"
-                        : "Добавьте ещё вещи"}
-                  </h3>
-                  <p className="text-sm text-gray-500 mb-5 max-w-[260px] mx-auto">
-                    {userItemsCount === 0
-                        ? "Сфотографируйте вещи — AI распознает их и добавит в ваш цифровой гардероб"
-                        : `У вас ${userItemsCount} ${userItemsCount === 1 ? "вещь" : userItemsCount < 5 ? "вещи" : "вещей"}. Добавьте больше для персональных рекомендаций`}
-                  </p>
-                  <Button
-                      onClick={() => openSheet()}
-                      className="bg-gray-900 hover:bg-gray-800 text-white rounded-xl px-6 py-2.5"
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    {userItemsCount === 0 ? "Добавить первую вещь" : "Добавить вещи"}
-                  </Button>
-                </CardContent>
-              </Card>
+              <HomeHeroSection
+                  userItemsCount={userItemsCount}
+                  onAddItems={() => openSheet()}
+                  onExploreFeatures={() => setPaywallOpen(true)}
+              />
           )}
 
           {/* Outfit Suggestions - only for users with 6+ items */}
