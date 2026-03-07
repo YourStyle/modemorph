@@ -186,7 +186,7 @@ export default function InspirationPage(): ReactElement {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
 
-  const [userGender, setUserGender] = useState("")
+  const [userGender, setUserGender] = useState<string | null>(null)
   const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(() => getViewedOutfits())
 
   const [dailyViewsUsed, setDailyViewsUsed] = useState(0)
@@ -273,9 +273,10 @@ export default function InspirationPage(): ReactElement {
         const data = await api.get("/api/me/profile")
         const gender = data?.profile?.gender || ""
         console.log("[v0] User gender loaded:", gender)
-        setUserGender(gender)
+        setUserGender(gender) // "" means no gender set, will load all outfits
       } catch (err) {
         console.error(err)
+        setUserGender("") // fallback: load all outfits
       }
     }
     loadProfile()
@@ -283,19 +284,20 @@ export default function InspirationPage(): ReactElement {
 
   // Первичная загрузка
   useEffect(() => {
-    if (!userGender) {
-      console.log("[v0] No user gender, skipping outfits load")
+    if (userGender === null) {
+      // Profile not loaded yet — wait
       return
     }
 
-    console.log("[v0] Loading outfits for gender:", userGender)
+    console.log("[v0] Loading outfits for gender:", userGender || "(all)")
     let cancelled = false
     ;(async () => {
       try {
         setLoading(true)
         setError(null)
+        const genderParam = userGender ? `gender=${userGender}` : ""
         const [data, likedData] = await Promise.all([
-          api.get(`/api/outfits/inspiration?gender=${userGender}`),
+          api.get(`/api/outfits/inspiration?${genderParam}`),
           api.get("/api/user-likes").catch(() => ({ liked: [] })),
         ])
         const normalized = normalizeOutfits(data.outfits)
@@ -337,8 +339,9 @@ export default function InspirationPage(): ReactElement {
     if (!nextCursor || fetchingMore) return
     try {
       setFetchingMore(true)
+      const genderParam = userGender ? `&gender=${userGender}` : ""
       const data: ApiResponse = await api.get(
-          `/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}&gender=${userGender}`
+          `/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}${genderParam}`
       )
       const extra = normalizeOutfits(data.outfits)
       setOutfits((prev) => [...prev, ...extra])

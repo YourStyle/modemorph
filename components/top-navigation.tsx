@@ -122,25 +122,8 @@ export function TopNavigation() {
           is_admin: data.profile.is_admin || false,
         })
       } else if (data?.user) {
-        // Если профиля нет, но есть пользователь - создаем профиль через API
-        try {
-          await api.post("/api/profile/miniapp-upsert-session", {
-            full_name: data.user.user_metadata?.full_name || "",
-            avatar_url: data.user.user_metadata?.avatar_url || "",
-          })
-          // Перезагружаем профиль после создания
-          const newData = await api.get("/api/me/profile-session")
-          if (newData?.profile) {
-            setProfile({
-              id: newData.profile.id,
-              full_name: newData.profile.full_name,
-              avatar_url: newData.profile.avatar_url,
-              is_admin: newData.profile.is_admin || false,
-            })
-          }
-        } catch {
-          // ignore profile creation errors
-        }
+        // No profile yet — redirect to onboarding
+        router.push("/auth/mini-registration")
       }
     } catch {
       // ignore profile loading errors

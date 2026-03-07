@@ -38,13 +38,13 @@ export default function MiniRegistrationPage() {
   const checkOnboardingStatus = async () => {
     try {
       const data = await api.get("/api/me/profile-session")
-      if (data?.profile?.onboarding_complete !== false) {
-        // Already completed or no profile — go to app
-        router.replace("/app")
+      // Show onboarding if: no profile at all, or profile exists with onboarding_complete === false
+      if (!data?.profile || data.profile.onboarding_complete === false) {
+        setShowForm(true)
         return
       }
-      // onboarding_complete === false — show the form
-      setShowForm(true)
+      // Profile exists and onboarding is complete — go to app
+      router.replace("/app")
     } catch {
       // No auth / error — redirect to app (auth guard will handle it)
       router.replace("/app")
@@ -70,7 +70,7 @@ export default function MiniRegistrationPage() {
     setIsSubmitting(true)
 
     try {
-      // Save profile data
+      // Save profile data and mark onboarding as complete in one request
       await api.post("/api/me/profile-session", {
         gender: formData.gender || null,
         height: formData.height || null,
@@ -78,15 +78,9 @@ export default function MiniRegistrationPage() {
         top_size: formData.top_size || null,
         bottom_size: formData.bottom_size || null,
         shoe_size: formData.shoe_size || null,
-      })
-
-      // Mark onboarding as complete
-      await api.post("/api/me/profile-session", {
         onboarding_complete: true,
       })
 
-      // Small delay to avoid race conditions
-      await new Promise((resolve) => setTimeout(resolve, 300))
       router.replace("/app")
     } catch {
       alert("Не удалось сохранить профиль. Попробуйте ещё раз.")

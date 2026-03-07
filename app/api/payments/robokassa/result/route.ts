@@ -69,17 +69,33 @@ export async function POST(req: Request) {
     // 3) Бизнес-логика НАЧИСЛЕНИЙ — эквивалент твоего /api/user-subscription
 
     // Находим профиль пользователя
-    const { data: profile, error: profErr } = await admin
+    let { data: profile, error: profErr } = await admin
       .from("user_profiles")
       .select("id")
       .eq("user_id", payment.user_id)
-      .single()
+      .maybeSingle()
 
-    if (profErr || !profile) {
-      await admin.from("payments").update({
-        meta: { ...meta, post_applied:true, post_error:"profile_not_found" }
-      }).eq("invoice_id", invId)
-      return new Response(`OK${rawInv}`, { status:200 })
+    // Если профиль не найден — создаём минимальный, чтобы не терять оплату
+    if (!profile) {
+      const { data: newProfile, error: insertErr } = await admin
+        .from("user_profiles")
+        .insert({
+          user_id: payment.user_id,
+          is_admin: false,
+          onboarding_complete: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single()
+
+      if (insertErr || !newProfile) {
+        await admin.from("payments").update({
+          meta: { ...meta, post_applied:true, post_error:`profile_create:${insertErr?.message || "unknown"}` }
+        }).eq("invoice_id", invId)
+        return new Response(`OK${rawInv}`, { status:200 })
+      }
+      profile = newProfile
     }
 
     if (meta?.action === "subscribe") {
