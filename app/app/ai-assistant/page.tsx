@@ -285,7 +285,7 @@ export default function AIAssistantPage() {
       }
       const envUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
       const aiBaseUrl = envUrl.replace(/\/webhook\/?$/, "")
-      const requestUrl = `${aiBaseUrl}/webhook-test/user-prompt-rec`
+      const requestUrl = `${aiBaseUrl}/webhook/user-prompt-rec`
       const authToken = await getAuthToken()
 
       console.log("Sending request to AI API:", { url: requestUrl, userId: currentUserId, promptLength: messageToSend.length, weather: safeWeather })

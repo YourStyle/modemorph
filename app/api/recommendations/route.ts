@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
 
         console.log("[Recommendations POST] Triggering AI generation for user:", user.id, "weather:", weather);
 
-        const response = await fetch(`${aiBaseUrl}/webhook-test/recommendations`, {
+        const response = await fetch(`${aiBaseUrl}/webhook/recommendations`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
