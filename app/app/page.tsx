@@ -252,11 +252,10 @@ export default function HomePage() {
       }
     }
 
-    // Only load suggestions if user items count is loaded and user has 6+ items
-    if (!itemsLoading && userItemsCount >= 6) {
+    // Load suggestions if user has at least 1 item
+    if (!itemsLoading && userItemsCount >= 1) {
       loadOutfitSuggestions()
-    } else if (!itemsLoading && userItemsCount < 6) {
-      // For users with less than 6 items, don't load recommendations
+    } else if (!itemsLoading) {
       setLoading(false)
     }
   }, [itemsLoading, userItemsCount])
@@ -264,12 +263,12 @@ export default function HomePage() {
   const handleGetRecommendations = async () => {
     setRecommendationsLoading(true)
     try {
-      console.log("Manual recommendation request to database")
+      console.log("Triggering AI recommendation generation")
 
-      const recommendations = await api.get("/api/recommendations")
-      console.log("Manual recommendations received from database:", recommendations)
+      // POST triggers actual AI generation, not just DB read
+      const recommendations = await api.post("/api/recommendations", {})
+      console.log("AI recommendations generated:", recommendations)
 
-      // Ensure recommendations is an array and has proper structure
       const validRecommendations = Array.isArray(recommendations) ? recommendations : []
       const processedRecommendations = validRecommendations.map((section) => ({
         ...section,
@@ -281,7 +280,6 @@ export default function HomePage() {
             : [],
       }))
 
-      // Client-side defensive filter
       const { sections: cleaned } = filterSections(processedRecommendations, 2)
       setOutfitSections(cleaned)
     } catch (error) {
@@ -295,8 +293,8 @@ export default function HomePage() {
   return (
       <div className="min-h-screen bg-gray-50 pb-10">
         <div className="px-4 py-6">
-          {/* Hero for users with less than 6 items */}
-          {userItemsCount < 6 && !itemsLoading && (
+          {/* Hero for users with no items */}
+          {userItemsCount === 0 && !itemsLoading && (
               <HomeHeroSection
                   userItemsCount={userItemsCount}
                   onAddItems={() => openSheet()}
@@ -304,8 +302,8 @@ export default function HomePage() {
               />
           )}
 
-          {/* Outfit Suggestions - only for users with 6+ items */}
-          {userItemsCount >= 6 && (
+          {/* Outfit Suggestions - for users with at least 1 item */}
+          {userItemsCount >= 1 && (
               <>
                 {loading || itemsLoading ? (
                     <RecommendationsSkeleton />

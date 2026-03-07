@@ -15,9 +15,6 @@ export function HomeHeroSection({
   onAddItems,
   onExploreFeatures,
 }: HomeHeroSectionProps) {
-  const isZero = userItemsCount === 0
-  const progress = Math.min(userItemsCount / 6, 1)
-
   return (
     <div className="mb-6 bg-white rounded-2xl shadow-lg">
       {/* Gradient top bar */}
@@ -31,15 +28,11 @@ export function HomeHeroSection({
       <div className="p-6">
         {/* Heading */}
         <h2 className="text-2xl font-bold mb-2" style={{ color: "#101010" }}>
-          {isZero
-            ? "Твой AI-стилист в кармане"
-            : "Ещё немного — и AI подберёт образы"}
+          Твой AI-стилист в кармане
         </h2>
 
         <p className="text-sm text-gray-500 mb-6">
-          {isZero
-            ? "Добавь вещи — и получи персональные образы от нейросети"
-            : `Добавь ещё ${6 - userItemsCount} ${pluralItems(6 - userItemsCount)}, чтобы AI подобрал образы`}
+          Добавь вещи — и получи персональные образы от нейросети
         </p>
 
         {/* Try-on photo showcase */}
@@ -91,29 +84,6 @@ export function HomeHeroSection({
           />
         </div>
 
-        {/* Progress bar for 1-5 items */}
-        {!isZero && (
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700">
-                Прогресс гардероба
-              </span>
-              <span className="text-sm font-semibold" style={{ color: "#89AEFF" }}>
-                {userItemsCount}/6
-              </span>
-            </div>
-            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{
-                  width: `${progress * 100}%`,
-                  background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-                }}
-              />
-            </div>
-          </div>
-        )}
-
         {/* CTA Button */}
         <Button
           onClick={onAddItems}
@@ -123,7 +93,7 @@ export function HomeHeroSection({
           }}
         >
           <Camera className="w-5 h-5 mr-2" />
-          {isZero ? "Добавить первую вещь" : "Добавить вещи"}
+          Добавить первую вещь
         </Button>
 
         {/* Secondary link */}
@@ -172,8 +142,3 @@ function FeatureBullet({
 
 // ─── Helpers ────────────────────────────────────────────────────
 
-function pluralItems(n: number): string {
-  if (n === 1) return "вещь"
-  if (n >= 2 && n <= 4) return "вещи"
-  return "вещей"
-}

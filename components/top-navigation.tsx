@@ -239,19 +239,23 @@ export function TopNavigation() {
                 </span>
               )}
 
-              {/* Аватар профиля, ещё чуть компактнее */}
-              {profile && (
-                <Avatar className="w-5 h-5 ml-1">
+              {/* Аватар профиля */}
+              {profile ? (
+                <Avatar className="w-7 h-7 ml-1 ring-2 ring-blue-400/60 ring-offset-1 ring-offset-background/80">
                   <AvatarImage
                     src={profile.avatar_url ?? undefined}
                     alt={profile.full_name ?? "User"}
                   />
-                  <AvatarFallback className="text-[10px]">
+                  <AvatarFallback className="text-xs bg-blue-500 text-white font-semibold">
                     {profile.full_name
                       ? profile.full_name.charAt(0).toUpperCase()
                       : "U"}
                   </AvatarFallback>
                 </Avatar>
+              ) : (
+                <div className="w-7 h-7 ml-1 rounded-full bg-blue-500/20 ring-2 ring-blue-400/60 ring-offset-1 ring-offset-background/80 flex items-center justify-center">
+                  <User className="w-3.5 h-3.5 text-blue-500" />
+                </div>
               )}
             </button>
           </div>
