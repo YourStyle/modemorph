@@ -120,33 +120,79 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "AI service error" }, { status: 502 });
         }
 
+        // AI service (n8n) may save to DB itself.
+        // Try to parse response, but also re-read from DB as fallback.
         const responseText = await response.text();
-        let aiData: any;
+        console.log("[Recommendations POST] Raw AI response length:", responseText.length, "first 300:", responseText.slice(0, 300));
+
+        let sections: any[] = [];
+
         try {
-            aiData = JSON.parse(responseText);
+            const aiData = JSON.parse(responseText);
+
+            // Normalize: n8n can return various shapes
+            // 1. [{title, suggestions}] — array of sections (ideal)
+            // 2. {sections: [...]} — object wrapper
+            // 3. [{sections: [...]}] — n8n array wrapper with one element
+            // 4. [{json: {sections: [...]}}] — n8n full wrapper
+            if (Array.isArray(aiData)) {
+                if (aiData.length > 0 && aiData[0]?.suggestions) {
+                    // Shape 1: direct array of sections
+                    sections = aiData;
+                } else if (aiData.length === 1 && aiData[0]?.sections) {
+                    // Shape 3: n8n wrapper [{sections: [...]}]
+                    sections = aiData[0].sections;
+                } else if (aiData.length === 1 && aiData[0]?.json?.sections) {
+                    // Shape 4: n8n full wrapper [{json: {sections: [...]}}]
+                    sections = aiData[0].json.sections;
+                } else if (aiData.length > 0) {
+                    // Unknown array — use as-is
+                    sections = aiData;
+                }
+            } else if (aiData?.sections) {
+                // Shape 2: {sections: [...]}
+                sections = aiData.sections;
+            } else if (aiData?.look_sections) {
+                sections = aiData.look_sections;
+            }
         } catch {
-            console.error("[Recommendations POST] Invalid AI response:", responseText);
-            return NextResponse.json({ error: "Invalid AI response" }, { status: 502 });
+            console.log("[Recommendations POST] Could not parse AI response as JSON, will re-read from DB");
         }
 
-        // Normalize: response can be array of sections or array of outfits
-        const sections = Array.isArray(aiData) ? aiData : (aiData?.sections || aiData?.look_sections || []);
+        // If we got sections from the response, save them
+        if (sections.length > 0) {
+            const now = new Date().toISOString();
+            await supabase
+                .from("main_recommendations")
+                .upsert({
+                    user_id: user.id,
+                    run_date: now,
+                    look_sections: sections,
+                }, { onConflict: "user_id" });
+            console.log("[Recommendations POST] Saved", sections.length, "sections for user:", user.id);
+        } else {
+            // n8n may have saved directly — wait a moment and re-read from DB
+            console.log("[Recommendations POST] No sections in response, re-reading from DB...");
+            await new Promise(r => setTimeout(r, 2000));
 
-        if (sections.length === 0) {
-            return NextResponse.json([]);
+            const { data: row } = await supabase
+                .from("main_recommendations")
+                .select("look_sections")
+                .eq("user_id", user.id)
+                .order("run_date", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (row?.look_sections) {
+                const val = row.look_sections;
+                if (Array.isArray(val)) {
+                    sections = val;
+                } else if (typeof val === "string") {
+                    try { sections = JSON.parse(val); } catch {}
+                }
+                console.log("[Recommendations POST] Re-read", sections.length, "sections from DB");
+            }
         }
-
-        // Save to main_recommendations
-        const now = new Date().toISOString();
-        await supabase
-            .from("main_recommendations")
-            .upsert({
-                user_id: user.id,
-                run_date: now,
-                look_sections: sections,
-            }, { onConflict: "user_id" });
-
-        console.log("[Recommendations POST] Saved recommendations for user:", user.id);
 
         const { sections: cleaned } = filterSections(sections, 2);
         return NextResponse.json(cleaned);
