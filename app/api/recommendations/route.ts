@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST — trigger AI generation of outfit recommendations
- * Calls the AI service /user-prompt-rec with a wardrobe-based prompt,
+ * Calls the AI service /webhook-test/recommendations endpoint,
  * saves results to main_recommendations, and returns them.
  */
 export async function POST(req: NextRequest) {
@@ -92,13 +92,17 @@ export async function POST(req: NextRequest) {
         const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
         const supabase = createClient(supabaseUrl, serviceKey);
 
-        const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app";
+        // Derive base URL: strip /webhook suffix from env var
+        const envUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook";
+        const aiBaseUrl = envUrl.replace(/\/webhook\/?$/, "");
         const authToken = req.headers.get("authorization")?.replace("Bearer ", "");
 
-        // Call AI service to generate recommendations
-        console.log("[Recommendations POST] Triggering AI generation for user:", user.id);
+        // Get weather for the request (from DB cache or fallback)
+        const weather = await getWeatherForUser(supabase, user.id);
 
-        const response = await fetch(`${aiApiUrl}/user-prompt-rec`, {
+        console.log("[Recommendations POST] Triggering AI generation for user:", user.id, "weather:", weather);
+
+        const response = await fetch(`${aiBaseUrl}/webhook-test/recommendations`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
@@ -106,7 +110,7 @@ export async function POST(req: NextRequest) {
             },
             body: JSON.stringify({
                 user_id: user.id,
-                prompt: "Подбери мне несколько стильных образов из моего гардероба на разные случаи",
+                weather,
             }),
         });
 
@@ -117,7 +121,7 @@ export async function POST(req: NextRequest) {
         }
 
         const responseText = await response.text();
-        let aiData: any[];
+        let aiData: any;
         try {
             aiData = JSON.parse(responseText);
         } catch {
@@ -125,39 +129,12 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Invalid AI response" }, { status: 502 });
         }
 
-        if (!Array.isArray(aiData) || aiData.length === 0) {
+        // Normalize: response can be array of sections or array of outfits
+        const sections = Array.isArray(aiData) ? aiData : (aiData?.sections || aiData?.look_sections || []);
+
+        if (sections.length === 0) {
             return NextResponse.json([]);
         }
-
-        // Transform AI response into look_sections format
-        // The AI returns outfit objects with { id, title, description, items }
-        const outfits = aiData.filter((item: any) => item?.id && item?.title && item?.items);
-
-        if (outfits.length === 0) {
-            return NextResponse.json([]);
-        }
-
-        const lookSections = [{
-            title: "Рекомендации для вас",
-            looks_count: outfits.length,
-            suggestions: outfits.map((outfit: any) => ({
-                id: String(outfit.id),
-                title: outfit.title,
-                items: Array.isArray(outfit.items) ? outfit.items.map((item: any) => ({
-                    id: String(item.id),
-                    name: item.name || "",
-                    image_url: item.image_url || "",
-                    color: item.color || "",
-                    shade: item.shade || "",
-                    has_print: item.has_print || "",
-                    notes: item.notes || "",
-                    user_id: item.user_id || null,
-                })) : [],
-                suggested_items_count: Array.isArray(outfit.items)
-                    ? outfit.items.filter((i: any) => !i.user_id).length
-                    : 0,
-            })),
-        }];
 
         // Save to main_recommendations
         const now = new Date().toISOString();
@@ -166,15 +143,60 @@ export async function POST(req: NextRequest) {
             .upsert({
                 user_id: user.id,
                 run_date: now,
-                look_sections: lookSections,
+                look_sections: sections,
             }, { onConflict: "user_id" });
 
-        console.log("[Recommendations POST] Saved", outfits.length, "outfits for user:", user.id);
+        console.log("[Recommendations POST] Saved recommendations for user:", user.id);
 
-        const { sections } = filterSections(lookSections, 2);
-        return NextResponse.json(sections);
+        const { sections: cleaned } = filterSections(sections, 2);
+        return NextResponse.json(cleaned);
     } catch (e: any) {
         console.error("[Recommendations POST] Error:", e);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
+}
+
+/** Get weather from DB cache or return Moscow fallback */
+async function getWeatherForUser(supabase: any, userId: string) {
+    const fallback = { location: "Москва", temperature: 20, description: "ясно" };
+
+    try {
+        // Try user's cached weather first (last hour)
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+        const { data } = await supabase
+            .from("weather_cache")
+            .select("temperature, description, city_name")
+            .eq("user_id", userId)
+            .gte("updated_at", oneHourAgo)
+            .order("updated_at", { ascending: false })
+            .limit(1);
+
+        if (data?.[0]) {
+            return {
+                location: data[0].city_name || "Москва",
+                temperature: data[0].temperature ?? 20,
+                description: data[0].description || "ясно",
+            };
+        }
+
+        // Fallback: any recent weather in the DB (Moscow or any city)
+        const { data: anyWeather } = await supabase
+            .from("weather_cache")
+            .select("temperature, description, city_name")
+            .gte("updated_at", oneHourAgo)
+            .order("updated_at", { ascending: false })
+            .limit(1);
+
+        if (anyWeather?.[0]) {
+            return {
+                location: anyWeather[0].city_name || "Москва",
+                temperature: anyWeather[0].temperature ?? 20,
+                description: anyWeather[0].description || "ясно",
+            };
+        }
+    } catch (e) {
+        console.error("[getWeatherForUser] Error:", e);
+    }
+
+    return fallback;
 }
