@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { OutfitCard } from "@/components/outfit-card"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Sparkles } from "lucide-react"
+import { Sparkles, Loader2 } from "lucide-react"
 import { HomeHeroSection } from "@/components/home-hero-section"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
@@ -109,14 +109,95 @@ const RecommendationsSkeleton = () => {
   )
 }
 
+// Beautiful loading screen for first-time generation
+const GenerationLoadingScreen = () => {
+  const [dots, setDots] = useState("")
+  const [tipIndex, setTipIndex] = useState(0)
+
+  const tips = [
+    "Анализируем ваш гардероб",
+    "Подбираем цветовые сочетания",
+    "Учитываем погоду и сезон",
+    "Составляем стильные образы",
+    "Почти готово",
+  ]
+
+  useEffect(() => {
+    const dotsInterval = setInterval(() => {
+      setDots(d => d.length >= 3 ? "" : d + ".")
+    }, 500)
+    const tipInterval = setInterval(() => {
+      setTipIndex(i => (i + 1) % tips.length)
+    }, 4000)
+    return () => { clearInterval(dotsInterval); clearInterval(tipInterval) }
+  }, [])
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-6">
+      <div className="relative mb-8">
+        {/* Animated rings */}
+        <div className="w-24 h-24 rounded-full border-2 border-purple-200 animate-ping absolute inset-0 opacity-20" />
+        <div className="w-24 h-24 rounded-full border-2 border-blue-200 animate-ping absolute inset-0 opacity-15" style={{ animationDelay: "0.5s" }} />
+        <div
+          className="w-24 h-24 rounded-full flex items-center justify-center"
+          style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}
+        >
+          <Sparkles className="w-10 h-10 text-white animate-pulse" />
+        </div>
+      </div>
+
+      <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">
+        Подбираем лучшие образы для вас{dots}
+      </h2>
+
+      <p className="text-sm text-gray-500 mb-6 text-center max-w-xs">
+        Первая генерация может занять от 1 до 2 минут. AI анализирует ваш гардероб и создаёт персональные рекомендации.
+      </p>
+
+      {/* Animated tip */}
+      <div className="bg-white rounded-xl px-5 py-3 shadow-sm border border-gray-100 mb-6 min-w-[260px] text-center">
+        <p className="text-sm text-gray-600 transition-opacity duration-300">
+          <Sparkles className="w-3.5 h-3.5 inline mr-1.5 text-purple-400" />
+          {tips[tipIndex]}
+        </p>
+      </div>
+
+      {/* Progress bar animation */}
+      <div className="w-64 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full animate-progress"
+          style={{
+            background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
+            animation: "progress 90s ease-out forwards",
+          }}
+        />
+      </div>
+
+      <style jsx>{`
+        @keyframes progress {
+          0% { width: 0%; }
+          10% { width: 15%; }
+          30% { width: 35%; }
+          50% { width: 55%; }
+          70% { width: 70%; }
+          90% { width: 85%; }
+          100% { width: 95%; }
+        }
+      `}</style>
+    </div>
+  )
+}
+
 export default function HomePage() {
   const [outfitSections, setOutfitSections] = useState<LookSection[]>([])
   const [loading, setLoading] = useState(true)
   const [userItemsCount, setUserItemsCount] = useState(0)
   const [itemsLoading, setItemsLoading] = useState(true)
   const [recommendationsLoading, setRecommendationsLoading] = useState(false)
+  const [generationError, setGenerationError] = useState(false)
   const [userLooks, setUserLooks] = useState<any[]>([])
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const autoTriggered = useRef(false)
   const { log, consume } = useFeature()
   const { openSheet } = useAddToCloset()
   useReconcileLimits(true);
@@ -220,39 +301,59 @@ export default function HomePage() {
     loadUserLooks()
   }, [])
 
-  // Load outfit suggestions from database API
+  const processRecommendations = (recommendations: any[]) => {
+    const validRecommendations = Array.isArray(recommendations) ? recommendations : []
+    const processedRecommendations = validRecommendations.map((section) => ({
+      ...section,
+      suggestions: Array.isArray(section.suggestions)
+          ? section.suggestions.map((suggestion) => ({
+            ...suggestion,
+            items: Array.isArray(suggestion.items) ? suggestion.items : [],
+          }))
+          : [],
+    }))
+    const { sections: cleaned } = filterSections(processedRecommendations, 2)
+    return cleaned
+  }
+
+  // Load outfit suggestions from database API, auto-trigger generation if empty
   useEffect(() => {
     const loadOutfitSuggestions = async () => {
       try {
         console.log("Loading recommendations from database")
-
         const recommendations = await api.get("/api/recommendations")
-        console.log("Recommendations received from database:", recommendations)
+        const cleaned = processRecommendations(recommendations)
 
-        // Ensure recommendations is an array and has proper structure
-        const validRecommendations = Array.isArray(recommendations) ? recommendations : []
-        const processedRecommendations = validRecommendations.map((section) => ({
-          ...section,
-          suggestions: Array.isArray(section.suggestions)
-              ? section.suggestions.map((suggestion) => ({
-                ...suggestion,
-                items: Array.isArray(suggestion.items) ? suggestion.items : [],
-              }))
-              : [],
-        }))
-
-        // Client-side defensive filter
-        const { sections: cleaned } = filterSections(processedRecommendations, 2)
-        setOutfitSections(cleaned)
+        if (cleaned.length > 0) {
+          setOutfitSections(cleaned)
+          setLoading(false)
+        } else if (!autoTriggered.current) {
+          // No recommendations in DB — auto-trigger first generation
+          autoTriggered.current = true
+          console.log("No recommendations found, auto-triggering generation")
+          setLoading(false)
+          setRecommendationsLoading(true)
+          setGenerationError(false)
+          try {
+            const generated = await api.post("/api/recommendations", {})
+            setOutfitSections(processRecommendations(generated))
+          } catch (e) {
+            console.error("Auto-generation failed:", e)
+            setGenerationError(true)
+          } finally {
+            setRecommendationsLoading(false)
+          }
+        } else {
+          setOutfitSections([])
+          setLoading(false)
+        }
       } catch (error) {
         console.error("Error loading outfit suggestions:", error)
         setOutfitSections([])
-      } finally {
         setLoading(false)
       }
     }
 
-    // Load suggestions if user has at least 1 item
     if (!itemsLoading && userItemsCount >= 1) {
       loadOutfitSuggestions()
     } else if (!itemsLoading) {
@@ -262,28 +363,13 @@ export default function HomePage() {
 
   const handleGetRecommendations = async () => {
     setRecommendationsLoading(true)
+    setGenerationError(false)
     try {
-      console.log("Triggering AI recommendation generation")
-
-      // POST triggers actual AI generation, not just DB read
       const recommendations = await api.post("/api/recommendations", {})
-      console.log("AI recommendations generated:", recommendations)
-
-      const validRecommendations = Array.isArray(recommendations) ? recommendations : []
-      const processedRecommendations = validRecommendations.map((section) => ({
-        ...section,
-        suggestions: Array.isArray(section.suggestions)
-            ? section.suggestions.map((suggestion) => ({
-              ...suggestion,
-              items: Array.isArray(suggestion.items) ? suggestion.items : [],
-            }))
-            : [],
-      }))
-
-      const { sections: cleaned } = filterSections(processedRecommendations, 2)
-      setOutfitSections(cleaned)
+      setOutfitSections(processRecommendations(recommendations))
     } catch (error) {
       console.error("Error getting recommendations:", error)
+      setGenerationError(true)
       setOutfitSections([])
     } finally {
       setRecommendationsLoading(false)
@@ -307,9 +393,13 @@ export default function HomePage() {
               <>
                 {loading || itemsLoading ? (
                     <RecommendationsSkeleton />
+                ) : recommendationsLoading ? (
+                    <GenerationLoadingScreen />
                 ) : outfitSections.length === 0 ? (
                     <div className="text-center py-12">
-                      <p className="text-gray-500 mb-4">Пока нет рекомендаций</p>
+                      <p className="text-gray-500 mb-4">
+                        {generationError ? "Не удалось сгенерировать образы. Попробуйте ещё раз." : "Пока нет рекомендаций"}
+                      </p>
                       <Button
                           onClick={handleGetRecommendations}
                           disabled={recommendationsLoading}
@@ -317,7 +407,7 @@ export default function HomePage() {
                           className="text-blue-400 hover:text-blue-300 border-blue-200 hover:border-blue-300 bg-transparent"
                       >
                         <Sparkles className="h-4 w-4 mr-2" />
-                        {recommendationsLoading ? "Подбираем..." : "Получить рекомендации"}
+                        Получить рекомендации
                       </Button>
                     </div>
                 ) : (
