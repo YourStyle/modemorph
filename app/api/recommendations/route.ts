@@ -5,6 +5,96 @@ import { filterSections } from "@/lib/recommendation-filters";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Enrich AI recommendation items with image_url and other fields from DB.
+ * AI returns only {id, name, user_id} — we need image_url for the UI to display them.
+ * User items → wardrobe_user_items, basic items (user_id=null) → basic_wardrobe_items.
+ */
+async function enrichSectionsWithImages(supabase: any, sections: any[]): Promise<any[]> {
+    // Collect all item IDs split by type
+    const userItemIds = new Set<number>();
+    const basicItemIds = new Set<number>();
+
+    for (const section of sections) {
+        for (const suggestion of section.suggestions || []) {
+            for (const item of suggestion.items || []) {
+                const id = Number(item.id);
+                if (!id) continue;
+                if (item.user_id) {
+                    userItemIds.add(id);
+                } else {
+                    basicItemIds.add(id);
+                }
+            }
+        }
+    }
+
+    // Batch-fetch from both tables in parallel
+    const [userItemsResult, basicItemsResult] = await Promise.all([
+        userItemIds.size > 0
+            ? supabase
+                .from("wardrobe_user_items")
+                .select("id, image_url, item_name, color, shade, has_print, clothing_type, notes")
+                .in("id", Array.from(userItemIds))
+            : { data: [] },
+        basicItemIds.size > 0
+            ? supabase
+                .from("basic_wardrobe_items")
+                .select("id, image_url, name_ru, name_en, clothing_type")
+                .in("id", Array.from(basicItemIds))
+            : { data: [] },
+    ]);
+
+    // Build lookup maps
+    const userMap = new Map<number, any>();
+    for (const row of userItemsResult.data || []) {
+        userMap.set(row.id, row);
+    }
+    const basicMap = new Map<number, any>();
+    for (const row of basicItemsResult.data || []) {
+        basicMap.set(row.id, row);
+    }
+
+    console.log("[enrichSections] Found", userMap.size, "user items,", basicMap.size, "basic items from DB");
+
+    // Merge DB data into sections
+    return sections.map((section: any) => ({
+        ...section,
+        suggestions: (section.suggestions || []).map((suggestion: any) => ({
+            ...suggestion,
+            items: (suggestion.items || []).map((item: any) => {
+                const id = Number(item.id);
+                if (item.user_id) {
+                    const db = userMap.get(id);
+                    if (db) {
+                        return {
+                            ...item,
+                            image_url: item.image_url || db.image_url,
+                            name: item.name || db.item_name,
+                            color: item.color || db.color,
+                            shade: item.shade || db.shade,
+                            has_print: item.has_print || db.has_print,
+                            clothing_type: item.clothing_type || db.clothing_type,
+                            notes: item.notes || db.notes,
+                        };
+                    }
+                } else {
+                    const db = basicMap.get(id);
+                    if (db) {
+                        return {
+                            ...item,
+                            image_url: item.image_url || db.image_url,
+                            name: item.name || db.name_ru || db.name_en,
+                            clothing_type: item.clothing_type || db.clothing_type,
+                        };
+                    }
+                }
+                return item;
+            }),
+        })),
+    }));
+}
+
 export async function GET(req: NextRequest) {
     try {
         const user = await getAuthUser(req);
@@ -49,7 +139,10 @@ export async function GET(req: NextRequest) {
         };
 
         const raw = normalize(row.look_sections);
-        const { sections, stats } = filterSections(raw, 2);
+
+        // Enrich items that may have been saved without image_url
+        const enriched = await enrichSectionsWithImages(supabase, raw);
+        const { sections, stats } = filterSections(enriched, 2);
 
         if (stats.totalRemoved > 0) {
             console.log("[Recommendations GET] Filtered anomalies:", stats);
@@ -159,7 +252,12 @@ export async function POST(req: NextRequest) {
             console.log("[Recommendations POST] Could not parse AI response as JSON, will re-read from DB");
         }
 
-        // If we got sections from the response, save them
+        // Enrich items with image_url and other fields from DB
+        if (sections.length > 0) {
+            sections = await enrichSectionsWithImages(supabase, sections);
+        }
+
+        // If we got sections from the response, save them (now with images)
         if (sections.length > 0) {
             const now = new Date().toISOString();
             await supabase
@@ -169,7 +267,7 @@ export async function POST(req: NextRequest) {
                     run_date: now,
                     look_sections: sections,
                 }, { onConflict: "user_id" });
-            console.log("[Recommendations POST] Saved", sections.length, "sections for user:", user.id);
+            console.log("[Recommendations POST] Saved", sections.length, "enriched sections for user:", user.id);
         } else {
             // n8n may have saved directly — wait a moment and re-read from DB
             console.log("[Recommendations POST] No sections in response, re-reading from DB...");
@@ -191,6 +289,11 @@ export async function POST(req: NextRequest) {
                     try { sections = JSON.parse(val); } catch {}
                 }
                 console.log("[Recommendations POST] Re-read", sections.length, "sections from DB");
+            }
+
+            // Enrich DB-read sections too (may have been saved without images by n8n)
+            if (sections.length > 0) {
+                sections = await enrichSectionsWithImages(supabase, sections);
             }
         }
 
