@@ -130,14 +130,28 @@ export async function GET(req: NextRequest) {
             "look_sections type:", typeof row.look_sections,
             "isArray:", Array.isArray(row.look_sections));
 
+        // Normalize look_sections to flat array of {title, suggestions} sections.
+        // n8n cron writes: [{"sections": [{title, suggestions}, ...]}]
+        // Our POST writes: [{title, suggestions}, ...]
+        // Handle both shapes + string fallback.
         const normalize = (val: unknown): any[] => {
             try {
-                if (Array.isArray(val)) return val;
-                if (typeof val === "string") {
+                let arr: any[];
+                if (Array.isArray(val)) {
+                    arr = val;
+                } else if (typeof val === "string") {
                     const parsed = JSON.parse(val);
-                    return Array.isArray(parsed) ? parsed : [];
+                    arr = Array.isArray(parsed) ? parsed : [];
+                } else {
+                    return [];
                 }
-                return [];
+
+                // Unwrap n8n wrapper: [{sections: [...]}] → [...]
+                if (arr.length === 1 && arr[0]?.sections && Array.isArray(arr[0].sections)) {
+                    return arr[0].sections;
+                }
+
+                return arr;
             } catch {
                 return [];
             }
@@ -316,6 +330,10 @@ export async function POST(req: NextRequest) {
                     sections = val;
                 } else if (typeof val === "string") {
                     try { sections = JSON.parse(val); } catch {}
+                }
+                // Unwrap n8n wrapper: [{sections: [...]}] → [...]
+                if (sections.length === 1 && sections[0]?.sections && Array.isArray(sections[0].sections)) {
+                    sections = sections[0].sections;
                 }
                 console.log("[Recommendations POST] Re-read", sections.length, "sections from DB");
             }
