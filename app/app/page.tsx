@@ -320,9 +320,11 @@ export default function HomePage() {
   useEffect(() => {
     const loadOutfitSuggestions = async () => {
       try {
-        console.log("Loading recommendations from database")
+        console.log("[HomePage] Loading recommendations from API...")
         const recommendations = await api.get("/api/recommendations")
+        console.log("[HomePage] GET response:", Array.isArray(recommendations) ? `${recommendations.length} sections` : typeof recommendations, recommendations)
         const cleaned = processRecommendations(recommendations)
+        console.log("[HomePage] After processRecommendations:", cleaned.length, "sections")
 
         if (cleaned.length > 0) {
           setOutfitSections(cleaned)
@@ -330,7 +332,7 @@ export default function HomePage() {
         } else if (!autoTriggered.current) {
           // No recommendations in DB — auto-trigger first generation
           autoTriggered.current = true
-          console.log("No recommendations found, auto-triggering generation")
+          console.log("[HomePage] No recommendations found, auto-triggering generation")
           setLoading(false)
           setRecommendationsLoading(true)
           setGenerationError(false)

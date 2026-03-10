@@ -106,10 +106,12 @@ export async function GET(req: NextRequest) {
         const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
         const supabase = createClient(supabaseUrl, serviceKey);
 
+        console.log("[Recommendations GET] Fetching for user:", user.id);
+
         const { data: row, error } = await supabase
             .from("main_recommendations")
             .select("run_date, look_sections")
-            .eq("user_id", user.id) // не полагаемся только на RLS
+            .eq("user_id", user.id)
             .order("run_date", { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -119,12 +121,15 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "Failed to fetch" }, { status: 500 });
         }
 
-        // 5) Ничего нет — отдаём пустой массив
         if (!row || row.look_sections == null) {
+            console.log("[Recommendations GET] No data found for user:", user.id);
             return NextResponse.json([]);
         }
 
-        // 6) Поле look_sections может быть JSONB (объект/массив) или строкой — аккуратно нормализуем к массиву
+        console.log("[Recommendations GET] Found row, run_date:", row.run_date,
+            "look_sections type:", typeof row.look_sections,
+            "isArray:", Array.isArray(row.look_sections));
+
         const normalize = (val: unknown): any[] => {
             try {
                 if (Array.isArray(val)) return val;
@@ -139,14 +144,19 @@ export async function GET(req: NextRequest) {
         };
 
         const raw = normalize(row.look_sections);
+        console.log("[Recommendations GET] Normalized sections:", raw.length);
 
-        // Enrich items that may have been saved without image_url
+        if (raw.length === 0) {
+            console.log("[Recommendations GET] Normalized to empty for user:", user.id);
+            return NextResponse.json([]);
+        }
+
         const enriched = await enrichSectionsWithImages(supabase, raw);
         const { sections, stats } = filterSections(enriched, 2);
 
-        if (stats.totalRemoved > 0) {
-            console.log("[Recommendations GET] Filtered anomalies:", stats);
+        console.log("[Recommendations GET] After filter:", sections.length, "sections. Stats:", JSON.stringify(stats));
 
+        if (stats.totalRemoved > 0) {
             // Self-heal: write cleaned data back (fire-and-forget)
             void supabase
                 .from("main_recommendations")
@@ -156,8 +166,6 @@ export async function GET(req: NextRequest) {
                 .then(({ error: updateErr }) => {
                     if (updateErr) {
                         console.error("[Recommendations GET] Self-heal write failed:", updateErr);
-                    } else {
-                        console.log("[Recommendations GET] Self-heal: cleaned data written back");
                     }
                 });
         }
@@ -259,14 +267,35 @@ export async function POST(req: NextRequest) {
 
         // If we got sections from the response, save them (now with images)
         if (sections.length > 0) {
-            const now = new Date().toISOString();
-            await supabase
+            const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+            // Try update first (for today's row), then insert if no row exists
+            const { data: updated, error: updateErr } = await supabase
                 .from("main_recommendations")
-                .upsert({
-                    user_id: user.id,
-                    run_date: now,
-                    look_sections: sections,
-                }, { onConflict: "user_id" });
+                .update({ look_sections: sections })
+                .eq("user_id", user.id)
+                .eq("run_date", today)
+                .select("user_id")
+                .maybeSingle();
+
+            if (!updated && !updateErr) {
+                // No row for today — insert new
+                const { error: insertErr } = await supabase
+                    .from("main_recommendations")
+                    .insert({
+                        user_id: user.id,
+                        run_date: today,
+                        look_sections: sections,
+                    });
+                if (insertErr) {
+                    console.error("[Recommendations POST] Insert failed:", insertErr);
+                } else {
+                    console.log("[Recommendations POST] Inserted new row for", today);
+                }
+            } else if (updateErr) {
+                console.error("[Recommendations POST] Update failed:", updateErr);
+            } else {
+                console.log("[Recommendations POST] Updated existing row for", today);
+            }
             console.log("[Recommendations POST] Saved", sections.length, "enriched sections for user:", user.id);
         } else {
             // n8n may have saved directly — wait a moment and re-read from DB
@@ -297,7 +326,8 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        const { sections: cleaned } = filterSections(sections, 2);
+        const { sections: cleaned, stats } = filterSections(sections, 2);
+        console.log("[Recommendations POST] Final:", cleaned.length, "sections after filter. Stats:", JSON.stringify(stats));
         return NextResponse.json(cleaned);
     } catch (e: any) {
         console.error("[Recommendations POST] Error:", e);
