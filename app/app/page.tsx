@@ -197,7 +197,7 @@ export default function HomePage() {
   const [generationError, setGenerationError] = useState(false)
   const [userLooks, setUserLooks] = useState<any[]>([])
   const [paywallOpen, setPaywallOpen] = useState(false);
-  const autoTriggered = useRef(false)
+  const refreshingRef = useRef(false)
   const { log, consume } = useFeature()
   const { openSheet } = useAddToCloset()
   useReconcileLimits(true);
@@ -316,14 +316,32 @@ export default function HomePage() {
     return cleaned
   }
 
-  // Background refresh: trigger POST, update sections when done
+  // Check if a background refresh is already running (survives tab switches & remounts)
+  const isRefreshRunning = () => {
+    try {
+      const ts = sessionStorage.getItem("rec_refresh_ts")
+      if (!ts) return false
+      // Consider stale after 3 minutes (n8n timeout)
+      return Date.now() - Number(ts) < 3 * 60 * 1000
+    } catch { return false }
+  }
+  const markRefreshRunning = () => {
+    try { sessionStorage.setItem("rec_refresh_ts", String(Date.now())) } catch {}
+  }
+  const clearRefreshMark = () => {
+    try { sessionStorage.removeItem("rec_refresh_ts") } catch {}
+  }
+
+  // Background refresh: trigger POST, update sections when done.
+  // Even if user closes the tab — n8n still processes the request
+  // and writes to DB. Next visit will pick it up via GET.
   const refreshInBackground = async () => {
-    if (autoTriggered.current) return
-    autoTriggered.current = true
+    if (refreshingRef.current || isRefreshRunning()) return
+    refreshingRef.current = true
+    markRefreshRunning()
     console.log("[HomePage] Refreshing recommendations in background...")
     try {
       const generated = await api.post("/api/recommendations", {})
-      // POST returns flat array of sections
       const newSections = processRecommendations(Array.isArray(generated) ? generated : [])
       if (newSections.length > 0) {
         console.log("[HomePage] Background refresh got", newSections.length, "sections")
@@ -331,6 +349,9 @@ export default function HomePage() {
       }
     } catch (e) {
       console.error("[HomePage] Background refresh failed:", e)
+    } finally {
+      refreshingRef.current = false
+      clearRefreshMark()
     }
   }
 
@@ -349,7 +370,6 @@ export default function HomePage() {
           sections = Array.isArray(response.sections) ? response.sections : []
           stale = !!response.stale
         } else {
-          // Legacy: flat array
           sections = Array.isArray(response) ? response : []
         }
 
@@ -364,13 +384,14 @@ export default function HomePage() {
           if (stale) {
             refreshInBackground()
           }
-        } else if (!autoTriggered.current) {
+        } else if (!isRefreshRunning() && !refreshingRef.current) {
           // No data at all — show generation screen
-          autoTriggered.current = true
           console.log("[HomePage] No recommendations found, triggering generation")
           setLoading(false)
           setRecommendationsLoading(true)
           setGenerationError(false)
+          refreshingRef.current = true
+          markRefreshRunning()
           try {
             const generated = await api.post("/api/recommendations", {})
             setOutfitSections(processRecommendations(Array.isArray(generated) ? generated : []))
@@ -379,10 +400,15 @@ export default function HomePage() {
             setGenerationError(true)
           } finally {
             setRecommendationsLoading(false)
+            refreshingRef.current = false
+            clearRefreshMark()
           }
         } else {
-          setOutfitSections([])
+          // A refresh is already running — just show loading or empty
           setLoading(false)
+          if (!recommendationsLoading) {
+            setRecommendationsLoading(true)
+          }
         }
       } catch (error) {
         console.error("Error loading outfit suggestions:", error)
