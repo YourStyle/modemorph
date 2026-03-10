@@ -4,14 +4,12 @@ import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucide-react"
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
 import { CommonSheet } from "./common-sheet"
-import { SubscriptionSheet } from "./subscription-sheet"
-import { api } from "@/lib/api-client"
+import { useTryOn } from "@/contexts/try-on-context"
 
 interface OutfitItem {
   id: string
@@ -56,14 +54,10 @@ interface OutfitCardProps {
 
 export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
-  const [showTryOnModal, setShowTryOnModal] = useState(false)
   const [showOutfitDetails, setShowOutfitDetails] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
-  const [vtonLoading, setVtonLoading] = useState(false)
-  const [vtonResult, setVtonResult] = useState<any>(null)
-  const [tryOnRequestId, setTryOnRequestId] = useState<string | null>(null) // ⬅️ для корреляции событий
-  const [showPaywall, setShowPaywall] = useState(false)
+  const { startTryOn, session } = useTryOn()
 
   if (!suggestion) return null
 
@@ -96,94 +90,17 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
     }
   }
 
-  const openTryOnModal = () => {
+  const openTryOn = () => {
     const reqId = crypto.randomUUID()
-    setTryOnRequestId(reqId)
-    onTryOnClick?.({ requestId: reqId, suggestion, items }) // ⬅️ событие наверх
-    setShowTryOnModal(true)
+    startTryOn(
+      suggestion,
+      items,
+      () => onTryOnClick?.({ requestId: reqId, suggestion, items }),
+      () => onTryOnSuccess?.({ requestId: reqId, suggestion }),
+    )
   }
 
-  // текущая логика VTON остаётся как была (если хочешь, потом вынесем тоже наверх)
-  const handleTryOn = async () => {
-        if (items.length === 0) {
-          toast.error("Нет вещей для примерки")
-          return
-        }
-
-        setVtonLoading(true)
-        setVtonResult(null)
-
-        try {
-          // ПРОВЕРКА ЛИМИТОВ ДО выполнения примерки
-          const limitCheck = await api.post("/api/check-limits", {
-            featureType: "vton_used",
-            count: 1,
-            meta: {
-              requestId: tryOnRequestId ?? crypto.randomUUID(),
-            }
-          })
-
-          if (!limitCheck.canUse) {
-            setVtonLoading(false)
-            setShowTryOnModal(false)
-            setShowPaywall(true)
-            return
-          }
-
-          const vtonItems = items.map((item) => ({
-            name: item.name,
-            description: `${item.style || ""} ${item.has_print || ""} ${item.has_details || ""}`.trim(),
-            color: item.color,
-            material: item.material,
-            image_url: item.image_url,
-          }))
-
-          const data = await api.post("/api/vton", {
-            items: vtonItems,
-            requestId: tryOnRequestId ?? crypto.randomUUID(),
-          })
-
-          if (data?.success === false) {
-            throw new Error(data?.error || "Failed to process virtual try-on")
-          }
-
-          // Унифицированно достаём URL из разных возможных форматов ответа
-          const imageUrl =
-            data?.result?.[0]?.avatar_url ??
-            data?.result?.avatar_url ??
-            data?.avatar_url ??
-            data?.image_url ??
-            data?.url ??
-            null
-
-          if (!imageUrl) {
-            throw new Error("Сервер не вернул avatar_url / image_url")
-          }
-          setVtonResult({ image_url: imageUrl, raw: data })
-
-          onTryOnSuccess?.({ requestId: tryOnRequestId ?? crypto.randomUUID(), suggestion })
-          toast.success("Примерка готова!")
-        } catch (error) {
-          console.error("Error in virtual try-on:", error)
-
-          // Проверяем, является ли это ошибкой лимита (402 или payment_required)
-          const errorMessage = error instanceof Error ? error.message : String(error)
-          const isPaymentRequired =
-            errorMessage.includes("402") ||
-            errorMessage.includes("payment_required") ||
-            errorMessage.toLowerCase().includes("лимит")
-
-          if (isPaymentRequired) {
-            setVtonLoading(false)
-            setShowTryOnModal(false)
-            setShowPaywall(true)
-          } else {
-            toast.error(error instanceof Error ? error.message : "Ошибка при примерке")
-          }
-        } finally {
-          setVtonLoading(false)
-        }
-  }
+  const vtonLoading = session?.status === "loading" && session?.suggestion?.id === suggestion.id
 
   const handleImageError = (itemId: string) => setImageErrors((prev) => ({ ...prev, [itemId]: true }))
   const handleItemClick = (item: OutfitItem) => setSelectedItem(item)
@@ -313,8 +230,8 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
               size="sm"
               className="w-full text-white border-0"
               style={{ backgroundColor: '#292929', borderRadius: '16px' }}
-              onClick={openTryOnModal} // ⬅️ карточка только сообщает и открывает модалку
-              disabled={vtonLoading}
+              onClick={openTryOn}
+              disabled={!!vtonLoading}
             >
               {vtonLoading ? (
                 <>
@@ -328,75 +245,6 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
           </div>
         </CardContent>
       </Card>
-
-      {/* Try On Modal */}
-      <Dialog open={showTryOnModal} onOpenChange={setShowTryOnModal}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="w-5 h-5 text-blue-500" />
-              Виртуальная примерка
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-6">
-            {vtonLoading ? (
-              <div className="text-center">
-                <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-500" />
-                <p className="text-gray-600 mb-2">Создаем примерку...</p>
-                <p className="text-sm text-gray-500">Это может занять несколько секунд</p>
-              </div>
-            ) : vtonResult ? (
-              <div className="text-center">
-                <div className="mb-4">
-                  {(() => {
-                    const previewUrl = vtonResult?.image_url || vtonResult?.avatar_url
-                    return previewUrl ? (
-                      <Image
-                        src={previewUrl}
-                        alt="Virtual try-on result"
-                        width={300}
-                        height={400}
-                        className="rounded-lg mx-auto"
-                      />
-                    ) : (
-                      <div className="text-sm text-gray-500">Нет изображения в ответе</div>
-                    )
-                  })()}
-                </div>
-                <p className="text-green-600 font-medium">Примерка готова!</p>
-                {vtonResult.message && <p className="text-sm text-gray-600 mt-2">{vtonResult.message}</p>}
-              </div>
-            ) : (
-              <div className="text-center">
-                <p className="text-gray-600 mb-4">
-                  Хотите примерить этот образ? Мы создадим виртуальную примерку с вашим аватаром.
-                </p>
-                <div className="space-y-2 text-sm text-gray-500">
-                  <p>• Убедитесь, что у вас загружен аватар в профиле</p>
-                  <p>• Примерка займет несколько секунд</p>
-                </div>
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setShowTryOnModal(false)}>
-              Закрыть
-            </Button>
-            {!vtonResult && (
-              <Button onClick={handleTryOn} disabled={vtonLoading}>
-                {vtonLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Примеряем...
-                  </>
-                ) : (
-                  "Начать примерку"
-                )}
-              </Button>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Item Details Modal */}
       {selectedItem && (
@@ -511,16 +359,6 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
           </Button>
         </div>
       </CommonSheet>
-
-      {/* Subscription Sheet */}
-      <SubscriptionSheet
-        isOpen={showPaywall}
-        onClose={() => setShowPaywall(false)}
-        onSuccess={() => {
-          setShowPaywall(false)
-          toast.success("Лимиты обновлены! Попробуйте еще раз.")
-        }}
-      />
     </>
   )
 }

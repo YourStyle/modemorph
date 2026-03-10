@@ -3,6 +3,7 @@ import AppClientLayout from "./layout-client"
 import { BackgroundTasksProvider } from "@/contexts/background-tasks-context"
 import { AIAnalysisProvider } from "@/contexts/ai-analysis-context"
 import { AddToClosetProvider } from "@/contexts/add-to-closet-context"
+import { TryOnProvider } from "@/contexts/try-on-context"
 
 export default function AppLayout({
   children,
@@ -14,7 +15,9 @@ export default function AppLayout({
     <BackgroundTasksProvider>
       <AIAnalysisProvider>
         <AddToClosetProvider>
-          <AppClientLayout>{children}</AppClientLayout>
+          <TryOnProvider>
+            <AppClientLayout>{children}</AppClientLayout>
+          </TryOnProvider>
         </AddToClosetProvider>
       </AIAnalysisProvider>
     </BackgroundTasksProvider>

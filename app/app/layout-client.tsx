@@ -6,6 +6,7 @@ import { TopNavigation } from "@/components/top-navigation"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { BackgroundTasksWidget } from "@/components/background-tasks-widget"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
+import { TryOnSheet } from "@/components/try-on-sheet"
 import { useAddToCloset } from "@/contexts/add-to-closet-context"
 import { cn } from "@/lib/utils"
 
@@ -29,6 +30,7 @@ export default function AppClientLayout({
       <main className={cn("pt-0 max-w-7xl m-auto", isAssistant ? "pb-0" : "pb-10")}>{children}</main>
       <BottomNavigation />
       <BackgroundTasksWidget />
+      <TryOnSheet />
 
       <AddToClosetSheet
         isOpen={isOpen}

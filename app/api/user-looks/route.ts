@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
     const supabase = createClient(supabaseUrl, serviceKey)
 
     const body = await req.json()
-    const { name, description, items } = body
+    const { name, description, items, image_url } = body
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 })
@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
         name,
         description,
         items,
+        ...(image_url && { image_url }),
       })
       .select()
       .single()

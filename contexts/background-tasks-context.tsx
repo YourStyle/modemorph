@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 
 export interface BackgroundTask {
   id: string
-  type: "photo_analysis"
+  type: "photo_analysis" | "virtual_tryon"
   status: "processing" | "completed" | "error"
   progress: number
   data?: any

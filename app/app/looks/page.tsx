@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Plus, ExternalLink, Trash2, Search } from "lucide-react"
+import { Plus, ExternalLink, Trash2, Search, Sparkles } from "lucide-react"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
 import { CreateLookSheet } from "@/components/create-look-sheet"
 import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collection-sheet"
@@ -77,6 +77,10 @@ export default function LooksPage() {
 
   const { log, consume } = useFeature()
   useReconcileLimits(true)
+
+  // Split looks into regular and try-on (try-ons have image_url set)
+  const regularLooks = useMemo(() => savedLooks.filter((l) => !l.image_url), [savedLooks])
+  const tryOnLooks = useMemo(() => savedLooks.filter((l) => !!l.image_url), [savedLooks])
 
   useEffect(() => {
     loadData()
@@ -438,14 +442,14 @@ export default function LooksPage() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Все образы</h2>
-            <p className="text-sm text-gray-500">{savedLooks.length} образов</p>
+            <p className="text-sm text-gray-500">{regularLooks.length} образов</p>
           </div>
         </div>
 
         <div className="relative">
-          {savedLooks.length > 0 ? (
+          {regularLooks.length > 0 ? (
             <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
-              {savedLooks.map((look) => (
+              {regularLooks.map((look) => (
                 <LookCard key={look.id} look={look} showDelete={true} />
               ))}
             </div>
@@ -463,7 +467,7 @@ export default function LooksPage() {
             </div>
           )}
 
-          {savedLooks.length > 1 && (
+          {regularLooks.length > 1 && (
             <>
               <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
               <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50" />
@@ -471,6 +475,76 @@ export default function LooksPage() {
           )}
         </div>
       </div>
+
+      {/* Try-Ons Section */}
+      {tryOnLooks.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-500" />
+                Примерки
+              </h2>
+              <p className="text-sm text-gray-500">{tryOnLooks.length} примерок</p>
+            </div>
+          </div>
+
+          <div className="relative">
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+              {tryOnLooks.map((look) => (
+                <Card
+                  key={look.id}
+                  className="p-0 bg-gray-100 border-0 relative group hover:shadow-md transition-shadow flex-shrink-0 w-64 overflow-hidden"
+                >
+                  {/* Try-on result image */}
+                  {look.image_url && (
+                    <div className="aspect-[3/4] relative">
+                      <img
+                        src={look.image_url}
+                        alt={look.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement
+                          target.src = "/placeholder.svg"
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  <div className="p-3">
+                    <h4 className="font-medium text-sm truncate">{look.name}</h4>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {look.expandedItems?.length || look.items?.length || 0} вещей
+                    </p>
+                  </div>
+
+                  {/* Delete button */}
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="p-1 h-auto text-red-500 hover:text-red-700 bg-white/80 rounded-full"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDeleteLook(look.id)
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {tryOnLooks.length > 1 && (
+              <>
+                <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
+                <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50" />
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Collections */}
       {sections.length > 0 && (

@@ -3,11 +3,12 @@
 import { useBackgroundTasks } from "@/contexts/background-tasks-context"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { useAddToCloset } from "@/contexts/add-to-closet-context"
+import { useTryOn } from "@/contexts/try-on-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { X, CheckCircle2, Loader2, AlertCircle, Shirt, ChevronDown } from "lucide-react"
+import { X, CheckCircle2, Loader2, AlertCircle, Shirt, Sparkles, ChevronDown } from "lucide-react"
 import { useState, useEffect, useRef, useMemo } from "react"
 import { cn } from "@/lib/utils"
 import { CommonSheet } from "@/components/common-sheet"
@@ -181,6 +182,7 @@ export function BackgroundTasksWidget() {
   const { tasks, removeTask } = useBackgroundTasks()
   const aiAnalysis = useAIAnalysis()
   const { openSheet } = useAddToCloset()
+  const { setSheetOpen: setTryOnSheetOpen } = useTryOn()
   const [showTooltip, setShowTooltip] = useState<string | null>(null)
   const [showResultsSheet, setShowResultsSheet] = useState(false)
   const [showProgressSheet, setShowProgressSheet] = useState(false)
@@ -238,6 +240,12 @@ export function BackgroundTasksWidget() {
   }, [tasks, now])
 
   const handleTaskClick = (task: any) => {
+    // Virtual try-on tasks — re-open the TryOnSheet
+    if (task.type === "virtual_tryon") {
+      setTryOnSheetOpen(true)
+      return
+    }
+
     console.log("[BackgroundTasksWidget] handleTaskClick called")
     console.log("[BackgroundTasksWidget] Task:", task)
     console.log("[BackgroundTasksWidget] Task status:", task.status)
@@ -412,6 +420,7 @@ export function BackgroundTasksWidget() {
     const newProcessingTasks = tasks.filter(
       (task) =>
         task.status === "processing" &&
+        task.type !== "virtual_tryon" &&
         !prevTasksRef.current.find((prevTask) => prevTask.id === task.id)
     )
 
@@ -525,7 +534,11 @@ export function BackgroundTasksWidget() {
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 {task.status === "processing" && (
                   <>
-                    <Shirt className="w-5 h-5 text-blue-600 -mt-1" />
+                    {task.type === "virtual_tryon" ? (
+                      <Sparkles className="w-5 h-5 text-purple-500 -mt-1" />
+                    ) : (
+                      <Shirt className="w-5 h-5 text-blue-600 -mt-1" />
+                    )}
                     <span className="text-[10px] font-bold text-gray-700 mt-0.5 ml-[1px]">
                       {Math.round(task.progress)}%
                     </span>
@@ -555,7 +568,7 @@ export function BackgroundTasksWidget() {
             {showCompletedTooltip && (
               <div className="absolute -top-14 right-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 <div className="bg-gray-900 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg whitespace-nowrap">
-                  Анализ завершён!
+                  {task.type === "virtual_tryon" ? "Примерка готова!" : "Анализ завершён!"}
                   {task.data?.itemsCount && (
                     <span className="ml-1">
                       ({task.data.itemsCount} {task.data.itemsCount === 1 ? "вещь" : "вещей"})
