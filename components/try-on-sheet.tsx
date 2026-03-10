@@ -8,33 +8,9 @@ import { toast } from "sonner"
 import { CommonSheet } from "@/components/common-sheet"
 import { SubscriptionSheet } from "@/components/subscription-sheet"
 import FallingObjectsGame from "@/components/falling-objects-game"
-import QuoteCard from "@/components/quote-card"
 import { useTryOn } from "@/contexts/try-on-context"
 import { api } from "@/lib/api-client"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function shuffleArray<T>(array: T[]): T[] {
-  const arr = [...array]
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[arr[i], arr[j]] = [arr[j], arr[i]]
-  }
-  return arr
-}
-
-const QUOTES = [
-  { text: "Мода проходит, стиль остаётся", author: "Коко Шанель" },
-  { text: "Мода проходит, стиль вечен", author: "Ив Сен-Лоран" },
-  { text: "Элегантность — это не быть замеченным, а быть запомненным", author: "Джорджио Армани" },
-  { text: "То, что вы носите — это то, как вы представляете себя миру", author: "Миучча Прада" },
-  { text: "Стиль — очень личное. Он не связан с модой", author: "Ральф Лорен" },
-  { text: "Хорошо одеваться — это форма хороших манер", author: "Том Форд" },
-  { text: "Стиль — это способ сказать, кто вы, не произнося ни слова", author: "Рейчел Зои" },
-]
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -127,7 +103,7 @@ const ProgressBlock = ({ progress, label }: { progress: number; label: string })
         className="absolute left-0 top-0 h-full transition-[width] duration-300"
         style={{
           width: `${progress}%`,
-          background: "linear-gradient(to right, #3b82f6, #a855f7, #ec4899)",
+          background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
         }}
       />
     </div>
@@ -245,88 +221,44 @@ const ProfileForm = ({ initial, onSave, isSaving }: ProfileFormProps) => {
   )
 }
 
-type ViewMode = "choose" | "quotes" | "game" | null
-
 interface LoadingExperienceProps {
-  viewMode: ViewMode
-  setViewMode: (m: ViewMode) => void
-  quotes: typeof QUOTES
-  quoteIndex: number
+  showGame: boolean
+  setShowGame: (v: boolean) => void
   progress: number
 }
 
-const LoadingExperience = ({ viewMode, setViewMode, quotes, quoteIndex, progress }: LoadingExperienceProps) => {
+const LoadingExperience = ({ showGame, setShowGame, progress }: LoadingExperienceProps) => {
   const GAME_HEIGHT = 300
 
-  const GameShell = ({ children }: { children: React.ReactNode }) => (
-    <div
-      className="w-full rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center overflow-hidden"
-      style={{ height: `${GAME_HEIGHT}px` }}
-    >
-      {children}
-    </div>
-  )
-
-  if (viewMode === null || viewMode === "choose") {
+  if (!showGame) {
     return (
       <>
-        <GameShell>
+        <div
+          className="w-full rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center overflow-hidden"
+          style={{ height: `${GAME_HEIGHT}px` }}
+        >
           <div className="w-full px-4 max-w-xs mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
-            <p className="text-sm text-neutral-600 mb-4">Пока ИИ работает, выберите, что показать:</p>
-            <div className="grid grid-cols-1 gap-3">
-              <button
-                className="h-11 rounded-2xl bg-[#292929] text-white font-medium px-4"
-                onPointerUp={() => setViewMode("game")}
-              >
-                Сыграть в игру
-              </button>
-              <button
-                className="h-11 rounded-2xl border border-gray-300 text-[#101010] font-medium px-4 bg-white"
-                onPointerUp={() => setViewMode("quotes")}
-              >
-                Посмотреть цитаты
-              </button>
-            </div>
+            <p className="text-sm text-neutral-600 mb-4">Пока ИИ создаёт примерку:</p>
+            <button
+              className="w-full h-11 rounded-2xl text-white font-medium px-4 border-0 transition-opacity hover:opacity-90"
+              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+              onPointerUp={() => setShowGame(true)}
+            >
+              Сыграть в игру
+            </button>
           </div>
-        </GameShell>
+        </div>
         <ProgressBlock progress={progress} label="Создаём образ…" />
       </>
     )
   }
 
-  if (viewMode === "quotes") {
-    return (
-      <>
-        <GameShell>
-          <div className="text-center max-w-xs w-full px-4">
-            <h2 className="text-base font-semibold mb-3 text-[#292929]">ИИ создаёт примерку</h2>
-            <QuoteCard className="bg-white shadow-sm">
-              <p className="italic text-[#292929]">"{quotes[quoteIndex].text}"</p>
-              <p className="mt-2 font-medium text-[#292929]/70">— {quotes[quoteIndex].author}</p>
-            </QuoteCard>
-            <div className="mt-4">
-              <button
-                className="border border-gray-300 rounded-2xl px-4 py-2 text-sm text-[#101010] bg-white"
-                onPointerUp={() => setViewMode("game")}
-              >
-                Переключиться на игру
-              </button>
-            </div>
-          </div>
-        </GameShell>
-        <ProgressBlock progress={progress} label="Создаём образ…" />
-      </>
-    )
-  }
-
-  // game
   return (
     <>
       <div className="w-full rounded-xl overflow-hidden" style={{ height: `${GAME_HEIGHT}px` }}>
         <FallingObjectsGame
           analysisDone={progress >= 100}
-          onRequestFinish={() => setViewMode(null)}
-          onRequestReturnToPicker={() => setViewMode("choose")}
+          onRequestFinish={() => setShowGame(false)}
         />
       </div>
       <ProgressBlock progress={progress} label="Создаём образ…" />
@@ -404,33 +336,12 @@ export function TryOnSheet() {
   })
 
   // Loading experience state
-  const [viewMode, setViewMode] = useState<ViewMode>(null)
-  const [quoteIndex, setQuoteIndex] = useState(0)
-  const [shuffledQuotes, setShuffledQuotes] = useState(() => shuffleArray(QUOTES))
-  const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [showGame, setShowGame] = useState(false)
 
-  // Reset loading experience state when sheet opens/closes
+  // Reset game state when loading starts
   useEffect(() => {
     if (sheetOpen && session?.status === "loading") {
-      const newOrder = shuffleArray(QUOTES)
-      setShuffledQuotes(newOrder)
-      setQuoteIndex(0)
-      setViewMode("choose")
-      quoteTimerRef.current = setInterval(() => {
-        setQuoteIndex((prev) => (prev + 1) % newOrder.length)
-      }, 10000)
-    } else {
-      if (quoteTimerRef.current) {
-        clearInterval(quoteTimerRef.current)
-        quoteTimerRef.current = null
-      }
-    }
-
-    return () => {
-      if (quoteTimerRef.current) {
-        clearInterval(quoteTimerRef.current)
-        quoteTimerRef.current = null
-      }
+      setShowGame(false)
     }
   }, [sheetOpen, session?.status])
 
@@ -653,10 +564,8 @@ export function TryOnSheet() {
             </div>
 
             <LoadingExperience
-              viewMode={viewMode}
-              setViewMode={setViewMode}
-              quotes={shuffledQuotes}
-              quoteIndex={quoteIndex}
+              showGame={showGame}
+              setShowGame={setShowGame}
               progress={session.progress}
             />
 
@@ -748,21 +657,17 @@ export function TryOnSheet() {
         {/* ---- ERROR ---- */}
         {session?.status === "error" && (
           <div className="flex flex-col items-center gap-5 py-6 text-center">
-            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center">
-              <AlertCircle className="w-8 h-8 text-red-500" />
+            <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center">
+              <AlertCircle className="w-8 h-8 text-orange-400" />
             </div>
-            <div className="space-y-1">
-              <p className="font-semibold text-[#101010]">Что-то пошло не так</p>
-              <p className="text-sm text-[#101010]/60">
-                {session.error ?? "Не удалось создать примерку. Попробуйте ещё раз."}
+            <div className="space-y-2">
+              <p className="font-semibold text-[#101010]">Не удалось создать примерку</p>
+              <p className="text-sm text-[#101010]/60 leading-relaxed">
+                {session.error ?? "Произошла ошибка. Ваши кредиты не списаны — попробуйте ещё раз."}
               </p>
             </div>
             <div className="flex flex-col gap-3 w-full">
-              <GradientButton
-                onClick={() => {
-                  clearSession()
-                }}
-              >
+              <GradientButton onClick={() => clearSession()}>
                 Попробовать снова
               </GradientButton>
               <button

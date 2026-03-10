@@ -222,16 +222,15 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
     const requestId = generateId()
     const { items, suggestion } = sessionRef.current
 
-    // 1. Check limits
+    // 1. Check limits (check-only, does NOT consume yet)
     let limitsData: { canUse?: boolean } = {}
     try {
       limitsData = await api.post("/api/check-limits", {
-        featureType: "vton_used",
+        type: "vton_used",
         count: 1,
         meta: { requestId },
       })
     } catch (err: unknown) {
-      // 402 is thrown as an error by api-client
       const message = err instanceof Error ? err.message : String(err)
       confirmingRef.current = false
       if (message.includes("402") || message.includes("payment_required")) {
@@ -274,7 +273,17 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
     }, TICK_MS)
 
     // 6. Fire the actual API call (closure captures stable refs)
+    // Credits are consumed ONLY on success — if the call fails, nothing is charged.
     ;(async () => {
+      const setError = (errMsg: string) => {
+        stopProgressTimer()
+        confirmingRef.current = false
+        setSession((prev) =>
+          prev ? { ...prev, status: "error", progress: 0, error: errMsg } : prev,
+        )
+        updateTaskRef.current(taskId, { status: "error", progress: 0, error: errMsg })
+      }
+
       try {
         const vtonItems = items.map((item) => ({
           name: item.name,
@@ -290,27 +299,30 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
 
         // Check for error in response body (n8n may return 200 with error)
         if (response?.error) {
-          const errMsg = typeof response.error === "string"
+          setError(typeof response.error === "string"
             ? response.error
-            : "Сервис примерки вернул ошибку"
-          setSession((prev) =>
-            prev ? { ...prev, status: "error", progress: 0, error: errMsg } : prev,
-          )
-          updateTaskRef.current(taskId, { status: "error", progress: 0, error: errMsg })
+            : "Сервис примерки вернул ошибку. Ваши кредиты не списаны.")
           return
         }
 
         const imageUrl = extractImageUrl(response)
         if (!imageUrl) {
-          const errMsg = "Не удалось получить результат примерки"
-          setSession((prev) =>
-            prev ? { ...prev, status: "error", progress: 0, error: errMsg } : prev,
-          )
-          updateTaskRef.current(taskId, { status: "error", progress: 0, error: errMsg })
+          setError("Не удалось получить результат примерки. Ваши кредиты не списаны.")
           return
         }
 
-        // Success
+        // Success — NOW consume the credit
+        try {
+          await api.post("/api/check-limits", {
+            featureType: "vton_used",
+            count: 1,
+            meta: { requestId },
+          })
+        } catch {
+          // Credit consumption failed but try-on succeeded — don't block user
+          console.error("[TryOn] Failed to consume credit after success")
+        }
+
         setSession((prev) =>
           prev
             ? { ...prev, status: "completed", progress: 100, resultUrl: imageUrl, error: null }
@@ -320,26 +332,19 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
 
         onTryOnSuccessRef.current?.(imageUrl)
       } catch (err: unknown) {
-        stopProgressTimer()
-        confirmingRef.current = false
-        // Parse user-friendly error from API response
-        let errMsg = "Ошибка виртуальной примерки"
+        // API call failed — no credit consumed
+        let errMsg = "Произошла ошибка при создании примерки. Ваши кредиты не списаны — попробуйте ещё раз."
         if (err instanceof Error) {
           const msg = err.message
-          if (msg.includes("503")) {
-            errMsg = "Сервис примерки временно недоступен. Попробуйте позже."
+          if (msg.includes("503") || msg.includes("502")) {
+            errMsg = "Сервис примерки временно недоступен. Ваши кредиты не списаны — попробуйте позже."
           } else if (msg.includes("400")) {
-            errMsg = "Загрузите аватар в профиле для виртуальной примерки."
+            errMsg = "Загрузите аватар в профиле для виртуальной примерки. Кредиты не списаны."
           } else if (msg.includes("timeout") || msg.includes("Timeout")) {
-            errMsg = "Сервис примерки не ответил вовремя. Попробуйте позже."
-          } else {
-            errMsg = msg
+            errMsg = "Сервис не ответил вовремя. Ваши кредиты не списаны — попробуйте позже."
           }
         }
-        setSession((prev) =>
-          prev ? { ...prev, status: "error", progress: 0, error: errMsg } : prev,
-        )
-        updateTaskRef.current(taskId, { status: "error", progress: 0, error: errMsg })
+        setError(errMsg)
       }
     })()
 

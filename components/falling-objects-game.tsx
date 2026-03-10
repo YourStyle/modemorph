@@ -41,28 +41,28 @@ const GOOD_ITEMS = [
 ]
 
 const BAD_ITEMS = [
-  { emoji: "🧦", points: -15, label: "Дырявый носок" },
-  { emoji: "💀", points: -30, label: "Моль" },
-  { emoji: "🗑️", points: -20, label: "Мусор" },
+  { emoji: "🧦", points: -15 },
+  { emoji: "💀", points: -30 },
+  { emoji: "🗑️", points: -20 },
 ]
 
 const POWER_UPS = [
-  { emoji: "⏳", type: "slow" as const, label: "Замедление" },
-  { emoji: "🧲", type: "magnet" as const, label: "Магнит" },
-  { emoji: "🛡️", type: "shield" as const, label: "Щит" },
+  { emoji: "⏳", type: "slow" as const },
+  { emoji: "🧲", type: "magnet" as const },
+  { emoji: "🛡️", type: "shield" as const },
 ]
 
 const GAME_HEIGHT = 300
-const MAX_LIVES = 3
+const MAX_LIVES = 5
 const BASE_FALL_SPEED = 1.2
 const MAX_FALL_SPEED = 4.5
-const SPEED_INCREMENT = 0.15 // per catch
-const SPEED_DECAY_ON_MISS = 0.4 // multiply speed reduction (keep 60%)
+const SPEED_INCREMENT = 0.15
+const SPEED_DECAY_ON_MISS = 0.4
 const SPAWN_BASE_INTERVAL = 1800
 const SPAWN_MIN_INTERVAL = 700
 const TARGET_FPS = 60
 const FRAME_TIME = 1000 / TARGET_FPS
-const COMBO_TIMEOUT = 3000 // ms to keep combo alive
+const COMBO_TIMEOUT = 3000
 const SLOW_DURATION = 5000
 const MAGNET_DURATION = 4000
 const SHIELD_DURATION = 6000
@@ -74,13 +74,11 @@ const SHIELD_DURATION = 6000
 type GameProps = {
   analysisDone?: boolean
   onRequestFinish?: () => void
-  onRequestReturnToPicker?: () => void
 }
 
 export default function FallingObjectsGame({
   analysisDone = false,
   onRequestFinish,
-  onRequestReturnToPicker,
 }: GameProps) {
   const [score, setScore] = useState(0)
   const [gameStarted, setGameStarted] = useState(false)
@@ -98,6 +96,9 @@ export default function FallingObjectsGame({
   const [slowActive, setSlowActive] = useState(false)
   const [magnetActive, setMagnetActive] = useState(false)
   const [shieldActive, setShieldActive] = useState(false)
+
+  // HP shake effect
+  const [hpShake, setHpShake] = useState(false)
 
   const gameAreaRef = useRef<HTMLDivElement>(null)
   const animationRef = useRef<number>()
@@ -168,7 +169,6 @@ export default function FallingObjectsGame({
     const rand = Math.random()
     let obj: FallingObject
 
-    // 8% chance power-up, 18% chance bad item, rest good
     if (rand < 0.08 && scoreRef.current > 50) {
       const pu = POWER_UPS[Math.floor(Math.random() * POWER_UPS.length)]
       obj = {
@@ -195,7 +195,6 @@ export default function FallingObjectsGame({
         size: 1,
       }
     } else {
-      // Weighted: higher-value items are rarer
       const weights = GOOD_ITEMS.map((_, i) => GOOD_ITEMS.length - i)
       const total = weights.reduce((a, b) => a + b, 0)
       let r = Math.random() * total
@@ -266,6 +265,15 @@ export default function FallingObjectsGame({
   }, [])
 
   // ---------------------------------------------------------------------------
+  // HP shake trigger
+  // ---------------------------------------------------------------------------
+
+  const triggerHpShake = useCallback(() => {
+    setHpShake(true)
+    setTimeout(() => setHpShake(false), 400)
+  }, [])
+
+  // ---------------------------------------------------------------------------
   // Collision
   // ---------------------------------------------------------------------------
 
@@ -297,7 +305,6 @@ export default function FallingObjectsGame({
 
       const currentSpeed = slowActiveRef.current ? fallSpeedRef.current * 0.4 : fallSpeedRef.current
 
-      // Magnet: bend items toward basket
       const updated = prev.map((obj) => {
         let newX = obj.x
         if (magnetActiveRef.current && !obj.isBad) {
@@ -310,6 +317,7 @@ export default function FallingObjectsGame({
       const remaining: FallingObject[] = []
       let scoreChange = 0
       let missedCount = 0
+      let lostLives = 0
       const newEffects: { x: number; y: number; text: string; color: string }[] = []
       let caught = false
       let caughtBad = false
@@ -321,12 +329,12 @@ export default function FallingObjectsGame({
             newEffects.push({ x: basketXRef.current, y: 78, text: "⚡", color: "#8b5cf6" })
           } else if (obj.isBad) {
             if (shieldActiveRef.current) {
-              // Shield blocks bad items
               newEffects.push({ x: basketXRef.current, y: 78, text: "🛡️", color: "#3b82f6" })
             } else {
               scoreChange += obj.points
               caughtBad = true
-              newEffects.push({ x: basketXRef.current, y: 78, text: `${obj.points}`, color: "#ef4444" })
+              lostLives++
+              newEffects.push({ x: basketXRef.current, y: 78, text: `${obj.points} 💔`, color: "#ef4444" })
             }
           } else {
             const comboMultiplier = Math.min(1 + comboRef.current * 0.25, 4)
@@ -347,14 +355,13 @@ export default function FallingObjectsGame({
 
       if (caught) {
         addCombo()
-        // Speed up
         setFallSpeed((prev) => Math.min(MAX_FALL_SPEED, prev + SPEED_INCREMENT))
       }
 
       if (caughtBad) {
         resetCombo()
-        // Slow down a bit on bad catch
         setFallSpeed((prev) => Math.max(BASE_FALL_SPEED, prev - SPEED_INCREMENT * 3))
+        triggerHpShake()
       }
 
       if (scoreChange !== 0) {
@@ -365,16 +372,21 @@ export default function FallingObjectsGame({
         addEffect(e.x, e.y, e.text, e.color)
       }
 
+      // Lose lives from bad catches AND misses
+      const totalLost = lostLives + missedCount
+
       if (missedCount > 0) {
-        // Speed decay on miss — keep 60% of gained speed
         setFallSpeed((prev) => {
           const gained = prev - BASE_FALL_SPEED
           return BASE_FALL_SPEED + gained * SPEED_DECAY_ON_MISS
         })
         resetCombo()
+      }
 
+      if (totalLost > 0) {
+        if (missedCount === 0) triggerHpShake() // only if not already triggered by caughtBad
         setLives((prev) => {
-          const newLives = prev - missedCount
+          const newLives = prev - totalLost
           if (newLives <= 0) setGameOver(true)
           return Math.max(0, newLives)
         })
@@ -384,7 +396,7 @@ export default function FallingObjectsGame({
     })
 
     animationRef.current = requestAnimationFrame(gameLoop)
-  }, [gameStarted, gameOver, spawnObject, checkCollision, getSpawnInterval, addCombo, resetCombo, activatePowerUp, addEffect])
+  }, [gameStarted, gameOver, spawnObject, checkCollision, getSpawnInterval, addCombo, resetCombo, activatePowerUp, addEffect, triggerHpShake])
 
   // ---------------------------------------------------------------------------
   // Start / reset
@@ -404,18 +416,12 @@ export default function FallingObjectsGame({
     setSlowActive(false)
     setMagnetActive(false)
     setShieldActive(false)
+    setHpShake(false)
     basketXRef.current = 50
     lastSpawnRef.current = 0
     lastUpdateRef.current = 0
     objectIdRef.current = 0
     scoreRef.current = 0
-  }
-
-  const resetGame = () => {
-    setGameStarted(false)
-    setGameOver(false)
-    setFallingObjects([])
-    setEffects([])
   }
 
   // ---------------------------------------------------------------------------
@@ -445,14 +451,14 @@ export default function FallingObjectsGame({
   }, [])
 
   // ---------------------------------------------------------------------------
-  // Speed indicator color
+  // Derived
   // ---------------------------------------------------------------------------
 
   const speedPercent = Math.round(((fallSpeed - BASE_FALL_SPEED) / (MAX_FALL_SPEED - BASE_FALL_SPEED)) * 100)
   const speedColor = speedPercent < 30 ? "#22c55e" : speedPercent < 60 ? "#eab308" : "#ef4444"
 
   // ---------------------------------------------------------------------------
-  // Render
+  // Render: start screen
   // ---------------------------------------------------------------------------
 
   if (!gameStarted) {
@@ -461,33 +467,30 @@ export default function FallingObjectsGame({
         className="rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center text-center p-6"
         style={{ height: `${GAME_HEIGHT}px`, touchAction: "manipulation" }}
       >
-        <div className="space-y-4 w-full max-w-md mx-auto">
-          <p className="text-slate-600 leading-relaxed">
-            Ловите модные вещи и избегайте мусора! Чем больше ловите подряд — тем быстрее и больше очков.
+        <div className="space-y-4 w-full max-w-xs mx-auto">
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Ловите модные вещи и избегайте мусора!
           </p>
-          <div className="flex gap-2 justify-center text-xs text-slate-500">
+          <div className="flex gap-3 justify-center text-xs text-slate-500">
             <span>⏳ замедление</span>
             <span>🧲 магнит</span>
             <span>🛡️ щит</span>
           </div>
-          <div className="grid grid-cols-1 gap-3">
-            <button
-              onClick={startGame}
-              className="w-full px-6 py-3 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-lg transition-colors duration-200 border-0"
-            >
-              Начать игру
-            </button>
-            <button
-              onClick={onRequestReturnToPicker}
-              className="w-full px-6 py-3 bg-white hover:bg-slate-50 text-[#EC9DE2] font-medium rounded-2xl shadow-lg transition-colors duration-200 border border-[#EC9DE2]"
-            >
-              Назад к выбору
-            </button>
-          </div>
+          <button
+            onClick={startGame}
+            className="w-full px-6 py-3 text-white font-medium rounded-2xl shadow-lg transition-opacity hover:opacity-90 border-0"
+            style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+          >
+            Начать игру
+          </button>
         </div>
       </div>
     )
   }
+
+  // ---------------------------------------------------------------------------
+  // Render: game
+  // ---------------------------------------------------------------------------
 
   return (
     <div
@@ -495,49 +498,60 @@ export default function FallingObjectsGame({
       className="relative bg-gradient-to-b from-purple-200/80 to-pink-200/80 rounded-xl overflow-hidden cursor-none select-none border border-purple-200/50"
       style={{ height: `${GAME_HEIGHT}px`, touchAction: "none" }}
     >
-      {/* HUD */}
-      <div className="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
-        <div className="flex items-center gap-2">
-          {/* Score */}
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 h-8 shadow-sm flex items-center">
-            <span className="text-sm font-bold text-purple-600">{score}</span>
-          </div>
-          {/* Combo */}
-          {combo >= 2 && (
-            <div className="bg-purple-500/90 backdrop-blur-sm rounded-lg px-2 h-7 shadow-sm flex items-center animate-bounce">
-              <span className="text-xs font-bold text-white">x{combo}</span>
-            </div>
-          )}
-          {/* Level */}
-          <div className="bg-white/70 backdrop-blur-sm rounded-lg px-2 h-6 flex items-center">
-            <span className="text-[10px] font-medium text-slate-500">Ур.{level}</span>
+      {/* HUD Row 1: Score | Lives | Close */}
+      <div className="absolute top-2 left-2 right-2 flex justify-between items-center z-10">
+        {/* Score */}
+        <div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 h-7 shadow-sm flex items-center">
+          <span className="text-sm font-bold text-purple-600">{score}</span>
+        </div>
+
+        {/* Lives (center) */}
+        <div className={`bg-white/90 backdrop-blur-sm rounded-xl px-2.5 h-7 shadow-sm flex items-center gap-0.5 transition-transform ${hpShake ? "animate-hp-shake" : ""}`}>
+          {[...Array(MAX_LIVES)].map((_, i) => (
+            <span key={i} className="text-xs">{i < lives ? "❤️" : "🖤"}</span>
+          ))}
+        </div>
+
+        {/* Close (X) button */}
+        <button
+          onClick={onRequestFinish}
+          className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm shadow-sm flex items-center justify-center border-0 text-slate-500 hover:text-slate-700 transition-colors"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
+
+      {/* HUD Row 2: Level | Speed | Combo | Power-ups */}
+      <div className="absolute top-11 left-2 right-2 flex items-center gap-1.5 z-10">
+        {/* Level */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-lg px-1.5 h-5 flex items-center">
+          <span className="text-[10px] font-medium text-slate-500">Ур.{level}</span>
+        </div>
+
+        {/* Speed bar */}
+        <div className="bg-white/60 backdrop-blur-sm rounded-lg px-1.5 h-5 flex items-center gap-1">
+          <div className="w-10 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+            <div className="h-full rounded-full transition-all duration-300" style={{ width: `${speedPercent}%`, backgroundColor: speedColor }} />
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Speed indicator */}
-          <div className="bg-white/70 backdrop-blur-sm rounded-lg px-2 h-6 flex items-center gap-1">
-            <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${speedPercent}%`, backgroundColor: speedColor }} />
-            </div>
+        {/* Combo */}
+        {combo >= 2 && (
+          <div className="bg-purple-500/90 backdrop-blur-sm rounded-lg px-1.5 h-5 shadow-sm flex items-center animate-bounce">
+            <span className="text-[10px] font-bold text-white">x{combo}</span>
           </div>
-          {/* Power-up indicators */}
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Power-up indicators */}
+        <div className="flex items-center gap-1">
           {slowActive && <span className="text-sm animate-pulse">⏳</span>}
           {magnetActive && <span className="text-sm animate-pulse">🧲</span>}
           {shieldActive && <span className="text-sm animate-pulse">🛡️</span>}
-          {/* Lives */}
-          <div className="bg-white/90 backdrop-blur-sm rounded-lg px-2 h-8 shadow-sm flex items-center gap-0.5">
-            {[...Array(MAX_LIVES)].map((_, i) => (
-              <span key={i} className="text-xs">{i < lives ? "❤️" : "🤍"}</span>
-            ))}
-          </div>
-          {/* Finish button */}
-          <button
-            onClick={onRequestFinish}
-            className="bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-sm px-3 h-8 flex items-center border-0 transition-colors text-xs"
-          >
-            Завершить
-          </button>
         </div>
       </div>
 
@@ -545,7 +559,7 @@ export default function FallingObjectsGame({
       {fallingObjects.map((obj) => (
         <div
           key={obj.id}
-          className={`absolute will-change-transform ${obj.isBad ? "animate-wiggle" : ""}`}
+          className={`absolute will-change-transform ${obj.isBad ? "game-wiggle" : ""}`}
           style={{
             left: `${obj.x}%`,
             top: `${obj.y}%`,
@@ -562,7 +576,7 @@ export default function FallingObjectsGame({
       {effects.map((e) => (
         <div
           key={`fx-${e.id}`}
-          className="absolute text-sm font-bold animate-fade-in-up pointer-events-none"
+          className="absolute text-sm font-bold pointer-events-none game-fade-up"
           style={{ left: `${e.x}%`, top: `${e.y}%`, transform: "translate(-50%, -50%)", color: e.color }}
         >
           {e.text}
@@ -580,18 +594,19 @@ export default function FallingObjectsGame({
       {/* Game over overlay */}
       {gameOver && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-20">
-          <div className="bg-white p-6 rounded-xl text-center space-y-4 shadow-2xl max-w-xs">
+          <div className="bg-white p-6 rounded-2xl text-center space-y-4 shadow-2xl max-w-xs mx-4">
             <h2 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
               Игра окончена!
             </h2>
             <p className="text-slate-600">
               Счёт: <span className="font-bold text-purple-600">{score}</span>
               <br />
-              <span className="text-xs text-slate-400">Уровень {level} • Макс. комбо x{combo}</span>
+              <span className="text-xs text-slate-400">Уровень {level}</span>
             </p>
             <button
               onClick={startGame}
-              className="w-full px-6 py-3 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-lg transition-colors duration-200 border-0"
+              className="w-full px-6 py-3 text-white font-medium rounded-2xl shadow-lg transition-opacity hover:opacity-90 border-0"
+              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
             >
               Играть снова
             </button>
@@ -602,13 +617,14 @@ export default function FallingObjectsGame({
       {/* Analysis done overlay */}
       {showFinishOverlay && !gameOver && (
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-20">
-          <div className="bg-white p-6 rounded-xl text-center space-y-4 shadow-2xl max-w-xs">
+          <div className="bg-white p-6 rounded-2xl text-center space-y-4 shadow-2xl max-w-xs mx-4">
             <h2 className="text-lg font-bold text-purple-700">Примерка готова!</h2>
             <p className="text-slate-600">Хотите посмотреть результат?</p>
             <div className="grid grid-cols-2 gap-3">
               <button
                 onClick={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
-                className="w-full px-4 py-2 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl transition-colors"
+                className="w-full px-4 py-2 text-white font-medium rounded-2xl transition-opacity hover:opacity-90"
+                style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
               >
                 Да
               </button>
@@ -623,14 +639,29 @@ export default function FallingObjectsGame({
         </div>
       )}
 
-      {/* Wiggle animation for bad items */}
+      {/* Animations */}
       <style jsx>{`
         @keyframes wiggle {
           0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
           25% { transform: translate(-50%, -50%) rotate(-8deg); }
           75% { transform: translate(-50%, -50%) rotate(8deg); }
         }
-        .animate-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+        .game-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+
+        @keyframes fadeUp {
+          0% { opacity: 1; transform: translate(-50%, -50%); }
+          100% { opacity: 0; transform: translate(-50%, calc(-50% - 30px)); }
+        }
+        .game-fade-up { animation: fadeUp 0.9s ease-out forwards; }
+
+        @keyframes hpShake {
+          0%, 100% { transform: translateX(0); }
+          20% { transform: translateX(-3px); }
+          40% { transform: translateX(3px); }
+          60% { transform: translateX(-2px); }
+          80% { transform: translateX(2px); }
+        }
+        .animate-hp-shake { animation: hpShake 0.4s ease-in-out; }
       `}</style>
     </div>
   )
