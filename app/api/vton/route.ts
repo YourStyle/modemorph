@@ -80,15 +80,33 @@ export async function POST(request: NextRequest) {
     if (!vtonResponse.ok) {
       const errorText = await vtonResponse.text()
       console.error("VTON service error:", vtonResponse.status, errorText)
+
+      // Try to extract meaningful error from n8n response
+      let userError = "Сервис примерки временно недоступен"
+      try {
+        const parsed = JSON.parse(errorText)
+        if (parsed?.error) userError = parsed.error
+        else if (parsed?.message) userError = parsed.message
+      } catch {
+        // not JSON, use default
+      }
+
       return NextResponse.json(
-        {
-          error: "Virtual try-on service is temporarily unavailable",
-        },
-        { status: 503 },
+        { error: userError },
+        { status: vtonResponse.status >= 500 ? 503 : vtonResponse.status },
       )
     }
 
     const vtonResult = await vtonResponse.json()
+
+    // n8n might return 200 with error in body
+    if (vtonResult?.error) {
+      console.error("VTON service returned error in body:", vtonResult.error)
+      return NextResponse.json(
+        { error: typeof vtonResult.error === "string" ? vtonResult.error : "Ошибка сервиса примерки" },
+        { status: 502 },
+      )
+    }
 
     return NextResponse.json({
       success: true,

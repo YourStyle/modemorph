@@ -149,6 +149,9 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
   // Fake progress timer ref
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  // Guard against double confirmTryOn calls
+  const confirmingRef = useRef(false)
+
   const { addTask, updateTask } = useBackgroundTasks()
 
   // Stable updateTask ref so async closures do not capture stale versions
@@ -207,11 +210,17 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  // Keep a stable ref to session for the async closure
+  const sessionRef = useRef(session)
+  sessionRef.current = session
+
   const confirmTryOn = useCallback(async (): Promise<ConfirmTryOnResult> => {
-    if (!session) return { error: "No active session" }
+    if (!sessionRef.current) return { error: "No active session" }
+    if (confirmingRef.current) return { error: "Already confirming" }
+    confirmingRef.current = true
 
     const requestId = generateId()
-    const { items, suggestion } = session
+    const { items, suggestion } = sessionRef.current
 
     // 1. Check limits
     let limitsData: { canUse?: boolean } = {}
@@ -224,6 +233,7 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
     } catch (err: unknown) {
       // 402 is thrown as an error by api-client
       const message = err instanceof Error ? err.message : String(err)
+      confirmingRef.current = false
       if (message.includes("402") || message.includes("payment_required")) {
         return { paywall: true }
       }
@@ -231,6 +241,7 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
     }
 
     if (limitsData.canUse === false) {
+      confirmingRef.current = false
       return { paywall: true }
     }
 
@@ -275,6 +286,19 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
         const response = await api.post("/api/vton", { items: vtonItems, requestId })
 
         stopProgressTimer()
+        confirmingRef.current = false
+
+        // Check for error in response body (n8n may return 200 with error)
+        if (response?.error) {
+          const errMsg = typeof response.error === "string"
+            ? response.error
+            : "Сервис примерки вернул ошибку"
+          setSession((prev) =>
+            prev ? { ...prev, status: "error", progress: 0, error: errMsg } : prev,
+          )
+          updateTaskRef.current(taskId, { status: "error", progress: 0, error: errMsg })
+          return
+        }
 
         const imageUrl = extractImageUrl(response)
         if (!imageUrl) {
@@ -297,7 +321,21 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
         onTryOnSuccessRef.current?.(imageUrl)
       } catch (err: unknown) {
         stopProgressTimer()
-        const errMsg = err instanceof Error ? err.message : "Ошибка виртуальной примерки"
+        confirmingRef.current = false
+        // Parse user-friendly error from API response
+        let errMsg = "Ошибка виртуальной примерки"
+        if (err instanceof Error) {
+          const msg = err.message
+          if (msg.includes("503")) {
+            errMsg = "Сервис примерки временно недоступен. Попробуйте позже."
+          } else if (msg.includes("400")) {
+            errMsg = "Загрузите аватар в профиле для виртуальной примерки."
+          } else if (msg.includes("timeout") || msg.includes("Timeout")) {
+            errMsg = "Сервис примерки не ответил вовремя. Попробуйте позже."
+          } else {
+            errMsg = msg
+          }
+        }
         setSession((prev) =>
           prev ? { ...prev, status: "error", progress: 0, error: errMsg } : prev,
         )
@@ -306,7 +344,7 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
     })()
 
     return { ok: true }
-  }, [session, addTask, updateSession, stopProgressTimer])
+  }, [addTask, updateSession, stopProgressTimer])
 
   const minimizeSession = useCallback(() => {
     setSheetOpen(false)
@@ -334,6 +372,7 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
 
   const clearSession = useCallback(() => {
     stopProgressTimer()
+    confirmingRef.current = false
     onTryOnClickRef.current = undefined
     onTryOnSuccessRef.current = undefined
     setSession(null)

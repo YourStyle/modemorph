@@ -81,7 +81,30 @@ const OutlineButton = ({
   </button>
 )
 
-/** Small item circle used in confirming & completed states */
+/** Item card used in confirming state — shows image + name */
+const ItemCard = ({ item }: { item: any }) => {
+  const imageUrl = item?.image_url || item?.img_url || item?.finalImageUrl || null
+  const name = item?.item_name || item?.name || ""
+
+  return (
+    <div className="flex-shrink-0 w-[72px] flex flex-col items-center gap-1.5">
+      <div className="w-[72px] h-[72px] rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center">
+        {imageUrl ? (
+          <Image src={imageUrl} alt={name || "item"} width={72} height={72} className="object-cover w-full h-full" />
+        ) : (
+          <span className="text-2xl">👕</span>
+        )}
+      </div>
+      {name && (
+        <p className="text-[10px] text-[#101010]/50 text-center leading-tight line-clamp-2 w-full">
+          {name}
+        </p>
+      )}
+    </div>
+  )
+}
+
+/** Small item circle used in completed state */
 const ItemCircle = ({ item }: { item: any }) => {
   const imageUrl = item?.image_url || item?.img_url || item?.finalImageUrl || null
 
@@ -462,7 +485,10 @@ export function TryOnSheet() {
     minimizeSession()
   }, [minimizeSession])
 
+  const confirmingRef = useRef(false)
   const handleConfirm = useCallback(async () => {
+    if (confirmingRef.current) return
+    confirmingRef.current = true
     setIsConfirming(true)
     try {
       const result = await confirmTryOn()
@@ -474,6 +500,7 @@ export function TryOnSheet() {
       toast.error("Не удалось запустить примерку")
     } finally {
       setIsConfirming(false)
+      confirmingRef.current = false
     }
   }, [confirmTryOn, setSheetOpen])
 
@@ -583,20 +610,18 @@ export function TryOnSheet() {
                   ))}
                 </ul>
 
-                {/* Outfit item circles */}
-                {items.length > 0 && (
-                  <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
-                    {items.slice(0, 6).map((item: any, i: number) => (
-                      <ItemCircle key={i} item={item} />
-                    ))}
-                  </div>
-                )}
-
-                {/* Outfit title if available */}
+                {/* Outfit title + item cards */}
                 {session?.suggestion?.title && (
-                  <p className="text-xs text-[#101010]/50 font-medium truncate">
+                  <p className="text-sm font-semibold text-[#101010]">
                     {session.suggestion.title}
                   </p>
+                )}
+                {items.length > 0 && (
+                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
+                    {items.slice(0, 6).map((item: any, i: number) => (
+                      <ItemCard key={i} item={item} />
+                    ))}
+                  </div>
                 )}
 
                 {/* CTA */}
