@@ -498,60 +498,51 @@ export default function FallingObjectsGame({
       className="relative bg-gradient-to-b from-purple-200/80 to-pink-200/80 rounded-xl overflow-hidden cursor-none select-none border border-purple-200/50"
       style={{ height: `${GAME_HEIGHT}px`, touchAction: "none" }}
     >
-      {/* HUD Row 1: Score | Lives | Close */}
-      <div className="absolute top-2 left-2 right-2 flex justify-between items-center z-10">
-        {/* Score */}
-        <div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 h-7 shadow-sm flex items-center">
-          <span className="text-sm font-bold text-purple-600">{score}</span>
+      {/* HUD — single row */}
+      <div className="absolute top-2 left-2 right-2 flex items-start justify-between z-10">
+        {/* Score + combo underneath */}
+        <div className="flex flex-col items-start gap-0.5">
+          <div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 h-7 shadow-sm flex items-center">
+            <span className="text-sm font-bold text-purple-600">{score}</span>
+          </div>
+          {combo >= 2 && (
+            <div className="bg-purple-500/90 backdrop-blur-sm rounded-xl px-2 h-5 shadow-sm flex items-center">
+              <span className="text-[10px] font-bold text-white">x{combo} streak</span>
+            </div>
+          )}
         </div>
 
-        {/* Lives (center) */}
-        <div className={`bg-white/90 backdrop-blur-sm rounded-xl px-2.5 h-7 shadow-sm flex items-center gap-0.5 transition-transform ${hpShake ? "animate-hp-shake" : ""}`}>
-          {[...Array(MAX_LIVES)].map((_, i) => (
-            <span key={i} className="text-xs">{i < lives ? "❤️" : "🖤"}</span>
-          ))}
-        </div>
-
-        {/* Close (X) button */}
-        <button
-          onClick={onRequestFinish}
-          className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm shadow-sm flex items-center justify-center border-0 text-slate-500 hover:text-slate-700 transition-colors"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        </button>
-      </div>
-
-      {/* HUD Row 2: Level | Speed | Combo | Power-ups */}
-      <div className="absolute top-11 left-2 right-2 flex items-center gap-1.5 z-10">
-        {/* Level */}
-        <div className="bg-white/60 backdrop-blur-sm rounded-lg px-1.5 h-5 flex items-center">
+        {/* Center: Level + Speed bar */}
+        <div className="bg-white/80 backdrop-blur-sm rounded-xl px-2 h-7 shadow-sm flex items-center gap-1.5">
           <span className="text-[10px] font-medium text-slate-500">Ур.{level}</span>
-        </div>
-
-        {/* Speed bar */}
-        <div className="bg-white/60 backdrop-blur-sm rounded-lg px-1.5 h-5 flex items-center gap-1">
-          <div className="w-10 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className="w-8 h-2 bg-gray-200 rounded-full overflow-hidden">
             <div className="h-full rounded-full transition-all duration-300" style={{ width: `${speedPercent}%`, backgroundColor: speedColor }} />
           </div>
         </div>
 
-        {/* Combo */}
-        {combo >= 2 && (
-          <div className="bg-purple-500/90 backdrop-blur-sm rounded-lg px-1.5 h-5 shadow-sm flex items-center animate-bounce">
-            <span className="text-[10px] font-bold text-white">x{combo}</span>
-          </div>
-        )}
-
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Power-up indicators */}
-        <div className="flex items-center gap-1">
+        {/* Right: powerups + lives + X */}
+        <div className="flex items-center gap-1.5">
+          {/* Power-up indicators */}
           {slowActive && <span className="text-sm animate-pulse">⏳</span>}
           {magnetActive && <span className="text-sm animate-pulse">🧲</span>}
           {shieldActive && <span className="text-sm animate-pulse">🛡️</span>}
+
+          {/* Lives */}
+          <div className={`bg-white/90 backdrop-blur-sm rounded-xl px-2 h-7 shadow-sm flex items-center gap-0.5 ${hpShake ? "animate-hp-shake" : ""}`}>
+            {[...Array(MAX_LIVES)].map((_, i) => (
+              <span key={i} className="text-[10px]">{i < lives ? "❤️" : "🖤"}</span>
+            ))}
+          </div>
+
+          {/* Close (X) */}
+          <button
+            onClick={onRequestFinish}
+            className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm shadow-sm flex items-center justify-center border-0 text-slate-500 hover:text-slate-700 transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
       </div>
 
