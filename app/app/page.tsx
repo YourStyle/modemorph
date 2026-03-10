@@ -316,29 +316,64 @@ export default function HomePage() {
     return cleaned
   }
 
-  // Load outfit suggestions from database API, auto-trigger generation if empty
+  // Background refresh: trigger POST, update sections when done
+  const refreshInBackground = async () => {
+    if (autoTriggered.current) return
+    autoTriggered.current = true
+    console.log("[HomePage] Refreshing recommendations in background...")
+    try {
+      const generated = await api.post("/api/recommendations", {})
+      // POST returns flat array of sections
+      const newSections = processRecommendations(Array.isArray(generated) ? generated : [])
+      if (newSections.length > 0) {
+        console.log("[HomePage] Background refresh got", newSections.length, "sections")
+        setOutfitSections(newSections)
+      }
+    } catch (e) {
+      console.error("[HomePage] Background refresh failed:", e)
+    }
+  }
+
+  // Load outfit suggestions from database API
+  // Strategy: show cached data immediately, refresh in background if stale
   useEffect(() => {
     const loadOutfitSuggestions = async () => {
       try {
         console.log("[HomePage] Loading recommendations from API...")
-        const recommendations = await api.get("/api/recommendations")
-        console.log("[HomePage] GET response:", Array.isArray(recommendations) ? `${recommendations.length} sections` : typeof recommendations, recommendations)
-        const cleaned = processRecommendations(recommendations)
-        console.log("[HomePage] After processRecommendations:", cleaned.length, "sections")
+        const response = await api.get("/api/recommendations")
+
+        // API returns { sections: [...], stale: boolean } or legacy flat array
+        let sections: any[]
+        let stale = false
+        if (response && typeof response === "object" && "sections" in response) {
+          sections = Array.isArray(response.sections) ? response.sections : []
+          stale = !!response.stale
+        } else {
+          // Legacy: flat array
+          sections = Array.isArray(response) ? response : []
+        }
+
+        const cleaned = processRecommendations(sections)
+        console.log("[HomePage] Got", cleaned.length, "sections, stale:", stale)
 
         if (cleaned.length > 0) {
+          // Show cached data immediately
           setOutfitSections(cleaned)
           setLoading(false)
+          // If stale, refresh in background (no loading screen)
+          if (stale) {
+            refreshInBackground()
+          }
         } else if (!autoTriggered.current) {
-          // No recommendations in DB — auto-trigger first generation
+          // No data at all — show generation screen
           autoTriggered.current = true
-          console.log("[HomePage] No recommendations found, auto-triggering generation")
+          console.log("[HomePage] No recommendations found, triggering generation")
           setLoading(false)
           setRecommendationsLoading(true)
           setGenerationError(false)
           try {
             const generated = await api.post("/api/recommendations", {})
-            setOutfitSections(processRecommendations(generated))
+            setOutfitSections(processRecommendations(Array.isArray(generated) ? generated : []))
           } catch (e) {
             console.error("Auto-generation failed:", e)
             setGenerationError(true)

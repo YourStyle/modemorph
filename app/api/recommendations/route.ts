@@ -95,6 +95,33 @@ async function enrichSectionsWithImages(supabase: any, sections: any[]): Promise
     }));
 }
 
+/** Normalize look_sections to flat array of {title, suggestions} sections.
+ *  n8n cron writes: [{"sections": [{title, suggestions}, ...]}]
+ *  Our POST writes: [{title, suggestions}, ...]
+ */
+function normalizeSections(val: unknown): any[] {
+    try {
+        let arr: any[];
+        if (Array.isArray(val)) {
+            arr = val;
+        } else if (typeof val === "string") {
+            const parsed = JSON.parse(val);
+            arr = Array.isArray(parsed) ? parsed : [];
+        } else {
+            return [];
+        }
+
+        // Unwrap n8n wrapper: [{sections: [...]}] → [...]
+        if (arr.length === 1 && arr[0]?.sections && Array.isArray(arr[0].sections)) {
+            return arr[0].sections;
+        }
+
+        return arr;
+    } catch {
+        return [];
+    }
+}
+
 export async function GET(req: NextRequest) {
     try {
         const user = await getAuthUser(req);
@@ -108,62 +135,46 @@ export async function GET(req: NextRequest) {
 
         console.log("[Recommendations GET] Fetching for user:", user.id);
 
-        const { data: row, error } = await supabase
+        // Fetch last few rows — cron sometimes writes empty [], so we need fallback
+        const { data: rows, error } = await supabase
             .from("main_recommendations")
             .select("run_date, look_sections")
             .eq("user_id", user.id)
             .order("run_date", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+            .limit(7);
 
         if (error) {
             console.error("[Recommendations GET] DB error:", error);
             return NextResponse.json({ error: "Failed to fetch" }, { status: 500 });
         }
 
-        if (!row || row.look_sections == null) {
-            console.log("[Recommendations GET] No data found for user:", user.id);
-            return NextResponse.json([]);
+        if (!rows || rows.length === 0) {
+            console.log("[Recommendations GET] No rows found for user:", user.id);
+            return NextResponse.json({ sections: [], stale: true });
         }
 
-        console.log("[Recommendations GET] Found row, run_date:", row.run_date,
-            "look_sections type:", typeof row.look_sections,
-            "isArray:", Array.isArray(row.look_sections));
-
-        // Normalize look_sections to flat array of {title, suggestions} sections.
-        // n8n cron writes: [{"sections": [{title, suggestions}, ...]}]
-        // Our POST writes: [{title, suggestions}, ...]
-        // Handle both shapes + string fallback.
-        const normalize = (val: unknown): any[] => {
-            try {
-                let arr: any[];
-                if (Array.isArray(val)) {
-                    arr = val;
-                } else if (typeof val === "string") {
-                    const parsed = JSON.parse(val);
-                    arr = Array.isArray(parsed) ? parsed : [];
-                } else {
-                    return [];
-                }
-
-                // Unwrap n8n wrapper: [{sections: [...]}] → [...]
-                if (arr.length === 1 && arr[0]?.sections && Array.isArray(arr[0].sections)) {
-                    return arr[0].sections;
-                }
-
-                return arr;
-            } catch {
-                return [];
+        // Find the first row with non-empty data
+        let foundRow: any = null;
+        let raw: any[] = [];
+        for (const row of rows) {
+            if (row.look_sections == null) continue;
+            const normalized = normalizeSections(row.look_sections);
+            if (normalized.length > 0) {
+                foundRow = row;
+                raw = normalized;
+                break;
             }
-        };
-
-        const raw = normalize(row.look_sections);
-        console.log("[Recommendations GET] Normalized sections:", raw.length);
-
-        if (raw.length === 0) {
-            console.log("[Recommendations GET] Normalized to empty for user:", user.id);
-            return NextResponse.json([]);
         }
+
+        if (!foundRow || raw.length === 0) {
+            console.log("[Recommendations GET] All rows empty for user:", user.id);
+            return NextResponse.json({ sections: [], stale: true });
+        }
+
+        const today = new Date().toISOString().slice(0, 10);
+        const isStale = foundRow.run_date !== today;
+        console.log("[Recommendations GET] Using row from", foundRow.run_date,
+            "with", raw.length, "sections. stale:", isStale);
 
         const enriched = await enrichSectionsWithImages(supabase, raw);
         const { sections, stats } = filterSections(enriched, 2);
@@ -171,12 +182,11 @@ export async function GET(req: NextRequest) {
         console.log("[Recommendations GET] After filter:", sections.length, "sections. Stats:", JSON.stringify(stats));
 
         if (stats.totalRemoved > 0) {
-            // Self-heal: write cleaned data back (fire-and-forget)
             void supabase
                 .from("main_recommendations")
                 .update({ look_sections: sections })
                 .eq("user_id", user.id)
-                .eq("run_date", row.run_date)
+                .eq("run_date", foundRow.run_date)
                 .then(({ error: updateErr }) => {
                     if (updateErr) {
                         console.error("[Recommendations GET] Self-heal write failed:", updateErr);
@@ -184,7 +194,11 @@ export async function GET(req: NextRequest) {
                 });
         }
 
-        return NextResponse.json(sections);
+        // Return sections + stale flag so frontend can trigger background refresh
+        return NextResponse.json({
+            sections,
+            stale: isStale || sections.length === 0,
+        });
     } catch (e) {
         console.error("[Recommendations GET] Error:", e);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
@@ -325,16 +339,7 @@ export async function POST(req: NextRequest) {
                 .maybeSingle();
 
             if (row?.look_sections) {
-                const val = row.look_sections;
-                if (Array.isArray(val)) {
-                    sections = val;
-                } else if (typeof val === "string") {
-                    try { sections = JSON.parse(val); } catch {}
-                }
-                // Unwrap n8n wrapper: [{sections: [...]}] → [...]
-                if (sections.length === 1 && sections[0]?.sections && Array.isArray(sections[0].sections)) {
-                    sections = sections[0].sections;
-                }
+                sections = normalizeSections(row.look_sections);
                 console.log("[Recommendations POST] Re-read", sections.length, "sections from DB");
             }
 
