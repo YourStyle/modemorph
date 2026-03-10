@@ -2,24 +2,35 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 interface FallingObject {
   id: number
   x: number
   y: number
-  type: string
   emoji: string
   points: number
+  isBad: boolean
+  isPowerUp: boolean
+  powerUpType?: "slow" | "magnet" | "shield"
+  size: number // 1 = normal, 0.8 = small, 1.3 = large
 }
 
-interface CollectedObject {
+interface CollectedEffect {
   id: number
   x: number
   y: number
-  emoji: string
-  points: number
+  text: string
+  color: string
 }
 
-const OBJECT_TYPES = [
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+
+const GOOD_ITEMS = [
   { emoji: "👕", points: 10 },
   { emoji: "👖", points: 15 },
   { emoji: "👗", points: 20 },
@@ -29,10 +40,41 @@ const OBJECT_TYPES = [
   { emoji: "👑", points: 100 },
 ]
 
+const BAD_ITEMS = [
+  { emoji: "🧦", points: -15, label: "Дырявый носок" },
+  { emoji: "💀", points: -30, label: "Моль" },
+  { emoji: "🗑️", points: -20, label: "Мусор" },
+]
+
+const POWER_UPS = [
+  { emoji: "⏳", type: "slow" as const, label: "Замедление" },
+  { emoji: "🧲", type: "magnet" as const, label: "Магнит" },
+  { emoji: "🛡️", type: "shield" as const, label: "Щит" },
+]
+
+const GAME_HEIGHT = 300
+const MAX_LIVES = 3
+const BASE_FALL_SPEED = 1.2
+const MAX_FALL_SPEED = 4.5
+const SPEED_INCREMENT = 0.15 // per catch
+const SPEED_DECAY_ON_MISS = 0.4 // multiply speed reduction (keep 60%)
+const SPAWN_BASE_INTERVAL = 1800
+const SPAWN_MIN_INTERVAL = 700
+const TARGET_FPS = 60
+const FRAME_TIME = 1000 / TARGET_FPS
+const COMBO_TIMEOUT = 3000 // ms to keep combo alive
+const SLOW_DURATION = 5000
+const MAGNET_DURATION = 4000
+const SHIELD_DURATION = 6000
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 type GameProps = {
-  analysisDone?: boolean 
+  analysisDone?: boolean
   onRequestFinish?: () => void
-  onRequestReturnToPicker?: () => void   
+  onRequestReturnToPicker?: () => void
 }
 
 export default function FallingObjectsGame({
@@ -43,11 +85,19 @@ export default function FallingObjectsGame({
   const [score, setScore] = useState(0)
   const [gameStarted, setGameStarted] = useState(false)
   const [gameOver, setGameOver] = useState(false)
-  const [showFinishOverlay, setShowFinishOverlay] = useState(false) // ← новый стейт
+  const [showFinishOverlay, setShowFinishOverlay] = useState(false)
   const [basketX, setBasketX] = useState(50)
   const [fallingObjects, setFallingObjects] = useState<FallingObject[]>([])
-  const [collectedObjects, setCollectedObjects] = useState<CollectedObject[]>([])
-  const [missedObjects, setMissedObjects] = useState(0)
+  const [effects, setEffects] = useState<CollectedEffect[]>([])
+  const [lives, setLives] = useState(MAX_LIVES)
+  const [combo, setCombo] = useState(0)
+  const [fallSpeed, setFallSpeed] = useState(BASE_FALL_SPEED)
+  const [level, setLevel] = useState(1)
+
+  // Power-up active states
+  const [slowActive, setSlowActive] = useState(false)
+  const [magnetActive, setMagnetActive] = useState(false)
+  const [shieldActive, setShieldActive] = useState(false)
 
   const gameAreaRef = useRef<HTMLDivElement>(null)
   const animationRef = useRef<number>()
@@ -55,328 +105,533 @@ export default function FallingObjectsGame({
   const objectIdRef = useRef<number>(0)
   const lastUpdateRef = useRef<number>(0)
   const basketXRef = useRef<number>(50)
+  const fallSpeedRef = useRef<number>(BASE_FALL_SPEED)
+  const comboRef = useRef<number>(0)
+  const comboTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scoreRef = useRef<number>(0)
+  const slowActiveRef = useRef(false)
+  const magnetActiveRef = useRef(false)
+  const shieldActiveRef = useRef(false)
 
-  const BASKET_WIDTH = 80
-  const GAME_HEIGHT = 300
-  const FALL_SPEED = 1.5
-  const SPAWN_INTERVAL = 2000
-  const MAX_MISSED = 3
-  const TARGET_FPS = 60
-  const FRAME_TIME = 1000 / TARGET_FPS
+  // Sync refs
+  useEffect(() => { fallSpeedRef.current = fallSpeed }, [fallSpeed])
+  useEffect(() => { comboRef.current = combo }, [combo])
+  useEffect(() => { scoreRef.current = score }, [score])
+  useEffect(() => { slowActiveRef.current = slowActive }, [slowActive])
+  useEffect(() => { magnetActiveRef.current = magnetActive }, [magnetActive])
+  useEffect(() => { shieldActiveRef.current = shieldActive }, [shieldActive])
+
+  // Level up every 200 points
+  useEffect(() => {
+    const newLevel = Math.floor(score / 200) + 1
+    if (newLevel !== level) setLevel(newLevel)
+  }, [score, level])
 
   useEffect(() => {
     if (analysisDone && gameStarted && !gameOver) setShowFinishOverlay(true)
   }, [analysisDone, gameStarted, gameOver])
 
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!gameAreaRef.current || !gameStarted || gameOver) return
+  // ---------------------------------------------------------------------------
+  // Input handlers
+  // ---------------------------------------------------------------------------
 
-      const rect = gameAreaRef.current.getBoundingClientRect()
-      const x = ((e.clientX - rect.left) / rect.width) * 100
-      const clampedX = Math.max(5, Math.min(95, x))
+  const handleMove = useCallback((clientX: number) => {
+    if (!gameAreaRef.current) return
+    const rect = gameAreaRef.current.getBoundingClientRect()
+    const x = ((clientX - rect.left) / rect.width) * 100
+    const clampedX = Math.max(5, Math.min(95, x))
+    basketXRef.current = clampedX
+    setBasketX(clampedX)
+  }, [])
 
-      basketXRef.current = clampedX
-      setBasketX(clampedX)
-    },
-    [gameStarted, gameOver],
-  )
+  const handleMouseMove = useCallback((e: MouseEvent) => {
+    if (!gameStarted || gameOver) return
+    handleMove(e.clientX)
+  }, [gameStarted, gameOver, handleMove])
 
-  const handleTouchMove = useCallback(
-    (e: TouchEvent) => {
-      if (!gameAreaRef.current || !gameStarted || gameOver) return
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!gameStarted || gameOver) return
+    e.preventDefault()
+    handleMove(e.touches[0].clientX)
+  }, [gameStarted, gameOver, handleMove])
 
-      e.preventDefault()
-      const rect = gameAreaRef.current.getBoundingClientRect()
-      const touch = e.touches[0]
-      const x = ((touch.clientX - rect.left) / rect.width) * 100
-      const clampedX = Math.max(5, Math.min(95, x))
+  // ---------------------------------------------------------------------------
+  // Spawn logic
+  // ---------------------------------------------------------------------------
 
-      basketXRef.current = clampedX
-      setBasketX(clampedX)
-    },
-    [gameStarted, gameOver],
-  )
+  const getSpawnInterval = useCallback(() => {
+    const speedFactor = (fallSpeedRef.current - BASE_FALL_SPEED) / (MAX_FALL_SPEED - BASE_FALL_SPEED)
+    return Math.max(SPAWN_MIN_INTERVAL, SPAWN_BASE_INTERVAL - speedFactor * (SPAWN_BASE_INTERVAL - SPAWN_MIN_INTERVAL))
+  }, [])
 
   const spawnObject = useCallback(() => {
-    const objectType = OBJECT_TYPES[Math.floor(Math.random() * OBJECT_TYPES.length)]
-    const newObject: FallingObject = {
-      id: objectIdRef.current++,
-      x: Math.random() * 80 + 10,
-      y: -5,
-      type: objectType.emoji,
-      emoji: objectType.emoji,
-      points: objectType.points,
+    const rand = Math.random()
+    let obj: FallingObject
+
+    // 8% chance power-up, 18% chance bad item, rest good
+    if (rand < 0.08 && scoreRef.current > 50) {
+      const pu = POWER_UPS[Math.floor(Math.random() * POWER_UPS.length)]
+      obj = {
+        id: objectIdRef.current++,
+        x: Math.random() * 80 + 10,
+        y: -5,
+        emoji: pu.emoji,
+        points: 0,
+        isBad: false,
+        isPowerUp: true,
+        powerUpType: pu.type,
+        size: 1.2,
+      }
+    } else if (rand < 0.26 && scoreRef.current > 30) {
+      const bad = BAD_ITEMS[Math.floor(Math.random() * BAD_ITEMS.length)]
+      obj = {
+        id: objectIdRef.current++,
+        x: Math.random() * 80 + 10,
+        y: -5,
+        emoji: bad.emoji,
+        points: bad.points,
+        isBad: true,
+        isPowerUp: false,
+        size: 1,
+      }
+    } else {
+      // Weighted: higher-value items are rarer
+      const weights = GOOD_ITEMS.map((_, i) => GOOD_ITEMS.length - i)
+      const total = weights.reduce((a, b) => a + b, 0)
+      let r = Math.random() * total
+      let item = GOOD_ITEMS[0]
+      for (let i = 0; i < weights.length; i++) {
+        r -= weights[i]
+        if (r <= 0) { item = GOOD_ITEMS[i]; break }
+      }
+      obj = {
+        id: objectIdRef.current++,
+        x: Math.random() * 80 + 10,
+        y: -5,
+        emoji: item.emoji,
+        points: item.points,
+        isBad: false,
+        isPowerUp: false,
+        size: 1,
+      }
     }
 
-    setFallingObjects((prev) => [...prev, newObject])
+    setFallingObjects((prev) => [...prev, obj])
   }, [])
+
+  // ---------------------------------------------------------------------------
+  // Combo management
+  // ---------------------------------------------------------------------------
+
+  const addCombo = useCallback(() => {
+    if (comboTimerRef.current) clearTimeout(comboTimerRef.current)
+    setCombo((prev) => prev + 1)
+    comboTimerRef.current = setTimeout(() => {
+      setCombo(0)
+    }, COMBO_TIMEOUT)
+  }, [])
+
+  const resetCombo = useCallback(() => {
+    if (comboTimerRef.current) clearTimeout(comboTimerRef.current)
+    setCombo(0)
+  }, [])
+
+  // ---------------------------------------------------------------------------
+  // Power-ups
+  // ---------------------------------------------------------------------------
+
+  const activatePowerUp = useCallback((type: "slow" | "magnet" | "shield") => {
+    if (type === "slow") {
+      setSlowActive(true)
+      setTimeout(() => setSlowActive(false), SLOW_DURATION)
+    } else if (type === "magnet") {
+      setMagnetActive(true)
+      setTimeout(() => setMagnetActive(false), MAGNET_DURATION)
+    } else if (type === "shield") {
+      setShieldActive(true)
+      setTimeout(() => setShieldActive(false), SHIELD_DURATION)
+    }
+  }, [])
+
+  // ---------------------------------------------------------------------------
+  // Add visual effect
+  // ---------------------------------------------------------------------------
+
+  const addEffect = useCallback((x: number, y: number, text: string, color: string) => {
+    const id = objectIdRef.current++
+    setEffects((prev) => [...prev, { id, x, y, text, color }])
+    setTimeout(() => {
+      setEffects((prev) => prev.filter((e) => e.id !== id))
+    }, 900)
+  }, [])
+
+  // ---------------------------------------------------------------------------
+  // Collision
+  // ---------------------------------------------------------------------------
 
   const checkCollision = useCallback((object: FallingObject) => {
-    const objectCenterX = object.x
-    const basketCenterX = basketXRef.current
-    const basketHalfWidth = 10
-
-    return Math.abs(objectCenterX - basketCenterX) < basketHalfWidth && object.y > 80 && object.y < 95
+    const basketHalfWidth = magnetActiveRef.current ? 16 : 10
+    return Math.abs(object.x - basketXRef.current) < basketHalfWidth && object.y > 78 && object.y < 96
   }, [])
 
+  // ---------------------------------------------------------------------------
+  // Game loop
+  // ---------------------------------------------------------------------------
+
   const gameLoop = useCallback((timestamp: number) => {
-  if (!gameStarted || gameOver) return;
+    if (!gameStarted || gameOver) return
 
-  if (timestamp - lastUpdateRef.current < FRAME_TIME) {
-    animationRef.current = requestAnimationFrame(gameLoop);
-    return;
-  }
-  lastUpdateRef.current = timestamp;
+    if (timestamp - lastUpdateRef.current < FRAME_TIME) {
+      animationRef.current = requestAnimationFrame(gameLoop)
+      return
+    }
+    lastUpdateRef.current = timestamp
 
-  if (timestamp - lastSpawnRef.current > SPAWN_INTERVAL) {
-    spawnObject();
-    lastSpawnRef.current = timestamp;
-  }
+    if (timestamp - lastSpawnRef.current > getSpawnInterval()) {
+      spawnObject()
+      lastSpawnRef.current = timestamp
+    }
 
-  setFallingObjects((prev) => {
-    if (prev.length === 0) return prev;
+    setFallingObjects((prev) => {
+      if (prev.length === 0) return prev
 
-    const updated = prev.map((obj) => ({ ...obj, y: obj.y + FALL_SPEED }));
-    const remaining: FallingObject[] = [];
-    let scoreIncrease = 0;
-    let missedCount = 0;
-    const newCollected: CollectedObject[] = [];
+      const currentSpeed = slowActiveRef.current ? fallSpeedRef.current * 0.4 : fallSpeedRef.current
 
-    updated.forEach((obj) => {
-      if (checkCollision(obj)) {
-        scoreIncrease += obj.points;
-        newCollected.push({
-          id: obj.id,
-          x: basketXRef.current, // ← ключевая замена
-          y: 80,
-          emoji: obj.emoji,
-          points: obj.points,
-        });
-      } else if (obj.y > 105) {
-        missedCount++;
-      } else {
-        remaining.push(obj);
+      // Magnet: bend items toward basket
+      const updated = prev.map((obj) => {
+        let newX = obj.x
+        if (magnetActiveRef.current && !obj.isBad) {
+          const diff = basketXRef.current - obj.x
+          newX += diff * 0.03
+        }
+        return { ...obj, y: obj.y + currentSpeed, x: newX }
+      })
+
+      const remaining: FallingObject[] = []
+      let scoreChange = 0
+      let missedCount = 0
+      const newEffects: { x: number; y: number; text: string; color: string }[] = []
+      let caught = false
+      let caughtBad = false
+
+      updated.forEach((obj) => {
+        if (checkCollision(obj)) {
+          if (obj.isPowerUp && obj.powerUpType) {
+            activatePowerUp(obj.powerUpType)
+            newEffects.push({ x: basketXRef.current, y: 78, text: "⚡", color: "#8b5cf6" })
+          } else if (obj.isBad) {
+            if (shieldActiveRef.current) {
+              // Shield blocks bad items
+              newEffects.push({ x: basketXRef.current, y: 78, text: "🛡️", color: "#3b82f6" })
+            } else {
+              scoreChange += obj.points
+              caughtBad = true
+              newEffects.push({ x: basketXRef.current, y: 78, text: `${obj.points}`, color: "#ef4444" })
+            }
+          } else {
+            const comboMultiplier = Math.min(1 + comboRef.current * 0.25, 4)
+            const pts = Math.round(obj.points * comboMultiplier)
+            scoreChange += pts
+            caught = true
+            const comboText = comboRef.current >= 2 ? ` x${comboMultiplier.toFixed(1)}` : ""
+            newEffects.push({ x: basketXRef.current, y: 78, text: `+${pts}${comboText}`, color: "#8b5cf6" })
+          }
+        } else if (obj.y > 105) {
+          if (!obj.isBad && !obj.isPowerUp) {
+            missedCount++
+          }
+        } else {
+          remaining.push(obj)
+        }
+      })
+
+      if (caught) {
+        addCombo()
+        // Speed up
+        setFallSpeed((prev) => Math.min(MAX_FALL_SPEED, prev + SPEED_INCREMENT))
       }
-    });
 
-    if (scoreIncrease > 0) {
-      setScore((prev) => prev + scoreIncrease);
-      setCollectedObjects((prev) => [...prev, ...newCollected]);
-      // оставить таймер можно, он не вызывает перерисовку <style>
-      setTimeout(() => {
-        setCollectedObjects((prev) =>
-          prev.filter((collected) => !newCollected.some((nc) => nc.id === collected.id)),
-        );
-      }, 800);
-    }
+      if (caughtBad) {
+        resetCombo()
+        // Slow down a bit on bad catch
+        setFallSpeed((prev) => Math.max(BASE_FALL_SPEED, prev - SPEED_INCREMENT * 3))
+      }
 
-    if (missedCount > 0) {
-      setMissedObjects((prev) => {
-        const newMissed = prev + missedCount;
-        if (newMissed >= MAX_MISSED) setGameOver(true);
-        return newMissed;
-      });
-    }
+      if (scoreChange !== 0) {
+        setScore((prev) => Math.max(0, prev + scoreChange))
+      }
 
-    return remaining;
-  });
+      for (const e of newEffects) {
+        addEffect(e.x, e.y, e.text, e.color)
+      }
 
-  animationRef.current = requestAnimationFrame(gameLoop);
-}, [gameStarted, gameOver, spawnObject, checkCollision]); 
+      if (missedCount > 0) {
+        // Speed decay on miss — keep 60% of gained speed
+        setFallSpeed((prev) => {
+          const gained = prev - BASE_FALL_SPEED
+          return BASE_FALL_SPEED + gained * SPEED_DECAY_ON_MISS
+        })
+        resetCombo()
+
+        setLives((prev) => {
+          const newLives = prev - missedCount
+          if (newLives <= 0) setGameOver(true)
+          return Math.max(0, newLives)
+        })
+      }
+
+      return remaining
+    })
+
+    animationRef.current = requestAnimationFrame(gameLoop)
+  }, [gameStarted, gameOver, spawnObject, checkCollision, getSpawnInterval, addCombo, resetCombo, activatePowerUp, addEffect])
+
+  // ---------------------------------------------------------------------------
+  // Start / reset
+  // ---------------------------------------------------------------------------
 
   const startGame = () => {
     setScore(0)
     setGameStarted(true)
     setGameOver(false)
     setFallingObjects([])
-    setCollectedObjects([])
-    setMissedObjects(0)
+    setEffects([])
+    setLives(MAX_LIVES)
+    setCombo(0)
+    setFallSpeed(BASE_FALL_SPEED)
+    setLevel(1)
     setBasketX(50)
+    setSlowActive(false)
+    setMagnetActive(false)
+    setShieldActive(false)
     basketXRef.current = 50
     lastSpawnRef.current = 0
     lastUpdateRef.current = 0
     objectIdRef.current = 0
+    scoreRef.current = 0
   }
 
   const resetGame = () => {
     setGameStarted(false)
     setGameOver(false)
     setFallingObjects([])
-    setCollectedObjects([])
+    setEffects([])
   }
+
+  // ---------------------------------------------------------------------------
+  // Effects
+  // ---------------------------------------------------------------------------
 
   useEffect(() => {
     if (gameStarted && !gameOver) {
       animationRef.current = requestAnimationFrame(gameLoop)
     }
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
-      }
-    }
+    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current) }
   }, [gameStarted, gameOver, gameLoop])
 
   useEffect(() => {
-    const gameArea = gameAreaRef.current
-    if (!gameArea || !gameStarted || gameOver) return
-
-    gameArea.addEventListener("mousemove", handleMouseMove)
-    gameArea.addEventListener("touchmove", handleTouchMove, { passive: false })
-
+    const el = gameAreaRef.current
+    if (!el || !gameStarted || gameOver) return
+    el.addEventListener("mousemove", handleMouseMove)
+    el.addEventListener("touchmove", handleTouchMove, { passive: false })
     return () => {
-      gameArea.removeEventListener("mousemove", handleMouseMove)
-      gameArea.removeEventListener("touchmove", handleTouchMove)
+      el.removeEventListener("mousemove", handleMouseMove)
+      el.removeEventListener("touchmove", handleTouchMove)
     }
   }, [gameStarted, gameOver, handleMouseMove, handleTouchMove])
 
-  return (
-    <div className="w-full">
-      {!gameStarted ? (
-        <div
-          className="rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center text-center p-6"
-          style={{ height: `${GAME_HEIGHT}px`, touchAction: "manipulation" }}
-        >
-          <div className="space-y-4 w-full max-w-md mx-auto">
-            <p className="text-slate-600 leading-relaxed">
-              Собирайте модную одежду в корзину! Управляйте мышкой или касанием.
-            </p>
-            <div className="grid grid-cols-1 gap-3">
-              <button
-                onClick={startGame}
-                className="w-full px-6 py-3 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-lg transition-colors duration-200 border-0"
-              >
-                Начать игру
-              </button>
+  useEffect(() => {
+    return () => { if (comboTimerRef.current) clearTimeout(comboTimerRef.current) }
+  }, [])
 
-              {/* Возврат к выбору (но НЕ показ цитат здесь) */}
-              <button
-                onClick={onRequestReturnToPicker}
-                className="w-full px-6 py-3 bg-white hover:bg-slate-50 text-[#EC9DE2] font-medium rounded-2xl shadow-lg transition-colors duration-200 border border-[#EC9DE2]"
-              >
-                Назад к выбору
-              </button>
-            </div>
+  // ---------------------------------------------------------------------------
+  // Speed indicator color
+  // ---------------------------------------------------------------------------
+
+  const speedPercent = Math.round(((fallSpeed - BASE_FALL_SPEED) / (MAX_FALL_SPEED - BASE_FALL_SPEED)) * 100)
+  const speedColor = speedPercent < 30 ? "#22c55e" : speedPercent < 60 ? "#eab308" : "#ef4444"
+
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
+
+  if (!gameStarted) {
+    return (
+      <div
+        className="rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center text-center p-6"
+        style={{ height: `${GAME_HEIGHT}px`, touchAction: "manipulation" }}
+      >
+        <div className="space-y-4 w-full max-w-md mx-auto">
+          <p className="text-slate-600 leading-relaxed">
+            Ловите модные вещи и избегайте мусора! Чем больше ловите подряд — тем быстрее и больше очков.
+          </p>
+          <div className="flex gap-2 justify-center text-xs text-slate-500">
+            <span>⏳ замедление</span>
+            <span>🧲 магнит</span>
+            <span>🛡️ щит</span>
+          </div>
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              onClick={startGame}
+              className="w-full px-6 py-3 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-lg transition-colors duration-200 border-0"
+            >
+              Начать игру
+            </button>
+            <button
+              onClick={onRequestReturnToPicker}
+              className="w-full px-6 py-3 bg-white hover:bg-slate-50 text-[#EC9DE2] font-medium rounded-2xl shadow-lg transition-colors duration-200 border border-[#EC9DE2]"
+            >
+              Назад к выбору
+            </button>
           </div>
         </div>
-      ) : (
-        <div
-          ref={gameAreaRef}
-          className="relative bg-gradient-to-b from-purple-200/80 to-pink-200/80 rounded-xl overflow-hidden cursor-none select-none border border-purple-200/50"
-          style={{ height: `${GAME_HEIGHT}px`,touchAction: "none" }}
-        >
-          <div className="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
-            <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 h-8 shadow-sm flex items-center">
-              <span className="text-sm font-bold text-purple-600">{score}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      ref={gameAreaRef}
+      className="relative bg-gradient-to-b from-purple-200/80 to-pink-200/80 rounded-xl overflow-hidden cursor-none select-none border border-purple-200/50"
+      style={{ height: `${GAME_HEIGHT}px`, touchAction: "none" }}
+    >
+      {/* HUD */}
+      <div className="absolute top-3 left-3 right-3 flex justify-between items-center z-10">
+        <div className="flex items-center gap-2">
+          {/* Score */}
+          <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 h-8 shadow-sm flex items-center">
+            <span className="text-sm font-bold text-purple-600">{score}</span>
+          </div>
+          {/* Combo */}
+          {combo >= 2 && (
+            <div className="bg-purple-500/90 backdrop-blur-sm rounded-lg px-2 h-7 shadow-sm flex items-center animate-bounce">
+              <span className="text-xs font-bold text-white">x{combo}</span>
             </div>
+          )}
+          {/* Level */}
+          <div className="bg-white/70 backdrop-blur-sm rounded-lg px-2 h-6 flex items-center">
+            <span className="text-[10px] font-medium text-slate-500">Ур.{level}</span>
+          </div>
+        </div>
 
-            <div className="flex items-center gap-2">
-              <div className="bg-white/90 backdrop-blur-sm rounded-lg px-3 h-8 shadow-sm flex items-center gap-1">
-                {[...Array(3)].map((_, i) => (
-                  <span key={i} className="text-sm">
-                    {i < MAX_MISSED - missedObjects ? "❤️" : "🤍"}
-                  </span>
-                ))}
-              </div>
-
-              <button
-                onClick={onRequestFinish}
-                title="Завершить игру и показать вещи"
-                className="bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-sm px-3 h-8 flex items-center border-0 transition-colors"
-              >
-                Завершить
-              </button>
+        <div className="flex items-center gap-2">
+          {/* Speed indicator */}
+          <div className="bg-white/70 backdrop-blur-sm rounded-lg px-2 h-6 flex items-center gap-1">
+            <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300" style={{ width: `${speedPercent}%`, backgroundColor: speedColor }} />
             </div>
           </div>
-
-          {fallingObjects.map((obj) => (
-            <div
-              key={obj.id}
-              className="absolute text-2xl will-change-transform"
-              style={{
-                left: `${obj.x}%`,
-                top: `${obj.y}%`,
-                transform: "translate(-50%, -50%)",
-                transition: "none",
-              }}
-            >
-              {obj.emoji}
-            </div>
-          ))}
-
-          {collectedObjects.map((obj) => (
-            <div
-              key={`collected-${obj.id}`}
-              className="absolute text-sm font-bold text-purple-600 animate-fade-in-up"
-              style={{
-                  left: `${obj.x}%`,
-                  top: `${obj.y}%`,
-                  transform: "translate(-50%, -50%)",
-              }}
-            >
-              +{obj.points}
-            </div>
-          ))}
-
-          <div
-            className="absolute bottom-3 text-3xl will-change-transform"
-            style={{
-              left: `${basketX}%`,
-              transform: "translateX(-50%)",
-            }}
+          {/* Power-up indicators */}
+          {slowActive && <span className="text-sm animate-pulse">⏳</span>}
+          {magnetActive && <span className="text-sm animate-pulse">🧲</span>}
+          {shieldActive && <span className="text-sm animate-pulse">🛡️</span>}
+          {/* Lives */}
+          <div className="bg-white/90 backdrop-blur-sm rounded-lg px-2 h-8 shadow-sm flex items-center gap-0.5">
+            {[...Array(MAX_LIVES)].map((_, i) => (
+              <span key={i} className="text-xs">{i < lives ? "❤️" : "🤍"}</span>
+            ))}
+          </div>
+          {/* Finish button */}
+          <button
+            onClick={onRequestFinish}
+            className="bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-sm px-3 h-8 flex items-center border-0 transition-colors text-xs"
           >
-            🛍️
+            Завершить
+          </button>
+        </div>
+      </div>
+
+      {/* Falling objects */}
+      {fallingObjects.map((obj) => (
+        <div
+          key={obj.id}
+          className={`absolute will-change-transform ${obj.isBad ? "animate-wiggle" : ""}`}
+          style={{
+            left: `${obj.x}%`,
+            top: `${obj.y}%`,
+            transform: `translate(-50%, -50%) scale(${obj.size})`,
+            transition: "none",
+            fontSize: "1.5rem",
+          }}
+        >
+          {obj.emoji}
+        </div>
+      ))}
+
+      {/* Collected effects */}
+      {effects.map((e) => (
+        <div
+          key={`fx-${e.id}`}
+          className="absolute text-sm font-bold animate-fade-in-up pointer-events-none"
+          style={{ left: `${e.x}%`, top: `${e.y}%`, transform: "translate(-50%, -50%)", color: e.color }}
+        >
+          {e.text}
+        </div>
+      ))}
+
+      {/* Basket */}
+      <div
+        className="absolute bottom-3 text-3xl will-change-transform"
+        style={{ left: `${basketX}%`, transform: "translateX(-50%)" }}
+      >
+        {magnetActive ? "🧲" : shieldActive ? "🛡️" : "🛍️"}
+      </div>
+
+      {/* Game over overlay */}
+      {gameOver && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-20">
+          <div className="bg-white p-6 rounded-xl text-center space-y-4 shadow-2xl max-w-xs">
+            <h2 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+              Игра окончена!
+            </h2>
+            <p className="text-slate-600">
+              Счёт: <span className="font-bold text-purple-600">{score}</span>
+              <br />
+              <span className="text-xs text-slate-400">Уровень {level} • Макс. комбо x{combo}</span>
+            </p>
+            <button
+              onClick={startGame}
+              className="w-full px-6 py-3 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-lg transition-colors duration-200 border-0"
+            >
+              Играть снова
+            </button>
           </div>
-
-          {gameOver && (
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center">
-              <div className="bg-white p-6 rounded-xl text-center space-y-4 shadow-2xl">
-                <h2 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                  Игра окончена!
-                </h2>
-                <p className="text-slate-600">
-                  Финальный счёт: <span className="font-bold text-purple-600">{score}</span>
-                </p>
-                <button
-                  onClick={resetGame}
-                  className="w-full px-6 py-3 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl shadow-lg transition-colors duration-200 border-0"
-                >
-                  Играть снова
-                </button>
-              </div>
-            </div>
-          )}
-
-          {showFinishOverlay && !gameOver && (
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-20">
-              <div className="bg-white p-6 rounded-xl text-center space-y-4 shadow-2xl max-w-xs">
-                <h2 className="text-lg font-bold text-purple-700">
-                  Анализ завершён
-                </h2>
-                <p className="text-slate-600">
-                  Хотите закончить игру и посмотреть найденные вещи?
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    onClick={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
-                    className="w-full px-4 py-2 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl transition-colors"
-                  >
-                    Да
-                  </button>
-                  <button
-                    onClick={() => setShowFinishOverlay(false)}
-                    className="w-full px-4 py-2 bg-white hover:bg-slate-50 text-[#EC9DE2] font-medium rounded-2xl border border-[#EC9DE2] transition-colors"
-                  >
-                    Продолжить
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
+      {/* Analysis done overlay */}
+      {showFinishOverlay && !gameOver && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-20">
+          <div className="bg-white p-6 rounded-xl text-center space-y-4 shadow-2xl max-w-xs">
+            <h2 className="text-lg font-bold text-purple-700">Примерка готова!</h2>
+            <p className="text-slate-600">Хотите посмотреть результат?</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
+                className="w-full px-4 py-2 bg-[#EC9DE2] hover:bg-[#EC9DE2]/90 text-white font-medium rounded-2xl transition-colors"
+              >
+                Да
+              </button>
+              <button
+                onClick={() => setShowFinishOverlay(false)}
+                className="w-full px-4 py-2 bg-white hover:bg-slate-50 text-[#EC9DE2] font-medium rounded-2xl border border-[#EC9DE2] transition-colors"
+              >
+                Продолжить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wiggle animation for bad items */}
+      <style jsx>{`
+        @keyframes wiggle {
+          0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
+          25% { transform: translate(-50%, -50%) rotate(-8deg); }
+          75% { transform: translate(-50%, -50%) rotate(8deg); }
+        }
+        .animate-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+      `}</style>
     </div>
   )
 }

@@ -10,6 +10,8 @@ import { SubscriptionSheet } from "@/components/subscription-sheet"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import QuoteCard from "@/components/quote-card"
 import { useTryOn } from "@/contexts/try-on-context"
+import { api } from "@/lib/api-client"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -112,6 +114,113 @@ const ProgressBlock = ({ progress, label }: { progress: number; label: string })
     </div>
   </div>
 )
+
+// ---------------------------------------------------------------------------
+// Profile completion form (shown before try-on if data is missing)
+// ---------------------------------------------------------------------------
+
+const CLOTHING_SIZES = [
+  "XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL",
+  "40", "42", "44", "46", "48", "50", "52", "54", "56", "58", "60",
+]
+
+interface ProfileFormData {
+  height: string
+  weight: string
+  top_size: string
+  bottom_size: string
+}
+
+interface ProfileFormProps {
+  initial: ProfileFormData
+  onSave: (data: ProfileFormData) => Promise<void>
+  isSaving: boolean
+}
+
+const ProfileForm = ({ initial, onSave, isSaving }: ProfileFormProps) => {
+  const [form, setForm] = useState<ProfileFormData>(initial)
+
+  const handleNumber = (field: keyof ProfileFormData, value: string) =>
+    setForm((p) => ({ ...p, [field]: value.replace(/[^0-9]/g, "") }))
+
+  const isValid = form.height && form.weight && form.top_size && form.bottom_size
+
+  return (
+    <div className="flex flex-col gap-4 pb-6">
+      <div className="text-center mb-1">
+        <p className="text-sm font-semibold text-[#101010]">Заполните данные для примерки</p>
+        <p className="text-xs text-[#101010]/60 mt-1">
+          Рост, вес и размеры нужны для точной виртуальной примерки
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {/* Height */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#101010]/70">Рост (см)</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={form.height}
+            onChange={(e) => handleNumber("height", e.target.value)}
+            placeholder="170"
+            className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-white text-sm text-[#101010] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-300"
+          />
+        </div>
+
+        {/* Weight */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#101010]/70">Вес (кг)</label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={form.weight}
+            onChange={(e) => handleNumber("weight", e.target.value)}
+            placeholder="70"
+            className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-white text-sm text-[#101010] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-300"
+          />
+        </div>
+
+        {/* Top size */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#101010]/70">Размер верха</label>
+          <Select value={form.top_size} onValueChange={(v) => setForm((p) => ({ ...p, top_size: v }))}>
+            <SelectTrigger className="h-10 rounded-xl border-gray-200 bg-white text-sm">
+              <SelectValue placeholder="Размер" />
+            </SelectTrigger>
+            <SelectContent>
+              {CLOTHING_SIZES.map((s) => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Bottom size */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-[#101010]/70">Размер низа</label>
+          <Select value={form.bottom_size} onValueChange={(v) => setForm((p) => ({ ...p, bottom_size: v }))}>
+            <SelectTrigger className="h-10 rounded-xl border-gray-200 bg-white text-sm">
+              <SelectValue placeholder="Размер" />
+            </SelectTrigger>
+            <SelectContent>
+              {CLOTHING_SIZES.map((s) => (
+                <SelectItem key={s} value={s}>{s}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <GradientButton onClick={() => onSave(form)} disabled={!isValid || isSaving} className="mt-2">
+        <span className="flex items-center justify-center gap-2">
+          <Sparkles className="w-4 h-4" />
+          {isSaving ? "Сохраняем…" : "Сохранить и начать примерку"}
+        </span>
+      </GradientButton>
+    </div>
+  )
+}
 
 type ViewMode = "choose" | "quotes" | "game" | null
 
@@ -262,6 +371,15 @@ export function TryOnSheet() {
   const [isSharing, setIsSharing] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
 
+  // Profile completion state
+  const [profileChecked, setProfileChecked] = useState(false)
+  const [profileIncomplete, setProfileIncomplete] = useState(false)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [profileInitial, setProfileInitial] = useState<ProfileFormData>({
+    height: "", weight: "", top_size: "", bottom_size: "",
+  })
+
   // Loading experience state
   const [viewMode, setViewMode] = useState<ViewMode>(null)
   const [quoteIndex, setQuoteIndex] = useState(0)
@@ -298,7 +416,43 @@ export function TryOnSheet() {
     setIsSaving(false)
     setIsSharing(false)
     setIsConfirming(false)
+    setProfileChecked(false)
+    setProfileIncomplete(false)
   }, [session?.id])
+
+  // Check profile completeness when sheet opens in confirming state
+  useEffect(() => {
+    if (!sheetOpen || session?.status !== "confirming" || profileChecked) return
+
+    let cancelled = false
+    setProfileLoading(true)
+
+    api.get("/api/me/profile-session").then((data) => {
+      if (cancelled) return
+      const p = data?.profile
+      const hasHeight = !!p?.height
+      const hasWeight = !!p?.weight
+      const hasTop = !!p?.top_size
+      const hasBottom = !!p?.bottom_size
+
+      if (!hasHeight || !hasWeight || !hasTop || !hasBottom) {
+        setProfileInitial({
+          height: p?.height?.toString() || "",
+          weight: p?.weight?.toString() || "",
+          top_size: p?.top_size || "",
+          bottom_size: p?.bottom_size || "",
+        })
+        setProfileIncomplete(true)
+      }
+      setProfileChecked(true)
+    }).catch(() => {
+      if (!cancelled) setProfileChecked(true) // proceed even on error
+    }).finally(() => {
+      if (!cancelled) setProfileLoading(false)
+    })
+
+    return () => { cancelled = true }
+  }, [sheetOpen, session?.status, profileChecked])
 
   const handleClose = useCallback(() => {
     setSheetOpen(false)
@@ -348,6 +502,24 @@ export function TryOnSheet() {
     }
   }, [session?.resultUrl, session?.suggestion?.title, isSharing])
 
+  const handleProfileSave = useCallback(async (data: ProfileFormData) => {
+    setProfileSaving(true)
+    try {
+      await api.post("/api/me/profile-session", {
+        height: data.height || null,
+        weight: data.weight || null,
+        top_size: data.top_size || null,
+        bottom_size: data.bottom_size || null,
+      })
+      setProfileIncomplete(false)
+      toast.success("Данные сохранены")
+    } catch {
+      toast.error("Не удалось сохранить данные")
+    } finally {
+      setProfileSaving(false)
+    }
+  }, [])
+
   // Shared items strip used in confirming + completed states
   const items = session?.items ?? []
 
@@ -363,58 +535,80 @@ export function TryOnSheet() {
         swipeAction={isLoading ? "minimize" : "close"}
         title={session?.status === "confirming" ? "Виртуальная примерка" : undefined}
       >
-        {/* ---- CONFIRMING ---- */}
+        {/* ---- CONFIRMING (with profile check) ---- */}
         {(!session || session.status === "confirming") && (
-          <div className="flex flex-col gap-5 pb-6">
-            {/* Description */}
-            <p className="text-sm text-[#101010]/70 leading-relaxed">
-              Примерим этот образ на вас? AI создаст фото с вашим аватаром.
-            </p>
-
-            {/* Requirements */}
-            <ul className="space-y-2">
-              {[
-                "Убедитесь, что загружен аватар",
-                "Примерка займёт 30–60 секунд",
-              ].map((req) => (
-                <li key={req} className="flex items-start gap-2 text-sm text-[#101010]/80">
-                  <span
-                    className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center"
-                    style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-                  >
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                      <path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                  {req}
-                </li>
-              ))}
-            </ul>
-
-            {/* Outfit item circles */}
-            {items.length > 0 && (
-              <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
-                {items.slice(0, 6).map((item: any, i: number) => (
-                  <ItemCircle key={i} item={item} />
-                ))}
+          <>
+            {/* Profile loading */}
+            {profileLoading && (
+              <div className="flex flex-col items-center justify-center gap-3 py-10">
+                <div className="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                <p className="text-sm text-[#101010]/60">Проверяем профиль…</p>
               </div>
             )}
 
-            {/* Outfit title if available */}
-            {session?.suggestion?.title && (
-              <p className="text-xs text-[#101010]/50 font-medium truncate">
-                {session.suggestion.title}
-              </p>
+            {/* Profile incomplete — show form */}
+            {!profileLoading && profileIncomplete && (
+              <ProfileForm
+                initial={profileInitial}
+                onSave={handleProfileSave}
+                isSaving={profileSaving}
+              />
             )}
 
-            {/* CTA */}
-            <GradientButton onClick={handleConfirm} disabled={isConfirming} className="mt-2">
-              <span className="flex items-center justify-center gap-2">
-                <Sparkles className="w-4 h-4" />
-                {isConfirming ? "Запускаем…" : "Начать примерку"}
-              </span>
-            </GradientButton>
-          </div>
+            {/* Profile OK — show normal confirming */}
+            {!profileLoading && !profileIncomplete && (
+              <div className="flex flex-col gap-5 pb-6">
+                {/* Description */}
+                <p className="text-sm text-[#101010]/70 leading-relaxed">
+                  Примерим этот образ на вас? AI создаст фото с вашим аватаром.
+                </p>
+
+                {/* Requirements */}
+                <ul className="space-y-2">
+                  {[
+                    "Убедитесь, что загружен аватар",
+                    "Примерка займёт 30–60 секунд",
+                  ].map((req) => (
+                    <li key={req} className="flex items-start gap-2 text-sm text-[#101010]/80">
+                      <span
+                        className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center"
+                        style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+                      >
+                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+                          <path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                      {req}
+                    </li>
+                  ))}
+                </ul>
+
+                {/* Outfit item circles */}
+                {items.length > 0 && (
+                  <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+                    {items.slice(0, 6).map((item: any, i: number) => (
+                      <ItemCircle key={i} item={item} />
+                    ))}
+                  </div>
+                )}
+
+                {/* Outfit title if available */}
+                {session?.suggestion?.title && (
+                  <p className="text-xs text-[#101010]/50 font-medium truncate">
+                    {session.suggestion.title}
+                  </p>
+                )}
+
+                {/* CTA */}
+                <GradientButton onClick={handleConfirm} disabled={isConfirming} className="mt-2">
+                  <span className="flex items-center justify-center gap-2">
+                    <Sparkles className="w-4 h-4" />
+                    {isConfirming ? "Запускаем…" : "Начать примерку"}
+                  </span>
+                </GradientButton>
+              </div>
+            )}
+          </>
         )}
 
         {/* ---- LOADING ---- */}
