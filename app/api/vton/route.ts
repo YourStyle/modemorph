@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getAuthUser } from "@/lib/auth-server"
 import { createClient } from "@supabase/supabase-js"
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3"
 
 interface VTONRequest {
   avatar_url: string
@@ -97,7 +98,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const vtonResult = await vtonResponse.json()
+    let vtonResult = await vtonResponse.json()
+
+    // n8n returns array — unwrap first element
+    if (Array.isArray(vtonResult)) {
+      if (vtonResult.length === 0) {
+        return NextResponse.json({ error: "Сервис примерки вернул пустой ответ" }, { status: 502 })
+      }
+      vtonResult = vtonResult[0]
+    }
 
     // n8n might return 200 with error in body
     if (vtonResult?.error) {
@@ -108,9 +117,57 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Extract image from any known field name
+    let imageData: string | null =
+      vtonResult?.image_url || vtonResult?.url || vtonResult?.imageUrl ||
+      vtonResult?.avatar_url || vtonResult?.result_url || vtonResult?.image || null
+
+    if (!imageData) {
+      console.error("VTON: no image field found in response:", Object.keys(vtonResult || {}))
+      return NextResponse.json({ error: "Сервис примерки не вернул изображение" }, { status: 502 })
+    }
+
+    // If base64 — upload to Yandex S3 and return a persistent URL
+    if (imageData.startsWith("data:image/")) {
+      try {
+        const matches = imageData.match(/^data:image\/(\w+);base64,(.+)$/)
+        if (!matches) {
+          return NextResponse.json({ error: "Некорректный формат изображения" }, { status: 502 })
+        }
+        const ext = matches[1] === "jpeg" ? "jpg" : matches[1]
+        const base64Data = matches[2]
+        const buffer = Buffer.from(base64Data, "base64")
+
+        const s3Client = new S3Client({
+          region: "ru-central1",
+          endpoint: "https://storage.yandexcloud.net",
+          credentials: {
+            accessKeyId: process.env.YANDEX_ACCESS_KEY_ID!,
+            secretAccessKey: process.env.YANDEX_SECRET_ACCESS_KEY!,
+          },
+        })
+        const bucket = process.env.YANDEX_BUCKET_NAME!
+        const key = `vton/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`
+
+        await s3Client.send(new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: buffer,
+          ContentType: `image/${matches[1]}`,
+          ACL: "public-read",
+        }))
+
+        imageData = `https://storage.yandexcloud.net/${bucket}/${key}`
+        console.log("VTON: uploaded base64 to S3:", imageData)
+      } catch (uploadErr) {
+        console.error("VTON: S3 upload failed:", uploadErr)
+        // Fall back to returning base64 data URL directly
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      result: vtonResult,
+      result: { image_url: imageData },
     })
   } catch (error) {
     console.error("Error in VTON API:", error)

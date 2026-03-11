@@ -106,29 +106,38 @@ function generateId(): string {
   return `vton_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 }
 
+function findImageField(obj: Record<string, unknown>): string | null {
+  for (const key of ["image_url", "url", "imageUrl", "avatar_url", "result_url", "image"]) {
+    if (typeof obj[key] === "string" && obj[key]) return obj[key] as string
+  }
+  return null
+}
+
 function extractImageUrl(response: unknown): string | null {
   if (!response || typeof response !== "object") return null
   const r = response as Record<string, unknown>
 
-  // Format: { result: { image_url: "..." } }
-  if (r.result && typeof r.result === "object") {
-    const result = r.result as Record<string, unknown>
-    if (typeof result.image_url === "string") return result.image_url
-    if (typeof result.url === "string") return result.url
-    if (typeof result.imageUrl === "string") return result.imageUrl
+  // Unwrap array if needed: [{ image_url: "..." }] → { image_url: "..." }
+  let obj = r
+  if (Array.isArray(r)) {
+    if (r.length === 0) return null
+    obj = r[0] as Record<string, unknown>
   }
 
-  // Format: { image_url: "..." }
-  if (typeof r.image_url === "string") return r.image_url
-  if (typeof r.url === "string") return r.url
-  if (typeof r.imageUrl === "string") return r.imageUrl
+  // { result: { image_url: "..." } }
+  if (obj.result && typeof obj.result === "object") {
+    const found = findImageField(obj.result as Record<string, unknown>)
+    if (found) return found
+  }
 
-  // Format: { data: { image_url: "..." } }
-  if (r.data && typeof r.data === "object") {
-    const data = r.data as Record<string, unknown>
-    if (typeof data.image_url === "string") return data.image_url
-    if (typeof data.url === "string") return data.url
-    if (typeof data.imageUrl === "string") return data.imageUrl
+  // Top-level: { image_url: "..." }
+  const found = findImageField(obj)
+  if (found) return found
+
+  // { data: { image_url: "..." } }
+  if (obj.data && typeof obj.data === "object") {
+    const found2 = findImageField(obj.data as Record<string, unknown>)
+    if (found2) return found2
   }
 
   return null
