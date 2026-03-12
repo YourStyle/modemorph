@@ -116,6 +116,19 @@ function normalizeSections(val: unknown): any[] {
             return arr[0].sections;
         }
 
+        // Unwrap broken n8n Supabase node write:
+        // n8n wrote the whole DB row as look_sections[0], with actual data
+        // nested in look_sections[0].look_sections as a JSON string
+        if (arr.length === 1 && arr[0]?.look_sections && !arr[0]?.suggestions) {
+            const nested = arr[0].look_sections;
+            // Could be a JSON string or already parsed
+            const inner = typeof nested === "string" ? JSON.parse(nested) : nested;
+            if (Array.isArray(inner) && inner.length > 0) {
+                // Recurse to handle any further wrapping
+                return normalizeSections(inner);
+            }
+        }
+
         return arr;
     } catch {
         return [];
