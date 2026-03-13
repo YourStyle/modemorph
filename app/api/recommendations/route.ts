@@ -11,83 +11,83 @@ export const dynamic = "force-dynamic";
  * User items → wardrobe_user_items, basic items (user_id=null) → basic_wardrobe_items.
  */
 async function enrichSectionsWithImages(supabase: any, sections: any[]): Promise<any[]> {
-    // Collect all item IDs split by type
-    const userItemIds = new Set<number>();
-    const basicItemIds = new Set<number>();
+    // Collect ALL unique item IDs (don't trust user_id classification from AI)
+    const allItemIds = new Set<number>();
 
     for (const section of sections) {
         for (const suggestion of section.suggestions || []) {
             for (const item of suggestion.items || []) {
                 const id = Number(item.id);
-                if (!id) continue;
-                if (item.user_id) {
-                    userItemIds.add(id);
-                } else {
-                    basicItemIds.add(id);
-                }
+                if (id) allItemIds.add(id);
             }
         }
     }
 
-    // Batch-fetch from both tables in parallel
-    const [userItemsResult, basicItemsResult] = await Promise.all([
-        userItemIds.size > 0
-            ? supabase
-                .from("wardrobe_user_items")
-                .select("id, image_url, item_name, color, shade, has_print, clothing_type, notes")
-                .in("id", Array.from(userItemIds))
-            : { data: [] },
-        basicItemIds.size > 0
-            ? supabase
-                .from("basic_wardrobe_items")
-                .select("id, image_url, name_ru, name_en, clothing_type")
-                .in("id", Array.from(basicItemIds))
-            : { data: [] },
+    if (allItemIds.size === 0) return sections;
+
+    const idArray = Array.from(allItemIds);
+
+    // Fetch from BOTH tables for ALL IDs — avoids mis-classification
+    // wardrobe_items = general catalog (283 items, used by n8n AI tools)
+    // wardrobe_user_items = user's personal wardrobe
+    const [userItemsResult, catalogItemsResult] = await Promise.all([
+        supabase
+            .from("wardrobe_user_items")
+            .select("id, image_url, item_name, color, shade, has_print, clothing_type, notes, user_id")
+            .in("id", idArray),
+        supabase
+            .from("wardrobe_items")
+            .select("id, image_url, item_name, item_name_en, clothing_type, color, shade, has_print")
+            .in("id", idArray),
     ]);
 
-    // Build lookup maps
+    // Build lookup maps (user items take priority over catalog)
     const userMap = new Map<number, any>();
     for (const row of userItemsResult.data || []) {
         userMap.set(row.id, row);
     }
-    const basicMap = new Map<number, any>();
-    for (const row of basicItemsResult.data || []) {
-        basicMap.set(row.id, row);
+    const catalogMap = new Map<number, any>();
+    for (const row of catalogItemsResult.data || []) {
+        catalogMap.set(row.id, row);
     }
 
-    console.log("[enrichSections] Found", userMap.size, "user items,", basicMap.size, "basic items from DB");
+    console.log("[enrichSections] Total IDs:", allItemIds.size,
+        "Found:", userMap.size, "user +", catalogMap.size, "catalog items from DB.",
+        "Missing IDs:", idArray.filter(id => !userMap.has(id) && !catalogMap.has(id)));
 
-    // Merge DB data into sections
+    // Merge DB data into sections — DB image_url always wins (cached URLs may expire)
     return sections.map((section: any) => ({
         ...section,
         suggestions: (section.suggestions || []).map((suggestion: any) => ({
             ...suggestion,
             items: (suggestion.items || []).map((item: any) => {
                 const id = Number(item.id);
-                if (item.user_id) {
-                    const db = userMap.get(id);
-                    if (db) {
-                        return {
-                            ...item,
-                            image_url: item.image_url || db.image_url,
-                            name: item.name || db.item_name,
-                            color: item.color || db.color,
-                            shade: item.shade || db.shade,
-                            has_print: item.has_print || db.has_print,
-                            clothing_type: item.clothing_type || db.clothing_type,
-                            notes: item.notes || db.notes,
-                        };
-                    }
-                } else {
-                    const db = basicMap.get(id);
-                    if (db) {
-                        return {
-                            ...item,
-                            image_url: item.image_url || db.image_url,
-                            name: item.name || db.name_ru || db.name_en,
-                            clothing_type: item.clothing_type || db.clothing_type,
-                        };
-                    }
+                // Try user items first, then basic items
+                const userDb = userMap.get(id);
+                if (userDb) {
+                    return {
+                        ...item,
+                        image_url: userDb.image_url || item.image_url,
+                        name: item.name || userDb.item_name,
+                        color: item.color || userDb.color,
+                        shade: item.shade || userDb.shade,
+                        has_print: item.has_print || userDb.has_print,
+                        clothing_type: item.clothing_type || userDb.clothing_type,
+                        notes: item.notes || userDb.notes,
+                        user_id: item.user_id || userDb.user_id,
+                    };
+                }
+                const catalogDb = catalogMap.get(id);
+                if (catalogDb) {
+                    return {
+                        ...item,
+                        image_url: catalogDb.image_url || item.image_url,
+                        name: item.name || catalogDb.item_name || catalogDb.item_name_en,
+                        clothing_type: item.clothing_type || catalogDb.clothing_type,
+                        color: item.color || catalogDb.color,
+                        shade: item.shade || catalogDb.shade,
+                        has_print: item.has_print || catalogDb.has_print,
+                    };
                 }
                 return item;
             }),
@@ -193,8 +193,12 @@ export async function GET(req: NextRequest) {
         const { sections, stats } = filterSections(enriched, 2);
 
         console.log("[Recommendations GET] After filter:", sections.length, "sections. Stats:", JSON.stringify(stats));
+        console.log("[Recommendations GET] Raw sections count:", raw.length,
+            "enriched items sample:", enriched[0]?.suggestions?.[0]?.items?.slice(0, 2)?.map((i: any) => ({ id: i.id, name: i.name, image_url: !!i.image_url })));
 
-        if (stats.totalRemoved > 0) {
+        // Self-heal: write cleaned data back ONLY if we still have sections
+        // Never write empty data — that would destroy the originals
+        if (stats.totalRemoved > 0 && sections.length > 0) {
             void supabase
                 .from("main_recommendations")
                 .update({ look_sections: sections })

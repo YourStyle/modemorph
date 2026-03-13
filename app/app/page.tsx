@@ -11,7 +11,6 @@ import { useFeature } from "@/hooks/use-feature";
 import { SubscriptionSheet } from "@/components/subscription-sheet";
 import { api } from "@/lib/api-client";
 import { useAddToCloset } from "@/contexts/add-to-closet-context";
-import { filterSections } from "@/lib/recommendation-filters";
 
 
 interface OutfitItem {
@@ -301,19 +300,21 @@ export default function HomePage() {
     loadUserLooks()
   }, [])
 
+  // Server already runs filterSections — no need to double-filter here.
+  // Just ensure structural validity (arrays exist).
   const processRecommendations = (recommendations: any[]) => {
     const validRecommendations = Array.isArray(recommendations) ? recommendations : []
-    const processedRecommendations = validRecommendations.map((section) => ({
-      ...section,
-      suggestions: Array.isArray(section.suggestions)
+    return validRecommendations
+      .map((section) => ({
+        ...section,
+        suggestions: Array.isArray(section.suggestions)
           ? section.suggestions.map((suggestion) => ({
-            ...suggestion,
-            items: Array.isArray(suggestion.items) ? suggestion.items : [],
-          }))
+              ...suggestion,
+              items: Array.isArray(suggestion.items) ? suggestion.items : [],
+            }))
           : [],
-    }))
-    const { sections: cleaned } = filterSections(processedRecommendations, 2)
-    return cleaned
+      }))
+      .filter((section) => section.suggestions.length > 0)
   }
 
   // Check if a background refresh is already running (survives tab switches & remounts)
@@ -403,12 +404,33 @@ export default function HomePage() {
             refreshingRef.current = false
             clearRefreshMark()
           }
-        } else {
-          // A refresh is already running — just show loading or empty
+        } else if (isRefreshRunning()) {
+          // A refresh is already running in another tab/session —
+          // wait a bit and re-read from DB (the POST writes to DB on success)
           setLoading(false)
-          if (!recommendationsLoading) {
-            setRecommendationsLoading(true)
-          }
+          setRecommendationsLoading(true)
+          console.log("[HomePage] Refresh already running, polling DB in 15s...")
+          setTimeout(async () => {
+            try {
+              const retryResponse = await api.get("/api/recommendations")
+              let retrySections: any[] = []
+              if (retryResponse && typeof retryResponse === "object" && "sections" in retryResponse) {
+                retrySections = Array.isArray(retryResponse.sections) ? retryResponse.sections : []
+              }
+              const retryCleaned = processRecommendations(retrySections)
+              if (retryCleaned.length > 0) {
+                setOutfitSections(retryCleaned)
+              }
+            } catch (e) {
+              console.error("[HomePage] Retry fetch failed:", e)
+            } finally {
+              setRecommendationsLoading(false)
+              clearRefreshMark()
+            }
+          }, 15000)
+        } else {
+          // No data and no refresh running — show empty state
+          setLoading(false)
         }
       } catch (error) {
         console.error("Error loading outfit suggestions:", error)
