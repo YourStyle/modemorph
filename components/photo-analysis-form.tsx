@@ -12,7 +12,6 @@ import {PhotoRegenerationModal} from "./photo-regeneration-modal"
 import {SubscriptionSheet} from "./subscription-sheet"
 import { api } from "@/lib/api-client"
 import FallingObjectsGame from "@/components/falling-objects-game"
-import QuoteCard from "@/components/quote-card"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 import { useBackgroundPhotoAnalysis } from "@/hooks/use-background-photo-analysis"
 import { type ItemWithImage } from "@/lib/image-processing"
@@ -55,32 +54,16 @@ interface PhotoAnalysisFormProps {
     onAnalysisStart?: () => void
 }
 
-type ViewMode = "choose" | "quotes" | "game" | null
-
-function shuffleArray<T>(array: T[]): T[] {
-    const arr = [...array]
-    for (let i = arr.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        ;[arr[i], arr[j]] = [arr[j], arr[i]]
-    }
-    return arr
-}
-
-const GameShell: React.FC<React.PropsWithChildren<{ height: number }>> = ({children, height}) => (
-    <div
-        className="w-full rounded-xl border border-white/10 bg-white/5 flex items-center justify-center"
-        style={{height: `${height}px`}}
-    >
-        {children}
-    </div>
-)
-
+/** Gradient progress bar matching try-on sheet style */
 const ProgressBlock: React.FC<{ progress: number; progressText: string }> = ({progress, progressText}) => (
     <div className="w-full max-w-sm mx-auto mt-4">
-        <div className="relative h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div className="relative h-2 w-full bg-gray-200 rounded-full overflow-hidden">
             <div
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 transition-[width] duration-200"
-                style={{width: `${progress}%`}}
+                className="absolute left-0 top-0 h-full transition-[width] duration-300"
+                style={{
+                    width: `${progress}%`,
+                    background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
+                }}
             />
         </div>
         <div className="flex justify-between text-xs mt-2 text-neutral-400">
@@ -90,87 +73,48 @@ const ProgressBlock: React.FC<{ progress: number; progressText: string }> = ({pr
     </div>
 )
 
-
-
-type LoadingExperienceProps = {
-    viewMode: ViewMode
-    setViewMode: (m: ViewMode) => void
-    gameHeight: number
-    quotes: { text: string; author: string }[]
-    quoteIndex: number
+interface LoadingExperienceProps {
+    showGame: boolean
+    setShowGame: (v: boolean) => void
     progress: number
     progressText: string
 }
 
-const LoadingExperience: React.FC<LoadingExperienceProps> = ({
-                                                                 viewMode,
-                                                                 setViewMode,
-                                                                 gameHeight,
-                                                                 quotes,
-                                                                 quoteIndex,
-                                                                 progress,
-                                                                 progressText,
-                                                             }) => {
-    const pickGame = () => setViewMode("game")
-    const pickQuotes = () => setViewMode("quotes")
+const LoadingExperience: React.FC<LoadingExperienceProps> = ({ showGame, setShowGame, progress, progressText }) => {
+    const GAME_HEIGHT = 300
 
-    useEffect(() => {
-      console.log("LoadingExperience MOUNT")
-      return () => console.log("LoadingExperience UNMOUNT")
-    }, [])
-
-    if (viewMode === null || viewMode === "choose") {
+    if (!showGame) {
         return (
             <>
-                <GameShell height={gameHeight}>
-                    <div className="w-full px-4 sm:px-6 max-w-2xl mx-auto text-center select-none"
-                         style={{touchAction: "manipulation"}}>
-                        <p className="text-sm text-neutral-300 mb-3">Пока ИИ работает, выберите, что показать:</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <button className="h-11 rounded-2xl bg-[#292929] text-white px-4"
-                                    onPointerUp={pickGame}>Сыграть в игру
-                            </button>
-                            <button className="h-11 rounded-2xl border px-4 text-[#101010]" onPointerUp={pickQuotes}>Посмотреть цитаты
-                            </button>
-                        </div>
+                <div
+                    className="w-full rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center overflow-hidden"
+                    style={{ height: `${GAME_HEIGHT}px` }}
+                >
+                    <div className="w-full px-4 max-w-xs mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
+                        <p className="text-sm text-neutral-600 mb-4">Пока ИИ анализирует фото:</p>
+                        <button
+                            className="w-full h-11 rounded-2xl text-white font-medium px-4 border-0 transition-opacity hover:opacity-90"
+                            style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+                            onPointerUp={() => setShowGame(true)}
+                        >
+                            Сыграть в игру
+                        </button>
                     </div>
-                </GameShell>
-                <ProgressBlock progress={progress} progressText={progressText}/>
+                </div>
+                <ProgressBlock progress={progress} progressText={progressText} />
             </>
         )
     }
 
-    if (viewMode === "quotes") {
-        return (
-            <>
-                <GameShell height={gameHeight}>
-                    <div className="text-center max-w-md w-full">
-                        <h2 className="text-lg font-semibold mb-2">ИИ анализирует ваши фото</h2>
-                        <QuoteCard className="bg-gray-100 dark:bg-gray-800 p-4 rounded-md text-center shadow mx-4">
-                            <p className="italic text-black">"{quotes[quoteIndex].text}"</p>
-                            <p className="mt-2 font-medium text-black">— {quotes[quoteIndex].author}</p>
-                        </QuoteCard>
-                        <p className="mt-3 text-xs text-neutral-400">Можно переключиться на игру в любой момент</p>
-                        <div className="mt-3">
-                            <button className="border rounded-2xl px-3 py-1" onPointerUp={pickGame}>Переключиться на игру
-                            </button>
-                        </div>
-                    </div>
-                </GameShell>
-            </>
-        )
-    }
-
-    // game
     return (
         <>
-            <GameShell height={gameHeight}>
+            <div className="w-full rounded-xl overflow-hidden" style={{ height: `${GAME_HEIGHT}px` }}>
                 <FallingObjectsGame
                     analysisDone={progress >= 100}
-                    onRequestFinish={() => setViewMode(null)}
-                    onRequestReturnToPicker={() => setViewMode("choose")}
+                    onRequestFinish={() => setShowGame(false)}
                 />
-            </GameShell>
+            </div>
+            <ProgressBlock progress={progress} progressText={progressText} />
         </>
     )
 }
@@ -205,63 +149,8 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
 
     const [showRegenerationModal, setShowRegenerationModal] = useState(false)
     const [isFirstTimeRegeneration, setIsFirstTimeRegeneration] = useState(true)
-    const [viewMode, setViewMode] = useState<ViewMode>(null)
-    const [isTransitioning, setIsTransitioning] = useState(false)
+    const [showGame, setShowGame] = useState(false)
     const [showPaywall, setShowPaywall] = useState(false)
-    const GAME_AREA_HEIGHT = 300
-    // Allow up to two minutes for the AI analysis with a safety buffer
-    const MAX_ANALYSIS_DURATION_MS = 2 * 60 * 1000
-    const ANALYSIS_TIMEOUT_BUFFER_MS = 30_000
-    // Requests may take close to two minutes, add a buffer so we don't abort right before completion
-    const ANALYSIS_REQUEST_TIMEOUT_MS = MAX_ANALYSIS_DURATION_MS + ANALYSIS_TIMEOUT_BUFFER_MS
-
-    // Quotes shown above the progress bar while analysis runs
-    const quotes = [
-        {text: "Мода проходит, стиль остаётся", author: "Коко Шанель"},
-        {text: "Мода проходит, стиль вечен", author: "Ив Сен-Лоран"},
-        {text: "Элегантность — это не быть замеченным, а быть запомненным", author: "Джорджио Армани"},
-        {
-            text: "То, что вы носите, — это то, как вы представляете себя миру… Мода — мгновенный язык",
-            author: "Миучча Прада"
-        },
-        {
-            text: "Не гонитесь за трендами. Не позволяйте моде владеть вами, решайте сами, кто вы и что хотите выразить своим обликом",
-            author: "Джанни Версаче"
-        },
-        {text: "Счастье — секрет любой красоты. Нет красоты привлекательной без счастья", author: "Кристиан Диор"},
-        {
-            text: "Стиль — очень личное. Он не связан с модой. Мода быстро проходит. Стиль — навсегда",
-            author: "Ральф Лорен"
-        },
-        {text: "Хорошо одеваться — это форма хороших манер", author: "Том Форд"},
-        {text: "Стиль — это способ сказать, кто вы, не произнося ни слова", author: "Рейчел Зои"},
-    ]
-    const [shuffledQuotes, setShuffledQuotes] = useState(() => shuffleArray(quotes))
-    const [quoteIndex, setQuoteIndex] = useState(0)
-    // Interval refs for rotating quotes and smooth progress updates
-    const quoteTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-    const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-
-    const pickQuotes = () => {
-        if (isTransitioning) return
-        setIsTransitioning(true)
-        setViewMode("quotes")
-        setTimeout(() => setIsTransitioning(false), 200)
-    }
-
-    const pickGame = () => {
-        if (isTransitioning) return
-        setIsTransitioning(true)
-        setViewMode("game")
-        setTimeout(() => setIsTransitioning(false), 200)
-    }
-
-    useEffect(() => {
-        if (loading && viewMode === null) {
-            setViewMode("choose")
-        }
-    }, [loading, viewMode])
 
     // Загрузить данные из существующей сессии при монтировании
     useEffect(() => {
@@ -301,40 +190,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [initialPhotos, batchId])
-
-    // Rotate quotes every 10 seconds while loading, in random order
-    useEffect(() => {
-        if (loading) {
-            const newOrder = shuffleArray(quotes)
-            setShuffledQuotes(newOrder)
-            setQuoteIndex(0)
-            quoteTimerRef.current = setInterval(() => {
-                setQuoteIndex((prev) => (prev + 1) % newOrder.length)
-            }, 10000)
-        } else {
-            if (quoteTimerRef.current) {
-                clearInterval(quoteTimerRef.current)
-                quoteTimerRef.current = null
-            }
-            setQuoteIndex(0)
-        }
-        return () => {
-            if (quoteTimerRef.current) {
-                clearInterval(quoteTimerRef.current)
-                quoteTimerRef.current = null
-            }
-        }
-    }, [loading])
-
-    // Clean up progress timer on component unmount
-    useEffect(() => {
-        return () => {
-            if (progressTimerRef.current) {
-                clearInterval(progressTimerRef.current)
-                progressTimerRef.current = null
-            }
-        }
-    }, [])
 
     // Notify parent of loading state changes
     useEffect(() => {
@@ -742,11 +597,8 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             {/* Loading section */}
             {loading && (
                 <LoadingExperience
-                    viewMode={viewMode}
-                    setViewMode={setViewMode}
-                    gameHeight={GAME_AREA_HEIGHT}
-                    quotes={shuffledQuotes}
-                    quoteIndex={quoteIndex}
+                    showGame={showGame}
+                    setShowGame={setShowGame}
                     progress={progress}
                     progressText={progressText}
                 />
