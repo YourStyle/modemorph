@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
  * AI returns only {id, name, user_id} — we need image_url for the UI to display them.
  * User items → wardrobe_user_items, basic items (user_id=null) → basic_wardrobe_items.
  */
-async function enrichSectionsWithImages(supabase: any, sections: any[]): Promise<any[]> {
+async function enrichSectionsWithImages(supabase: any, sections: any[], userId?: string): Promise<any[]> {
     // Collect ALL unique item IDs (don't trust user_id classification from AI)
     const allItemIds = new Set<number>();
 
@@ -34,7 +34,10 @@ async function enrichSectionsWithImages(supabase: any, sections: any[]): Promise
         supabase
             .from("wardrobe_user_items")
             .select("id, image_url, item_name, color, shade, has_print, clothing_type, notes, user_id")
-            .in("id", idArray),
+            .in("id", idArray)
+            // Only fetch items belonging to the current user — prevents cross-user n8n bug
+            // from marking other users' items as "Ваше"
+            .eq("user_id", userId || ""),
         supabase
             .from("wardrobe_items")
             .select("id, image_url, item_name, item_name_en, clothing_type, color, shade, has_print")
@@ -189,7 +192,7 @@ export async function GET(req: NextRequest) {
         console.log("[Recommendations GET] Using row from", foundRow.run_date,
             "with", raw.length, "sections. stale:", isStale);
 
-        const enriched = await enrichSectionsWithImages(supabase, raw);
+        const enriched = await enrichSectionsWithImages(supabase, raw, user.id);
         const { sections, stats } = filterSections(enriched, 2);
 
         console.log("[Recommendations GET] After filter:", sections.length, "sections. Stats:", JSON.stringify(stats));
@@ -243,10 +246,18 @@ export async function POST(req: NextRequest) {
         const aiBaseUrl = envUrl.replace(/\/webhook\/?$/, "");
         const authToken = req.headers.get("authorization")?.replace("Bearer ", "");
 
-        // Get weather for the request (from DB cache or fallback)
-        const weather = await getWeatherForUser(supabase, user.id);
+        // Get weather and user profile (gender) for the request
+        const [weather, profileResult] = await Promise.all([
+            getWeatherForUser(supabase, user.id),
+            supabase
+                .from("user_profiles")
+                .select("gender")
+                .eq("user_id", user.id)
+                .maybeSingle(),
+        ]);
+        const gender = profileResult.data?.gender ?? null;
 
-        console.log("[Recommendations POST] Triggering AI generation for user:", user.id, "weather:", weather);
+        console.log("[Recommendations POST] Triggering AI generation for user:", user.id, "weather:", weather, "gender:", gender);
 
         const response = await fetch(`${aiBaseUrl}/webhook/recommendations`, {
             method: "POST",
@@ -257,6 +268,7 @@ export async function POST(req: NextRequest) {
             body: JSON.stringify({
                 user_id: user.id,
                 weather,
+                gender,
             }),
         });
 
@@ -307,7 +319,7 @@ export async function POST(req: NextRequest) {
 
         // Enrich items with image_url and other fields from DB
         if (sections.length > 0) {
-            sections = await enrichSectionsWithImages(supabase, sections);
+            sections = await enrichSectionsWithImages(supabase, sections, user.id);
         }
 
         // If we got sections from the response, save them (now with images)
@@ -362,7 +374,7 @@ export async function POST(req: NextRequest) {
 
             // Enrich DB-read sections too (may have been saved without images by n8n)
             if (sections.length > 0) {
-                sections = await enrichSectionsWithImages(supabase, sections);
+                sections = await enrichSectionsWithImages(supabase, sections, user.id);
             }
         }
 
