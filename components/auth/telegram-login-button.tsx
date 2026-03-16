@@ -23,6 +23,7 @@ export function TelegramLoginButton({
 }: { botUsername?: string } = {}) {
   useEffect(() => {
     // регистрируем callback до загрузки скрипта
+    const showTgError = (msg: string) => { const el = document.getElementById("tg-login-error"); if (el) { el.textContent = msg; el.removeAttribute("hidden"); } };
     window.onTelegramAuth = async (user: any) => {
       try {
         // Используем session-based endpoint
@@ -46,16 +47,16 @@ export function TelegramLoginButton({
             console.log("[Telegram Login] Session saved, redirecting to home");
             location.href = "/";
           } else {
-            alert("Ошибка авторизации: некорректный ответ сервера");
+            showTgError("Ошибка авторизации: некорректный ответ сервера");
           }
         } else {
           const errorText = await res.text().catch(() => "Unknown error");
           console.error("[Telegram Login] Auth failed:", errorText);
-          alert("Ошибка авторизации Telegram");
+          showTgError("Ошибка авторизации Telegram");
         }
       } catch (error) {
         console.error("[Telegram Login] Error:", error);
-        alert("Ошибка при авторизации");
+        showTgError("Ошибка при авторизации");
       }
     };
 
@@ -88,5 +89,10 @@ export function TelegramLoginButton({
     };
   }, [botUsername]);
 
-  return <div id="tg-login-container" />;
+  return (
+    <div>
+      <div id="tg-login-container" />
+      <p id="tg-login-error" hidden className="mt-2 text-sm text-red-600 text-center" />
+    </div>
+  );
 }

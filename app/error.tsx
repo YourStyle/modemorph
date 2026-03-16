@@ -15,6 +15,7 @@ export default function Error({
   reset: () => void
 }) {
   const [isChecking, setIsChecking] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const router = useRouter()
 
   useEffect(() => {
@@ -36,11 +37,11 @@ export default function Error({
         router.push("/app")
       } else {
         // Если профиль пустой, показываем ошибку
-        alert("Профиль не найден. Попробуйте войти в систему заново.")
+        setErrorMsg("Профиль не найден. Попробуйте войти в систему заново.")
       }
     } catch (err) {
       console.error("Ошибка при проверке профиля:", err)
-      alert("Ошибка при проверке профиля. Проверьте подключение к интернету.")
+      setErrorMsg("Ошибка при проверке профиля. Проверьте подключение к интернету.")
     } finally {
       setIsChecking(false)
     }
@@ -77,6 +78,12 @@ export default function Error({
           {(error as any).digest && (
             <div className="bg-gray-50 rounded-lg p-3">
               <p className="text-xs text-gray-500 font-mono">Код ошибки: {(error as any).digest}</p>
+            </div>
+          )}
+
+          {errorMsg && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-sm text-red-700">{errorMsg}</p>
             </div>
           )}
 

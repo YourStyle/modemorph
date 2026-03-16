@@ -30,6 +30,7 @@ export default function MiniRegistrationPage() {
     referral: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState(null)
 
   useEffect(() => {
     checkOnboardingStatus()
@@ -83,7 +84,7 @@ export default function MiniRegistrationPage() {
 
       router.replace("/app")
     } catch {
-      alert("Не удалось сохранить профиль. Попробуйте ещё раз.")
+      setSubmitError("Не удалось сохранить профиль. Попробуйте ещё раз.")
       setIsSubmitting(false)
     }
   }
@@ -332,6 +333,7 @@ export default function MiniRegistrationPage() {
               </button>
             )}
           </div>
+          {submitError && <p className="text-sm text-red-600 text-center mt-2">{submitError}</p>}
         </div>
       </main>
     </div>
