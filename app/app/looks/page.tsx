@@ -454,12 +454,19 @@ export default function LooksPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-12">
-              <p className="text-gray-500 mb-4">У вас пока нет сохраненных образов</p>
+            <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-md"
+                style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}
+              >
+                <Sparkles className="w-7 h-7 text-white" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-1">Сохраните первый образ</h3>
+              <p className="text-sm text-gray-500 mb-5 max-w-xs">Получите рекомендации на главной странице и сохраняйте понравившиеся образы здесь.</p>
               <Button
                 onClick={() => setIsCreateLookOpen(true)}
-                variant="outline"
-                className="text-gray-700 border-gray-200"
+                className="rounded-2xl text-white text-sm font-semibold px-6 py-3 shadow-md border-0"
+                style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
               >
                 <Plus className="w-4 h-4 mr-2" />
                 Создать первый образ

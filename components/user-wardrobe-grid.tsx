@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Trash2, Edit } from "lucide-react"
+import { Trash2, Edit, Camera, Sparkles } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
 import { api } from "@/lib/api-client"
@@ -33,6 +33,7 @@ interface UserWardrobeGridProps {
   refreshTrigger?: number
   searchQuery?: string
   sortBy?: string
+  onAddFirstItem?: () => void
 }
 
 // Skeleton component for loading state
@@ -58,6 +59,7 @@ export function UserWardrobeGrid({
   refreshTrigger,
   searchQuery = "",
   sortBy = "newest",
+  onAddFirstItem,
 }: UserWardrobeGridProps) {
   const [allItems, setAllItems] = useState<WardrobeItem[]>([])
   const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([])
@@ -159,8 +161,38 @@ export function UserWardrobeGrid({
 
   if (allItems.length === 0) {
     return (
-      <div className="text-center py-8">
-        <p className="text-gray-500">У вас пока нет вещей в гардеробе</p>
+      <div className="flex flex-col items-center justify-center py-12 px-6 text-center">
+        <div
+          className="w-20 h-20 rounded-2xl flex items-center justify-center mb-5 shadow-md"
+          style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}
+        >
+          <Camera className="w-9 h-9 text-white" />
+        </div>
+
+        <h3 className="text-xl font-bold text-gray-900 mb-2">
+          Гардероб пустой
+        </h3>
+
+        <p className="text-sm text-gray-500 mb-3 max-w-xs">
+          Сфотографируйте вещи, и AI распознает их за секунды — цвет, стиль, материал.
+          Чем больше вещей — точнее образы от вашего персонального стилиста.
+        </p>
+
+        <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-6">
+          <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+          <span>AI анализирует фото автоматически</span>
+        </div>
+
+        {onAddFirstItem && (
+          <button
+            onClick={onAddFirstItem}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl text-white text-sm font-semibold shadow-md active:opacity-80"
+            style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+          >
+            <Camera className="w-4 h-4" />
+            Добавить первую вещь
+          </button>
+        )}
       </div>
     )
   }

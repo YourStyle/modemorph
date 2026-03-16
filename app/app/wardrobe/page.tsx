@@ -469,6 +469,7 @@ export default function WardrobePage() {
               refreshTrigger={refreshUserItems}
               searchQuery={searchQuery}
               sortBy={sortBy}
+              onAddFirstItem={handleAddToWardrobe}
             />
           )}
         </div>
