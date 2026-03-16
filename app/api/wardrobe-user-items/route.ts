@@ -179,7 +179,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json(data)
+    // Fire-and-forget CLIP classify to save embedding (non-blocking)
+  if (data && data.id && data.image_url) {
+    const aiBase = (process.env.NEXT_PUBLIC_AI_API_URL ? process.env.NEXT_PUBLIC_AI_API_URL : "").replace(/\/webhook\/?$/, "");
+    void (async () => {
+      try {
+        const imgRes = await fetch(data.image_url, { signal: AbortSignal.timeout(10000) }).catch(() => null);
+        if (!imgRes) return;
+        const imgBlob = await imgRes.blob();
+        const clipForm = new FormData();
+        clipForm.append("image", imgBlob, "item.jpg");
+        const clipResp = await fetch(aiBase + "/clip/classify", { method: "POST", body: clipForm, signal: AbortSignal.timeout(15000) });
+        if (!clipResp.ok) return;
+        const clip = await clipResp.json();
+        if (clip.embedding) {
+          await supabase.from("wardrobe_user_items").update({ embedding: clip.embedding }).eq("id", data.id);
+          console.log("[Wardrobe] CLIP embedding saved:", data.id);
+        }
+      } catch (e) {
+        console.log("[Wardrobe] CLIP classify skipped:", data.id, e);
+      }
+    })();
+  }
+
+  return NextResponse.json(data)
   } catch (error) {
     console.error("Error in POST /api/wardrobe-user-items:", error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

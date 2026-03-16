@@ -259,6 +259,19 @@ export async function POST(req: NextRequest) {
 
         console.log("[Recommendations POST] Triggering AI generation for user:", user.id, "weather:", weather, "gender:", gender);
 
+        const clipRecommendPromise = fetch(aiBaseUrl + "/clip/recommend", {
+            method: "POST",
+            headers: Object.assign(
+                { "Content-Type": "application/x-www-form-urlencoded" },
+                authToken ? { Authorization: "Bearer " + authToken } : {}
+            ),
+            body: new URLSearchParams({ user_id: user.id }).toString(),
+            signal: AbortSignal.timeout(20000),
+        }).catch((e) => {
+            console.log("[Recommendations POST] CLIP unavailable:", e?.message || e);
+            return null;
+        });
+
         const response = await fetch(`${aiBaseUrl}/webhook/recommendations`, {
             method: "POST",
             headers: {
@@ -376,6 +389,38 @@ export async function POST(req: NextRequest) {
             if (sections.length > 0) {
                 sections = await enrichSectionsWithImages(supabase, sections, user.id);
             }
+        }
+
+        try {
+            const clipRes = await clipRecommendPromise;
+            if (clipRes && clipRes.ok) {
+                const clipData = await clipRes.json();
+                const clipItems = clipData.results ? clipData.results : [];
+                if (clipItems.length > 0) {
+                    const clipIds = clipItems.map((r) => r.id);
+                    const { data: clipCatalog } = await supabase
+                        .from("wardrobe_items")
+                        .select("id, image_url, item_name, clothing_type, color")
+                        .in("id", clipIds);
+                    const clipMap = new Map();
+                    for (const row of (clipCatalog ? clipCatalog : [])) clipMap.set(row.id, row);
+                    const enrichedClip = clipItems.map((r) => {
+                        const db = clipMap.get(r.id);
+                        if (!db) return null;
+                        if (!db.image_url) return null;
+                        return { id: r.id, name: db.item_name, image_url: db.image_url, clothing_type: db.clothing_type, color: db.color };
+                    }).filter(Boolean);
+                    if (enrichedClip.length > 0) {
+                        sections.push({
+                            title: "Подобрано по вашему стилю",
+                            suggestions: [{ id: "clip", title: "Визуально похожее", items: enrichedClip }],
+                        });
+                        console.log("[Recommendations POST] CLIP section added:", enrichedClip.length, "items");
+                    }
+                }
+            }
+        } catch (clipErr) {
+            console.log("[Recs POST] CLIP merge skipped:", clipErr);
         }
 
         const { sections: cleaned, stats } = filterSections(sections, 2);

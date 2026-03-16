@@ -4,11 +4,12 @@ import { useState, useEffect, useRef } from "react"
 import { OutfitCard } from "@/components/outfit-card"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Loader2 } from "lucide-react"
+import { Sparkles, Loader2, Camera } from "lucide-react"
 import { HomeHeroSection } from "@/components/home-hero-section"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
 import { SubscriptionSheet } from "@/components/subscription-sheet";
+import { VisualSearchSheet } from "@/components/visual-search-sheet";
 import { api } from "@/lib/api-client";
 import { useAddToCloset } from "@/contexts/add-to-closet-context";
 
@@ -196,6 +197,7 @@ export default function HomePage() {
   const [generationError, setGenerationError] = useState(false)
   const [userLooks, setUserLooks] = useState<any[]>([])
   const [paywallOpen, setPaywallOpen] = useState(false);
+  const [visualSearchOpen, setVisualSearchOpen] = useState(false);
   const refreshingRef = useRef(false)
   const { log, consume } = useFeature()
   const { openSheet } = useAddToCloset()
@@ -473,6 +475,18 @@ export default function HomePage() {
               />
           )}
 
+          {userItemsCount >= 1 && (
+            <div className="flex justify-end mb-4">
+              <button
+                onClick={() => setVisualSearchOpen(true)}
+                className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm text-sm text-gray-600 border border-gray-100 active:opacity-70"
+              >
+                <Camera size={16} />
+                Поиск по фото
+              </button>
+            </div>
+          )}
+
           {/* Outfit Suggestions - for users with at least 1 item */}
           {userItemsCount >= 1 && (
               <>
@@ -551,6 +565,11 @@ export default function HomePage() {
               </>
           )}
         </div>
+
+        <VisualSearchSheet
+            isOpen={visualSearchOpen}
+            onClose={() => setVisualSearchOpen(false)}
+        />
 
         <SubscriptionSheet
             isOpen={paywallOpen}
