@@ -46,6 +46,29 @@ services:
     networks:
       - modemorph-network
 
+
+  modemorph-ai:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: modemorph-ai
+    env_file:
+      - .env
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+    volumes:
+      - faiss_data:/data/faiss_index
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://127.0.0.1:8000/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - modemorph-network
+
 networks:
   modemorph-network:
     driver: bridge
@@ -55,3 +78,5 @@ volumes:
     name: modemorph_caddy_data
   caddy_config:
     name: modemorph_caddy_config
+  faiss_data:
+    name: modemorph_faiss_data
