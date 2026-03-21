@@ -133,7 +133,8 @@ async def build_index(request: Request):
                 item["embedding"] = emb.tolist()
                 sb.table("wardrobe_items").update({"embedding": item["embedding"]}).eq("id", item["id"]).execute()
                 enriched.append(item)
-            except Exception:
+            except Exception as _exc:
+                print(type(_exc).__name__, str(_exc)[:150], flush=True)
                 skipped += 1
                 continue
     count = faiss_index.build(enriched)
