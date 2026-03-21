@@ -18,7 +18,8 @@ class CLIPEncoderService:
         proc = self.fashion_processor if use_fashion else self.base_processor
         inputs = proc(images=image, return_tensors="pt")
         pixel_values = inputs["pixel_values"].to(self.device)
-        emb = model.get_image_features(pixel_values=pixel_values)
+        vision_out = model.vision_model(pixel_values=pixel_values)
+        emb = model.visual_projection(vision_out.pooler_output)
         emb = emb / emb.norm(dim=-1, keepdim=True)
         return emb.cpu().numpy().flatten().astype(np.float32)
 
@@ -29,7 +30,8 @@ class CLIPEncoderService:
         inputs = proc(text=text, return_tensors="pt", padding=True, truncation=True)
         input_ids = inputs["input_ids"].to(self.device)
         attention_mask = inputs["attention_mask"].to(self.device) if "attention_mask" in inputs else None
-        emb = model.get_text_features(input_ids=input_ids, attention_mask=attention_mask)
+        text_out = model.text_model(input_ids=input_ids, attention_mask=attention_mask)
+        emb = model.text_projection(text_out.pooler_output)
         emb = emb / emb.norm(dim=-1, keepdim=True)
         return emb.cpu().numpy().flatten().astype(np.float32)
 
