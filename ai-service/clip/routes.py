@@ -114,6 +114,7 @@ async def build_index(request: Request):
     import httpx
     sb = create_client(supabase_url, supabase_key)
     resp = sb.table('wardrobe_items').select('id,item_name,image_url,clothing_type,color,embedding').execute()
+    items = resp.data or []
     enriched = []
     skipped = 0
     async with httpx.AsyncClient(timeout=30.0) as client:
