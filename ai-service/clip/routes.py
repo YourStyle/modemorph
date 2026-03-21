@@ -84,6 +84,7 @@ async def recommend(request: Request, body: RecommendRequest):
     if not supabase_url or not supabase_key:
         raise HTTPException(status_code=500, detail='Supabase not configured')
     from supabase import create_client
+    import httpx
     sb = create_client(supabase_url, supabase_key)
     resp = sb.table('wardrobe_user_items').select('id,embedding').eq('user_id', body.user_id).execute()
     rows = resp.data or []
@@ -110,12 +111,32 @@ async def build_index(request: Request):
     if not supabase_url or not supabase_key:
         raise HTTPException(status_code=500, detail='Supabase not configured')
     from supabase import create_client
+    import httpx
     sb = create_client(supabase_url, supabase_key)
     resp = sb.table('wardrobe_items').select('id,item_name,image_url,clothing_type,color,embedding').execute()
-    items = resp.data or []
-    items_with_emb = [i for i in items if i.get('embedding')]
-    count = faiss_index.build(items_with_emb)
-    return {'indexed': count, 'total_fetched': len(items)}
+    enriched = []
+    skipped = 0
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for item in items:
+            if not item.get("image_url"):
+                skipped += 1
+                continue
+            try:
+                if item.get("embedding"):
+                    enriched.append(item)
+                    continue
+                r = await client.get(item["image_url"])
+                r.raise_for_status()
+                img = Image.open(io.BytesIO(r.content)).convert("RGB")
+                emb = encoder.encode_image(img, use_fashion=True)
+                item["embedding"] = emb.tolist()
+                sb.table("wardrobe_items").update({"embedding": item["embedding"]}).eq("id", item["id"]).execute()
+                enriched.append(item)
+            except Exception:
+                skipped += 1
+                continue
+    count = faiss_index.build(enriched)
+    return {"indexed": count, "total_fetched": len(items), "encoded": len(enriched), "skipped": skipped}
 
 
 @router.post('/encode-image')

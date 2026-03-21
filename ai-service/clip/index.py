@@ -7,7 +7,7 @@ from typing import Optional
 INDEX_DIR = os.environ.get('FAISS_INDEX_DIR', '/data/faiss_index')
 INDEX_FILE = os.path.join(INDEX_DIR, 'wardrobe.index')
 META_FILE = os.path.join(INDEX_DIR, 'wardrobe_meta.json')
-DIM = 768
+DIM = 512
 
 
 class FAISSIndexService:
