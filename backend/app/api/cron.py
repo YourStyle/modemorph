@@ -165,6 +165,25 @@ async def cron_generate_recommendations(
 
     logger.info(f"[Cron Recs] Found {len(users)} active users")
 
+    # Fetch current Moscow weather as fallback for users without weather_cache
+    moscow_weather = {"temperature": 15, "description": "ясно"}
+    try:
+        api_key = settings.OPENWEATHER_API_KEY
+        if api_key:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(
+                    "https://api.openweathermap.org/data/2.5/weather",
+                    params={"q": "Moscow,RU", "appid": api_key, "units": "metric", "lang": "ru"},
+                )
+                data = resp.json()
+                moscow_weather = {
+                    "temperature": round(data.get("main", {}).get("temp", 15)),
+                    "description": data.get("weather", [{}])[0].get("description", "ясно"),
+                }
+                logger.info(f"[Cron Recs] Moscow weather fallback: {moscow_weather}")
+    except Exception as e:
+        logger.warning(f"[Cron Recs] Failed to fetch Moscow weather: {e}")
+
     results = {"total": len(users), "success": 0, "failed": 0, "clip": 0, "gemini_only": 0}
 
     for user_row in users:
@@ -191,8 +210,8 @@ async def cron_generate_recommendations(
             """), {"uid": user_id})
             weather_row = weather_result.mappings().first()
             weather = {
-                "temperature": weather_row["temperature"] if weather_row else 20,
-                "description": weather_row["description"] if weather_row else "ясно",
+                "temperature": weather_row["temperature"] if weather_row else moscow_weather["temperature"],
+                "description": weather_row["description"] if weather_row else moscow_weather["description"],
             }
             temp = weather["temperature"] or 20
 
