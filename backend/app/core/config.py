@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     TELEGRAM_PEPPER: str = ""
 
     # External services
-    N8N_BASE_URL: str = ""  # n8n webhook base URL for AI proxy calls
+    OPENROUTER_API_KEY: str = ""  # OpenRouter API key for AI generation
+    N8N_BASE_URL: str = ""  # n8n webhook base URL (only for image gen)
     AI_SERVICE_URL: str = ""  # CLIP/FAISS service
 
     # Yandex S3
