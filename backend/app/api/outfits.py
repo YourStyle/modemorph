@@ -1,11 +1,14 @@
 """
-Outfits & looks endpoints.
+Outfits & inspiration endpoints.
+Uses actual column names: outfits.name (not title), no is_public column.
+outfit_items references wardrobe_items (not wardrobe_user_items).
 """
 
+import json as json_lib
+import random
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,143 +24,238 @@ async def get_outfits(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        text("""
-            SELECT o.*, array_agg(json_build_object(
-                'id', oi.id, 'wardrobe_item_id', oi.wardrobe_item_id,
-                'position', oi.position
-            )) as items
-            FROM outfits o
-            LEFT JOIN outfit_items oi ON oi.outfit_id = o.id
-            WHERE o.user_id = :uid
-            GROUP BY o.id
-            ORDER BY o.created_at DESC
-        """),
+        text("SELECT * FROM outfits WHERE user_id = :uid ORDER BY created_at DESC"),
         {"uid": user["id"]},
     )
-    rows = result.mappings().all()
-    return {"data": [dict(r) for r in rows]}
+    return {"data": [dict(r) for r in result.mappings().all()]}
 
 
 @router.get("/inspiration")
 async def get_inspiration(
-    page: int = Query(1, ge=1),
+    gender: str = Query(None),
     limit: int = Query(20, ge=1, le=50),
+    cursor: str = Query(None),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get public outfits for inspiration feed."""
-    offset = (page - 1) * limit
-    result = await db.execute(
+    """
+    Get outfits for inspiration feed.
+    Returns { outfits: FeedOutfit[], nextCursor: null }
+    """
+    # Fetch outfits
+    sql = "SELECT id, name, description, preview_image_url, created_at, gender FROM outfits WHERE 1=1"
+    binds = {}
+    if gender:
+        sql += " AND (gender = :g OR gender = 'unisex' OR gender IS NULL)"
+        binds["g"] = gender
+    sql += " ORDER BY created_at DESC LIMIT :lim"
+    binds["lim"] = limit
+
+    result = await db.execute(text(sql), binds)
+    outfits = result.mappings().all()
+
+    if not outfits:
+        return {"outfits": [], "nextCursor": None}
+
+    outfit_ids = [o["id"] for o in outfits]
+
+    # Fetch items for each outfit
+    items_result = await db.execute(
         text("""
-            SELECT o.*,
-                EXISTS(SELECT 1 FROM user_likes ul WHERE ul.outfit_id = o.id AND ul.user_id = :uid) as is_liked
-            FROM outfits o
-            WHERE o.is_public = true
-            ORDER BY o.views_count DESC, o.created_at DESC
-            LIMIT :lim OFFSET :off
+            SELECT oi.outfit_id, wi.id, wi.item_name, wi.image_url, wi.url,
+                   wi.color, wi.shade, wi.style, wi.material, wi.size_type,
+                   wi.has_print, wi.has_details, wi.notes, wi.is_basic
+            FROM outfit_items oi
+            JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
+            WHERE oi.outfit_id = ANY(:ids)
         """),
-        {"uid": user["id"], "lim": limit, "off": offset},
+        {"ids": outfit_ids},
     )
-    rows = result.mappings().all()
-    return {"data": [dict(r) for r in rows]}
+    items_by_outfit = {}
+    for row in items_result.mappings().all():
+        oid = row["outfit_id"]
+        if oid not in items_by_outfit:
+            items_by_outfit[oid] = []
+        items_by_outfit[oid].append({
+            "id": str(row["id"]),
+            "name": row["item_name"] or "",
+            "image_url": row["image_url"] or "",
+            "url": row["url"],
+            "color": row["color"],
+            "shade": row["shade"],
+            "style": row["style"],
+            "material": row["material"],
+            "size_type": row["size_type"],
+            "has_print": row["has_print"],
+            "has_details": row["has_details"],
+            "notes": row["notes"],
+            "is_basic": bool(row["is_basic"]),
+        })
+
+    # Fetch like counts
+    likes_result = await db.execute(
+        text("SELECT outfit_id, count(*) as cnt FROM user_likes WHERE outfit_id = ANY(:ids) GROUP BY outfit_id"),
+        {"ids": outfit_ids},
+    )
+    likes_by_outfit = {r["outfit_id"]: r["cnt"] for r in likes_result.mappings().all()}
+
+    # Fetch user's likes
+    user_likes_result = await db.execute(
+        text("SELECT outfit_id FROM user_likes WHERE user_id = :uid AND outfit_id = ANY(:ids)"),
+        {"uid": user["id"], "ids": outfit_ids},
+    )
+    liked_by_me = {r[0] for r in user_likes_result.all()}
+
+    # Build feed
+    feed = []
+    for o in outfits:
+        oid = o["id"]
+        feed.append({
+            "id": str(oid),
+            "title": o["name"] or "",
+            "description": o["description"] or "",
+            "items": items_by_outfit.get(oid, []),
+            "tags": [],
+            "likes": likes_by_outfit.get(oid, 0),
+            "isLiked": oid in liked_by_me,
+            "preview_image_url": o["preview_image_url"],
+        })
+
+    random.shuffle(feed)
+    return {"outfits": feed, "nextCursor": None}
 
 
-@router.post("/{outfit_id}/like")
+@router.post("/like")
 async def toggle_like(
-    outfit_id: int,
+    request: Request,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Check existing like
-    existing = await db.execute(
-        text("SELECT id FROM user_likes WHERE outfit_id = :oid AND user_id = :uid"),
-        {"oid": outfit_id, "uid": user["id"]},
-    )
-    if existing.first():
+    body = await request.json()
+    outfit_id = body.get("outfitId")
+    action = body.get("action", "like")
+
+    if action == "unlike":
         await db.execute(
             text("DELETE FROM user_likes WHERE outfit_id = :oid AND user_id = :uid"),
             {"oid": outfit_id, "uid": user["id"]},
         )
-        liked = False
     else:
         await db.execute(
-            text("INSERT INTO user_likes (outfit_id, user_id, created_at) VALUES (:oid, :uid, NOW())"),
+            text("INSERT INTO user_likes (outfit_id, user_id, created_at) VALUES (:oid, :uid, NOW()) ON CONFLICT DO NOTHING"),
             {"oid": outfit_id, "uid": user["id"]},
         )
-        liked = True
+
+    # Get like count and user state
+    count_result = await db.execute(
+        text("SELECT count(*) FROM user_likes WHERE outfit_id = :oid"),
+        {"oid": outfit_id},
+    )
+    is_liked_result = await db.execute(
+        text("SELECT 1 FROM user_likes WHERE outfit_id = :oid AND user_id = :uid"),
+        {"oid": outfit_id, "uid": user["id"]},
+    )
 
     await db.commit()
-    return {"liked": liked}
+    return {
+        "likes": count_result.scalar(),
+        "isLiked": is_liked_result.first() is not None,
+    }
 
 
-@router.post("/{outfit_id}/track-view")
-async def track_view(
-    outfit_id: int,
-    db: AsyncSession = Depends(get_db),
-):
+@router.post("/track-view")
+async def track_view(request: Request, db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    outfit_id = body.get("outfitId")
     await db.execute(
         text("UPDATE outfits SET views_count = COALESCE(views_count, 0) + 1 WHERE id = :id"),
         {"id": outfit_id},
     )
     await db.commit()
-    return {"success": True}
+    return {"tracked": True}
 
 
-# User looks
-@router.get("/looks")
-async def get_user_looks(
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        text("SELECT * FROM user_looks WHERE user_id = :uid ORDER BY created_at DESC"),
-        {"uid": user["id"]},
+@router.post("/track-save")
+async def track_save(request: Request, db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    outfit_id = body.get("outfitId")
+    await db.execute(
+        text("UPDATE outfits SET favorites_count = COALESCE(favorites_count, 0) + 1 WHERE id = :id"),
+        {"id": outfit_id},
     )
-    rows = result.mappings().all()
-    return {"data": [dict(r) for r in rows]}
+    await db.commit()
+    return {"tracked": True}
 
 
-class SaveLookRequest(BaseModel):
-    title: str
-    description: Optional[str] = None
-    items: list = []
-    image_url: Optional[str] = None
-
-
-@router.post("/looks")
-async def save_look(
-    body: SaveLookRequest,
+@router.post("/save-to-looks")
+async def save_to_looks(
+    request: Request,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    import json
+    body = await request.json()
+    outfit_id = body.get("outfitId")
+
+    # Get outfit + items
+    outfit = await db.execute(text("SELECT name FROM outfits WHERE id = :id"), {"id": outfit_id})
+    outfit_row = outfit.first()
+    if not outfit_row:
+        raise HTTPException(status_code=404, detail="Outfit not found")
+
+    items_result = await db.execute(
+        text("""
+            SELECT wi.id, wi.is_basic FROM outfit_items oi
+            JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
+            WHERE oi.outfit_id = :oid
+        """),
+        {"oid": outfit_id},
+    )
+    items = [{"id": r["id"], "type": "basic"} for r in items_result.mappings().all()]
+
     result = await db.execute(
         text("""
-            INSERT INTO user_looks (user_id, title, description, items, image_url, created_at)
-            VALUES (:uid, :title, :desc, :items::jsonb, :img, NOW())
-            RETURNING *
+            INSERT INTO user_looks (user_id, title, items, created_at)
+            VALUES (:uid, :title, :items::jsonb, NOW()) RETURNING *
+        """),
+        {"uid": user["id"], "title": outfit_row[0], "items": json_lib.dumps(items)},
+    )
+    await db.commit()
+    return {"success": True, "look": dict(result.mappings().first())}
+
+
+@router.post("/save-as-look")
+async def save_as_look(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    outfit_id = body.get("outfitId")
+    look_name = body.get("lookName")
+
+    outfit = await db.execute(text("SELECT name FROM outfits WHERE id = :id"), {"id": outfit_id})
+    outfit_row = outfit.first()
+
+    items_result = await db.execute(
+        text("""
+            SELECT wi.* FROM outfit_items oi
+            JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
+            WHERE oi.outfit_id = :oid
+        """),
+        {"oid": outfit_id},
+    )
+    items = [dict(r) for r in items_result.mappings().all()]
+
+    result = await db.execute(
+        text("""
+            INSERT INTO user_looks (user_id, title, items, created_at)
+            VALUES (:uid, :title, :items::jsonb, NOW()) RETURNING *
         """),
         {
-            "uid": user["id"], "title": body.title, "desc": body.description,
-            "items": json.dumps(body.items, ensure_ascii=False), "img": body.image_url,
+            "uid": user["id"],
+            "title": look_name or (outfit_row[0] if outfit_row else "Образ"),
+            "items": json_lib.dumps(items, ensure_ascii=False, default=str),
         },
     )
     await db.commit()
-    row = result.mappings().first()
-    return {"data": dict(row)}
-
-
-@router.delete("/looks/{look_id}")
-async def delete_look(
-    look_id: int,
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        text("DELETE FROM user_looks WHERE id = :id AND user_id = :uid RETURNING id"),
-        {"id": look_id, "uid": user["id"]},
-    )
-    if not result.first():
-        raise HTTPException(status_code=404, detail="Look not found")
-    await db.commit()
-    return {"success": True}
+    return {"success": True, "look": dict(result.mappings().first())}

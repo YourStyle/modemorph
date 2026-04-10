@@ -24,24 +24,26 @@ async def get_items(
     params = dict(request.query_params)
     uid = user["id"]
 
-    sql = """
-        SELECT wui.*, wi.image_url as wi_image_url, wi.item_name_en, wi.clothing_type,
-               wi.description_en, wi.part
-        FROM wardrobe_user_items wui
-        LEFT JOIN wardrobe_items wi ON wi.id = wui.wardrobe_item_id
-        WHERE wui.user_id = :uid
-    """
+    sql = "SELECT * FROM wardrobe_user_items WHERE user_id = :uid"
     binds = {"uid": uid}
 
     if "clothing_type" in params:
-        sql += " AND wi.clothing_type = :ctype"
+        sql += " AND clothing_type = :ctype"
         binds["ctype"] = params["clothing_type"]
 
-    sql += " ORDER BY wui.created_at DESC"
+    if "search" in params and params["search"]:
+        sql += " AND (item_name ILIKE :search OR description ILIKE :search)"
+        binds["search"] = f"%{params['search']}%"
+
+    sort = params.get("sort", "newest")
+    if sort == "oldest":
+        sql += " ORDER BY created_at ASC"
+    else:
+        sql += " ORDER BY created_at DESC"
 
     result = await db.execute(text(sql), binds)
     rows = result.mappings().all()
-    return {"data": [dict(r) for r in rows]}
+    return [dict(r) for r in rows]
 
 
 @router.post("")

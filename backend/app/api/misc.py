@@ -145,16 +145,10 @@ async def get_user_subscription(user: dict = Depends(get_current_user), db: Asyn
 @router.get("/user-likes")
 async def get_user_likes(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        text("""
-            SELECT ul.*, o.title, o.preview_image_url
-            FROM user_likes ul
-            LEFT JOIN outfits o ON o.id = ul.outfit_id
-            WHERE ul.user_id = :uid
-            ORDER BY ul.created_at DESC
-        """),
+        text("SELECT outfit_id FROM user_likes WHERE user_id = :uid"),
         {"uid": user["id"]},
     )
-    return {"data": [dict(r) for r in result.mappings().all()]}
+    return {"liked": [str(r[0]) for r in result.all()]}
 
 
 # ── /api/detect-clothing ──
