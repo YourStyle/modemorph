@@ -9,6 +9,12 @@
 		reverse_proxy app:3000
 	}
 
+	# FastAPI backend — new endpoints
+	handle /backend/* {
+		uri strip_prefix /backend
+		reverse_proxy backend:8080
+	}
+
 	# Всё остальное — в Next
 	reverse_proxy app:3000
 
