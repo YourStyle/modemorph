@@ -5,7 +5,10 @@ Matches the Next.js behavior: POST triggers generation and saves to DB.
 
 import json as json_lib
 import logging
+from datetime import datetime, date
+from decimal import Decimal
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
@@ -18,6 +21,23 @@ from app.services.n8n_proxy import n8n_proxy
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _safe_dict(row) -> dict:
+    """Convert DB row to JSON-safe dict (Decimal→float, datetime→str, UUID→str)."""
+    d = {}
+    for k, v in dict(row).items():
+        if isinstance(v, Decimal):
+            d[k] = float(v)
+        elif isinstance(v, (datetime, date)):
+            d[k] = str(v)
+        elif isinstance(v, UUID):
+            d[k] = str(v)
+        elif isinstance(v, bytes):
+            continue  # skip binary (embeddings)
+        else:
+            d[k] = v
+    return d
 
 
 def _normalize_sections(val) -> list:
@@ -183,7 +203,7 @@ async def generate_recommendations(
         """),
         {"uid": user["id"]},
     )
-    wardrobe_items = [dict(r) for r in wardrobe_result.mappings().all()]
+    wardrobe_items = [_safe_dict(r) for r in wardrobe_result.mappings().all()]
 
     if not wardrobe_items:
         return []
@@ -194,7 +214,7 @@ async def generate_recommendations(
         {"uid": user["id"]},
     )
     weather_row = weather_result.mappings().first()
-    weather = dict(weather_row) if weather_row else {
+    weather = _safe_dict(weather_row) if weather_row else {
         "temperature": 15, "description": "clear sky",
         "city_name": "Москва", "latitude": 55.7558, "longitude": 37.6176,
     }
@@ -209,7 +229,7 @@ async def generate_recommendations(
         """),
         {"g": gender or "female"},
     )
-    catalog_items = [dict(r) for r in catalog_result.mappings().all()]
+    catalog_items = [_safe_dict(r) for r in catalog_result.mappings().all()]
 
     logger.info(f"[Recs POST] Generating for user {user['id']}: {len(wardrobe_items)} wardrobe, {len(catalog_items)} catalog items")
 
