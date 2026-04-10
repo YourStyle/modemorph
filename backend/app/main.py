@@ -8,6 +8,9 @@ from app.api import (
     limits, recommendations, outfits, looks, payments,
     ai, me, upload, weather, misc, admin, cron,
 )
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from app.core.config import validate_settings
 
 
@@ -23,6 +26,13 @@ app = FastAPI(
     description="ModeMorph backend — PostgreSQL + FastAPI",
     lifespan=lifespan,
 )
+
+# Rate limiting
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,34 +1,36 @@
 """
-JWT-based auth replacing Supabase GoTrue.
-
-Supports:
-- Email/password login (bcrypt hashes, compatible with Supabase GoTrue exports)
-- Telegram Mini App login (HMAC validation)
-- Access + refresh token pair
+JWT + password hashing — using PyJWT (maintained) and bcrypt directly.
+Replaces python-jose and passlib.
 """
 
 import hashlib
 import hmac
+import json
 import time
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from uuid import UUID
 
-from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
+import jwt
 
 from app.core.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+# ── Password hashing (direct bcrypt, no passlib) ──
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return False
 
+
+# ── JWT tokens (PyJWT, not python-jose) ──
 
 def create_access_token(user_id: str, email: str, is_admin: bool = False) -> str:
     now = datetime.now(timezone.utc)
@@ -56,44 +58,60 @@ def create_refresh_token(user_id: str) -> str:
 
 def decode_token(token: str) -> Optional[dict]:
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
-        return payload
-    except JWTError:
+        return jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except jwt.PyJWTError:
         return None
 
 
-def validate_telegram_init_data(init_data: str, bot_token: str) -> Optional[dict]:
-    """
-    Validate Telegram Mini App initData using HMAC-SHA256.
-    Returns parsed user data if valid, None otherwise.
-    """
-    import urllib.parse
+# ── Telegram initData verification ──
 
-    parsed = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
-    received_hash = parsed.pop("hash", None)
+def validate_telegram_init_data(init_data: str, bot_token: str) -> Optional[dict]:
+    """Validate Telegram Mini App initData (HMAC-SHA256 with WebAppData key)."""
+    params = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+    received_hash = params.pop("hash", None)
     if not received_hash:
         return None
 
-    # Check auth_date freshness (allow 1 hour)
-    auth_date = parsed.get("auth_date")
-    if auth_date and (time.time() - int(auth_date)) > 3600:
+    auth_date = int(params.get("auth_date", "0"))
+    if auth_date > 0 and abs(time.time() - auth_date) > 3600:
         return None
 
-    # Build check string
-    data_check_string = "\n".join(
-        f"{k}={v}" for k, v in sorted(parsed.items())
+    # Try with and without 'signature' in check string
+    secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+
+    for omit_sig in [False, True]:
+        omit = {"hash"} | ({"signature"} if omit_sig else set())
+        dcs = "\n".join(f"{k}={v}" for k, v in sorted(params.items()) if k not in omit)
+        computed = hmac.new(secret, dcs.encode(), hashlib.sha256).hexdigest()
+        if hmac.compare_digest(computed, received_hash):
+            user_str = params.get("user", "")
+            try:
+                return json.loads(user_str) if user_str else None
+            except json.JSONDecodeError:
+                return None
+    return None
+
+
+def validate_telegram_login_widget(data: dict, bot_token: str) -> bool:
+    """
+    Validate Telegram Login Widget data.
+    Uses SHA256(bot_token) as secret key (different from Mini App).
+    """
+    received_hash = data.get("hash", "")
+    if not received_hash:
+        return False
+
+    auth_date = int(data.get("auth_date", "0"))
+    if auth_date > 0 and abs(time.time() - auth_date) > 3600:
+        return False
+
+    # Build check string from all fields except hash
+    check_string = "\n".join(
+        f"{k}={v}" for k, v in sorted(data.items()) if k != "hash"
     )
 
-    # HMAC validation
-    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
-    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+    # Secret = SHA256(bot_token), NOT HMAC("WebAppData", bot_token)
+    secret = hashlib.sha256(bot_token.encode()).digest()
+    computed = hmac.new(secret, check_string.encode(), hashlib.sha256).hexdigest()
 
-    if not hmac.compare_digest(computed_hash, received_hash):
-        return None
-
-    # Parse user JSON
-    import json
-    user_data = parsed.get("user")
-    if user_data:
-        return json.loads(user_data)
-    return None
+    return hmac.compare_digest(computed, received_hash)

@@ -104,12 +104,47 @@ async def delete_user_look(look_id: int, user: dict = Depends(get_current_user),
 
 @router.get("/looks-sections")
 async def get_looks_sections(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
+    """Get sections with nested section_looks → user_looks."""
+    sections_result = await db.execute(
         text("SELECT * FROM looks_sections WHERE user_id = :uid ORDER BY created_at"),
         {"uid": user["id"]},
     )
-    # Return plain array — frontend does setSections(response)
-    return [dict(r) for r in result.mappings().all()]
+    sections = [dict(r) for r in sections_result.mappings().all()]
+
+    if not sections:
+        return []
+
+    section_ids = [s["id"] for s in sections]
+    id_csv = ",".join(str(i) for i in section_ids)
+
+    # Get section_looks with nested user_looks
+    sl_result = await db.execute(
+        text(f"""
+            SELECT sl.section_id, sl.look_id, ul.*
+            FROM section_looks sl
+            JOIN user_looks ul ON ul.id = sl.look_id
+            WHERE sl.section_id IN ({id_csv})
+            ORDER BY ul.created_at DESC
+        """),
+    )
+    sl_rows = sl_result.mappings().all()
+
+    # Group by section
+    section_looks_map = {}
+    for row in sl_rows:
+        sid = row["section_id"]
+        if sid not in section_looks_map:
+            section_looks_map[sid] = []
+        look_data = {k: v for k, v in dict(row).items() if k not in ("section_id", "look_id")}
+        section_looks_map[sid].append({
+            "look_id": row["look_id"],
+            "user_looks": look_data,
+        })
+
+    for section in sections:
+        section["section_looks"] = section_looks_map.get(section["id"], [])
+
+    return sections
 
 
 @router.post("/looks-sections")
