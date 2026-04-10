@@ -24,6 +24,7 @@ import {
   BarChart3,
   Send,
   Bell,
+  Building2,
 } from "lucide-react"
 
 export default function AdminLayout({
@@ -108,6 +109,7 @@ export default function AdminLayout({
     { href: "/admin/feature-costs", label: "Стоимость", icon: DollarSign },
     { href: "/admin/broadcasts", label: "Рассылки", icon: Send },
     { href: "/admin/reminders", label: "Напоминания", icon: Bell },
+    { href: "/admin/partners", label: "Партнёры", icon: Building2 },
     { href: "/admin/settings", label: "Настройки", icon: Settings },
   ]
 
