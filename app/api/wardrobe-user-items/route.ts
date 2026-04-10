@@ -179,8 +179,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // TODO: CLIP classify requires a dedicated container with the CLIP model
-    // When deployed, fire-and-forget call to save embeddings here
+    // Fire-and-forget CLIP classify to save embedding (non-blocking)
+    if (data && data.id && data.image_url) {
+      const aiServiceUrl = process.env.AI_SERVICE_URL || "http://modemorph-ai:8000";
+      void (async () => {
+        try {
+          const imgRes = await fetch(data.image_url, { signal: AbortSignal.timeout(10000) }).catch(() => null);
+          if (!imgRes) return;
+          const imgBlob = await imgRes.blob();
+          const clipForm = new FormData();
+          clipForm.append("image", imgBlob, "item.jpg");
+          const clipResp = await fetch(`${aiServiceUrl}/clip/classify`, {
+            method: "POST",
+            body: clipForm,
+            signal: AbortSignal.timeout(15000),
+          });
+          if (!clipResp.ok) return;
+          const clip = await clipResp.json();
+          if (clip.embedding) {
+            const embTextList = clip.embedding.map(String);
+            await supabase.from("wardrobe_user_items")
+              .update({ embedding: embTextList })
+              .eq("id", data.id);
+            console.log("[Wardrobe] CLIP embedding saved:", data.id);
+          }
+        } catch (e) {
+          console.log("[Wardrobe] CLIP classify skipped:", data.id, e);
+        }
+      })();
+    }
 
   return NextResponse.json(data)
   } catch (error) {

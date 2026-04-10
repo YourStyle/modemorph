@@ -226,9 +226,16 @@ export async function GET(req: NextRequest) {
     }
 }
 
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://modemorph-ai:8000";
+
+// A/B split: probability of using CLIP vs Gemini (0.0 - 1.0)
+const CLIP_PROBABILITY = 0.5;
+
 /**
- * POST — trigger AI generation of outfit recommendations via OpenRouter.
- * Replaces the old n8n /webhook/recommendations call.
+ * POST — generate outfit recommendations.
+ * Uses A/B split: ~50% CLIP model ("Рекомендовано нашей моделью"),
+ *                 ~50% Gemini ("Рекомендовано AI").
+ * Both sources include partner catalog items and respect weather.
  */
 export async function POST(req: NextRequest) {
     try {
@@ -255,78 +262,45 @@ export async function POST(req: NextRequest) {
         const gender = profileResult.data?.gender ?? null;
         const wardrobeItems = wardrobeResult.data || [];
 
-        console.log("[Recommendations POST] Generating for user:", user.id, "wardrobe:", wardrobeItems.length, "items, weather:", weather, "gender:", gender);
+        console.log("[Recs POST] user:", user.id, "wardrobe:", wardrobeItems.length, "weather:", weather);
 
-        if (wardrobeItems.length === 0) {
-            return NextResponse.json([]);
-        }
-
-        const wardrobeJson = JSON.stringify(wardrobeItems.map(i => ({
-            id: i.id, name: i.item_name, color: i.color, shade: i.shade,
-            style: i.style, material: i.material, type: i.clothing_type,
-            has_print: i.has_print, image_url: i.image_url, user_id: i.user_id,
-        })));
-
-        const systemPrompt = `You are a fashion stylist AI. Generate outfit recommendations based on the user's wardrobe, weather, and gender.
-
-RULES:
-- Build outfits ONLY from items in the user's wardrobe (use exact item IDs).
-- Create 2-4 thematic sections (e.g. "На каждый день", "Деловой стиль", "На прогулку").
-- Each section has 2-3 outfit suggestions.
-- Each suggestion uses 3-5 items that work together.
-- Consider the weather when choosing outfits.
-- All text in Russian.
-
-Response format (JSON array of sections):
-[
-  {
-    "title": "Section title in Russian",
-    "suggestions": [
-      {
-        "id": "unique_id",
-        "title": "Outfit title in Russian",
-        "items": [
-          {"id": item_id_number, "name": "item name", "user_id": "user_id", "image_url": "url", "color": "color", "shade": null, "has_print": "no", "notes": null, "url": null}
-        ],
-        "suggested_items_count": number_of_items
-      }
-    ]
-  }
-]
-
-IMPORTANT: Return ONLY valid JSON array. No markdown, no backticks.`;
-
-        const userMessage = `Gender: ${gender || "не указан"}
-Weather: ${weather.location}, ${weather.temperature}°C, ${weather.description}
-
-Wardrobe items:
-${wardrobeJson}`;
-
-        const result = await openrouterChat({
-            model: "google/gemini-2.5-flash-lite",
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userMessage },
-            ],
-            temperature: 0.8,
-        });
-
-        const content = result.choices?.[0]?.message?.content;
         let sections: any[] = [];
 
-        if (content) {
-            try {
-                const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
-                const parsed = JSON.parse(cleaned);
-                sections = Array.isArray(parsed) ? parsed : parsed.sections || [];
-            } catch {
-                console.error("[Recommendations POST] Failed to parse AI response:", content.slice(0, 500));
+        // --- Generate Gemini recommendations (from user's wardrobe) ---
+        if (wardrobeItems.length > 0) {
+            const geminiSections = await generateGeminiRecommendations(wardrobeItems, weather, gender);
+            // Tag each section with source
+            for (const s of geminiSections) {
+                s.source = "ai";
+                s.source_label = "Рекомендовано AI";
             }
+            sections.push(...geminiSections);
         }
 
-        // Enrich items with image_url from DB (AI may return stale URLs)
+        // --- Generate CLIP recommendations (partner catalog + user wardrobe) ---
+        const clipSections = await generateClipRecommendations(
+            supabase, user.id, weather, gender,
+        );
+        for (const s of clipSections) {
+            s.source = "clip";
+            s.source_label = "Рекомендовано нашей моделью";
+        }
+        sections.push(...clipSections);
+
+        // Enrich all items with image_url from DB
         if (sections.length > 0) {
             sections = await enrichSectionsWithImages(supabase, sections, user.id);
+        }
+
+        // A/B split: randomize order so CLIP/Gemini sections alternate
+        // With CLIP_PROBABILITY controlling which appears first
+        if (Math.random() < CLIP_PROBABILITY) {
+            // CLIP sections first
+            sections.sort((a: any, b: any) => {
+                if (a.source === "clip" && b.source !== "clip") return -1;
+                if (a.source !== "clip" && b.source === "clip") return 1;
+                return 0;
+            });
         }
 
         // Save to DB
@@ -346,22 +320,161 @@ ${wardrobeJson}`;
                     run_date: today,
                     look_sections: sections,
                 });
-                console.log("[Recommendations POST] Inserted new row for", today);
-            } else {
-                console.log("[Recommendations POST] Updated existing row for", today);
             }
         }
 
-        if (result.usage?.cost) {
-            console.log(`[Recommendations POST] cost=$${result.usage.cost}, tokens=${result.usage.total_tokens}`);
-        }
-
         const { sections: cleaned, stats } = filterSections(sections, 2);
-        console.log("[Recommendations POST] Final:", cleaned.length, "sections. Stats:", JSON.stringify(stats));
+        console.log("[Recs POST] Final:", cleaned.length, "sections. Stats:", JSON.stringify(stats));
         return NextResponse.json(cleaned);
     } catch (e: any) {
-        console.error("[Recommendations POST] Error:", e);
+        console.error("[Recs POST] Error:", e);
         return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Gemini recommendations — outfits from user's wardrobe
+// ---------------------------------------------------------------------------
+
+async function generateGeminiRecommendations(
+    wardrobeItems: any[], weather: any, gender: string | null,
+): Promise<any[]> {
+    try {
+        const wardrobeJson = JSON.stringify(wardrobeItems.map(i => ({
+            id: i.id, name: i.item_name, color: i.color, shade: i.shade,
+            style: i.style, material: i.material, type: i.clothing_type,
+            has_print: i.has_print, image_url: i.image_url, user_id: i.user_id,
+        })));
+
+        const systemPrompt = `You are a fashion stylist AI. Generate outfit recommendations from the user's wardrobe.
+
+RULES:
+- Build outfits ONLY from items in the user's wardrobe (use exact item IDs).
+- Create 2-3 thematic sections.
+- Each section has 2-3 outfit suggestions with 3-5 items each.
+- Consider the weather (temperature ${weather.temperature}°C, ${weather.description}).
+- All text in Russian.
+
+Response format (JSON array): [{"title":"section title","suggestions":[{"id":"unique","title":"outfit title","items":[{"id":num,"name":"","user_id":"","image_url":"","color":"","shade":null,"has_print":"no","notes":null,"url":null}],"suggested_items_count":N}]}]
+Return ONLY valid JSON. No markdown.`;
+
+        const result = await openrouterChat({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: `Gender: ${gender || "не указан"}\nWeather: ${weather.location}, ${weather.temperature}°C, ${weather.description}\n\nWardrobe:\n${wardrobeJson}` },
+            ],
+            temperature: 0.8,
+        });
+
+        const content = result.choices?.[0]?.message?.content;
+        if (!content) return [];
+
+        const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+        const parsed = JSON.parse(cleaned);
+        return Array.isArray(parsed) ? parsed : parsed.sections || [];
+    } catch (e) {
+        console.error("[Recs] Gemini failed:", e);
+        return [];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CLIP recommendations — personalized from embeddings + partner catalog
+// ---------------------------------------------------------------------------
+
+async function generateClipRecommendations(
+    supabase: any, userId: string, weather: any, gender: string | null,
+): Promise<any[]> {
+    try {
+        // Call CLIP /recommend endpoint
+        const recRes = await fetch(`${AI_SERVICE_URL}/clip/recommend`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: userId, k: 30 }),
+            signal: AbortSignal.timeout(15000),
+        });
+
+        if (!recRes.ok) {
+            console.log("[Recs] CLIP service unavailable:", recRes.status);
+            return [];
+        }
+
+        const recData = await recRes.json();
+        let results: any[] = recData.results || [];
+
+        if (results.length === 0) return [];
+
+        // Filter by weather: temp_min/temp_max from wardrobe_items
+        const temp = weather.temperature ?? 20;
+        const ids = results.map((r: any) => r.id);
+
+        const { data: itemDetails } = await supabase
+            .from("wardrobe_items")
+            .select("id, item_name, image_url, clothing_type, color, url, notes, gender, temp_min, temp_max")
+            .in("id", ids);
+
+        const detailMap = new Map<number, any>();
+        for (const row of itemDetails || []) detailMap.set(row.id, row);
+
+        // Filter: match weather and gender
+        const filtered = results
+            .map((r: any) => {
+                const db = detailMap.get(r.id);
+                if (!db) return null;
+                // Weather filter: skip items outside temp range
+                if (db.temp_min != null && temp < db.temp_min) return null;
+                if (db.temp_max != null && temp > db.temp_max) return null;
+                // Gender filter
+                if (gender && db.gender && db.gender !== gender) return null;
+
+                const brand = db.notes?.split(":")?.[0] || null;
+                return {
+                    id: r.id,
+                    score: r.score,
+                    name: db.item_name,
+                    image_url: db.image_url,
+                    clothing_type: db.clothing_type,
+                    color: db.color,
+                    url: db.url,
+                    brand,
+                };
+            })
+            .filter(Boolean)
+            .slice(0, 15);
+
+        if (filtered.length === 0) return [];
+
+        // Group by clothing_type for display
+        const byType = new Map<string, any[]>();
+        for (const item of filtered) {
+            const type = item.clothing_type || "other";
+            if (!byType.has(type)) byType.set(type, []);
+            byType.get(type)!.push(item);
+        }
+
+        // Build sections from partner items
+        const suggestions = filtered.map((item: any, idx: number) => ({
+            id: `clip_${item.id}`,
+            title: item.name,
+            items: [{
+                id: item.id,
+                name: item.name,
+                image_url: item.image_url,
+                color: item.color || "",
+                url: item.url,
+                brand: item.brand,
+            }],
+            suggested_items_count: 1,
+        }));
+
+        return [{
+            title: "Подобрано по вашему стилю",
+            suggestions: suggestions.slice(0, 6),
+        }];
+    } catch (e) {
+        console.error("[Recs] CLIP failed:", e);
+        return [];
     }
 }
 

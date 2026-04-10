@@ -132,8 +132,8 @@ if (!result.ok && result.code === 'payment_required') {
 
 1. User uploads photos via `AddToClosetSheet` component
 2. **Limits Check**: `handleAnalyze()` shows loader, calls `/api/check-limits` with auth token
-3. **Analysis**: Calls AI service `/ai-photo-parse` endpoint
-4. **Processing**: `loadBasicItemImages()` fetches/uploads images
+3. **Analysis**: Calls `/api/detect-clothing` (OpenRouter Gemini — vision detection + product image generation)
+4. **Processing**: Items returned with generated flat-lay images (uploaded to Yandex S3)
 5. **Save**: User adds items to wardrobe via `/api/wardrobe-user-items`
 6. **Minimize**: Can minimize to background widget via `useBackgroundPhotoAnalysis`
 
@@ -151,15 +151,30 @@ const response = await fetch('/api/check-limits', {
 
 ### AI Integration
 
-**AI Service URL**: `NEXT_PUBLIC_AI_API_URL` (defaults to Railway deployment)
+Two AI systems work together:
 
-**Endpoints**:
-- `/ai-photo-parse` - Analyze clothing photos
-- `/user-prompt-rec` - Generate outfit recommendations
-- `/vton` - Virtual try-on
-- `/regenerate` - Image regeneration
+**1. OpenRouter API (generative tasks)** — `lib/openrouter.ts`
+- `/api/detect-clothing` — Clothing detection (gemini-2.5-flash-lite) + product image generation (gemini-3.1-flash-image, 1:1 square)
+- `/api/vton` — Virtual try-on (gemini-3.1-flash-image-preview, 3:4 aspect ratio)
+- `/api/ai-assistant` — Chat recommendations (gemini-2.5-flash-lite)
+- `/api/recommendations` POST — Outfit generation (gemini-2.5-flash-lite)
+- Env: `OPENROUTER_API_KEY`
 
-**Authentication**: All AI requests include `Authorization: Bearer <token>` header
+**2. CLIP Service (similarity search)** — Docker container `modemorph-ai` (`ai-service/`)
+- Model: FashionCLIP (`patrickjohncyh/fashion-clip`) — 512-dim embeddings
+- FAISS IndexFlatIP for fast cosine similarity search
+- `/clip/search` — Visual similarity search by image
+- `/clip/search/text` — Text-based search
+- `/clip/recommend` — Personalized recs from user's wardrobe embeddings
+- `/clip/classify` — Zero-shot clothing type/color/style classification
+- `/clip/build-index` — Rebuild FAISS index from wardrobe_items
+- DB: asyncpg direct to PostgreSQL, embeddings stored as TEXT[] (512 floats)
+
+**Catalog Import** — `ai-service/scripts/import_catalog.py`
+- Parses Admitad YML feeds (SELA, Lamoda, etc.) → `wardrobe_items`
+- Affiliate URLs preserved in `url` field, source in `notes` (e.g., "SELA:SKU123")
+- `--pick-flatlay` uses CLIP to select product photos without models
+- `--encode-embeddings` generates FashionCLIP vectors for FAISS index
 
 ### Environment Variables
 
@@ -168,7 +183,7 @@ Required:
 NEXT_PUBLIC_SUPABASE_URL          # Supabase project URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY     # Supabase anon/public key
 SUPABASE_SERVICE_ROLE_KEY         # Supabase service role key (server-only)
-NEXT_PUBLIC_AI_API_URL            # AI service URL (Railway)
+OPENROUTER_API_KEY                # OpenRouter API key for Gemini models
 ```
 
 Optional for local development:
