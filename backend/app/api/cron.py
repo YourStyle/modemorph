@@ -331,6 +331,86 @@ async def cron_generate_recommendations(
     return results
 
 
+@router.post("/process-feeds")
+async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db)):
+    """Process pending partner XML feeds — parse YML, insert items into wardrobe_items."""
+    _verify_cron_auth(request)
+
+    # Pick oldest pending feed
+    result = await db.execute(text("SELECT * FROM partner_feeds WHERE status = 'pending' ORDER BY created_at LIMIT 1"))
+    feed = result.mappings().first()
+    if not feed:
+        return {"message": "No pending feeds"}
+
+    feed_id = feed["id"]
+    partner_id = feed["partner_id"]
+    logger.info(f"[ProcessFeeds] Processing feed {feed_id} ({feed['file_name']})")
+
+    await db.execute(text("UPDATE partner_feeds SET status = 'processing' WHERE id = :fid"), {"fid": feed_id})
+    await db.commit()
+
+    try:
+        # Download XML
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.get(feed["file_url"])
+            if resp.status_code != 200:
+                raise Exception(f"Failed to download feed: {resp.status_code}")
+            xml_string = resp.text
+
+        # Parse using the shared feed parser
+        from lib_feed_parser import parse_yml_feed
+        parsed = parse_yml_feed(xml_string)
+
+        logger.info(f"[ProcessFeeds] Feed {feed_id}: {len(parsed['items'])} items from {parsed['total_offers']} offers")
+
+        imported = 0
+        skipped = 0
+
+        for item in parsed["items"]:
+            notes = f"{item['source']}:{item['source_sku']}"
+            existing = await db.execute(text("SELECT id FROM wardrobe_items WHERE notes = :notes LIMIT 1"), {"notes": notes})
+            if existing.first():
+                skipped += 1
+                continue
+
+            await db.execute(text("""
+                INSERT INTO wardrobe_items (item_name, description, image_url, url, clothing_type, color, gender, style, is_hidden, is_basic, notes, partner_id, feed_id, price)
+                VALUES (:name, :desc, :img, :url, :ct, :color, :gender, 'Casual', false, false, :notes, :pid, :fid, :price)
+            """), {
+                "name": item["item_name"], "desc": item["description"], "img": item["image_url"],
+                "url": item["url"], "ct": item["clothing_type"], "color": item["color"],
+                "gender": item["gender"], "notes": notes, "pid": partner_id, "fid": feed_id,
+                "price": item["price"],
+            })
+            imported += 1
+
+        await db.execute(text("""
+            UPDATE partner_feeds SET status = 'completed', items_total = :total, items_imported = :imp, items_skipped = :skip, completed_at = NOW()
+            WHERE id = :fid
+        """), {"total": len(parsed["items"]), "imp": imported, "skip": skipped, "fid": feed_id})
+        await db.commit()
+
+        # Trigger CLIP index rebuild
+        if imported > 0:
+            ai_url = settings.AI_SERVICE_URL
+            if ai_url:
+                try:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        await client.post(f"{ai_url}/clip/build-index")
+                except Exception as e:
+                    logger.warning(f"[ProcessFeeds] CLIP rebuild failed: {e}")
+
+        logger.info(f"[ProcessFeeds] Feed {feed_id} done: {imported} imported, {skipped} skipped")
+        return {"success": True, "feed_id": feed_id, "imported": imported, "skipped": skipped}
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"[ProcessFeeds] Feed {feed_id} failed: {error_msg}")
+        await db.execute(text("UPDATE partner_feeds SET status = 'failed', error_log = :err WHERE id = :fid"), {"err": error_msg, "fid": feed_id})
+        await db.commit()
+        return {"error": error_msg}
+
+
 @router.post("/refresh-weather")
 async def cron_refresh_weather(request: Request, db: AsyncSession = Depends(get_db)):
     _verify_cron_auth(request)

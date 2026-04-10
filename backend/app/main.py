@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     auth, health, wardrobe, wardrobe_user_items, basic_items,
     limits, recommendations, outfits, looks, payments,
-    ai, me, upload, weather, misc, admin, cron,
+    ai, me, upload, weather, misc, admin, cron, partner,
 )
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -64,4 +64,7 @@ app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(weather.router, prefix="/api", tags=["weather"])
 app.include_router(misc.router, prefix="/api", tags=["misc"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(partner.admin_router, prefix="/api/admin", tags=["admin-partners"])
+app.include_router(partner.router, prefix="/api/partner", tags=["partner"])
+app.include_router(partner.public_router, prefix="/api/v1", tags=["partner-api"])
 app.include_router(cron.router, prefix="/api/cron", tags=["cron"])

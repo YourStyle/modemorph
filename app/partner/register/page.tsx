@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Loader2, Building2, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
-import { createClient } from "@supabase/supabase-js"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { parseSupabaseExpiry } from "@/lib/auth-utils"
 import { fetchWithRetry } from "@/lib/fetch-with-retry"
@@ -32,20 +31,23 @@ export default function PartnerRegisterPage() {
     setIsLoading(true)
 
     try {
-      // Step 1: Create Supabase auth user
-      const supabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      // Step 1: Register user via FastAPI
+      const registerResponse = await fetchWithRetry(
+        "/api/auth/register",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        },
+        { timeout: 10000, retries: 1 },
       )
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-      })
-
-      if (authError) {
-        throw new Error(authError.message)
+      if (!registerResponse.ok) {
+        const data = await registerResponse.json().catch(() => ({}))
+        throw new Error(data.detail || "Не удалось создать аккаунт")
       }
+
+      const authData = await registerResponse.json()
 
       if (!authData.session || !authData.user) {
         throw new Error("Не удалось создать аккаунт")
@@ -80,7 +82,7 @@ export default function PartnerRegisterPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || "Ошибка при регистрации")
+        throw new Error(data.detail || "Ошибка при регистрации партнёра")
       }
 
       setStep("success")

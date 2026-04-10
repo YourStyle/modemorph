@@ -53,6 +53,44 @@ def _derived_password(telegram_id: str, pepper: str) -> str:
     return hmac.new(pepper.encode(), telegram_id.encode(), hashlib.sha256).hexdigest()
 
 
+# ── Email Register ──
+
+class EmailRegisterRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/register")
+@limiter.limit("5/minute")
+async def email_register(request: Request, body: EmailRegisterRequest, db: AsyncSession = Depends(get_db)):
+    email = body.email.strip().lower()
+    password = body.password.strip()
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Check if email already exists
+    existing = await db.execute(
+        text("SELECT id FROM users WHERE email = :email"),
+        {"email": email},
+    )
+    if existing.first():
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    # Create user
+    user_id = str(uuid4())
+    hashed = hash_password(password)
+    await db.execute(
+        text("INSERT INTO users (id, email, encrypted_password, raw_user_meta_data, created_at) VALUES (:id, :email, :pw, CAST(:meta AS jsonb), NOW())"),
+        {"id": user_id, "email": email, "pw": hashed, "meta": json.dumps({"provider": "email"})},
+    )
+    await db.commit()
+
+    return _make_session_response(user_id, email, False, {"provider": "email"})
+
+
 # ── Email Login ──
 
 class EmailLoginRequest(BaseModel):
