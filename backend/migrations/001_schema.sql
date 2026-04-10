@@ -519,92 +519,113 @@ CREATE TABLE IF NOT EXISTS "weather_cache" (
 
 
 -- Indexes
-CREATE UNIQUE INDEX basic_item_materials_basic_item_id_basic_material_id_key ON public.basic_item_materials USING btree (basic_item_id, basic_material_id);
-CREATE INDEX idx_basic_item_materials_item_id ON public.basic_item_materials USING btree (basic_item_id);
-CREATE INDEX idx_basic_item_materials_material_id ON public.basic_item_materials USING btree (basic_material_id);
-CREATE INDEX idx_basic_materials_name ON public.basic_materials USING btree (name_ru);
-CREATE INDEX idx_basic_wardrobe_items_clothing_type ON public.basic_wardrobe_items USING btree (clothing_type);
-CREATE INDEX idx_basic_wardrobe_items_name ON public.basic_wardrobe_items USING btree (name_ru);
-CREATE INDEX idx_combination_elements_basic_item_id ON public.combination_elements USING btree (basic_item_id);
-CREATE INDEX idx_combination_elements_basic_material_id ON public.combination_elements USING btree (basic_material_id);
-CREATE INDEX idx_combination_elements_combination_id ON public.combination_elements USING btree (combination_id);
-CREATE INDEX idx_combinations_type ON public.combinations USING btree (combination_type);
-CREATE INDEX idx_credit_transactions_user_profile_id ON public.credit_transactions USING btree (user_profile_id);
-CREATE INDEX idx_credit_tx_reason ON public.credit_transactions USING btree (reason);
-CREATE INDEX idx_daily_user_activity_date ON public.daily_user_activity USING btree (activity_date DESC);
-CREATE INDEX idx_daily_user_activity_date_user ON public.daily_user_activity USING btree (activity_date, user_profile_id);
-CREATE INDEX idx_daily_user_activity_user_profile ON public.daily_user_activity USING btree (user_profile_id);
-CREATE UNIQUE INDEX unique_user_activity_per_day ON public.daily_user_activity USING btree (user_profile_id, activity_date);
-CREATE UNIQUE INDEX feature_costs_feature_name_key ON public.feature_costs USING btree (feature_name);
-CREATE INDEX idx_limits_user_profile_id ON public.limits USING btree (user_profile_id);
-CREATE INDEX idx_looks_sections_user_id ON public.looks_sections USING btree (user_id);
-CREATE INDEX gin_main_recommendations_look_sections ON public.main_recommendations USING gin (look_sections jsonb_path_ops);
-CREATE INDEX ix_main_recommendations_run_date ON public.main_recommendations USING btree (run_date);
-CREATE INDEX ix_main_recommendations_user ON public.main_recommendations USING btree (user_id);
-CREATE UNIQUE INDEX ux_main_recommendations_user_day ON public.main_recommendations USING btree (user_id, run_date);
-CREATE INDEX idx_outfit_items_outfit_id ON public.outfit_items USING btree (outfit_id);
-CREATE INDEX idx_outfit_items_wardrobe_item_id ON public.outfit_items USING btree (wardrobe_item_id);
-CREATE UNIQUE INDEX outfit_items_outfit_id_wardrobe_item_id_key ON public.outfit_items USING btree (outfit_id, wardrobe_item_id);
-CREATE INDEX idx_outfits_created_at ON public.outfits USING btree (created_at);
-CREATE INDEX idx_outfits_favorites_count ON public.outfits USING btree (favorites_count);
-CREATE INDEX idx_outfits_likes ON public.outfits USING btree (likes DESC);
-CREATE INDEX idx_outfits_preview_image ON public.outfits USING btree (preview_image_url) WHERE (preview_image_url IS NOT NULL);
-CREATE INDEX idx_outfits_user_id ON public.outfits USING btree (user_id);
-CREATE INDEX idx_outfits_views_count ON public.outfits USING btree (views_count);
-CREATE INDEX payments_invoice_id_idx ON public.payments USING btree (invoice_id);
-CREATE INDEX payments_status_idx ON public.payments USING btree (status);
-CREATE INDEX payments_user_id_idx ON public.payments USING btree (user_id);
-CREATE INDEX ix_recs_jobs_status_day ON public.recs_jobs USING btree (status, run_date);
-CREATE UNIQUE INDEX ux_recs_jobs_user_day ON public.recs_jobs USING btree (user_id, run_date);
-CREATE INDEX idx_section_looks_look_id ON public.section_looks USING btree (look_id);
-CREATE INDEX idx_section_looks_section_id ON public.section_looks USING btree (section_id);
-CREATE UNIQUE INDEX section_looks_section_id_look_id_key ON public.section_looks USING btree (section_id, look_id);
-CREATE UNIQUE INDEX subscription_pricing_plan_type_key ON public.subscription_pricing USING btree (plan_type);
-CREATE INDEX idx_usage_events_feature ON public.usage_events USING btree (feature, action);
-CREATE INDEX idx_usage_events_profile_time ON public.usage_events USING btree (user_profile_id, occurred_at);
-CREATE INDEX idx_usage_events_sub ON public.usage_events USING btree (is_subscriber, has_bought_credits);
-CREATE INDEX idx_usage_events_when ON public.usage_events USING btree (occurred_at);
-CREATE INDEX idx_user_avatars_is_primary ON public.user_avatars USING btree (user_id, is_primary);
-CREATE INDEX idx_user_avatars_user_id ON public.user_avatars USING btree (user_id);
-CREATE UNIQUE INDEX user_credits_user_profile_id_key ON public.user_credits USING btree (user_profile_id);
-CREATE INDEX idx_user_events_created_at ON public.user_events USING btree (created_at DESC);
-CREATE INDEX idx_user_events_event_type ON public.user_events USING btree (event_type);
-CREATE INDEX idx_user_events_user_event_created ON public.user_events USING btree (user_profile_id, event_type, created_at DESC);
-CREATE INDEX idx_user_events_user_profile_id ON public.user_events USING btree (user_profile_id);
-CREATE INDEX idx_user_fittings_avatar_id ON public.user_fittings USING btree (avatar_id);
-CREATE INDEX idx_user_fittings_created_at ON public.user_fittings USING btree (created_at DESC);
-CREATE INDEX idx_user_fittings_status ON public.user_fittings USING btree (status);
-CREATE INDEX idx_user_fittings_user_id ON public.user_fittings USING btree (user_id);
-CREATE INDEX idx_user_likes_outfit_id ON public.user_likes USING btree (outfit_id);
-CREATE INDEX idx_user_likes_user_id ON public.user_likes USING btree (user_id);
-CREATE UNIQUE INDEX user_likes_user_outfit_unique ON public.user_likes USING btree (user_id, outfit_id);
-CREATE INDEX idx_user_looks_created_at ON public.user_looks USING btree (created_at DESC);
-CREATE INDEX idx_user_looks_user_id ON public.user_looks USING btree (user_id);
-CREATE INDEX idx_user_profiles_user_id ON public.user_profiles USING btree (user_id);
-CREATE UNIQUE INDEX user_profiles_user_id_key ON public.user_profiles USING btree (user_id);
-CREATE INDEX idx_user_subscriptions_user_profile_id ON public.user_subscriptions USING btree (user_profile_id);
-CREATE UNIQUE INDEX user_subscriptions_user_profile_id_idx ON public.user_subscriptions USING btree (user_profile_id);
-CREATE UNIQUE INDEX user_subscriptions_user_profile_id_key ON public.user_subscriptions USING btree (user_profile_id);
-CREATE INDEX idx_wardrobe_items_basic_item_id ON public.wardrobe_items USING btree (basic_item_id);
-CREATE INDEX idx_wardrobe_items_basic_material_id ON public.wardrobe_items USING btree (basic_material_id);
-CREATE INDEX idx_wardrobe_items_clothing_type ON public.wardrobe_items USING btree (clothing_type);
-CREATE INDEX idx_wardrobe_items_image_url ON public.wardrobe_items USING btree (image_url);
-CREATE INDEX idx_wardrobe_items_is_basic ON public.wardrobe_items USING btree (is_basic);
-CREATE INDEX idx_wardrobe_items_is_hidden ON public.wardrobe_items USING btree (is_hidden);
-CREATE INDEX idx_wardrobe_items_name ON public.wardrobe_items USING btree (item_name);
-CREATE INDEX idx_wardrobe_user_items_clothing_type ON public.wardrobe_user_items USING btree (clothing_type);
-CREATE INDEX idx_wardrobe_user_items_color ON public.wardrobe_user_items USING btree (color);
-CREATE INDEX idx_wardrobe_user_items_created_at ON public.wardrobe_user_items USING btree (created_at);
-CREATE INDEX idx_wardrobe_user_items_is_basic ON public.wardrobe_user_items USING btree (is_basic);
-CREATE INDEX idx_wardrobe_user_items_is_hidden ON public.wardrobe_user_items USING btree (is_hidden);
-CREATE INDEX idx_wardrobe_user_items_item_name ON public.wardrobe_user_items USING btree (item_name);
-CREATE INDEX idx_wardrobe_user_items_material ON public.wardrobe_user_items USING btree (material);
-CREATE INDEX idx_wardrobe_user_items_user_id ON public.wardrobe_user_items USING btree (user_id);
-CREATE INDEX idx_wui_has_embedding ON public.wardrobe_user_items USING btree (user_id) WHERE (embedding IS NOT NULL);
-CREATE INDEX idx_weather_cache_city_updated ON public.weather_cache USING btree (city_name, updated_at DESC);
-CREATE INDEX idx_weather_cache_location ON public.weather_cache USING btree (latitude, longitude, updated_at DESC);
-CREATE INDEX idx_weather_cache_user_id ON public.weather_cache USING btree (user_id, updated_at DESC);
-CREATE INDEX ix_weather_cache_user ON public.weather_cache USING btree (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS basic_item_materials_basic_item_id_basic_material_id_key ON public.basic_item_materials USING btree (basic_item_id, basic_material_id);
+CREATE INDEX IF NOT EXISTS idx_basic_item_materials_item_id ON public.basic_item_materials USING btree (basic_item_id);
+CREATE INDEX IF NOT EXISTS idx_basic_item_materials_material_id ON public.basic_item_materials USING btree (basic_material_id);
+CREATE INDEX IF NOT EXISTS idx_basic_materials_name ON public.basic_materials USING btree (name_ru);
+CREATE INDEX IF NOT EXISTS idx_basic_wardrobe_items_clothing_type ON public.basic_wardrobe_items USING btree (clothing_type);
+CREATE INDEX IF NOT EXISTS idx_basic_wardrobe_items_name ON public.basic_wardrobe_items USING btree (name_ru);
+CREATE INDEX IF NOT EXISTS idx_combination_elements_basic_item_id ON public.combination_elements USING btree (basic_item_id);
+CREATE INDEX IF NOT EXISTS idx_combination_elements_basic_material_id ON public.combination_elements USING btree (basic_material_id);
+CREATE INDEX IF NOT EXISTS idx_combination_elements_combination_id ON public.combination_elements USING btree (combination_id);
+CREATE INDEX IF NOT EXISTS idx_combinations_type ON public.combinations USING btree (combination_type);
+CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_profile_id ON public.credit_transactions USING btree (user_profile_id);
+CREATE INDEX IF NOT EXISTS idx_credit_tx_reason ON public.credit_transactions USING btree (reason);
+CREATE INDEX IF NOT EXISTS idx_daily_user_activity_date ON public.daily_user_activity USING btree (activity_date DESC);
+CREATE INDEX IF NOT EXISTS idx_daily_user_activity_date_user ON public.daily_user_activity USING btree (activity_date, user_profile_id);
+CREATE INDEX IF NOT EXISTS idx_daily_user_activity_user_profile ON public.daily_user_activity USING btree (user_profile_id);
+CREATE UNIQUE INDEX IF NOT EXISTS unique_user_activity_per_day ON public.daily_user_activity USING btree (user_profile_id, activity_date);
+CREATE UNIQUE INDEX IF NOT EXISTS feature_costs_feature_name_key ON public.feature_costs USING btree (feature_name);
+CREATE INDEX IF NOT EXISTS idx_limits_user_profile_id ON public.limits USING btree (user_profile_id);
+CREATE INDEX IF NOT EXISTS idx_looks_sections_user_id ON public.looks_sections USING btree (user_id);
+CREATE INDEX IF NOT EXISTS gin_main_recommendations_look_sections ON public.main_recommendations USING gin (look_sections jsonb_path_ops);
+CREATE INDEX IF NOT EXISTS ix_main_recommendations_run_date ON public.main_recommendations USING btree (run_date);
+CREATE INDEX IF NOT EXISTS ix_main_recommendations_user ON public.main_recommendations USING btree (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_main_recommendations_user_day ON public.main_recommendations USING btree (user_id, run_date);
+CREATE INDEX IF NOT EXISTS idx_outfit_items_outfit_id ON public.outfit_items USING btree (outfit_id);
+CREATE INDEX IF NOT EXISTS idx_outfit_items_wardrobe_item_id ON public.outfit_items USING btree (wardrobe_item_id);
+CREATE UNIQUE INDEX IF NOT EXISTS outfit_items_outfit_id_wardrobe_item_id_key ON public.outfit_items USING btree (outfit_id, wardrobe_item_id);
+CREATE INDEX IF NOT EXISTS idx_outfits_created_at ON public.outfits USING btree (created_at);
+CREATE INDEX IF NOT EXISTS idx_outfits_favorites_count ON public.outfits USING btree (favorites_count);
+CREATE INDEX IF NOT EXISTS idx_outfits_likes ON public.outfits USING btree (likes DESC);
+CREATE INDEX IF NOT EXISTS idx_outfits_preview_image ON public.outfits USING btree (preview_image_url) WHERE (preview_image_url IS NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_outfits_user_id ON public.outfits USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_outfits_views_count ON public.outfits USING btree (views_count);
+CREATE INDEX IF NOT EXISTS payments_invoice_id_idx ON public.payments USING btree (invoice_id);
+CREATE INDEX IF NOT EXISTS payments_status_idx ON public.payments USING btree (status);
+CREATE INDEX IF NOT EXISTS payments_user_id_idx ON public.payments USING btree (user_id);
+CREATE INDEX IF NOT EXISTS ix_recs_jobs_status_day ON public.recs_jobs USING btree (status, run_date);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_recs_jobs_user_day ON public.recs_jobs USING btree (user_id, run_date);
+CREATE INDEX IF NOT EXISTS idx_section_looks_look_id ON public.section_looks USING btree (look_id);
+CREATE INDEX IF NOT EXISTS idx_section_looks_section_id ON public.section_looks USING btree (section_id);
+CREATE UNIQUE INDEX IF NOT EXISTS section_looks_section_id_look_id_key ON public.section_looks USING btree (section_id, look_id);
+CREATE UNIQUE INDEX IF NOT EXISTS subscription_pricing_plan_type_key ON public.subscription_pricing USING btree (plan_type);
+CREATE INDEX IF NOT EXISTS idx_usage_events_feature ON public.usage_events USING btree (feature, action);
+CREATE INDEX IF NOT EXISTS idx_usage_events_profile_time ON public.usage_events USING btree (user_profile_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_usage_events_sub ON public.usage_events USING btree (is_subscriber, has_bought_credits);
+CREATE INDEX IF NOT EXISTS idx_usage_events_when ON public.usage_events USING btree (occurred_at);
+CREATE INDEX IF NOT EXISTS idx_user_avatars_is_primary ON public.user_avatars USING btree (user_id, is_primary);
+CREATE INDEX IF NOT EXISTS idx_user_avatars_user_id ON public.user_avatars USING btree (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS user_credits_user_profile_id_key ON public.user_credits USING btree (user_profile_id);
+CREATE INDEX IF NOT EXISTS idx_user_events_created_at ON public.user_events USING btree (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_events_event_type ON public.user_events USING btree (event_type);
+CREATE INDEX IF NOT EXISTS idx_user_events_user_event_created ON public.user_events USING btree (user_profile_id, event_type, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_events_user_profile_id ON public.user_events USING btree (user_profile_id);
+CREATE INDEX IF NOT EXISTS idx_user_fittings_avatar_id ON public.user_fittings USING btree (avatar_id);
+CREATE INDEX IF NOT EXISTS idx_user_fittings_created_at ON public.user_fittings USING btree (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_fittings_status ON public.user_fittings USING btree (status);
+CREATE INDEX IF NOT EXISTS idx_user_fittings_user_id ON public.user_fittings USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_likes_outfit_id ON public.user_likes USING btree (outfit_id);
+CREATE INDEX IF NOT EXISTS idx_user_likes_user_id ON public.user_likes USING btree (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS user_likes_user_outfit_unique ON public.user_likes USING btree (user_id, outfit_id);
+CREATE INDEX IF NOT EXISTS idx_user_looks_created_at ON public.user_looks USING btree (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_looks_user_id ON public.user_looks USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON public.user_profiles USING btree (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS user_profiles_user_id_key ON public.user_profiles USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_profile_id ON public.user_subscriptions USING btree (user_profile_id);
+CREATE UNIQUE INDEX IF NOT EXISTS user_subscriptions_user_profile_id_idx ON public.user_subscriptions USING btree (user_profile_id);
+CREATE UNIQUE INDEX IF NOT EXISTS user_subscriptions_user_profile_id_key ON public.user_subscriptions USING btree (user_profile_id);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_items_basic_item_id ON public.wardrobe_items USING btree (basic_item_id);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_items_basic_material_id ON public.wardrobe_items USING btree (basic_material_id);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_items_clothing_type ON public.wardrobe_items USING btree (clothing_type);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_items_image_url ON public.wardrobe_items USING btree (image_url);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_items_is_basic ON public.wardrobe_items USING btree (is_basic);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_items_is_hidden ON public.wardrobe_items USING btree (is_hidden);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_items_name ON public.wardrobe_items USING btree (item_name);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_clothing_type ON public.wardrobe_user_items USING btree (clothing_type);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_color ON public.wardrobe_user_items USING btree (color);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_created_at ON public.wardrobe_user_items USING btree (created_at);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_is_basic ON public.wardrobe_user_items USING btree (is_basic);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_is_hidden ON public.wardrobe_user_items USING btree (is_hidden);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_item_name ON public.wardrobe_user_items USING btree (item_name);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_material ON public.wardrobe_user_items USING btree (material);
+CREATE INDEX IF NOT EXISTS idx_wardrobe_user_items_user_id ON public.wardrobe_user_items USING btree (user_id);
+CREATE INDEX IF NOT EXISTS idx_wui_has_embedding ON public.wardrobe_user_items USING btree (user_id) WHERE (embedding IS NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_weather_cache_city_updated ON public.weather_cache USING btree (city_name, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weather_cache_location ON public.weather_cache USING btree (latitude, longitude, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_weather_cache_user_id ON public.weather_cache USING btree (user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS ix_weather_cache_user ON public.weather_cache USING btree (user_id);
+
+-- Supabase auth compatibility stubs
+-- These replace auth.uid() and auth.jwt() which are Supabase-specific.
+-- In our architecture, auth is handled by FastAPI JWT, not by PostgreSQL RLS.
+-- These stubs exist only so that exported PL/pgSQL functions can be created without errors.
+CREATE SCHEMA IF NOT EXISTS auth;
+
+CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid AS $$
+BEGIN
+  -- In FastAPI architecture, auth is handled at the application level.
+  -- This stub returns NULL; RPC functions using it should be called
+  -- from the backend with explicit user IDs instead.
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION auth.jwt() RETURNS jsonb AS $$
+BEGIN
+  RETURN '{}'::jsonb;
+END;
+$$ LANGUAGE plpgsql STABLE;
 
 -- Functions (RPC)
 
