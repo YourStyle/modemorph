@@ -475,17 +475,7 @@ export default function HomePage() {
               />
           )}
 
-          {userItemsCount >= 1 && (
-            <div className="flex justify-end mb-4">
-              <button
-                onClick={() => setVisualSearchOpen(true)}
-                className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-sm text-sm text-gray-600 border border-gray-100 active:opacity-70"
-              >
-                <Camera size={16} />
-                Поиск по фото
-              </button>
-            </div>
-          )}
+          {/* Visual search button removed */}
 
           {/* Outfit Suggestions - for users with at least 1 item */}
           {userItemsCount >= 1 && (
