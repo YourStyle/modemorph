@@ -125,18 +125,26 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
     <>
       <Card className="bg-white border-0 shadow-sm overflow-hidden w-96">
         <CardContent className="p-6">
+          {/* Source badge */}
+          {sectionSource && (
+            <div className="mb-3">
+              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${
+                sectionSource === "clip"
+                  ? "bg-blue-50 text-blue-700 border border-blue-200"
+                  : "bg-purple-50 text-purple-700 border border-purple-200"
+              }`}>
+                <Sparkles className="w-3 h-3" />
+                {sectionSource === "clip" ? "Подобрано для вас" : "Рекомендация стилиста"}
+              </span>
+            </div>
+          )}
+
           {/* Header */}
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
               <h3 className="font-semibold text-gray-900 mb-2 text-lg">{title}</h3>
-              {suggestedItemsCount > 0 && (
-                <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-orange-200">
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  {suggestedItemsCount} рекомендаций
-                </Badge>
-              )}
               {isSaved && (
-                <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200 ml-2">
+                <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
                   <BookmarkCheck className="w-3 h-3 mr-1" />
                   Сохранено
                 </Badge>
@@ -215,10 +223,12 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
 
                     {/* Brand badge */}
                     {item.brand && (
-                      <div className="absolute bottom-2 left-2">
-                        <span className="text-xs font-medium text-gray-600 bg-white/90 px-1.5 py-0.5 rounded">
-                          {item.brand}
-                        </span>
+                      <div className="absolute bottom-2 left-2 bg-white/90 rounded px-1.5 py-0.5">
+                        {item.brand === "SELA" ? (
+                          <Image src="https://cdn.admitad-connect.com/campaign/images/2024/7/8/6476-cde3f14c4df1c3e8.png" alt="SELA" width={32} height={14} className="object-contain" />
+                        ) : (
+                          <span className="text-xs font-medium text-gray-600">{item.brand}</span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -252,7 +262,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                   onClick={(e) => e.stopPropagation()}
                   className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full transition-colors"
                 >
-                  Купить{item.brand ? ` ${item.brand}` : ""}
+                  Посмотреть в магазине
                 </a>
               ))}
             </div>
@@ -413,7 +423,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                       onClick={(e) => e.stopPropagation()}
                       className="mt-2 inline-flex items-center text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full transition-colors"
                     >
-                      Купить
+                      Посмотреть в магазине
                     </a>
                   )}
                 </div>
