@@ -33,12 +33,18 @@ def _get_s3_client():
 @router.post("/upload-to-yandex")
 async def upload_to_yandex(
     file: UploadFile = File(...),
+    folder: str = "",
     user: dict = Depends(get_current_user),
 ):
     """Upload file to Yandex S3."""
     content = await file.read()
     ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "jpg"
-    key = f"upload-{hashlib.md5(content[:1024] + str(time.time()).encode()).hexdigest()[:8]}.{ext}"
+    unique = f"{int(time.time())}-{hashlib.md5(content[:1024]).hexdigest()[:8]}"
+
+    if folder:
+        key = f"{folder}/{unique}.{ext}"
+    else:
+        key = f"upload-{unique}.{ext}"
 
     s3 = _get_s3_client()
     if not s3:
@@ -52,7 +58,7 @@ async def upload_to_yandex(
     )
 
     url = f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_S3_BUCKET_NAME}/{key}"
-    return {"url": url, "key": key}
+    return {"success": True, "url": url, "key": key}
 
 
 @router.post("/upload-image")
