@@ -28,6 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           name="viewport"
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
+        <meta name="verify-admitad" content="1605c0f13c" />
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
       <body className={`${inter.className} bg-gray-50`} suppressHydrationWarning>

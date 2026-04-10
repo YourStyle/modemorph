@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAuthUser } from "@/lib/auth-server";
 import { filterSections } from "@/lib/recommendation-filters";
+import { openrouterChat } from "@/lib/openrouter";
 
 export const dynamic = "force-dynamic";
 
@@ -226,9 +227,8 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST — trigger AI generation of outfit recommendations
- * Calls the AI service /webhook-test/recommendations endpoint,
- * saves results to main_recommendations, and returns them.
+ * POST — trigger AI generation of outfit recommendations via OpenRouter.
+ * Replaces the old n8n /webhook/recommendations call.
  */
 export async function POST(req: NextRequest) {
     try {
@@ -237,108 +237,101 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-        const supabase = createClient(supabaseUrl, serviceKey);
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        );
 
-        // Derive base URL: strip /webhook suffix from env var
-        const envUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook";
-        const aiBaseUrl = envUrl.replace(/\/webhook\/?$/, "");
-        const authToken = req.headers.get("authorization")?.replace("Bearer ", "");
-
-        // Get weather and user profile (gender) for the request
-        const [weather, profileResult] = await Promise.all([
+        // Get weather, gender, and wardrobe in parallel
+        const [weather, profileResult, wardrobeResult] = await Promise.all([
             getWeatherForUser(supabase, user.id),
-            supabase
-                .from("user_profiles")
-                .select("gender")
+            supabase.from("user_profiles").select("gender").eq("user_id", user.id).maybeSingle(),
+            supabase.from("wardrobe_user_items")
+                .select("id, item_name, color, shade, style, material, clothing_type, has_print, image_url, user_id")
                 .eq("user_id", user.id)
-                .maybeSingle(),
+                .limit(60),
         ]);
+
         const gender = profileResult.data?.gender ?? null;
+        const wardrobeItems = wardrobeResult.data || [];
 
-        console.log("[Recommendations POST] Triggering AI generation for user:", user.id, "weather:", weather, "gender:", gender);
+        console.log("[Recommendations POST] Generating for user:", user.id, "wardrobe:", wardrobeItems.length, "items, weather:", weather, "gender:", gender);
 
-        const clipRecommendPromise = fetch(aiBaseUrl + "/clip/recommend", {
-            method: "POST",
-            headers: Object.assign(
-                { "Content-Type": "application/x-www-form-urlencoded" },
-                authToken ? { Authorization: "Bearer " + authToken } : {}
-            ),
-            body: new URLSearchParams({ user_id: user.id }).toString(),
-            signal: AbortSignal.timeout(20000),
-        }).catch((e) => {
-            console.log("[Recommendations POST] CLIP unavailable:", e?.message || e);
-            return null;
-        });
-
-        const response = await fetch(`${aiBaseUrl}/webhook/recommendations`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                ...(authToken && { Authorization: `Bearer ${authToken}` }),
-            },
-            body: JSON.stringify({
-                user_id: user.id,
-                weather,
-                gender,
-            }),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text().catch(() => "");
-            console.error("[Recommendations POST] AI service error:", response.status, errorText);
-            return NextResponse.json({ error: "AI service error" }, { status: 502 });
+        if (wardrobeItems.length === 0) {
+            return NextResponse.json([]);
         }
 
-        // AI service (n8n) may save to DB itself.
-        // Try to parse response, but also re-read from DB as fallback.
-        const responseText = await response.text();
-        console.log("[Recommendations POST] Raw AI response length:", responseText.length, "first 300:", responseText.slice(0, 300));
+        const wardrobeJson = JSON.stringify(wardrobeItems.map(i => ({
+            id: i.id, name: i.item_name, color: i.color, shade: i.shade,
+            style: i.style, material: i.material, type: i.clothing_type,
+            has_print: i.has_print, image_url: i.image_url, user_id: i.user_id,
+        })));
 
+        const systemPrompt = `You are a fashion stylist AI. Generate outfit recommendations based on the user's wardrobe, weather, and gender.
+
+RULES:
+- Build outfits ONLY from items in the user's wardrobe (use exact item IDs).
+- Create 2-4 thematic sections (e.g. "На каждый день", "Деловой стиль", "На прогулку").
+- Each section has 2-3 outfit suggestions.
+- Each suggestion uses 3-5 items that work together.
+- Consider the weather when choosing outfits.
+- All text in Russian.
+
+Response format (JSON array of sections):
+[
+  {
+    "title": "Section title in Russian",
+    "suggestions": [
+      {
+        "id": "unique_id",
+        "title": "Outfit title in Russian",
+        "items": [
+          {"id": item_id_number, "name": "item name", "user_id": "user_id", "image_url": "url", "color": "color", "shade": null, "has_print": "no", "notes": null, "url": null}
+        ],
+        "suggested_items_count": number_of_items
+      }
+    ]
+  }
+]
+
+IMPORTANT: Return ONLY valid JSON array. No markdown, no backticks.`;
+
+        const userMessage = `Gender: ${gender || "не указан"}
+Weather: ${weather.location}, ${weather.temperature}°C, ${weather.description}
+
+Wardrobe items:
+${wardrobeJson}`;
+
+        const result = await openrouterChat({
+            model: "google/gemini-2.5-flash-lite",
+            messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userMessage },
+            ],
+            temperature: 0.8,
+        });
+
+        const content = result.choices?.[0]?.message?.content;
         let sections: any[] = [];
 
-        try {
-            const aiData = JSON.parse(responseText);
-
-            // Normalize: n8n can return various shapes
-            // 1. [{title, suggestions}] — array of sections (ideal)
-            // 2. {sections: [...]} — object wrapper
-            // 3. [{sections: [...]}] — n8n array wrapper with one element
-            // 4. [{json: {sections: [...]}}] — n8n full wrapper
-            if (Array.isArray(aiData)) {
-                if (aiData.length > 0 && aiData[0]?.suggestions) {
-                    // Shape 1: direct array of sections
-                    sections = aiData;
-                } else if (aiData.length === 1 && aiData[0]?.sections) {
-                    // Shape 3: n8n wrapper [{sections: [...]}]
-                    sections = aiData[0].sections;
-                } else if (aiData.length === 1 && aiData[0]?.json?.sections) {
-                    // Shape 4: n8n full wrapper [{json: {sections: [...]}}]
-                    sections = aiData[0].json.sections;
-                } else if (aiData.length > 0) {
-                    // Unknown array — use as-is
-                    sections = aiData;
-                }
-            } else if (aiData?.sections) {
-                // Shape 2: {sections: [...]}
-                sections = aiData.sections;
-            } else if (aiData?.look_sections) {
-                sections = aiData.look_sections;
+        if (content) {
+            try {
+                const cleaned = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+                const parsed = JSON.parse(cleaned);
+                sections = Array.isArray(parsed) ? parsed : parsed.sections || [];
+            } catch {
+                console.error("[Recommendations POST] Failed to parse AI response:", content.slice(0, 500));
             }
-        } catch {
-            console.log("[Recommendations POST] Could not parse AI response as JSON, will re-read from DB");
         }
 
-        // Enrich items with image_url and other fields from DB
+        // Enrich items with image_url from DB (AI may return stale URLs)
         if (sections.length > 0) {
             sections = await enrichSectionsWithImages(supabase, sections, user.id);
         }
 
-        // If we got sections from the response, save them (now with images)
+        // Save to DB
         if (sections.length > 0) {
-            const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-            // Try update first (for today's row), then insert if no row exists
+            const today = new Date().toISOString().slice(0, 10);
             const { data: updated, error: updateErr } = await supabase
                 .from("main_recommendations")
                 .update({ look_sections: sections })
@@ -348,83 +341,23 @@ export async function POST(req: NextRequest) {
                 .maybeSingle();
 
             if (!updated && !updateErr) {
-                // No row for today — insert new
-                const { error: insertErr } = await supabase
-                    .from("main_recommendations")
-                    .insert({
-                        user_id: user.id,
-                        run_date: today,
-                        look_sections: sections,
-                    });
-                if (insertErr) {
-                    console.error("[Recommendations POST] Insert failed:", insertErr);
-                } else {
-                    console.log("[Recommendations POST] Inserted new row for", today);
-                }
-            } else if (updateErr) {
-                console.error("[Recommendations POST] Update failed:", updateErr);
+                await supabase.from("main_recommendations").insert({
+                    user_id: user.id,
+                    run_date: today,
+                    look_sections: sections,
+                });
+                console.log("[Recommendations POST] Inserted new row for", today);
             } else {
                 console.log("[Recommendations POST] Updated existing row for", today);
             }
-            console.log("[Recommendations POST] Saved", sections.length, "enriched sections for user:", user.id);
-        } else {
-            // n8n may have saved directly — wait a moment and re-read from DB
-            console.log("[Recommendations POST] No sections in response, re-reading from DB...");
-            await new Promise(r => setTimeout(r, 2000));
-
-            const { data: row } = await supabase
-                .from("main_recommendations")
-                .select("look_sections")
-                .eq("user_id", user.id)
-                .order("run_date", { ascending: false })
-                .limit(1)
-                .maybeSingle();
-
-            if (row?.look_sections) {
-                sections = normalizeSections(row.look_sections);
-                console.log("[Recommendations POST] Re-read", sections.length, "sections from DB");
-            }
-
-            // Enrich DB-read sections too (may have been saved without images by n8n)
-            if (sections.length > 0) {
-                sections = await enrichSectionsWithImages(supabase, sections, user.id);
-            }
         }
 
-        try {
-            const clipRes = await clipRecommendPromise;
-            if (clipRes && clipRes.ok) {
-                const clipData = await clipRes.json();
-                const clipItems = clipData.results ? clipData.results : [];
-                if (clipItems.length > 0) {
-                    const clipIds = clipItems.map((r) => r.id);
-                    const { data: clipCatalog } = await supabase
-                        .from("wardrobe_items")
-                        .select("id, image_url, item_name, clothing_type, color")
-                        .in("id", clipIds);
-                    const clipMap = new Map();
-                    for (const row of (clipCatalog ? clipCatalog : [])) clipMap.set(row.id, row);
-                    const enrichedClip = clipItems.map((r) => {
-                        const db = clipMap.get(r.id);
-                        if (!db) return null;
-                        if (!db.image_url) return null;
-                        return { id: r.id, name: db.item_name, image_url: db.image_url, clothing_type: db.clothing_type, color: db.color };
-                    }).filter(Boolean);
-                    if (enrichedClip.length > 0) {
-                        sections.push({
-                            title: "Подобрано по вашему стилю",
-                            suggestions: [{ id: "clip", title: "Визуально похожее", items: enrichedClip }],
-                        });
-                        console.log("[Recommendations POST] CLIP section added:", enrichedClip.length, "items");
-                    }
-                }
-            }
-        } catch (clipErr) {
-            console.log("[Recs POST] CLIP merge skipped:", clipErr);
+        if (result.usage?.cost) {
+            console.log(`[Recommendations POST] cost=$${result.usage.cost}, tokens=${result.usage.total_tokens}`);
         }
 
         const { sections: cleaned, stats } = filterSections(sections, 2);
-        console.log("[Recommendations POST] Final:", cleaned.length, "sections after filter. Stats:", JSON.stringify(stats));
+        console.log("[Recommendations POST] Final:", cleaned.length, "sections. Stats:", JSON.stringify(stats));
         return NextResponse.json(cleaned);
     } catch (e: any) {
         console.error("[Recommendations POST] Error:", e);

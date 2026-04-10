@@ -181,31 +181,18 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
 
     setIsAnalyzing(true)
     try {
-      // Upload image first
-      const fd = new FormData()
-      fd.append("file", imageFile)
-      const uploaded = await api.post("/api/upload-image", fd, {
-        headers: {} // Remove Content-Type for FormData
-      })
-
-      // Call AI analysis
-      const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL
-      if (!aiApiUrl) {
-        throw new Error("AI API URL not configured")
-      }
-
       const authToken = await getAuthToken()
 
-      const analysisRes = await fetch(`${aiApiUrl}/get-clothes`, {
+      const fd = new FormData()
+      fd.append("image", imageFile)
+
+      const analysisRes = await fetch("/api/detect-clothing", {
         method: "POST",
+        body: fd,
         headers: {
-          "Content-Type": "application/json",
+          Accept: "application/json",
           ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
-        body: JSON.stringify({
-          image_url: uploaded.url,
-          type: type,
-        }),
       })
 
       if (!analysisRes.ok) throw new Error("AI analysis failed")

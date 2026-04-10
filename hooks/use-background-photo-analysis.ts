@@ -171,14 +171,10 @@ export function useBackgroundPhotoAnalysis() {
           throw new Error("No access token available")
         }
 
-        // AI API URL
-        const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
-
-        // Анализируем каждое фото напрямую через AI API (с таймаутом)
+        // Анализируем каждое фото через наш backend API
         const FETCH_TIMEOUT_MS = 150_000 // 2.5 минуты
 
         console.log("[PhotoAnalysis] Starting analysis for", files.length, "files")
-        console.log("[PhotoAnalysis] AI URL:", aiApiUrl)
         console.log("[PhotoAnalysis] Token present:", !!accessToken)
 
         const analysisPromises = files.map(async (file, index) => {
@@ -195,9 +191,9 @@ export function useBackgroundPhotoAnalysis() {
           const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
           try {
-            console.log(`[PhotoAnalysis] Sending fetch to ${aiApiUrl}/ai-photo-parse for file ${index}`)
+            console.log(`[PhotoAnalysis] Sending to /api/detect-clothing for file ${index}`)
 
-            const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+            const response = await fetch("/api/detect-clothing", {
               method: "POST",
               body: formData,
               signal: controller.signal,

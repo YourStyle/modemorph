@@ -80,15 +80,12 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
         const formData = new FormData()
         formData.append("image", photo.file)
 
-        // Используем переменную окружения для AI API
-        const aiApiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
-
         // Добавляем таймаут и обработку ошибок
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 минуты
 
         try {
-          const response = await fetch(`${aiApiUrl}/ai-photo-parse`, {
+          const response = await fetch("/api/detect-clothing", {
             method: "POST",
             body: formData,
             signal: controller.signal,

@@ -277,26 +277,22 @@ export default function AIAssistantPage() {
       })
 
       const weather = await getCurrentWeather()
-      // Ensure weather always has required fields
       const safeWeather = {
         location: weather?.location || "Москва",
         temperature: weather?.temperature ?? 20,
         description: weather?.description || "ясно",
       }
-      const envUrl = process.env.NEXT_PUBLIC_AI_API_URL || "https://modemorph.up.railway.app/webhook"
-      const aiBaseUrl = envUrl.replace(/\/webhook\/?$/, "")
-      const requestUrl = `${aiBaseUrl}/webhook/user-prompt-rec`
       const authToken = await getAuthToken()
 
-      console.log("Sending request to AI API:", { url: requestUrl, userId: currentUserId, promptLength: messageToSend.length, weather: safeWeather })
+      console.log("Sending request to /api/ai-assistant:", { promptLength: messageToSend.length, weather: safeWeather })
 
-      const response = await fetch(requestUrl, {
+      const response = await fetch("/api/ai-assistant", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           ...(authToken && { Authorization: `Bearer ${authToken}` }),
         },
-        body: JSON.stringify({ user_id: currentUserId, prompt: messageToSend, weather: safeWeather }),
+        body: JSON.stringify({ prompt: messageToSend, weather: safeWeather }),
       })
 
       console.log("AI API response status:", response.status)

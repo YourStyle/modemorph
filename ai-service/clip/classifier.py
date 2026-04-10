@@ -1,6 +1,5 @@
 import numpy as np
 from PIL import Image
-from typing import Optional
 from .encoder import CLIPEncoderService
 
 CLOTHING_TYPES = [
@@ -38,7 +37,7 @@ class CLIPClassifierService:
         return [labels[i] for i in idx]
 
     def classify(self, image: Image.Image) -> dict:
-        emb = self.encoder.encode_image(image, use_fashion=True)
+        emb = self.encoder.encode_image(image)
         clothing_type = self._top_k(emb, self._type_embs, CLOTHING_TYPES, 1)[0]
         color = self._top_k(emb, self._color_embs, COLORS, 1)[0]
         style_tags = self._top_k(emb, self._style_embs, STYLES, 3)
