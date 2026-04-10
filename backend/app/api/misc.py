@@ -63,7 +63,7 @@ async def log_usage(request: Request, user: dict = Depends(get_current_user), db
             VALUES (:pid, :feat, :act, :cnt, :page, :item, :req, NOW())
         """),
         {
-            "pid": str(profile[0]),
+            "pid": profile[0],
             "feat": feature,
             "act": action,
             "cnt": body.get("count", 1),
@@ -92,7 +92,7 @@ async def spend_credits(request: Request, user: dict = Depends(get_current_user)
     profile = profile_result.first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    pid = str(profile[0])
+    pid = profile[0]
 
     # Check balance
     balance_result = await db.execute(

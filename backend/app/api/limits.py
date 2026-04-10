@@ -31,7 +31,8 @@ class ConsumeRequest(BaseModel):
     count: int = 1
 
 
-async def _get_profile_id(db: AsyncSession, user_id: str) -> str:
+async def _get_profile_id(db: AsyncSession, user_id: str):
+    """Returns profile_id as native type (int/bigint) — asyncpg needs exact types."""
     result = await db.execute(
         text("SELECT id FROM user_profiles WHERE user_id = :uid"),
         {"uid": user_id},
@@ -39,7 +40,7 @@ async def _get_profile_id(db: AsyncSession, user_id: str) -> str:
     row = result.first()
     if not row:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return str(row[0])
+    return row[0]
 
 
 async def _is_subscriber(db: AsyncSession, profile_id: str) -> bool:

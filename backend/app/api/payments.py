@@ -108,7 +108,7 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
     profile = profile_result.first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    profile_id = str(profile[0])
+    profile_id = profile[0]
 
     action = meta.get("action")
 
@@ -175,7 +175,7 @@ async def get_subscription(
     if not profile:
         return {"subscription": None, "credits": 0}
 
-    pid = str(profile[0])
+    pid = profile[0]
 
     sub = await db.execute(
         text("""

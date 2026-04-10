@@ -75,7 +75,7 @@ async def grant_credits(request: Request, user: dict = Depends(get_admin_user), 
     p = profile.first()
     if not p:
         raise HTTPException(status_code=404, detail="User not found")
-    pid = str(p[0])
+    pid = p[0]
 
     await db.execute(
         text("UPDATE user_credits SET credits_balance = credits_balance + :amt WHERE user_profile_id = :pid"),
