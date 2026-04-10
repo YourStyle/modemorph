@@ -24,7 +24,12 @@ async def get_items(
     params = dict(request.query_params)
     uid = user["id"]
 
-    sql = "SELECT * FROM wardrobe_user_items WHERE user_id = :uid"
+    sql = """SELECT id, user_id, item_name, size_type, material, style, has_print,
+            color, shade, has_details, url, created_at, updated_at, is_basic,
+            basic_item_id, notes, basic_material_id, is_hidden, image_url,
+            shop_url, clothing_type, item_name_en, description, description_en,
+            temp_min, temp_max
+            FROM wardrobe_user_items WHERE user_id = :uid"""
     binds = {"uid": uid}
 
     if "clothing_type" in params:
@@ -76,7 +81,7 @@ async def create_item(
 @router.get("/{item_id}")
 async def get_item(item_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        text("SELECT * FROM wardrobe_user_items WHERE id = :id AND user_id = :uid"),
+        text("SELECT id, user_id, item_name, size_type, material, style, has_print, color, shade, has_details, url, created_at, updated_at, is_basic, basic_item_id, notes, basic_material_id, is_hidden, image_url, shop_url, clothing_type, item_name_en, description, description_en, temp_min, temp_max FROM wardrobe_user_items WHERE id = :id AND user_id = :uid"),
         {"id": item_id, "uid": user["id"]},
     )
     row = result.mappings().first()
