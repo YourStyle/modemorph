@@ -23,6 +23,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _verify_cron_auth(request: Request):
+    """Verify cron secret to prevent unauthorized triggering."""
+    import hmac
+    from app.core.config import settings
+    if settings.CRON_SECRET:
+        auth = request.headers.get("Authorization", "")
+        token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else ""
+        if not hmac.compare_digest(token, settings.CRON_SECRET):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail="Invalid cron secret")
+
+
 @router.post("/generate-recommendations")
 async def cron_generate_recommendations(
     request: Request,
@@ -44,9 +56,8 @@ async def cron_generate_recommendations(
     This fixes the issue where new users didn't get recommendations
     because their recs_jobs weren't completing or saving properly.
     """
-    # Verify cron secret (optional security)
-    auth_header = request.headers.get("Authorization", "")
-    # In production, verify a shared secret here
+    # Verify cron secret
+    _verify_cron_auth(request)
 
     today = date.today().isoformat()
 
@@ -148,7 +159,8 @@ async def cron_generate_recommendations(
 
 
 @router.post("/refresh-weather")
-async def cron_refresh_weather(db: AsyncSession = Depends(get_db)):
+async def cron_refresh_weather(request: Request, db: AsyncSession = Depends(get_db)):
+    _verify_cron_auth(request)
     """Refresh cached weather for active users."""
     import httpx
 

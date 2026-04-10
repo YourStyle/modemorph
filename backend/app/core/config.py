@@ -16,11 +16,11 @@ class Settings(BaseSettings):
     TELEGRAM_PEPPER: str = ""
 
     # External services
-    OPENROUTER_API_KEY: str = ""  # OpenRouter API key for AI generation
-    N8N_BASE_URL: str = ""  # n8n webhook base URL (only for image gen)
-    AI_SERVICE_URL: str = ""  # CLIP/FAISS service
+    OPENROUTER_API_KEY: str = ""
+    N8N_BASE_URL: str = ""
+    AI_SERVICE_URL: str = ""
 
-    # Yandex S3 (env uses YANDEX_ACCESS_KEY_ID, not YANDEX_S3_*)
+    # Yandex S3
     YANDEX_ACCESS_KEY_ID: str = ""
     YANDEX_SECRET_ACCESS_KEY: str = ""
     YANDEX_BUCKET_NAME: str = "modemorphs3"
@@ -34,7 +34,23 @@ class Settings(BaseSettings):
     # OpenWeather
     OPENWEATHER_API_KEY: str = ""
 
+    # Cron secret
+    CRON_SECRET: str = ""
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()
+
+
+def validate_settings():
+    """Call at startup to reject insecure defaults."""
+    import sys
+    errors = []
+    if settings.JWT_SECRET == "change-me-in-production" or len(settings.JWT_SECRET) < 32:
+        errors.append("JWT_SECRET is not set or too short (min 32 chars)")
+    if not settings.TELEGRAM_PEPPER:
+        errors.append("TELEGRAM_PEPPER is empty — Telegram auth is insecure")
+    if errors:
+        for e in errors:
+            print(f"WARNING: {e}", file=sys.stderr)

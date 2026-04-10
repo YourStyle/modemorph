@@ -46,6 +46,8 @@ async def create_payment(
     invoice_id = row.invoice_id or row.id
 
     # Build Robokassa URL
+    from urllib.parse import quote
+
     signature = hashlib.md5(
         f"{settings.ROBOKASSA_LOGIN}:{body.amount}:{invoice_id}:{settings.ROBOKASSA_PASS1}".encode()
     ).hexdigest()
@@ -55,7 +57,7 @@ async def create_payment(
         f"?MerchantLogin={settings.ROBOKASSA_LOGIN}"
         f"&OutSum={body.amount}"
         f"&InvId={invoice_id}"
-        f"&Description={body.description}"
+        f"&Description={quote(body.description)}"
         f"&SignatureValue={signature}"
         f"&IsTest=0"
     )
@@ -79,26 +81,25 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
     if sig.lower() != expected.lower():
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    # Find payment
+    # Atomic: find and claim payment in one step (prevents double-processing)
     result = await db.execute(
-        text("SELECT * FROM payments WHERE invoice_id = :inv"),
+        text("""
+            UPDATE payments SET status = 'paid'
+            WHERE invoice_id = :inv AND status != 'paid'
+            RETURNING *
+        """),
         {"inv": int(inv_id)},
     )
     payment = result.mappings().first()
     if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
+        # Already paid or not found — idempotent OK
+        return f"OK{inv_id}"
 
     meta = payment["meta"] or {}
 
-    # Idempotency check
+    # Already applied (extra safety)
     if meta.get("post_applied"):
         return f"OK{inv_id}"
-
-    # Update payment status
-    await db.execute(
-        text("UPDATE payments SET status = 'paid' WHERE invoice_id = :inv"),
-        {"inv": int(inv_id)},
-    )
 
     # Get user profile
     profile_result = await db.execute(

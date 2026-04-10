@@ -1,12 +1,6 @@
 """
-Limits & credits — replaces Supabase RPC functions:
-- reconcile_limits
-- use_feature / can_use_feature
-- add_credits / spend_credits
-- log_usage_event
+Limits & credits — with input validation and atomic operations.
 """
-
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -18,12 +12,13 @@ from app.core.deps import get_current_user
 
 router = APIRouter()
 
+ALLOWED_FEATURES = {"wardrobe_items_anlyzed", "ai_requests", "ideas_viewed", "outfits_saved", "vton_used"}
 
-class CheckLimitsRequest(BaseModel):
-    feature: Optional[str] = None
-    featureType: Optional[str] = None
-    count: int = 1
-    meta: Optional[dict] = None
+
+def _validate_feature(feature: str) -> str:
+    if feature not in ALLOWED_FEATURES:
+        raise HTTPException(status_code=400, detail=f"Invalid feature: {feature}")
+    return feature
 
 
 class ConsumeRequest(BaseModel):
@@ -32,7 +27,6 @@ class ConsumeRequest(BaseModel):
 
 
 async def _get_profile_id(db: AsyncSession, user_id: str):
-    """Returns profile_id as native type (int/bigint) — asyncpg needs exact types."""
     result = await db.execute(
         text("SELECT id FROM user_profiles WHERE user_id = :uid"),
         {"uid": user_id},
@@ -43,38 +37,16 @@ async def _get_profile_id(db: AsyncSession, user_id: str):
     return row[0]
 
 
-async def _is_subscriber(db: AsyncSession, profile_id: str) -> bool:
-    """Check if user has active subscription."""
+async def _is_subscriber(db: AsyncSession, profile_id) -> bool:
     result = await db.execute(
         text("""
             SELECT id FROM user_subscriptions
-            WHERE user_profile_id = :pid
-              AND status = 'active'
-              AND expires_at > NOW()
+            WHERE user_profile_id = :pid AND status = 'active' AND expires_at > NOW()
             LIMIT 1
         """),
         {"pid": profile_id},
     )
     return result.first() is not None
-
-
-async def _get_limit(db: AsyncSession, profile_id: str, feature: str) -> int:
-    """Get remaining limit for a feature."""
-    result = await db.execute(
-        text(f'SELECT "{feature}" FROM limits WHERE user_profile_id = :pid'),
-        {"pid": profile_id},
-    )
-    row = result.first()
-    return row[0] if row else 0
-
-
-async def _get_credits(db: AsyncSession, profile_id: str) -> int:
-    result = await db.execute(
-        text("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid"),
-        {"pid": profile_id},
-    )
-    row = result.first()
-    return row[0] if row else 0
 
 
 async def _get_feature_cost(db: AsyncSession, feature: str) -> int:
@@ -86,52 +58,72 @@ async def _get_feature_cost(db: AsyncSession, feature: str) -> int:
     return row[0] if row else 1
 
 
-async def _can_use_feature(db: AsyncSession, profile_id: str, feature: str, count: int) -> tuple[bool, int]:
-    """Check if user can use feature. Returns (can_use, remaining)."""
-    # Subscribers have unlimited access
+async def _can_use_feature(db: AsyncSession, profile_id, feature: str, count: int) -> tuple[bool, int]:
+    feature = _validate_feature(feature)
+
     if await _is_subscriber(db, profile_id):
         return True, 999
 
-    remaining = await _get_limit(db, profile_id, feature)
+    result = await db.execute(
+        text(f'SELECT "{feature}" FROM limits WHERE user_profile_id = :pid'),
+        {"pid": profile_id},
+    )
+    row = result.first()
+    remaining = row[0] if row else 0
+
     if remaining >= count:
         return True, remaining
 
-    # Check credits for top-up
-    credits = await _get_credits(db, profile_id)
+    credits_result = await db.execute(
+        text("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid"),
+        {"pid": profile_id},
+    )
+    credits_row = credits_result.first()
+    credits = credits_row[0] if credits_row else 0
     cost = await _get_feature_cost(db, feature)
+
     if credits >= cost * count:
         return True, remaining
 
     return False, remaining
 
 
-async def _use_feature(db: AsyncSession, profile_id: str, feature: str, count: int) -> tuple[bool, int]:
-    """Consume feature usage. Auto-topup from credits if needed."""
+async def _use_feature(db: AsyncSession, profile_id, feature: str, count: int) -> tuple[bool, int]:
+    """Consume feature usage with atomic operations to prevent race conditions."""
+    feature = _validate_feature(feature)
+
+    if count <= 0:
+        raise HTTPException(status_code=400, detail="count must be positive")
+
     if await _is_subscriber(db, profile_id):
         return True, 999
 
-    remaining = await _get_limit(db, profile_id, feature)
+    # Atomic deduct from limits — only if sufficient
+    result = await db.execute(
+        text(f"""
+            UPDATE limits SET "{feature}" = "{feature}" - :cnt
+            WHERE user_profile_id = :pid AND "{feature}" >= :cnt
+            RETURNING "{feature}"
+        """),
+        {"cnt": count, "pid": profile_id},
+    )
+    row = result.first()
+    if row:
+        return True, row[0]
 
-    if remaining >= count:
-        # Deduct from limits
-        await db.execute(
-            text(f'UPDATE limits SET "{feature}" = "{feature}" - :cnt WHERE user_profile_id = :pid'),
-            {"cnt": count, "pid": profile_id},
-        )
-        return True, remaining - count
-
-    # Try top-up from credits
-    credits = await _get_credits(db, profile_id)
+    # Try atomic top-up from credits
     cost = await _get_feature_cost(db, feature)
     total_cost = cost * count
 
-    if credits >= total_cost:
-        # Deduct credits
-        await db.execute(
-            text("UPDATE user_credits SET credits_balance = credits_balance - :cost WHERE user_profile_id = :pid"),
-            {"cost": total_cost, "pid": profile_id},
-        )
-        # Log credit transaction
+    credit_result = await db.execute(
+        text("""
+            UPDATE user_credits SET credits_balance = credits_balance - :cost
+            WHERE user_profile_id = :pid AND credits_balance >= :cost
+            RETURNING credits_balance
+        """),
+        {"cost": total_cost, "pid": profile_id},
+    )
+    if credit_result.first():
         await db.execute(
             text("""
                 INSERT INTO credit_transactions (user_profile_id, amount, reason, description, created_at)
@@ -141,33 +133,18 @@ async def _use_feature(db: AsyncSession, profile_id: str, feature: str, count: i
         )
         return True, 0
 
-    return False, remaining
+    return False, 0
 
 
 @router.post("/check")
-async def check_limits(
-    body: CheckLimitsRequest,
+async def check_limits_endpoint(
+    body: ConsumeRequest,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Check or consume feature limits. If featureType is set, consume; otherwise just check."""
     profile_id = await _get_profile_id(db, user["id"])
-
-    feature = body.featureType or body.feature
-    if not feature:
-        raise HTTPException(status_code=400, detail="feature or featureType required")
-
-    if body.featureType:
-        # Consume mode
-        ok, remaining = await _use_feature(db, profile_id, feature, body.count)
-        if not ok:
-            raise HTTPException(status_code=402, detail="payment_required")
-        await db.commit()
-        return {"success": True, "canUse": True, "remaining": remaining}
-    else:
-        # Check mode
-        ok, remaining = await _can_use_feature(db, profile_id, feature, body.count)
-        return {"success": True, "canUse": ok, "remaining": remaining}
+    ok, remaining = await _can_use_feature(db, profile_id, body.feature, body.count)
+    return {"success": True, "canUse": ok, "remaining": remaining}
 
 
 @router.post("/consume")
@@ -189,9 +166,7 @@ async def reconcile_limits(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Reconcile limits for subscriber (reset to defaults if subscription active)."""
     profile_id = await _get_profile_id(db, user["id"])
-
     if await _is_subscriber(db, profile_id):
         await db.execute(
             text("""
@@ -203,5 +178,4 @@ async def reconcile_limits(
             {"pid": profile_id},
         )
         await db.commit()
-
     return {"success": True}

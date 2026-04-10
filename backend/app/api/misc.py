@@ -27,8 +27,9 @@ async def check_limits(request: Request, user: dict = Depends(get_current_user),
 
     if not feature:
         raise HTTPException(status_code=400, detail="feature or featureType required")
+    if not isinstance(count, int) or count <= 0:
+        count = 1
 
-    # Consume mode if featureType or usageType is set
     is_consume = bool(body.get("featureType") or body.get("usageType"))
 
     profile_id = await _get_profile_id(db, user["id"])
@@ -88,6 +89,9 @@ async def spend_credits(request: Request, user: dict = Depends(get_current_user)
     reason = body.get("reason", "usage")
     description = body.get("description", "")
 
+    if not isinstance(amount, int) or amount <= 0:
+        raise HTTPException(status_code=400, detail="amount must be a positive integer")
+
     profile_result = await db.execute(
         text("SELECT id FROM user_profiles WHERE user_id = :uid"),
         {"uid": user["id"]},
@@ -97,21 +101,19 @@ async def spend_credits(request: Request, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Profile not found")
     pid = profile[0]
 
-    # Check balance
-    balance_result = await db.execute(
-        text("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid"),
-        {"pid": pid},
-    )
-    balance_row = balance_result.first()
-    balance = balance_row[0] if balance_row else 0
-
-    if balance < amount:
-        raise HTTPException(status_code=402, detail="Insufficient credits")
-
-    await db.execute(
-        text("UPDATE user_credits SET credits_balance = credits_balance - :amt WHERE user_profile_id = :pid"),
+    # Atomic deduct — only if sufficient balance
+    result = await db.execute(
+        text("""
+            UPDATE user_credits SET credits_balance = credits_balance - :amt
+            WHERE user_profile_id = :pid AND credits_balance >= :amt
+            RETURNING credits_balance
+        """),
         {"amt": amount, "pid": pid},
     )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=402, detail="Insufficient credits")
+
     await db.execute(
         text("""
             INSERT INTO credit_transactions (user_profile_id, amount, reason, description, created_at)
@@ -120,7 +122,7 @@ async def spend_credits(request: Request, user: dict = Depends(get_current_user)
         {"pid": pid, "amt": -amount, "reason": reason, "desc": description},
     )
     await db.commit()
-    return {"success": True, "remaining": balance - amount}
+    return {"success": True, "remaining": row[0]}
 
 
 # ── /api/pricing ──

@@ -104,7 +104,7 @@ def _verify_init_data(raw: str, bot_token: str) -> dict | None:
     # Check auth_date freshness (24h)
     import time
     auth_date = int(params.get("auth_date", "0"))
-    if auth_date > 0 and abs(time.time() - auth_date) > 86400:
+    if auth_date > 0 and abs(time.time() - auth_date) > 3600:  # 1 hour freshness
         return None
 
     # Try both with and without 'signature' in check string

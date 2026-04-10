@@ -114,11 +114,12 @@ async def add_wardrobe_item(
 @router.get("/{item_id}")
 async def get_wardrobe_item(
     item_id: int,
+    user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        text(f"SELECT {WUI_COLS} FROM wardrobe_user_items WHERE id = :id"),
-        {"id": item_id},
+        text(f"SELECT {WUI_COLS} FROM wardrobe_user_items WHERE id = :id AND user_id = :uid"),
+        {"id": item_id, "uid": user["id"]},
     )
     row = result.mappings().first()
     if not row:

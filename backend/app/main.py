@@ -8,10 +8,12 @@ from app.api import (
     limits, recommendations, outfits, looks, payments,
     ai, me, upload, weather, misc, admin, cron,
 )
+from app.core.config import validate_settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_settings()
     yield
 
 
@@ -24,7 +26,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://modemorph.ru",
+        "https://www.modemorph.ru",
+        "https://web.telegram.org",
+        "http://localhost:3000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,43 +41,17 @@ app.add_middleware(
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(me.router, prefix="/api/me", tags=["me"])
-
-# ── Wardrobe ──
 app.include_router(wardrobe.router, prefix="/api/wardrobe", tags=["wardrobe"])
 app.include_router(wardrobe_user_items.router, prefix="/api/wardrobe-user-items", tags=["wardrobe"])
-
-# ── Basic items / materials / clothing types ──
-# These are mounted at /api/ because paths are defined in the router
 app.include_router(basic_items.router, prefix="/api", tags=["basic-items"])
-
-# ── Outfits, looks, likes ──
 app.include_router(outfits.router, prefix="/api/outfits", tags=["outfits"])
-# looks router has full paths like /user-looks, /looks-sections
 app.include_router(looks.router, prefix="/api", tags=["looks"])
-
-# ── Limits & credits ──
 app.include_router(limits.router, prefix="/api/limits", tags=["limits"])
-
-# ── Recommendations ──
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["recommendations"])
-
-# ── Payments ──
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
-
-# ── AI ──
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
-
-# ── Upload & files ──
 app.include_router(upload.router, prefix="/api", tags=["upload"])
-
-# ── Weather ──
 app.include_router(weather.router, prefix="/api", tags=["weather"])
-
-# ── Misc (check-limits, usage/log, pricing, etc.) ──
 app.include_router(misc.router, prefix="/api", tags=["misc"])
-
-# ── Admin ──
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
-
-# ── Cron tasks ──
 app.include_router(cron.router, prefix="/api/cron", tags=["cron"])

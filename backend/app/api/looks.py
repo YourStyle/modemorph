@@ -45,7 +45,7 @@ async def create_user_look(request: Request, user: dict = Depends(get_current_us
     )
     await db.commit()
     row = result.mappings().first()
-    return {"data": dict(row)}
+    return dict(row)
 
 
 @router.get("/user-looks/{look_id}")
@@ -57,7 +57,7 @@ async def get_user_look(look_id: int, user: dict = Depends(get_current_user), db
     row = result.mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Look not found")
-    return {"data": dict(row)}
+    return dict(row)
 
 
 @router.put("/user-looks/{look_id}")
@@ -85,7 +85,7 @@ async def update_user_look(look_id: int, request: Request, user: dict = Depends(
     row = result.mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Look not found")
-    return {"data": dict(row)}
+    return dict(row)
 
 
 @router.delete("/user-looks/{look_id}")
@@ -108,7 +108,8 @@ async def get_looks_sections(user: dict = Depends(get_current_user), db: AsyncSe
         text("SELECT * FROM looks_sections WHERE user_id = :uid ORDER BY created_at"),
         {"uid": user["id"]},
     )
-    return {"data": [dict(r) for r in result.mappings().all()]}
+    # Return plain array — frontend does setSections(response)
+    return [dict(r) for r in result.mappings().all()]
 
 
 @router.post("/looks-sections")
@@ -122,7 +123,8 @@ async def create_section(request: Request, user: dict = Depends(get_current_user
         {"uid": user["id"], "title": body.get("title", "")},
     )
     await db.commit()
-    return {"data": dict(result.mappings().first())}
+    # Return section object directly — frontend does setSections(prev => [newSection, ...prev])
+    return dict(result.mappings().first())
 
 
 @router.get("/looks-sections/{section_id}/looks")
@@ -136,17 +138,20 @@ async def get_section_looks(section_id: int, user: dict = Depends(get_current_us
         """),
         {"sid": section_id, "uid": user["id"]},
     )
-    return {"data": [dict(r) for r in result.mappings().all()]}
+    return [dict(r) for r in result.mappings().all()]
 
 
 @router.delete("/looks-sections/{section_id}")
 async def delete_section(section_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    await db.execute(text("DELETE FROM section_looks WHERE section_id = :sid"), {"sid": section_id})
-    result = await db.execute(
-        text("DELETE FROM looks_sections WHERE id = :id AND user_id = :uid RETURNING id"),
+    # Verify ownership BEFORE cascade delete
+    owner_check = await db.execute(
+        text("SELECT id FROM looks_sections WHERE id = :id AND user_id = :uid"),
         {"id": section_id, "uid": user["id"]},
     )
-    if not result.first():
+    if not owner_check.first():
         raise HTTPException(status_code=404, detail="Section not found")
+
+    await db.execute(text("DELETE FROM section_looks WHERE section_id = :sid"), {"sid": section_id})
+    await db.execute(text("DELETE FROM looks_sections WHERE id = :id"), {"id": section_id})
     await db.commit()
     return {"success": True}

@@ -80,6 +80,11 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
     if not all_ids:
         return sections
 
+    # Cap to prevent unbounded IN clause from AI data
+    if len(all_ids) > 500:
+        all_ids = set(list(all_ids)[:500])
+
+    # Safe: all_ids contains only int values from int() conversion above
     id_csv = ",".join(str(i) for i in all_ids)
 
     user_items = await db.execute(

@@ -164,9 +164,11 @@ async def toggle_like(
 
 
 @router.post("/track-view")
-async def track_view(request: Request, db: AsyncSession = Depends(get_db)):
+async def track_view(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     outfit_id = body.get("outfitId")
+    if not outfit_id:
+        return {"tracked": False}
     await db.execute(
         text("UPDATE outfits SET views_count = COALESCE(views_count, 0) + 1 WHERE id = :id"),
         {"id": outfit_id},
@@ -176,9 +178,11 @@ async def track_view(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/track-save")
-async def track_save(request: Request, db: AsyncSession = Depends(get_db)):
+async def track_save(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     outfit_id = body.get("outfitId")
+    if not outfit_id:
+        return {"tracked": False}
     await db.execute(
         text("UPDATE outfits SET favorites_count = COALESCE(favorites_count, 0) + 1 WHERE id = :id"),
         {"id": outfit_id},
