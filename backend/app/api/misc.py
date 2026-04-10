@@ -301,12 +301,12 @@ wearing ALL the provided clothing items together. Requirements:
                     import boto3
                     s3 = boto3.client("s3",
                         endpoint_url=settings.YANDEX_S3_ENDPOINT,
-                        aws_access_key_id=settings.YANDEX_S3_ACCESS_KEY_ID,
-                        aws_secret_access_key=settings.YANDEX_S3_SECRET_ACCESS_KEY,
+                        aws_access_key_id=settings.YANDEX_ACCESS_KEY_ID,
+                        aws_secret_access_key=settings.YANDEX_SECRET_ACCESS_KEY,
                         region_name="ru-central1",
                     )
-                    s3.put_object(Bucket=settings.YANDEX_S3_BUCKET_NAME, Key=key, Body=img_bytes, ContentType=f"image/{matches.group(1)}")
-                    image_data = f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_S3_BUCKET_NAME}/{key}"
+                    s3.put_object(Bucket=settings.YANDEX_BUCKET_NAME, Key=key, Body=img_bytes, ContentType=f"image/{matches.group(1)}")
+                    image_data = f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_BUCKET_NAME}/{key}"
                 except Exception as e:
                     pass  # Return base64 if S3 fails
         except Exception:

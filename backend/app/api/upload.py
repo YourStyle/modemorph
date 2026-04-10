@@ -22,8 +22,8 @@ def _get_s3_client():
         return boto3.client(
             "s3",
             endpoint_url=settings.YANDEX_S3_ENDPOINT,
-            aws_access_key_id=settings.YANDEX_S3_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.YANDEX_S3_SECRET_ACCESS_KEY,
+            aws_access_key_id=settings.YANDEX_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.YANDEX_SECRET_ACCESS_KEY,
             region_name="ru-central1",
         )
     except ImportError:
@@ -51,13 +51,13 @@ async def upload_to_yandex(
         raise HTTPException(status_code=500, detail="S3 client not available")
 
     s3.put_object(
-        Bucket=settings.YANDEX_S3_BUCKET_NAME,
+        Bucket=settings.YANDEX_BUCKET_NAME,
         Key=key,
         Body=content,
         ContentType=file.content_type or "image/jpeg",
     )
 
-    url = f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_S3_BUCKET_NAME}/{key}"
+    url = f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_BUCKET_NAME}/{key}"
     return {"success": True, "url": url, "key": key}
 
 
@@ -87,12 +87,12 @@ async def upload_image(
     s3 = _get_s3_client()
     if s3:
         s3.put_object(
-            Bucket=settings.YANDEX_S3_BUCKET_NAME,
+            Bucket=settings.YANDEX_BUCKET_NAME,
             Key=key,
             Body=content,
             ContentType=f"image/{ext}",
         )
-        url = f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_S3_BUCKET_NAME}/{key}"
+        url = f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_BUCKET_NAME}/{key}"
     else:
         raise HTTPException(status_code=500, detail="S3 not configured")
 
@@ -104,7 +104,7 @@ async def list_s3(user: dict = Depends(get_current_user)):
     s3 = _get_s3_client()
     if not s3:
         return {"objects": []}
-    resp = s3.list_objects_v2(Bucket=settings.YANDEX_S3_BUCKET_NAME, MaxKeys=100)
+    resp = s3.list_objects_v2(Bucket=settings.YANDEX_BUCKET_NAME, MaxKeys=100)
     objects = [{"key": o["Key"], "size": o["Size"]} for o in resp.get("Contents", [])]
     return {"objects": objects}
 
@@ -114,7 +114,7 @@ async def delete_s3(key: str = Query(...), user: dict = Depends(get_current_user
     s3 = _get_s3_client()
     if not s3:
         raise HTTPException(status_code=500, detail="S3 not configured")
-    s3.delete_object(Bucket=settings.YANDEX_S3_BUCKET_NAME, Key=key)
+    s3.delete_object(Bucket=settings.YANDEX_BUCKET_NAME, Key=key)
     return {"success": True}
 
 

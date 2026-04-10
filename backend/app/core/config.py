@@ -20,10 +20,10 @@ class Settings(BaseSettings):
     N8N_BASE_URL: str = ""  # n8n webhook base URL (only for image gen)
     AI_SERVICE_URL: str = ""  # CLIP/FAISS service
 
-    # Yandex S3
-    YANDEX_S3_ACCESS_KEY_ID: str = ""
-    YANDEX_S3_SECRET_ACCESS_KEY: str = ""
-    YANDEX_S3_BUCKET_NAME: str = "modemorphs3"
+    # Yandex S3 (env uses YANDEX_ACCESS_KEY_ID, not YANDEX_S3_*)
+    YANDEX_ACCESS_KEY_ID: str = ""
+    YANDEX_SECRET_ACCESS_KEY: str = ""
+    YANDEX_BUCKET_NAME: str = "modemorphs3"
     YANDEX_S3_ENDPOINT: str = "https://storage.yandexcloud.net"
 
     # Robokassa
