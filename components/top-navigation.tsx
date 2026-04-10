@@ -50,6 +50,16 @@ export function TopNavigation() {
   useEffect(() => {
     loadUserProfile()
     loadWeather()
+
+    // Listen for avatar updates from profile sheet
+    const handleAvatarUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (detail?.avatar_url) {
+        setProfile((prev) => prev ? { ...prev, avatar_url: detail.avatar_url } : null)
+      }
+    }
+    window.addEventListener("profile:avatar-updated", handleAvatarUpdate)
+    return () => window.removeEventListener("profile:avatar-updated", handleAvatarUpdate)
   }, [])
 
   useEffect(() => {

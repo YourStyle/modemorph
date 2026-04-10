@@ -134,6 +134,38 @@ async def update_profile_session(
                     val = int(val)
                 updates[field] = val if val else None
 
+        # If avatar_url changed, save previous avatar to user_avatars history
+        if "avatar_url" in updates and updates["avatar_url"]:
+            old_avatar = await db.execute(
+                text("SELECT avatar_url FROM user_profiles WHERE user_id = :uid"),
+                {"uid": user["id"]},
+            )
+            old_row = old_avatar.first()
+            if old_row and old_row[0] and old_row[0] != updates["avatar_url"]:
+                # Demote current primary avatar
+                await db.execute(
+                    text("UPDATE user_avatars SET is_primary = false WHERE user_id = :uid AND is_primary = true"),
+                    {"uid": user["id"]},
+                )
+                # Save old avatar to history (if not already there)
+                await db.execute(
+                    text("""
+                        INSERT INTO user_avatars (user_id, url, is_primary, created_at)
+                        VALUES (:uid, :url, false, NOW())
+                        ON CONFLICT DO NOTHING
+                    """),
+                    {"uid": user["id"], "url": old_row[0]},
+                )
+            # Save new avatar as primary
+            await db.execute(
+                text("""
+                    INSERT INTO user_avatars (user_id, url, is_primary, created_at)
+                    VALUES (:uid, :url, true, NOW())
+                    ON CONFLICT DO NOTHING
+                """),
+                {"uid": user["id"], "url": updates["avatar_url"]},
+            )
+
         if updates:
             set_parts = [f'"{k}" = :{k}' for k in updates]
             set_parts.append('"updated_at" = NOW()')
@@ -181,6 +213,54 @@ async def update_profile_session(
 
     await db.commit()
     return {"success": True}
+
+
+@router.get("/avatars")
+async def get_avatars(
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all avatars for user (history)."""
+    result = await db.execute(
+        text("SELECT id, url, is_primary, created_at FROM user_avatars WHERE user_id = :uid ORDER BY created_at DESC"),
+        {"uid": user["id"]},
+    )
+    return [dict(r) for r in result.mappings().all()]
+
+
+@router.post("/avatars/{avatar_id}/set-primary")
+async def set_primary_avatar(
+    avatar_id: int,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set an existing avatar as primary."""
+    # Get the avatar URL
+    avatar = await db.execute(
+        text("SELECT url FROM user_avatars WHERE id = :id AND user_id = :uid"),
+        {"id": avatar_id, "uid": user["id"]},
+    )
+    row = avatar.first()
+    if not row:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Avatar not found")
+
+    # Demote all, promote selected
+    await db.execute(
+        text("UPDATE user_avatars SET is_primary = false WHERE user_id = :uid"),
+        {"uid": user["id"]},
+    )
+    await db.execute(
+        text("UPDATE user_avatars SET is_primary = true, updated_at = NOW() WHERE id = :id"),
+        {"id": avatar_id},
+    )
+    # Update profile
+    await db.execute(
+        text("UPDATE user_profiles SET avatar_url = :url, updated_at = NOW() WHERE user_id = :uid"),
+        {"url": row[0], "uid": user["id"]},
+    )
+    await db.commit()
+    return {"success": True, "avatar_url": row[0]}
 
 
 @router.get("/notifications")

@@ -215,6 +215,8 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
       })
 
       setProfile((prev) => (prev ? { ...prev, avatar_url: result.url } : null))
+      // Notify other components (top navigation pill) about avatar change
+      window.dispatchEvent(new CustomEvent("profile:avatar-updated", { detail: { avatar_url: result.url } }))
       toast.success("Аватар успешно обновлён")
     } catch (e: any) {
       toast.error(`Ошибка загрузки аватара: ${e?.message || "Неизвестная ошибка"}`)
