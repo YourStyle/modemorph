@@ -78,7 +78,7 @@ async def _get_credits(db: AsyncSession, profile_id: str) -> int:
 
 async def _get_feature_cost(db: AsyncSession, feature: str) -> int:
     result = await db.execute(
-        text("SELECT credit_cost FROM feature_costs WHERE feature_key = :f"),
+        text("SELECT cost_credits FROM feature_costs WHERE feature_name = :f"),
         {"f": feature},
     )
     row = result.first()
