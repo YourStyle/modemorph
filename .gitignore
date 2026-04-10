@@ -36,3 +36,6 @@ xmrig-6.24.0/
 kal.tar.gz
 sex.sh
 *.swp
+
+# backend data exports (contains user passwords and PII)
+backend/data_export/

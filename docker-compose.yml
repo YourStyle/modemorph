@@ -1,4 +1,66 @@
 services:
+  # ──────────────────────────────────────────────
+  # PostgreSQL — replaces Supabase hosted database
+  # ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: modemorph-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: modemorph
+      POSTGRES_USER: modemorph
+      POSTGRES_PASSWORD: ${POSTGRES_LOCAL_PASSWORD:-modemorph}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations/000_users_table.sql:/docker-entrypoint-initdb.d/000_users_table.sql:ro
+      - ./backend/migrations/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./backend/migrations/002_seed_data.sql:/docker-entrypoint-initdb.d/002_seed_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U modemorph -d modemorph"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - modemorph-network
+
+  # ──────────────────────────────────────────────
+  # FastAPI Backend — replaces Supabase + n8n logic
+  # ──────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: modemorph-backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://modemorph:${POSTGRES_LOCAL_PASSWORD:-modemorph}@postgres:5432/modemorph
+      JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_PEPPER: ${TELEGRAM_PEPPER}
+      N8N_BASE_URL: ${NEXT_PUBLIC_AI_API_URL}
+      AI_SERVICE_URL: http://modemorph-ai:8000
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - modemorph-network
+
+  # ──────────────────────────────────────────────
+  # Next.js Frontend
+  # ──────────────────────────────────────────────
   app:
     build:
       context: .
@@ -24,6 +86,9 @@ services:
     networks:
       - modemorph-network
 
+  # ──────────────────────────────────────────────
+  # Caddy reverse proxy (production only)
+  # ──────────────────────────────────────────────
   caddy:
     profiles: ["prod"]
     image: caddy:2-alpine
@@ -46,7 +111,9 @@ services:
     networks:
       - modemorph-network
 
-
+  # ──────────────────────────────────────────────
+  # AI Service (CLIP/FAISS)
+  # ──────────────────────────────────────────────
   modemorph-ai:
     build:
       context: ./ai-service
@@ -55,8 +122,7 @@ services:
     env_file:
       - .env
     environment:
-      - SUPABASE_URL=${SUPABASE_URL}
-      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - DATABASE_URL=postgresql://modemorph:${POSTGRES_LOCAL_PASSWORD:-modemorph}@postgres:5432/modemorph
     volumes:
       - faiss_data:/data/faiss_index
     restart: unless-stopped
@@ -66,6 +132,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - modemorph-network
 
@@ -74,6 +143,8 @@ networks:
     driver: bridge
 
 volumes:
+  postgres_data:
+    name: modemorph_postgres_data
   caddy_data:
     name: modemorph_caddy_data
   caddy_config:
