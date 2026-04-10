@@ -20,7 +20,8 @@ async def get_user_looks(user: dict = Depends(get_current_user), db: AsyncSessio
         text("SELECT * FROM user_looks WHERE user_id = :uid ORDER BY created_at DESC"),
         {"uid": user["id"]},
     )
-    return {"data": [dict(r) for r in result.mappings().all()]}
+    # Return plain array — frontend does setUserLooks(response) directly
+    return [dict(r) for r in result.mappings().all()]
 
 
 @router.post("/user-looks")
