@@ -23,6 +23,8 @@ interface OutfitItem {
   has_print: string
   notes?: string
   user_id?: string
+  url?: string
+  brand?: string
 }
 
 interface OutfitSuggestion {
@@ -36,6 +38,8 @@ interface LookSection {
   title: string
   looks_count: number
   suggestions: OutfitSuggestion[]
+  source?: "clip" | "ai"
+  source_label?: string
 }
 
 
@@ -511,7 +515,20 @@ export default function HomePage() {
                             <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-4">
                               {/* Section Header */}
                               <div className="flex items-center justify-between">
-                                <h2 className="text-xl font-semibold text-gray-900">{section.title || "Образы"}</h2>
+                                <div className="flex flex-col gap-1">
+                                  <h2 className="text-xl font-semibold text-gray-900">{section.title || "Образы"}</h2>
+                                  {section.source_label && (
+                                    <span
+                                      className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${
+                                        section.source === "ai"
+                                          ? "bg-purple-50 text-purple-600"
+                                          : "bg-blue-50 text-blue-600"
+                                      }`}
+                                    >
+                                      {section.source_label}
+                                    </span>
+                                  )}
+                                </div>
                                 <span className="text-sm text-gray-500">
                           {section.looks_count || section.suggestions.length} образов
                         </span>
@@ -533,6 +550,7 @@ export default function HomePage() {
                                         >
                                           <OutfitCard
                                               suggestion={suggestion}
+                                              sectionSource={section.source}
                                               onTryOnClick={handleTryOnClick}
                                               onTryOnSuccess={handleTryOnSuccess}
                                               onSaveOutfit={handleSaveOutfit}

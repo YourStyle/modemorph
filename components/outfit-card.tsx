@@ -4,12 +4,13 @@ import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2 } from "lucide-react"
+import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2, ThumbsUp, ThumbsDown } from "lucide-react"
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
 import { CommonSheet } from "./common-sheet"
 import { useTryOn } from "@/contexts/try-on-context"
+import { api } from "@/lib/api-client"
 
 interface OutfitItem {
   id: string
@@ -20,6 +21,7 @@ interface OutfitItem {
   style?: string
   material?: string
   url?: string
+  brand?: string
   size_type?: string
   has_print?: string
   has_details?: string
@@ -39,6 +41,7 @@ interface OutfitSuggestion {
 
 interface OutfitCardProps {
   suggestion: OutfitSuggestion
+  sectionSource?: "clip" | "ai"
   onSaveOutfit?: (suggestion: OutfitSuggestion) => void
   userLooks?: any[]
   onTryOnClick?: (payload: {
@@ -52,12 +55,25 @@ interface OutfitCardProps {
   }) => void
 }
 
-export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess }: OutfitCardProps) {
+export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showOutfitDetails, setShowOutfitDetails] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
+  const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null)
   const { startTryOn, session } = useTryOn()
+
+  const sendFeedback = (action: "like" | "dislike") => {
+    if (feedback) return
+    setFeedback(action)
+    api.post("/api/usage/log", {
+      type: "recommendation_feedback",
+      action,
+      meta: { suggestion_id: suggestion.id, source: sectionSource ?? null },
+    }).catch(() => {
+      // fire-and-forget — ignore errors silently
+    })
+  }
 
   if (!suggestion) return null
 
@@ -196,6 +212,15 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
                         </span>
                       </div>
                     )}
+
+                    {/* Brand badge */}
+                    {item.brand && (
+                      <div className="absolute bottom-2 left-2">
+                        <span className="text-xs font-medium text-gray-600 bg-white/90 px-1.5 py-0.5 rounded">
+                          {item.brand}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )
               })}
@@ -212,6 +237,24 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
               <p className="text-sm text-gray-500">
                 +{items.length - 4} еще {items.length - 4 === 1 ? "вещь" : "вещей"}
               </p>
+            </div>
+          )}
+
+          {/* Affiliate "Купить" links for partner items */}
+          {items.slice(0, 4).some((item) => item.url) && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {items.slice(0, 4).filter((item) => item.url).map((item, index) => (
+                <a
+                  key={`buy-${item.id}-${index}`}
+                  href={item.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full transition-colors"
+                >
+                  Купить{item.brand ? ` ${item.brand}` : ""}
+                </a>
+              ))}
             </div>
           )}
 
@@ -242,6 +285,37 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
                 "Примерить"
               )}
             </Button>
+          </div>
+
+          {/* Like / Dislike feedback */}
+          <div className="flex items-center justify-end gap-1 mt-3">
+            <span className="text-xs text-gray-400 mr-1">Подходит?</span>
+            <button
+              type="button"
+              aria-label="Нравится"
+              onClick={() => sendFeedback("like")}
+              disabled={!!feedback}
+              className={`p-1.5 rounded-full transition-colors ${
+                feedback === "like"
+                  ? "text-emerald-600 bg-emerald-50"
+                  : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50"
+              } disabled:cursor-default`}
+            >
+              <ThumbsUp className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              aria-label="Не нравится"
+              onClick={() => sendFeedback("dislike")}
+              disabled={!!feedback}
+              className={`p-1.5 rounded-full transition-colors ${
+                feedback === "dislike"
+                  ? "text-red-500 bg-red-50"
+                  : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+              } disabled:cursor-default`}
+            >
+              <ThumbsDown className="w-4 h-4" />
+            </button>
           </div>
         </CardContent>
       </Card>
@@ -310,10 +384,10 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
                 </div>
                 <div className="p-3">
                   <h4 className="font-medium text-sm line-clamp-2 mb-1">{item.name}</h4>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {item.color && (
                       <div
-                        className="w-3 h-3 rounded-full border border-gray-200"
+                        className="w-3 h-3 rounded-full border border-gray-200 flex-shrink-0"
                         style={{ backgroundColor: item.color.startsWith("#") ? item.color : `#${item.color}` }}
                       />
                     )}
@@ -327,7 +401,21 @@ export function OutfitCard({ suggestion, onSaveOutfit, userLooks = [], onTryOnCl
                     >
                       {item.user_id ? "Ваше" : "Рекомендуем"}
                     </span>
+                    {item.brand && (
+                      <span className="text-xs text-gray-500 font-medium">{item.brand}</span>
+                    )}
                   </div>
+                  {item.url && (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-2 inline-flex items-center text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full transition-colors"
+                    >
+                      Купить
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
