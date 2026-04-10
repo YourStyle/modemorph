@@ -9,23 +9,26 @@
 		reverse_proxy app:3000
 	}
 
-	# FastAPI backend — new endpoints
+	# ALL /api/* requests go to FastAPI backend
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
+
+	# Health check for backend (direct access)
 	handle /backend/* {
 		uri strip_prefix /backend
 		reverse_proxy backend:8080
 	}
 
-	# Всё остальное — в Next
+	# Everything else — Next.js frontend
 	reverse_proxy app:3000
 
 	# Базовые заголовки безопасности
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-		# Разрешаем iframe для Telegram Mini App
 		Content-Security-Policy "frame-ancestors 'self' https://web.telegram.org https://*.telegram.org"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "no-referrer-when-downgrade"
-		# Убираем X-Frame-Options — используем CSP frame-ancestors
 		-X-Frame-Options
 	}
 }
