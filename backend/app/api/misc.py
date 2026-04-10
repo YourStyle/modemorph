@@ -22,15 +22,18 @@ async def check_limits(request: Request, user: dict = Depends(get_current_user),
     from app.api.limits import _get_profile_id, _use_feature, _can_use_feature
 
     body = await request.json()
-    feature = body.get("featureType") or body.get("feature")
+    feature = body.get("featureType") or body.get("feature") or body.get("type") or body.get("usageType")
     count = body.get("count", 1)
 
     if not feature:
         raise HTTPException(status_code=400, detail="feature or featureType required")
 
+    # Consume mode if featureType or usageType is set
+    is_consume = bool(body.get("featureType") or body.get("usageType"))
+
     profile_id = await _get_profile_id(db, user["id"])
 
-    if body.get("featureType"):
+    if is_consume:
         ok, remaining = await _use_feature(db, profile_id, feature, count)
         if not ok:
             raise HTTPException(status_code=402, detail="payment_required")
@@ -179,6 +182,137 @@ async def ai_assistant(request: Request, user: dict = Depends(get_current_user),
     items = [dict(r) for r in items_result.mappings().all()]
 
     return await n8n_proxy.user_prompt_recommendation(user["id"], prompt, weather, items)
+
+
+# ── /api/vton ──
+
+@router.post("/vton")
+async def virtual_tryon(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Virtual try-on via OpenRouter Gemini — same logic as Next.js route."""
+    import base64
+    import httpx
+
+    api_key = settings.OPENROUTER_API_KEY
+    if not api_key:
+        raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
+
+    body = await request.json()
+    items = body.get("items", [])
+    if not items:
+        raise HTTPException(status_code=400, detail="Items are required")
+
+    # Get user avatar
+    profile = await db.execute(
+        text("SELECT avatar_url FROM user_profiles WHERE user_id = :uid"),
+        {"uid": user["id"]},
+    )
+    profile_row = profile.first()
+    if not profile_row or not profile_row[0]:
+        raise HTTPException(status_code=400, detail="User avatar not found. Please upload an avatar in your profile.")
+
+    avatar_url = profile_row[0]
+
+    # Download avatar → base64
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        avatar_resp = await client.get(avatar_url)
+        if avatar_resp.status_code != 200:
+            raise HTTPException(status_code=400, detail="Failed to download avatar")
+        content_type = avatar_resp.headers.get("content-type", "image/jpeg")
+        avatar_b64 = f"data:{content_type};base64,{base64.b64encode(avatar_resp.content).decode()}"
+
+    # Download clothing images → base64
+    image_contents = []
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for item in items:
+            if item.get("image_url"):
+                try:
+                    resp = await client.get(item["image_url"])
+                    if resp.status_code == 200:
+                        ct = resp.headers.get("content-type", "image/jpeg")
+                        b64 = f"data:{ct};base64,{base64.b64encode(resp.content).decode()}"
+                        image_contents.append({"type": "image_url", "image_url": {"url": b64}})
+                except Exception:
+                    pass
+
+    if not image_contents:
+        raise HTTPException(status_code=400, detail="Failed to download clothing images")
+
+    # Build prompt
+    item_descs = "\n".join(
+        f"  Clothing item {i+1}: {', '.join(filter(None, [it.get('name',''), it.get('color',''), it.get('material',''), it.get('description','')]))}"
+        for i, it in enumerate(items)
+    )
+    prompt = f"""Virtual try-on task.
+
+The FIRST image is a reference photo of a person.
+The REMAINING images are individual clothing items.
+
+{item_descs}
+
+Generate a single photorealistic image of the SAME person from the first image
+wearing ALL the provided clothing items together. Requirements:
+- Preserve the person's face, hair, body shape, and proportions exactly.
+- Use a natural pose and a clean, neutral background.
+- The clothing must match the provided item photos in color, texture, and style.
+- The result should look like a professional fashion photo."""
+
+    # Call OpenRouter Gemini
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+            json={
+                "model": "google/gemini-3.1-flash-image-preview",
+                "messages": [{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": avatar_b64}},
+                        *image_contents,
+                    ],
+                }],
+                "modalities": ["image", "text"],
+                "image_config": {"aspect_ratio": "3:4"},
+            },
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"AI service error: {resp.text[:200]}")
+        ai_result = resp.json()
+
+    images = ai_result.get("choices", [{}])[0].get("message", {}).get("images", [])
+    if not images:
+        raise HTTPException(status_code=502, detail="Model returned no image")
+
+    image_data = images[0].get("image_url", {}).get("url", "")
+
+    # Upload to S3 if base64
+    if image_data.startswith("data:image/"):
+        try:
+            import re
+            matches = re.match(r"data:image/(\w+);base64,(.+)", image_data)
+            if matches:
+                ext = "jpg" if matches.group(1) == "jpeg" else matches.group(1)
+                img_bytes = base64.b64decode(matches.group(2))
+                import time, hashlib
+                key = f"vton/{int(time.time())}-{hashlib.md5(img_bytes[:100]).hexdigest()[:8]}.{ext}"
+
+                s3 = None
+                try:
+                    import boto3
+                    s3 = boto3.client("s3",
+                        endpoint_url=settings.YANDEX_S3_ENDPOINT,
+                        aws_access_key_id=settings.YANDEX_S3_ACCESS_KEY_ID,
+                        aws_secret_access_key=settings.YANDEX_S3_SECRET_ACCESS_KEY,
+                        region_name="ru-central1",
+                    )
+                    s3.put_object(Bucket=settings.YANDEX_S3_BUCKET_NAME, Key=key, Body=img_bytes, ContentType=f"image/{matches.group(1)}")
+                    image_data = f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_S3_BUCKET_NAME}/{key}"
+                except Exception as e:
+                    pass  # Return base64 if S3 fails
+        except Exception:
+            pass
+
+    return {"success": True, "result": {"image_url": image_data}}
 
 
 # ── /api/clip/search ──
