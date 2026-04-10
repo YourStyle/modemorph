@@ -114,15 +114,32 @@ def import_table(cur, table_name):
     placeholders = ", ".join(["%s"] * len(columns))
     sql = f'INSERT INTO "{table_name}" ({cols_str}) VALUES ({placeholders}) ON CONFLICT DO NOTHING'
 
+    # Detect array columns (float arrays like embeddings)
+    # Check first row to find list-of-numbers columns
+    array_cols = set()
+    if rows:
+        for col in columns:
+            val = rows[0].get(col)
+            if isinstance(val, list) and val and isinstance(val[0], (int, float)):
+                array_cols.add(col)
+
     count = 0
     for row in rows:
         values = []
         for col in columns:
             val = row.get(col)
-            # Convert dicts/lists to JSON strings for JSONB columns
-            if isinstance(val, (dict, list)):
+            if val is None:
+                values.append(None)
+            elif col in array_cols and isinstance(val, list):
+                # Convert Python list to PostgreSQL array literal: {1.0, 2.0, ...}
+                val = "{" + ",".join(str(x) for x in val) + "}"
+                values.append(val)
+            elif isinstance(val, (dict, list)):
+                # Convert dicts/lists to JSON strings for JSONB columns
                 val = json.dumps(val, ensure_ascii=False)
-            values.append(val)
+                values.append(val)
+            else:
+                values.append(val)
         try:
             cur.execute(sql, values)
             count += 1
