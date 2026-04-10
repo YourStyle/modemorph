@@ -35,7 +35,7 @@ async def create_payment(
     result = await db.execute(
         text("""
             INSERT INTO payments (user_id, amount, status, meta, created_at)
-            VALUES (:uid, :amount, 'pending', :meta::jsonb, NOW())
+            VALUES (:uid, :amount, 'pending', CAST(:meta AS jsonb), NOW())
             RETURNING id, invoice_id
         """),
         {"uid": user["id"], "amount": body.amount, "meta": json.dumps(body.meta)},
@@ -153,7 +153,7 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
     # Mark as applied (idempotency)
     updated_meta = {**meta, "post_applied": True, "post_applied_at": "now()"}
     await db.execute(
-        text("UPDATE payments SET meta = :meta::jsonb WHERE invoice_id = :inv"),
+        text("UPDATE payments SET meta = CAST(:meta AS jsonb) WHERE invoice_id = :inv"),
         {"meta": json.dumps(updated_meta), "inv": int(inv_id)},
     )
 

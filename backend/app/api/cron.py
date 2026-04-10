@@ -127,9 +127,9 @@ async def cron_generate_recommendations(
             sections_json = json_lib.dumps(sections, ensure_ascii=False)
             await db.execute(text("""
                 INSERT INTO main_recommendations (user_id, run_date, look_sections, source, created_at)
-                VALUES (:uid, CURRENT_DATE, :sections::jsonb, 'cron:nightly', NOW())
+                VALUES (:uid, CURRENT_DATE, CAST(:sections AS jsonb), 'cron:nightly', NOW())
                 ON CONFLICT (user_id, run_date) DO UPDATE SET
-                    look_sections = :sections::jsonb,
+                    look_sections = CAST(:sections AS jsonb),
                     source = 'cron:nightly'
             """), {"uid": user_id, "sections": sections_json})
 

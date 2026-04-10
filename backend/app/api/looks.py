@@ -31,7 +31,7 @@ async def create_user_look(request: Request, user: dict = Depends(get_current_us
     result = await db.execute(
         text("""
             INSERT INTO user_looks (user_id, title, description, items, image_url, created_at)
-            VALUES (:uid, :title, :desc, :items::jsonb, :img, NOW())
+            VALUES (:uid, :title, :desc, CAST(:items AS jsonb), :img, NOW())
             RETURNING *
         """),
         {
@@ -68,7 +68,7 @@ async def update_user_look(look_id: int, request: Request, user: dict = Depends(
         text("""
             UPDATE user_looks SET title = COALESCE(:title, title),
                 description = COALESCE(:desc, description),
-                items = COALESCE(:items::jsonb, items),
+                items = COALESCE(CAST(:items AS jsonb), items),
                 image_url = COALESCE(:img, image_url)
             WHERE id = :id AND user_id = :uid RETURNING *
         """),

@@ -215,7 +215,7 @@ async def save_to_looks(
     result = await db.execute(
         text("""
             INSERT INTO user_looks (user_id, title, items, created_at)
-            VALUES (:uid, :title, :items::jsonb, NOW()) RETURNING *
+            VALUES (:uid, :title, CAST(:items AS jsonb), NOW()) RETURNING *
         """),
         {"uid": user["id"], "title": outfit_row[0], "items": json_lib.dumps(items)},
     )
@@ -249,7 +249,7 @@ async def save_as_look(
     result = await db.execute(
         text("""
             INSERT INTO user_looks (user_id, title, items, created_at)
-            VALUES (:uid, :title, :items::jsonb, NOW()) RETURNING *
+            VALUES (:uid, :title, CAST(:items AS jsonb), NOW()) RETURNING *
         """),
         {
             "uid": user["id"],

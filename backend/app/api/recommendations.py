@@ -280,12 +280,12 @@ Wardrobe items:
     )
     if existing.first():
         await db.execute(
-            text("UPDATE main_recommendations SET look_sections = :s::jsonb WHERE user_id = :uid AND run_date = CURRENT_DATE"),
+            text("UPDATE main_recommendations SET look_sections = CAST(:s AS jsonb) WHERE user_id = :uid AND run_date = CURRENT_DATE"),
             {"s": sections_json, "uid": user["id"]},
         )
     else:
         await db.execute(
-            text("INSERT INTO main_recommendations (user_id, run_date, look_sections, source) VALUES (:uid, CURRENT_DATE, :s::jsonb, 'openrouter')"),
+            text("INSERT INTO main_recommendations (user_id, run_date, look_sections, source) VALUES (:uid, CURRENT_DATE, CAST(:s AS jsonb), 'openrouter')"),
             {"uid": user["id"], "s": sections_json},
         )
     await db.commit()

@@ -138,14 +138,14 @@ async def generate_recommendations(
 
     if row:
         await db.execute(
-            text("UPDATE main_recommendations SET look_sections = :s::jsonb WHERE id = :id"),
+            text("UPDATE main_recommendations SET look_sections = CAST(:s AS jsonb) WHERE id = :id"),
             {"s": sections_json, "id": row[0]},
         )
     else:
         await db.execute(
             text("""
                 INSERT INTO main_recommendations (user_id, run_date, look_sections, source)
-                VALUES (:uid, CURRENT_DATE, :s::jsonb, 'algo:http')
+                VALUES (:uid, CURRENT_DATE, CAST(:s AS jsonb), 'algo:http')
             """),
             {"uid": user["id"], "s": sections_json},
         )
