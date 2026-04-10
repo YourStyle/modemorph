@@ -1,10 +1,10 @@
 """
-Wardrobe endpoints — replaces all /api/wardrobe* Next.js routes.
+Wardrobe endpoints — /api/wardrobe/*
 """
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,25 +14,24 @@ from app.core.deps import get_current_user
 
 router = APIRouter()
 
+# Columns without embedding
+WUI_COLS = """id, user_id, item_name, size_type, material, style, has_print,
+    color, shade, has_details, url, created_at, updated_at, is_basic,
+    basic_item_id, notes, basic_material_id, is_hidden, image_url,
+    shop_url, clothing_type, item_name_en, description, description_en,
+    temp_min, temp_max"""
+
 
 @router.get("")
 async def get_wardrobe(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all wardrobe items for the current user."""
     result = await db.execute(
-        text("""
-            SELECT wui.*, wi.image_url as item_image_url, wi.item_name_en
-            FROM wardrobe_user_items wui
-            LEFT JOIN wardrobe_items wi ON wi.id = wui.wardrobe_item_id
-            WHERE wui.user_id = :uid
-            ORDER BY wui.created_at DESC
-        """),
+        text(f"SELECT {WUI_COLS} FROM wardrobe_user_items WHERE user_id = :uid ORDER BY created_at DESC"),
         {"uid": user["id"]},
     )
-    rows = result.mappings().all()
-    return {"data": [dict(r) for r in rows]}
+    return {"data": [dict(r) for r in result.mappings().all()]}
 
 
 @router.get("/count")
@@ -41,7 +40,7 @@ async def get_wardrobe_count(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        text("SELECT COUNT(*) as cnt FROM wardrobe_user_items WHERE user_id = :uid"),
+        text("SELECT COUNT(*) FROM wardrobe_user_items WHERE user_id = :uid"),
         {"uid": user["id"]},
     )
     return {"count": result.scalar()}
@@ -49,71 +48,113 @@ async def get_wardrobe_count(
 
 @router.get("/types")
 async def get_wardrobe_types(db: AsyncSession = Depends(get_db)):
-    """Get distinct clothing types."""
     result = await db.execute(
         text("SELECT DISTINCT clothing_type FROM wardrobe_items WHERE clothing_type IS NOT NULL ORDER BY clothing_type")
     )
     return {"types": [r[0] for r in result.all()]}
 
 
-class AddItemRequest(BaseModel):
-    item_name: str
-    description: Optional[str] = None
-    color: Optional[str] = None
-    shade: Optional[str] = None
-    material: Optional[str] = None
-    style: Optional[str] = None
-    has_print: Optional[str] = None
-    has_details: Optional[str] = None
-    image_url: Optional[str] = None
-    part: Optional[str] = None
-    clothing_type: Optional[str] = None
-    notes: Optional[str] = None
+@router.get("/visibility")
+async def get_visibility(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: get/set item visibility."""
+    params = dict(request.query_params)
+    item_id = params.get("id")
+    if item_id:
+        result = await db.execute(
+            text("SELECT id, is_hidden FROM wardrobe_items WHERE id = :id"),
+            {"id": int(item_id)},
+        )
+        row = result.mappings().first()
+        return {"data": dict(row) if row else None}
+    return {"data": None}
 
 
 @router.post("/add")
 async def add_wardrobe_item(
-    body: AddItemRequest,
+    request: Request,
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Add a new item to wardrobe (creates wardrobe_items + wardrobe_user_items)."""
-    # Create wardrobe_items entry
-    wi_result = await db.execute(
-        text("""
-            INSERT INTO wardrobe_items (item_name, description, color, shade, material, style,
-                has_print, has_details, image_url, part, clothing_type)
-            VALUES (:name, :desc, :color, :shade, :material, :style,
-                :print, :details, :image, :part, :ctype)
-            RETURNING id
-        """),
-        {
-            "name": body.item_name, "desc": body.description, "color": body.color,
-            "shade": body.shade, "material": body.material, "style": body.style,
-            "print": body.has_print, "details": body.has_details, "image": body.image_url,
-            "part": body.part, "ctype": body.clothing_type,
-        },
-    )
-    wardrobe_item_id = wi_result.scalar()
+    body = await request.json()
 
-    # Create wardrobe_user_items link
-    wui_result = await db.execute(
-        text("""
-            INSERT INTO wardrobe_user_items (user_id, wardrobe_item_id, item_name, description,
-                color, shade, material, style, has_print, notes, image_url)
-            VALUES (:uid, :wid, :name, :desc, :color, :shade, :material, :style, :print, :notes, :image)
-            RETURNING *
+    result = await db.execute(
+        text(f"""
+            INSERT INTO wardrobe_user_items (user_id, item_name, description, color, shade,
+                material, style, has_print, has_details, notes, image_url, clothing_type,
+                basic_item_id, is_hidden)
+            VALUES (:uid, :name, :desc, :color, :shade, :material, :style, :print,
+                :details, :notes, :image, :ctype, :basic_id, false)
+            RETURNING {WUI_COLS}
         """),
         {
-            "uid": user["id"], "wid": wardrobe_item_id, "name": body.item_name,
-            "desc": body.description, "color": body.color, "shade": body.shade,
-            "material": body.material, "style": body.style, "print": body.has_print,
-            "notes": body.notes, "image": body.image_url,
+            "uid": user["id"],
+            "name": body.get("item_name") or body.get("name", ""),
+            "desc": body.get("description"),
+            "color": body.get("color"),
+            "shade": body.get("shade"),
+            "material": body.get("material"),
+            "style": body.get("style"),
+            "print": body.get("has_print"),
+            "details": body.get("has_details"),
+            "notes": body.get("notes"),
+            "image": body.get("image_url"),
+            "ctype": body.get("clothing_type"),
+            "basic_id": body.get("basic_item_id"),
         },
     )
     await db.commit()
-    row = wui_result.mappings().first()
-    return {"data": dict(row)}
+    row = result.mappings().first()
+    return {"data": dict(row) if row else None}
+
+
+@router.get("/{item_id}")
+async def get_wardrobe_item(
+    item_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        text(f"SELECT {WUI_COLS} FROM wardrobe_user_items WHERE id = :id"),
+        {"id": item_id},
+    )
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return dict(row)
+
+
+@router.put("/{item_id}")
+@router.patch("/{item_id}")
+async def update_wardrobe_item(
+    item_id: int,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    allowed = ["item_name", "description", "color", "shade", "material", "style",
+               "has_print", "has_details", "notes", "image_url", "is_hidden",
+               "clothing_type", "basic_item_id"]
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    set_clause = ", ".join(f'"{k}" = :{k}' for k in updates)
+    updates["id"] = item_id
+    updates["uid"] = user["id"]
+
+    result = await db.execute(
+        text(f'UPDATE wardrobe_user_items SET {set_clause}, updated_at = NOW() WHERE id = :id AND user_id = :uid RETURNING {WUI_COLS}'),
+        updates,
+    )
+    await db.commit()
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return dict(row)
 
 
 @router.delete("/{item_id}")

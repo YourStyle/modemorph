@@ -82,22 +82,23 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
 
     id_list = list(all_ids)
 
-    # Fetch from both tables
+    # Fetch from both tables — use text IN clause since asyncpg ANY() can be tricky
+    id_placeholders = ",".join(str(i) for i in id_list)
+
     user_items = await db.execute(
-        text("""
+        text(f"""
             SELECT id, image_url, item_name, color, shade, has_print, clothing_type, notes, user_id
-            FROM wardrobe_user_items WHERE id = ANY(:ids) AND user_id = :uid
+            FROM wardrobe_user_items WHERE id IN ({id_placeholders}) AND user_id = :uid
         """),
-        {"ids": id_list, "uid": user_id},
+        {"uid": user_id},
     )
     user_map = {r["id"]: dict(r) for r in user_items.mappings().all()}
 
     catalog_items = await db.execute(
-        text("""
+        text(f"""
             SELECT id, image_url, item_name, item_name_en, clothing_type, color, shade, has_print
-            FROM wardrobe_items WHERE id = ANY(:ids)
+            FROM wardrobe_items WHERE id IN ({id_placeholders})
         """),
-        {"ids": id_list},
     )
     catalog_map = {r["id"]: dict(r) for r in catalog_items.mappings().all()}
 
@@ -166,9 +167,8 @@ async def get_recommendations(
         sections = _normalize_sections(row["look_sections"])
         if sections:
             enriched = await _enrich_sections(db, sections, user["id"])
-            filtered = _filter_sections(enriched)
             is_stale = str(row["run_date"]) != today
-            return {"sections": filtered, "stale": is_stale or len(filtered) == 0}
+            return {"sections": enriched, "stale": is_stale}
 
     return {"sections": [], "stale": True}
 
