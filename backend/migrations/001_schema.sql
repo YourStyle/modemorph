@@ -627,6 +627,21 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
+-- Views
+CREATE OR REPLACE VIEW public.active_users_for_recs AS
+WITH wardrobe_counts AS (
+    SELECT w.user_id,
+        count(*) FILTER (WHERE COALESCE(w.is_hidden, false) = false) AS visible_items
+    FROM wardrobe_user_items w
+    GROUP BY w.user_id
+)
+SELECT u.id AS user_id,
+    u.created_at AS last_active_at,
+    wc.visible_items
+FROM users u
+JOIN wardrobe_counts wc ON wc.user_id = u.id
+WHERE wc.visible_items >= 6;
+
 -- Functions (RPC)
 
 CREATE OR REPLACE FUNCTION public.activate_subscription_and_reset_limits(p_user_profile_id bigint)
