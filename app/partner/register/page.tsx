@@ -8,7 +8,6 @@ import { Loader2, Building2, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { parseSupabaseExpiry } from "@/lib/auth-utils"
-import { fetchWithRetry } from "@/lib/fetch-with-retry"
 
 export default function PartnerRegisterPage() {
   const router = useRouter()
@@ -32,25 +31,24 @@ export default function PartnerRegisterPage() {
 
     try {
       // Step 1: Register user via FastAPI
-      const registerResponse = await fetchWithRetry(
-        "/api/auth/register",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
-        },
-        { timeout: 10000, retries: 1 },
-      )
+      console.log("[PartnerRegister] Step 1: creating user account...")
+      const registerResponse = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+
+      const authData = await registerResponse.json().catch(() => null)
+      console.log("[PartnerRegister] Step 1 response:", registerResponse.status, authData)
 
       if (!registerResponse.ok) {
-        const data = await registerResponse.json().catch(() => ({}))
-        throw new Error(data.detail || "Не удалось создать аккаунт")
+        const detail = authData?.detail
+        const msg = typeof detail === "string" ? detail : Array.isArray(detail) ? detail.map((d: any) => d.msg || d).join(", ") : "Не удалось создать аккаунт"
+        throw new Error(msg)
       }
 
-      const authData = await registerResponse.json()
-
-      if (!authData.session || !authData.user) {
-        throw new Error("Не удалось создать аккаунт")
+      if (!authData?.session || !authData?.user) {
+        throw new Error("Сервер не вернул данные сессии")
       }
 
       // Save session
@@ -62,32 +60,35 @@ export default function PartnerRegisterPage() {
       })
 
       // Step 2: Create partner profile
-      const response = await fetchWithRetry(
-        "/api/partner/register",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${authData.session.access_token}`,
-          },
-          body: JSON.stringify({
-            company_name: companyName,
-            contact_name: contactName,
-            website: website || undefined,
-            description: description || undefined,
-          }),
+      console.log("[PartnerRegister] Step 2: creating partner profile...")
+      const response = await fetch("/api/partner/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authData.session.access_token}`,
         },
-        { timeout: 10000, retries: 1 },
-      )
+        body: JSON.stringify({
+          company_name: companyName,
+          contact_name: contactName,
+          website: website || undefined,
+          description: description || undefined,
+        }),
+      })
+
+      const partnerData = await response.json().catch(() => null)
+      console.log("[PartnerRegister] Step 2 response:", response.status, partnerData)
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}))
-        throw new Error(data.detail || "Ошибка при регистрации партнёра")
+        const detail = partnerData?.detail
+        const msg = typeof detail === "string" ? detail : "Ошибка при регистрации партнёра"
+        throw new Error(msg)
       }
 
+      console.log("[PartnerRegister] Success! Setting step to success")
       setStep("success")
     } catch (err: any) {
-      setError(err.message || "Ошибка при регистрации")
+      console.error("[PartnerRegister] Error:", err)
+      setError(err.message || "Произошла ошибка при регистрации")
     } finally {
       setIsLoading(false)
     }
