@@ -22,28 +22,105 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
 @router.get("/users")
 async def list_users(search: str = Query(""), user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     sql = """
-        SELECT up.*, u.email, u.raw_user_meta_data, u.created_at as user_created_at,
-               uc.credits_balance, us.subscription_type, us.status as sub_status, us.expires_at as sub_expires
+        SELECT up.*, u.email, u.raw_user_meta_data, u.created_at as user_created_at
         FROM user_profiles up JOIN users u ON u.id = up.user_id
-        LEFT JOIN user_credits uc ON uc.user_profile_id = up.id
-        LEFT JOIN user_subscriptions us ON us.user_profile_id = up.id
     """
     binds = {}
     if search:
         sql += " WHERE u.email ILIKE :s OR u.raw_user_meta_data::text ILIKE :s"
         binds["s"] = f"%{search}%"
-    sql += " ORDER BY u.created_at DESC LIMIT 100"
+    sql += " ORDER BY u.created_at DESC LIMIT 200"
     result = await db.execute(text(sql), binds)
-    return {"users": [dict(r) for r in result.mappings().all()]}
+    rows = result.mappings().all()
+
+    users = []
+    for r in rows:
+        row = dict(r)
+        pid = row.get("id")
+
+        # Get subscriptions array
+        subs = await db.execute(
+            text("SELECT subscription_type, status, start_date, expires_at as end_date, credits_included FROM user_subscriptions WHERE user_profile_id = :pid ORDER BY start_date DESC"),
+            {"pid": pid},
+        )
+        row["user_subscriptions"] = [dict(s) for s in subs.mappings().all()]
+
+        # Get credits array
+        creds = await db.execute(
+            text("SELECT credits_balance, updated_at FROM user_credits WHERE user_profile_id = :pid"),
+            {"pid": pid},
+        )
+        row["user_credits"] = [dict(c) for c in creds.mappings().all()]
+
+        # Get limits array
+        lims = await db.execute(
+            text("SELECT wardrobe_items_anlyzed, ai_requests, ideas_viewed, outfits_saved, vton_used FROM limits WHERE user_profile_id = :pid"),
+            {"pid": pid},
+        )
+        row["limits"] = [dict(l) for l in lims.mappings().all()]
+
+        # Extract full_name from metadata
+        meta = row.get("raw_user_meta_data") or {}
+        if isinstance(meta, dict):
+            row["full_name"] = meta.get("full_name") or meta.get("telegram_first_name") or ""
+
+        users.append(row)
+
+    return {"users": users}
 
 
 @router.get("/metrics")
 async def metrics(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    total_users = (await db.execute(text("SELECT count(*) FROM user_profiles"))).scalar()
-    active_subs = (await db.execute(text("SELECT count(*) FROM user_subscriptions WHERE status='active' AND expires_at > NOW()"))).scalar()
-    total_items = (await db.execute(text("SELECT count(*) FROM wardrobe_user_items"))).scalar()
-    total_events = (await db.execute(text("SELECT count(*) FROM usage_events"))).scalar()
-    return {"total_users": total_users, "active_subscriptions": active_subs, "total_wardrobe_items": total_items, "total_events": total_events}
+    total_users = (await db.execute(text("SELECT count(*) FROM user_profiles"))).scalar() or 0
+    active_subs = (await db.execute(text("SELECT count(*) FROM user_subscriptions WHERE status='active' AND expires_at > NOW()"))).scalar() or 0
+
+    # MAU — users active in last 30 days
+    mau = 0
+    try:
+        mau = (await db.execute(text("SELECT count(DISTINCT user_id) FROM daily_user_activity WHERE activity_date >= CURRENT_DATE - 30"))).scalar() or 0
+    except Exception:
+        pass
+
+    # DAU — users active today
+    dau = 0
+    try:
+        dau = (await db.execute(text("SELECT count(DISTINCT user_id) FROM daily_user_activity WHERE activity_date = CURRENT_DATE"))).scalar() or 0
+    except Exception:
+        pass
+
+    # Registration chart — last 30 days
+    reg_result = await db.execute(text("""
+        SELECT DATE(created_at) as date, count(*) as count
+        FROM user_profiles
+        WHERE created_at >= CURRENT_DATE - 30
+        GROUP BY DATE(created_at) ORDER BY date
+    """))
+    registrations = [{"date": str(r.date), "count": r.count} for r in reg_result.all()]
+
+    # Activity chart — last 30 days
+    act_result = await db.execute(text("""
+        SELECT activity_date as date, count(*) as count
+        FROM daily_user_activity
+        WHERE activity_date >= CURRENT_DATE - 30
+        GROUP BY activity_date ORDER BY activity_date
+    """))
+    activity = [{"date": str(r.date), "count": r.count} for r in act_result.all()]
+
+    return {
+        "summary": {
+            "totalUsers": total_users,
+            "mau": mau,
+            "dau": dau,
+            "activeSubscriptions": active_subs,
+        },
+        "charts": {
+            "registrations": registrations,
+            "activity": activity,
+        },
+        # Keep flat fields for backward compat
+        "total_users": total_users,
+        "active_subscriptions": active_subs,
+    }
 
 
 @router.post("/grant-credits")
