@@ -104,6 +104,41 @@ async def create_reminder(request: Request, user: dict = Depends(get_admin_user)
     return {"data": dict(result.mappings().first())}
 
 
+@router.patch("/reminders")
+async def update_reminder(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    reminder_id = body.get("id")
+    if not reminder_id:
+        raise HTTPException(status_code=400, detail="id required")
+    updates = body.get("updates", {})
+    allowed = ["message_text", "cron_expression", "is_active"]
+    set_parts = [f"{k} = :{k}" for k in updates if k in allowed]
+    if not set_parts:
+        return {"success": True}
+    params = {k: v for k, v in updates.items() if k in allowed}
+    params["id"] = reminder_id
+    await db.execute(text(f"UPDATE reminder_configs SET {', '.join(set_parts)} WHERE id = :id"), params)
+    await db.commit()
+    return {"success": True}
+
+
+@router.delete("/reminders")
+async def delete_reminder(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    reminder_id = body.get("id")
+    if not reminder_id:
+        raise HTTPException(status_code=400, detail="id required")
+    await db.execute(text("DELETE FROM reminder_configs WHERE id = :id"), {"id": reminder_id})
+    await db.commit()
+    return {"success": True}
+
+
+@router.get("/broadcast")
+async def list_broadcasts(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(text("SELECT * FROM broadcast_messages ORDER BY created_at DESC LIMIT 50"))
+    return {"data": [dict(r) for r in result.mappings().all()]}
+
+
 @router.post("/broadcast")
 async def send_broadcast(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
