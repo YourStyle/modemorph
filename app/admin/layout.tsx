@@ -13,7 +13,6 @@ import {
   Home,
   Settings,
   UserCheck,
-  Shirt,
   Package,
   Palette,
   Layers,
@@ -24,227 +23,178 @@ import {
   Bell,
   Building2,
   LogOut,
-  PanelLeftClose,
-  PanelLeftOpen,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react"
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
   useEffect(() => {
-    const checkAdminAccess = async () => {
+    const check = async () => {
       try {
-        if (!sessionAuth.hasValidSession()) {
-          router.replace("/app")
+        if (!sessionAuth.hasValidSession() || !sessionAuth.getAccessToken()) {
+          router.replace("/auth/login")
           return
         }
 
-        const accessToken = sessionAuth.getAccessToken()
-        if (!accessToken) {
-          router.replace("/app")
-          return
-        }
-
-        const response = await fetchWithRetry(
+        const res = await fetchWithRetry(
           "/api/me",
-          { headers: { Authorization: `Bearer ${accessToken}` } },
+          { headers: { Authorization: `Bearer ${sessionAuth.getAccessToken()}` } },
           { timeout: 5000, retries: 1 },
         )
 
-        if (!response.ok) {
-          router.replace("/app")
-          return
-        }
-
-        const data = await response.json()
-
-        if (!data.profile?.is_admin) {
-          router.replace("/app")
-          return
-        }
-
+        if (!res.ok) { router.replace("/auth/login"); return }
+        const data = await res.json()
+        if (!data.profile?.is_admin) { router.replace("/auth/login"); return }
         setIsAdmin(true)
-      } catch (error) {
-        console.error("[AdminLayout] Error:", error)
-        router.replace("/app")
+      } catch {
+        router.replace("/auth/login")
       } finally {
         setIsLoading(false)
       }
     }
-
-    checkAdminAccess()
+    check()
   }, [router])
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+      <div className="min-h-screen bg-[#0f1117] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-7 w-7 border-2 border-white/20 border-t-white" />
       </div>
     )
   }
 
   if (!isAdmin) return null
 
-  const mainNav = [
-    { href: "/admin", label: "Главная", icon: Home },
-    { href: "/admin/users", label: "Пользователи", icon: UserCheck },
-    { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
-    { href: "/admin/partners", label: "Партнёры", icon: Building2 },
+  const nav = [
+    { group: "Управление", items: [
+      { href: "/admin", label: "Обзор", icon: Home },
+      { href: "/admin/users", label: "Пользователи", icon: UserCheck },
+      { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
+      { href: "/admin/partners", label: "Партнёры", icon: Building2 },
+    ]},
+    { group: "Каталог", items: [
+      { href: "/admin/wardrobe", label: "Гардероб", icon: Package },
+      { href: "/admin/outfits", label: "Образы", icon: Palette },
+      { href: "/admin/wardrobe/basics", label: "Базовые вещи", icon: Layers },
+      { href: "/admin/combinations", label: "Комбинации", icon: Sparkles },
+    ]},
+    { group: "Настройки", items: [
+      { href: "/admin/feature-costs", label: "Тарификация", icon: DollarSign },
+      { href: "/admin/broadcasts", label: "Рассылки", icon: Send },
+      { href: "/admin/reminders", label: "Напоминания", icon: Bell },
+      { href: "/admin/settings", label: "Настройки", icon: Settings },
+    ]},
   ]
 
-  const clothingNav = [
-    { href: "/admin/wardrobe", label: "Гардероб", icon: Package },
-    { href: "/admin/outfits", label: "Образы", icon: Palette },
-    { href: "/admin/wardrobe/basics", label: "Базовые вещи", icon: Layers },
-    { href: "/admin/combinations", label: "Комбинации", icon: Sparkles },
-  ]
+  const active = (href: string) => href === "/admin" ? pathname === "/admin" : pathname.startsWith(href)
 
-  const systemNav = [
-    { href: "/admin/feature-costs", label: "Стоимость", icon: DollarSign },
-    { href: "/admin/broadcasts", label: "Рассылки", icon: Send },
-    { href: "/admin/reminders", label: "Напоминания", icon: Bell },
-    { href: "/admin/settings", label: "Настройки", icon: Settings },
-  ]
-
-  const isActive = (href: string) => {
-    if (href === "/admin") return pathname === "/admin"
-    return pathname.startsWith(href)
+  const NavItem = ({ href, label, icon: Icon }: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }) => {
+    const on = active(href)
+    return (
+      <Link
+        href={href}
+        title={collapsed ? label : undefined}
+        className={`group flex items-center gap-3 px-3 py-2 rounded-md text-[13px] font-medium transition-all duration-150 ${
+          on
+            ? "bg-white/10 text-white"
+            : "text-white/50 hover:text-white/90 hover:bg-white/[0.06]"
+        } ${collapsed ? "justify-center px-2" : ""}`}
+      >
+        <Icon className={`h-[18px] w-[18px] flex-shrink-0 ${on ? "text-white" : "text-white/40 group-hover:text-white/70"}`} />
+        {!collapsed && <span>{label}</span>}
+      </Link>
+    )
   }
 
-  const NavLink = ({ href, label, icon: Icon }: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }) => (
-    <Link
-      href={href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-        isActive(href)
-          ? "bg-gray-900 text-white"
-          : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-      } ${sidebarCollapsed ? "justify-center" : ""}`}
-      title={sidebarCollapsed ? label : undefined}
-    >
-      <Icon className="h-4 w-4 flex-shrink-0" />
-      {!sidebarCollapsed && <span>{label}</span>}
-    </Link>
-  )
+  const Sidebar = ({ mobile = false }: { mobile?: boolean }) => {
+    const show = !collapsed || mobile
+    return (
+      <div className="flex flex-col h-full bg-[#0f1117]">
+        {/* Brand */}
+        <div className={`flex items-center h-14 border-b border-white/[0.06] ${show ? "px-5" : "px-0 justify-center"}`}>
+          <Link href="/admin" className="flex items-center gap-2.5">
+            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-xs">M</span>
+            </div>
+            {show && <span className="font-semibold text-white text-sm tracking-tight">ModeMorph</span>}
+          </Link>
+        </div>
 
-  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => (
-    <div className="flex flex-col h-full">
-      {/* Logo */}
-      <div className={`px-4 py-5 border-b border-gray-200 ${sidebarCollapsed && !mobile ? "px-2" : ""}`}>
-        <Link href="/admin" className="flex items-center gap-2">
-          <div className="h-8 w-8 bg-gray-900 rounded-lg flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-sm">M</span>
-          </div>
-          {(!sidebarCollapsed || mobile) && (
-            <span className="font-semibold text-gray-900">Админ панель</span>
-          )}
-        </Link>
+        {/* Nav groups */}
+        <nav className="flex-1 overflow-y-auto py-4 space-y-5">
+          {nav.map((group) => (
+            <div key={group.group} className={show ? "px-3" : "px-1.5"}>
+              {show && (
+                <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/25">
+                  {group.group}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map((item) => <NavItem key={item.href} {...item} />)}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* Footer */}
+        <div className={`border-t border-white/[0.06] py-3 ${show ? "px-4" : "px-1.5"}`}>
+          <button
+            onClick={() => { sessionAuth.clearSession(); router.push("/auth/login") }}
+            className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[13px] text-white/40 hover:text-white/80 hover:bg-white/[0.06] transition-colors ${collapsed && !mobile ? "justify-center px-2" : ""}`}
+          >
+            <LogOut className="h-[18px] w-[18px] flex-shrink-0" />
+            {show && <span>Выйти</span>}
+          </button>
+        </div>
       </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-        <div className="space-y-1">
-          {(!sidebarCollapsed || mobile) && (
-            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Основное</p>
-          )}
-          {mainNav.map((item) => (
-            <NavLink key={item.href} {...item} />
-          ))}
-        </div>
-
-        <div className="space-y-1">
-          {(!sidebarCollapsed || mobile) && (
-            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Одежда</p>
-          )}
-          {clothingNav.map((item) => (
-            <NavLink key={item.href} {...item} />
-          ))}
-        </div>
-
-        <div className="space-y-1">
-          {(!sidebarCollapsed || mobile) && (
-            <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Система</p>
-          )}
-          {systemNav.map((item) => (
-            <NavLink key={item.href} {...item} />
-          ))}
-        </div>
-      </nav>
-
-      {/* Bottom */}
-      <div className="border-t border-gray-200 px-3 py-3 space-y-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            sessionAuth.clearSession()
-            router.push("/")
-          }}
-          className={`w-full text-gray-600 hover:text-gray-900 hover:bg-gray-100 ${
-            sidebarCollapsed && !mobile ? "justify-center px-0" : "justify-start"
-          }`}
-        >
-          <LogOut className="h-4 w-4 flex-shrink-0" />
-          {(!sidebarCollapsed || mobile) && <span className="ml-2">Выйти</span>}
-        </Button>
-      </div>
-    </div>
-  )
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Desktop Sidebar */}
-      <aside
-        className={`hidden lg:flex flex-col bg-white border-r border-gray-200 fixed top-0 left-0 h-screen z-30 transition-all duration-200 ${
-          sidebarCollapsed ? "w-16" : "w-60"
-        }`}
-      >
-        <SidebarContent />
+    <div className="min-h-screen bg-[#f8f9fb] flex">
+      {/* Desktop sidebar */}
+      <aside className={`hidden lg:flex flex-col fixed inset-y-0 left-0 z-30 transition-all duration-200 ${collapsed ? "w-[56px]" : "w-[220px]"}`}>
+        <Sidebar />
         <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="absolute -right-3 top-8 bg-white border border-gray-200 rounded-full p-1 shadow-sm hover:bg-gray-50"
+          onClick={() => setCollapsed(!collapsed)}
+          className="absolute -right-3 top-[18px] h-6 w-6 bg-[#0f1117] border-2 border-[#f8f9fb] rounded-full flex items-center justify-center hover:bg-[#1a1d27] transition-colors"
         >
-          {sidebarCollapsed ? (
-            <PanelLeftOpen className="h-3.5 w-3.5 text-gray-500" />
-          ) : (
-            <PanelLeftClose className="h-3.5 w-3.5 text-gray-500" />
-          )}
+          {collapsed
+            ? <ChevronRight className="h-3 w-3 text-white/60" />
+            : <ChevronLeft className="h-3 w-3 text-white/60" />
+          }
         </button>
       </aside>
 
-      {/* Main content area */}
-      <div className={`flex-1 transition-all duration-200 ${sidebarCollapsed ? "lg:ml-16" : "lg:ml-60"}`}>
-        {/* Mobile header */}
-        <header className="lg:hidden bg-white border-b border-gray-200 sticky top-0 z-20">
-          <div className="flex items-center justify-between px-4 h-14">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 bg-gray-900 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-xs">M</span>
-              </div>
-              <span className="font-semibold text-gray-900 text-sm">Админ</span>
+      {/* Content */}
+      <div className={`flex-1 min-w-0 transition-all duration-200 ${collapsed ? "lg:pl-[56px]" : "lg:pl-[220px]"}`}>
+        {/* Mobile top bar */}
+        <header className="lg:hidden sticky top-0 z-20 h-14 bg-[#0f1117] flex items-center justify-between px-4">
+          <Link href="/admin" className="flex items-center gap-2">
+            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+              <span className="text-white font-bold text-xs">M</span>
             </div>
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <Menu className="h-5 w-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-[280px] p-0">
-                <SidebarContent mobile />
-              </SheetContent>
-            </Sheet>
-          </div>
+            <span className="font-semibold text-white text-sm">ModeMorph</span>
+          </Link>
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="sm" className="text-white/70 hover:text-white hover:bg-white/10">
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[240px] p-0 border-0 bg-[#0f1117]">
+              <Sidebar mobile />
+            </SheetContent>
+          </Sheet>
         </header>
 
-        {/* Page content */}
-        <main className="p-4 sm:p-6 lg:p-8 max-w-7xl">{children}</main>
+        <main className="p-5 sm:p-6 lg:p-8">{children}</main>
       </div>
     </div>
   )
