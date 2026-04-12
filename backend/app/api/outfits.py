@@ -23,11 +23,16 @@ async def get_outfits(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        text("SELECT * FROM outfits WHERE user_id = :uid ORDER BY created_at DESC"),
-        {"uid": user["id"]},
-    )
-    return {"data": [dict(r) for r in result.mappings().all()]}
+    # Admins see all outfits, regular users see their own
+    if user.get("is_admin"):
+        result = await db.execute(text("SELECT * FROM outfits ORDER BY created_at DESC LIMIT 200"))
+    else:
+        result = await db.execute(
+            text("SELECT * FROM outfits WHERE user_id = :uid ORDER BY created_at DESC"),
+            {"uid": user["id"]},
+        )
+    items = [dict(r) for r in result.mappings().all()]
+    return {"outfits": items, "data": items}
 
 
 @router.get("/inspiration")

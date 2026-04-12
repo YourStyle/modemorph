@@ -64,7 +64,14 @@ async def get_basic_wardrobe_items(
 
 @router.get("/basic-items")
 async def get_basic_items(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(text("SELECT * FROM basic_wardrobe_items ORDER BY id"))
+    result = await db.execute(text("""
+        SELECT bwi.*, COALESCE(
+            (SELECT json_agg(json_build_object('id', bm.id, 'name_ru', bm.name_ru, 'name_en', bm.name_en))
+             FROM basic_item_materials bim JOIN basic_materials bm ON bm.id = bim.basic_material_id
+             WHERE bim.basic_item_id = bwi.id), '[]'
+        ) as materials
+        FROM basic_wardrobe_items bwi ORDER BY bwi.id
+    """))
     return {"data": [dict(r) for r in result.mappings().all()]}
 
 
@@ -78,6 +85,130 @@ async def get_basic_item(item_id: int, db: AsyncSession = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
     return {"data": dict(row)}
+
+
+@router.post("/basic-items")
+async def create_basic_item(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    result = await db.execute(
+        text("""INSERT INTO basic_wardrobe_items (name_ru, name_en, description, clothing_type, image_url, gender)
+            VALUES (:name_ru, :name_en, :desc, :ct, :img, :gender) RETURNING *"""),
+        {"name_ru": body.get("name_ru", ""), "name_en": body.get("name_en", ""),
+         "desc": body.get("description"), "ct": body.get("clothing_type"),
+         "img": body.get("image_url"), "gender": body.get("gender")},
+    )
+    await db.commit()
+    return {"data": dict(result.mappings().first())}
+
+
+@router.put("/basic-items/{item_id}")
+async def update_basic_item(item_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    allowed = ["name_ru", "name_en", "description", "clothing_type", "image_url", "gender"]
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates:
+        return {"data": None}
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["id"] = item_id
+    result = await db.execute(text(f"UPDATE basic_wardrobe_items SET {set_clause} WHERE id = :id RETURNING *"), updates)
+    await db.commit()
+    row = result.mappings().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Item not found")
+    return {"data": dict(row)}
+
+
+@router.delete("/basic-items/{item_id}")
+async def delete_basic_item(item_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await db.execute(text("DELETE FROM basic_item_materials WHERE basic_item_id = :id"), {"id": item_id})
+    result = await db.execute(text("DELETE FROM basic_wardrobe_items WHERE id = :id RETURNING id"), {"id": item_id})
+    if not result.first():
+        raise HTTPException(status_code=404, detail="Item not found")
+    await db.commit()
+    return {"success": True}
+
+
+@router.post("/basic-items/{item_id}/materials")
+async def set_basic_item_materials(item_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    material_ids = body.get("material_ids", [])
+    await db.execute(text("DELETE FROM basic_item_materials WHERE basic_item_id = :id"), {"id": item_id})
+    for mid in material_ids:
+        await db.execute(
+            text("INSERT INTO basic_item_materials (basic_item_id, basic_material_id) VALUES (:bid, :mid)"),
+            {"bid": item_id, "mid": mid},
+        )
+    await db.commit()
+    return {"success": True}
+
+
+# ── Combinations CRUD ──
+
+@router.get("/combinations")
+async def get_combinations(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(text("""
+        SELECT c.*, COALESCE(
+            (SELECT json_agg(json_build_object(
+                'id', ce.id, 'element_type', ce.element_type,
+                'basic_item_id', ce.basic_item_id, 'basic_material_id', ce.basic_material_id,
+                'bwi_name', bwi.name_ru, 'bwi_image', bwi.image_url,
+                'bm_name', bm.name_ru, 'bm_image', bm.image_url
+            ))
+             FROM combination_elements ce
+             LEFT JOIN basic_wardrobe_items bwi ON bwi.id = ce.basic_item_id
+             LEFT JOIN basic_materials bm ON bm.id = ce.basic_material_id
+             WHERE ce.combination_id = c.id), '[]'
+        ) as elements
+        FROM combinations c ORDER BY c.id
+    """))
+    return {"data": [dict(r) for r in result.mappings().all()]}
+
+
+@router.post("/combinations")
+async def create_combination(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    result = await db.execute(
+        text("INSERT INTO combinations (name, description, style, gender) VALUES (:name, :desc, :style, :gender) RETURNING *"),
+        {"name": body.get("name", ""), "desc": body.get("description"), "style": body.get("style"), "gender": body.get("gender")},
+    )
+    combo = dict(result.mappings().first())
+    # Add elements
+    for el in body.get("elements", []):
+        await db.execute(
+            text("INSERT INTO combination_elements (combination_id, element_type, basic_item_id, basic_material_id) VALUES (:cid, :et, :bid, :mid)"),
+            {"cid": combo["id"], "et": el.get("element_type"), "bid": el.get("basic_item_id"), "mid": el.get("basic_material_id")},
+        )
+    await db.commit()
+    return {"data": combo}
+
+
+@router.put("/combinations/{combo_id}")
+async def update_combination(combo_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    allowed = ["name", "description", "style", "gender"]
+    updates = {k: body[k] for k in allowed if k in body}
+    if updates:
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+        updates["id"] = combo_id
+        await db.execute(text(f"UPDATE combinations SET {set_clause} WHERE id = :id"), updates)
+    # Replace elements if provided
+    if "elements" in body:
+        await db.execute(text("DELETE FROM combination_elements WHERE combination_id = :cid"), {"cid": combo_id})
+        for el in body["elements"]:
+            await db.execute(
+                text("INSERT INTO combination_elements (combination_id, element_type, basic_item_id, basic_material_id) VALUES (:cid, :et, :bid, :mid)"),
+                {"cid": combo_id, "et": el.get("element_type"), "bid": el.get("basic_item_id"), "mid": el.get("basic_material_id")},
+            )
+    await db.commit()
+    return {"success": True}
+
+
+@router.delete("/combinations/{combo_id}")
+async def delete_combination(combo_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await db.execute(text("DELETE FROM combination_elements WHERE combination_id = :id"), {"id": combo_id})
+    await db.execute(text("DELETE FROM combinations WHERE id = :id"), {"id": combo_id})
+    await db.commit()
+    return {"success": True}
 
 
 @router.post("/basic-items/copy")
@@ -114,6 +245,40 @@ async def copy_basic_item(request: Request, user: dict = Depends(get_current_use
 async def get_basic_materials(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT * FROM basic_materials ORDER BY name_ru"))
     return {"data": [dict(r) for r in result.mappings().all()]}
+
+
+@router.post("/basic-materials")
+async def create_basic_material(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    result = await db.execute(
+        text("INSERT INTO basic_materials (name_ru, name_en, description, properties) VALUES (:name_ru, :name_en, :desc, :props) RETURNING *"),
+        {"name_ru": body.get("name_ru", ""), "name_en": body.get("name_en", ""), "desc": body.get("description"), "props": body.get("properties")},
+    )
+    await db.commit()
+    return {"data": dict(result.mappings().first())}
+
+
+@router.put("/basic-materials/{material_id}")
+async def update_basic_material(material_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    body = await request.json()
+    allowed = ["name_ru", "name_en", "description", "properties"]
+    updates = {k: body[k] for k in allowed if k in body}
+    if not updates:
+        return {"data": None}
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["id"] = material_id
+    result = await db.execute(text(f"UPDATE basic_materials SET {set_clause} WHERE id = :id RETURNING *"), updates)
+    await db.commit()
+    row = result.mappings().first()
+    return {"data": dict(row) if row else None}
+
+
+@router.delete("/basic-materials/{material_id}")
+async def delete_basic_material(material_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    await db.execute(text("DELETE FROM basic_item_materials WHERE basic_material_id = :id"), {"id": material_id})
+    await db.execute(text("DELETE FROM basic_materials WHERE id = :id"), {"id": material_id})
+    await db.commit()
+    return {"success": True}
 
 
 # ── /api/clothing-types ──

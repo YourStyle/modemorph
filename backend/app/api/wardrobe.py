@@ -24,14 +24,28 @@ WUI_COLS = """id, user_id, item_name, size_type, material, style, has_print,
 
 @router.get("")
 async def get_wardrobe(
+    search: str = Query(""),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Admins see the catalog (wardrobe_items), regular users see their items
+    if user.get("is_admin"):
+        sql = "SELECT * FROM wardrobe_items WHERE 1=1"
+        binds: dict = {}
+        if search:
+            sql += " AND (item_name ILIKE :s OR clothing_type ILIKE :s OR color ILIKE :s)"
+            binds["s"] = f"%{search}%"
+        sql += " ORDER BY id DESC LIMIT 500"
+        result = await db.execute(text(sql), binds)
+        items = [dict(r) for r in result.mappings().all()]
+        return {"items": items}
+
     result = await db.execute(
         text(f"SELECT {WUI_COLS} FROM wardrobe_user_items WHERE user_id = :uid ORDER BY created_at DESC"),
         {"uid": user["id"]},
     )
-    return {"data": [dict(r) for r in result.mappings().all()]}
+    items = [dict(r) for r in result.mappings().all()]
+    return {"items": items, "data": items}
 
 
 @router.get("/count")
@@ -60,7 +74,7 @@ async def get_visibility(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin: get/set item visibility."""
+    """Admin: get item visibility."""
     params = dict(request.query_params)
     item_id = params.get("id")
     if item_id:
@@ -71,6 +85,31 @@ async def get_visibility(
         row = result.mappings().first()
         return {"data": dict(row) if row else None}
     return {"data": None}
+
+
+@router.post("/visibility")
+async def set_visibility(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: bulk hide/show items."""
+    body = await request.json()
+    hide_all = body.get("hideAll")
+    item_ids = body.get("ids", [])
+
+    if hide_all is True:
+        await db.execute(text("UPDATE wardrobe_items SET is_hidden = true"))
+    elif hide_all is False:
+        await db.execute(text("UPDATE wardrobe_items SET is_hidden = false"))
+    elif item_ids:
+        hidden = body.get("is_hidden", True)
+        await db.execute(
+            text("UPDATE wardrobe_items SET is_hidden = :h WHERE id = ANY(:ids)"),
+            {"h": hidden, "ids": item_ids},
+        )
+    await db.commit()
+    return {"success": True}
 
 
 @router.post("/add")

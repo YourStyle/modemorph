@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Badge } from "@/components/ui/badge"
 import { Loader2, Plus, Trash2, X, GripVertical, ImageIcon, Edit, ChevronDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { supabase, checkSupabaseConnection } from "@/lib/supabase/client"
+import { api } from "@/lib/api-client"
 import Image from "next/image"
 
 interface BasicItem {
@@ -162,45 +162,37 @@ export function CombinationsManager() {
     setError(null)
 
     try {
-      if (!supabase) {
-        throw new Error("Supabase н�� настроен")
-      }
-
-      await checkSupabaseConnection()
-
-      // Загружаем все данные параллельно
-      const [combinationsResult, itemsResult, materialsResult] = await Promise.all([
-        supabase
-          .from("combinations")
-          .select(`
-            *,
-            combination_elements (
-              *,
-              basic_wardrobe_items (id, name_ru, image_url),
-              basic_materials (id, name_ru, image_url)
-            )
-          `)
-          .order("created_at", { ascending: false }),
-        supabase.from("basic_wardrobe_items").select("id, name_ru, image_url").order("name_ru"),
-        supabase.from("basic_materials").select("id, name_ru, image_url").order("name_ru"),
+      const [combosRes, itemsRes, materialsRes] = await Promise.all([
+        api.get<{ data: any[] }>("/api/combinations"),
+        api.get<{ data: BasicItem[] }>("/api/basic-items"),
+        api.get<{ data: BasicMaterial[] }>("/api/basic-materials"),
       ])
 
-      if (combinationsResult.error) throw combinationsResult.error
-      if (itemsResult.error) throw itemsResult.error
-      if (materialsResult.error) throw materialsResult.error
+      // Map elements from flat JSON to nested structure expected by UI
+      const combos = (combosRes.data || []).map((c: any) => {
+        const elements = Array.isArray(c.elements) ? c.elements : []
+        return {
+          ...c,
+          combination_elements: elements.map((el: any, idx: number) => ({
+            id: el.id,
+            basic_item_id: el.basic_item_id,
+            basic_material_id: el.basic_material_id,
+            position: idx + 1,
+            element_type: el.element_type,
+            basic_wardrobe_items: el.bwi_name ? { id: el.basic_item_id, name_ru: el.bwi_name, image_url: el.bwi_image } : null,
+            basic_materials: el.bm_name ? { id: el.basic_material_id, name_ru: el.bm_name, image_url: el.bm_image } : null,
+          })),
+        }
+      })
 
-      setCombinations(combinationsResult.data || [])
-      setBasicItems(itemsResult.data || [])
-      setBasicMaterials(materialsResult.data || [])
+      setCombinations(combos)
+      setBasicItems(itemsRes.data || [])
+      setBasicMaterials(materialsRes.data || [])
     } catch (err) {
       console.error("Error fetching data:", err)
-      const errorMessage = err instanceof Error ? err.message : "Неизвестная ошибка при загрузке данных"
+      const errorMessage = err instanceof Error ? err.message : "Ошибка загрузки данных"
       setError(errorMessage)
-      toast({
-        title: "Ошибка",
-        description: errorMessage,
-        variant: "destructive",
-      })
+      toast({ title: "Ошибка", description: errorMessage, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -301,91 +293,33 @@ export function CombinationsManager() {
     setIsSubmitting(true)
 
     try {
-      if (!supabase) {
-        throw new Error("Supabase не настроен")
-      }
-
-      // Фильтруем пустые элементы
       const validElements = selectedElements.filter((el) => el.id !== null)
-
       if (validElements.length < 2) {
         throw new Error("Необходимо выбрать минимум 2 элемента для сочетания")
       }
 
+      const elements = validElements.map((el) => ({
+        element_type: formData.combination_type === "items" ? "item" : "material",
+        basic_item_id: formData.combination_type === "items" ? el.id : null,
+        basic_material_id: formData.combination_type === "materials" ? el.id : null,
+      }))
+
+      const payload = {
+        name: formData.name,
+        description: formData.description || null,
+        elements,
+      }
+
       if (editingCombination) {
-        // Обновляем существующее сочетание
-        const { error: updateError } = await supabase
-          .from("combinations")
-          .update({
-            name: formData.name,
-            description: formData.description || null,
-            combination_type: formData.combination_type,
-          })
-          .eq("id", editingCombination.id)
-
-        if (updateError) throw updateError
-
-        // Удаляем старые элементы
-        const { error: deleteError } = await supabase
-          .from("combination_elements")
-          .delete()
-          .eq("combination_id", editingCombination.id)
-
-        if (deleteError) throw deleteError
-
-        // Создаем новые элементы
-        const elements = validElements.map((element, index) => ({
-          combination_id: editingCombination.id,
-          basic_item_id: formData.combination_type === "items" ? element.id : null,
-          basic_material_id: formData.combination_type === "materials" ? element.id : null,
-          position: index + 1,
-        }))
-
-        const { error: elementsError } = await supabase.from("combination_elements").insert(elements)
-
-        if (elementsError) throw elementsError
-
-        toast({
-          title: "Успешно",
-          description: "Сочетание успешно обновлено",
-        })
-
+        await api.put(`/api/combinations/${editingCombination.id}`, payload)
+        toast({ title: "Успешно", description: "Сочетание обновлено" })
         setIsEditDialogOpen(false)
       } else {
-        // Создаем новое сочетание
-        const { data: combination, error: combinationError } = await supabase
-          .from("combinations")
-          .insert({
-            name: formData.name,
-            description: formData.description || null,
-            combination_type: formData.combination_type,
-          })
-          .select()
-          .single()
-
-        if (combinationError) throw combinationError
-
-        // Создаем элементы сочетания
-        const elements = validElements.map((element, index) => ({
-          combination_id: combination.id,
-          basic_item_id: formData.combination_type === "items" ? element.id : null,
-          basic_material_id: formData.combination_type === "materials" ? element.id : null,
-          position: index + 1,
-        }))
-
-        const { error: elementsError } = await supabase.from("combination_elements").insert(elements)
-
-        if (elementsError) throw elementsError
-
-        toast({
-          title: "Успешно",
-          description: "Сочетание успешно создано",
-        })
-
+        await api.post("/api/combinations", payload)
+        toast({ title: "Успешно", description: "Сочетание создано" })
         setIsAddDialogOpen(false)
       }
 
-      // Обновляем список и сбрасываем форму
       await fetchData()
       resetForm()
     } catch (error) {
@@ -406,19 +340,8 @@ export function CombinationsManager() {
     }
 
     try {
-      if (!supabase) {
-        throw new Error("Supabase не настроен")
-      }
-
-      const { error } = await supabase.from("combinations").delete().eq("id", id)
-
-      if (error) throw error
-
-      toast({
-        title: "Успешно",
-        description: "Сочетание успешно удалено",
-      })
-
+      await api.delete(`/api/combinations/${id}`)
+      toast({ title: "Успешно", description: "Сочетание удалено" })
       await fetchData()
     } catch (error) {
       console.error("Error deleting combination:", error)
@@ -589,15 +512,6 @@ export function CombinationsManager() {
       </DialogContent>
     </Dialog>
   )
-
-  if (!supabase) {
-    return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <h3 className="font-medium text-red-800">Supabase не настроен</h3>
-        <p className="text-red-700 mt-1">Для работы с сочетаниями необходимо настроить Supabase.</p>
-      </div>
-    )
-  }
 
   if (error) {
     return (

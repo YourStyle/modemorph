@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Loader2, Plus, Trash2, Edit } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { supabase, checkSupabaseConnection } from "@/lib/supabase/client"
+import { api } from "@/lib/api-client"
 
 interface BasicMaterial {
   id: number
@@ -45,31 +45,13 @@ export function BasicMaterialsManager() {
   const fetchMaterials = async () => {
     setLoading(true)
     setError(null)
-
     try {
-      if (!supabase) {
-        throw new Error("Supabase не настроен")
-      }
-
-      await checkSupabaseConnection()
-
-      const { data, error } = await supabase.from("basic_materials").select("*").order("name_ru")
-
-      if (error) {
-        console.error("Error fetching basic materials:", error)
-        throw new Error(`Ошибка загрузки базовых материалов: ${error.message}`)
-      }
-
-      setMaterials(data || [])
+      const res = await api.get<{ data: BasicMaterial[] }>("/api/basic-materials")
+      setMaterials(res.data || [])
     } catch (err) {
-      console.error("Error fetching basic materials:", err)
-      const errorMessage = err instanceof Error ? err.message : "Неизвестная ошибка при загрузке базовых материалов"
-      setError(errorMessage)
-      toast({
-        title: "Ошибка",
-        description: errorMessage,
-        variant: "destructive",
-      })
+      const msg = err instanceof Error ? err.message : "Ошибка загрузки"
+      setError(msg)
+      toast({ title: "Ошибка", description: msg, variant: "destructive" })
     } finally {
       setLoading(false)
     }
@@ -102,10 +84,6 @@ export function BasicMaterialsManager() {
     setIsSubmitting(true)
 
     try {
-      if (!supabase) {
-        throw new Error("Supabase не настроен")
-      }
-
       const materialData = {
         name_ru: formData.name_ru,
         name_en: formData.name_en || formData.name_ru,
@@ -114,39 +92,14 @@ export function BasicMaterialsManager() {
       }
 
       if (editingMaterial) {
-        // Редактирование
-        const { data, error } = await supabase
-          .from("basic_materials")
-          .update(materialData)
-          .eq("id", editingMaterial.id)
-          .select()
-          .single()
-
-        if (error) {
-          throw new Error(`Ошибка обновления базового материала: ${error.message}`)
-        }
-
-        toast({
-          title: "Успешно",
-          description: "Базовый материал успешно обновлен",
-        })
-
-        setMaterials((prev) => prev.map((material) => (material.id === editingMaterial.id ? data : material)))
+        const res = await api.put<{ data: BasicMaterial }>(`/api/basic-materials/${editingMaterial.id}`, materialData)
+        toast({ title: "Успешно", description: "Материал обновлён" })
+        if (res.data) setMaterials((prev) => prev.map((m) => (m.id === editingMaterial.id ? res.data : m)))
         setIsEditDialogOpen(false)
       } else {
-        // Создание
-        const { data, error } = await supabase.from("basic_materials").insert([materialData]).select().single()
-
-        if (error) {
-          throw new Error(`Ошибка создания базового материала: ${error.message}`)
-        }
-
-        toast({
-          title: "Успешно",
-          description: "Базовый материал успешно создан",
-        })
-
-        setMaterials((prev) => [...prev, data])
+        const res = await api.post<{ data: BasicMaterial }>("/api/basic-materials", materialData)
+        toast({ title: "Успешно", description: "Материал создан" })
+        if (res.data) setMaterials((prev) => [...prev, res.data])
         setIsAddDialogOpen(false)
       }
 
@@ -174,21 +127,8 @@ export function BasicMaterialsManager() {
     }
 
     try {
-      if (!supabase) {
-        throw new Error("Supabase не настроен")
-      }
-
-      const { error } = await supabase.from("basic_materials").delete().eq("id", id)
-
-      if (error) {
-        throw new Error(`Ошибка удаления базового материала: ${error.message}`)
-      }
-
-      toast({
-        title: "Успешно",
-        description: "Базовый материал успешно удален",
-      })
-
+      await api.delete(`/api/basic-materials/${id}`)
+      toast({ title: "Успешно", description: "Материал удалён" })
       setMaterials((prev) => prev.filter((material) => material.id !== id))
     } catch (error) {
       console.error("Error deleting basic material:", error)
@@ -198,15 +138,6 @@ export function BasicMaterialsManager() {
         variant: "destructive",
       })
     }
-  }
-
-  if (!supabase) {
-    return (
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <h3 className="font-medium text-red-800">Supabase не настроен</h3>
-        <p className="text-red-700 mt-1">Для работы с базовыми материалами необходимо настроить Supabase.</p>
-      </div>
-    )
   }
 
   if (error) {

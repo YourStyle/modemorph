@@ -13,9 +13,8 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/c
 import {Loader2, Plus, Trash2, Upload, ImageIcon, Edit, Copy} from "lucide-react"
 import {useToast} from "@/hooks/use-toast"
 import Image from "next/image"
-import {supabase, checkSupabaseConnection} from "@/lib/supabase/client"
 import {Checkbox} from "@/components/ui/checkbox"
-import {api} from "@/lib/api-client";
+import {api} from "@/lib/api-client"
 
 interface BasicItem {
     id: number
@@ -64,55 +63,22 @@ export function BasicItemsManager() {
         setError(null)
 
         try {
-            if (!supabase) {
-                throw new Error("Supabase не настроен")
-            }
+            const [itemsRes, materialsRes] = await Promise.all([
+                api.get<{ data: any[] }>("/api/basic-items"),
+                api.get<{ data: BasicMaterial[] }>("/api/basic-materials"),
+            ])
 
-            await checkSupabaseConnection()
-
-            // Получаем базовые вещи с их материалами
-            const {data, error} = await supabase
-                .from("basic_wardrobe_items")
-                .select(`
-          *,
-          basic_item_materials (
-            basic_materials (
-              id,
-              name_ru,
-              name_en
-            )
-          )
-        `)
-                .order("name_ru")
-
-            if (error) {
-                console.error("Error fetching basic items:", error)
-                throw new Error(`Ошибка загрузки базовых вещей: ${error.message}`)
-            }
-
-            // Преобразуем данные для удобства использования
-            const itemsWithMaterials = (data || []).map((item: any) => ({
+            const itemsWithMaterials = (itemsRes.data || []).map((item: any) => ({
                 ...item,
-                materials: item.basic_item_materials?.map((rel: any) => rel.basic_materials) || [],
+                materials: Array.isArray(item.materials) ? item.materials : [],
             }))
-
             setItems(itemsWithMaterials)
-
-            // Загружаем все доступные материалы
-            const {data: materialsData} = await supabase
-                .from("basic_materials")
-                .select("id, name_ru, name_en")
-                .order("name_ru")
-            setBasicMaterials(materialsData || [])
+            setBasicMaterials(materialsRes.data || [])
         } catch (err) {
             console.error("Error fetching basic items:", err)
-            const errorMessage = err instanceof Error ? err.message : "Неизвестная ошибка при загрузке базовых вещей"
+            const errorMessage = err instanceof Error ? err.message : "Ошибка загрузки"
             setError(errorMessage)
-            toast({
-                title: "Ошибка",
-                description: errorMessage,
-                variant: "destructive",
-            })
+            toast({ title: "Ошибка", description: errorMessage, variant: "destructive" })
         } finally {
             setLoading(false)
         }
@@ -185,32 +151,8 @@ export function BasicItemsManager() {
         }
     }
 
-    // Функция для сохранения связей с материалами
     const saveMaterialRelations = async (itemId: number, materialIds: number[]) => {
-        if (!supabase) return
-
-        try {
-            // Удаляем старые связи
-            await supabase.from("basic_item_materials").delete().eq("basic_item_id", itemId)
-
-            // Добавляем новые связи
-            if (materialIds.length > 0) {
-                const relations = materialIds.map((materialId) => ({
-                    basic_item_id: itemId,
-                    basic_material_id: materialId,
-                }))
-
-                const {error} = await supabase.from("basic_item_materials").insert(relations)
-
-                if (error) {
-                    console.error("Error saving material relations:", error)
-                    throw new Error(`Ошибка сохранения материалов: ${error.message}`)
-                }
-            }
-        } catch (error) {
-            console.error("Error in saveMaterialRelations:", error)
-            throw error
-        }
+        await api.post(`/api/basic-items/${itemId}/materials`, { material_ids: materialIds })
     }
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -218,27 +160,13 @@ export function BasicItemsManager() {
         setIsSubmitting(true)
 
         try {
-            if (!supabase) {
-                throw new Error("Supabase не настроен")
-            }
-
             let imageUrl = editingItem?.image_url || null
 
-            // Загружаем изображение через API если выбрано новое
             if (imageFile) {
-                toast({
-                    title: "Загрузка изображения...",
-                    description: "Пожалуйста, подождите",
-                })
-
+                toast({ title: "Загрузка изображения...", description: "Пожалуйста, подождите" })
                 const uploadResult = await uploadImage(imageFile)
-
                 if (uploadResult.success && uploadResult.url) {
                     imageUrl = uploadResult.url
-                    toast({
-                        title: "Изображение загружено",
-                        description: "Изображение успешно сохранено в облаке",
-                    })
                 } else {
                     throw new Error(`Ошибка загрузки изображения: ${uploadResult.error}`)
                 }
@@ -253,43 +181,16 @@ export function BasicItemsManager() {
             }
 
             if (editingItem) {
-                // Редактирование
-                const {data, error} = await supabase
-                    .from("basic_wardrobe_items")
-                    .update(itemData)
-                    .eq("id", editingItem.id)
-                    .select()
-                    .single()
-
-                if (error) {
-                    throw new Error(`Ошибка обновления базовой вещи: ${error.message}`)
-                }
-
-                // Сохраняем связи с материалами
+                await api.put(`/api/basic-items/${editingItem.id}`, itemData)
                 await saveMaterialRelations(editingItem.id, selectedMaterials)
-
-                toast({
-                    title: "Успешно",
-                    description: "Базовая вещь успешно обновлена",
-                })
-
+                toast({ title: "Успешно", description: "Базовая вещь обновлена" })
                 setIsEditDialogOpen(false)
             } else {
-                // Создание
-                const {data, error} = await supabase.from("basic_wardrobe_items").insert([itemData]).select().single()
-
-                if (error) {
-                    throw new Error(`Ошибка создания базовой вещи: ${error.message}`)
+                const result = await api.post<{ data: { id: number } }>("/api/basic-items", itemData)
+                if (result.data?.id) {
+                    await saveMaterialRelations(result.data.id, selectedMaterials)
                 }
-
-                // Сохраняем связи с материалами
-                await saveMaterialRelations(data.id, selectedMaterials)
-
-                toast({
-                    title: "Успешно",
-                    description: "Базовая вещь успешно создана",
-                })
-
+                toast({ title: "Успешно", description: "Базовая вещь создана" })
                 setIsAddDialogOpen(false)
             }
 
@@ -324,21 +225,8 @@ export function BasicItemsManager() {
         }
 
         try {
-            if (!supabase) {
-                throw new Error("Supabase не настроен")
-            }
-
-            const {error} = await supabase.from("basic_wardrobe_items").delete().eq("id", id)
-
-            if (error) {
-                throw new Error(`Ошибка удаления базовой вещи: ${error.message}`)
-            }
-
-            toast({
-                title: "Успешно",
-                description: "Базовая вещь успешно удалена",
-            })
-
+            await api.delete(`/api/basic-items/${id}`)
+            toast({ title: "Успешно", description: "Базовая вещь удалена" })
             setItems((prev) => prev.filter((item) => item.id !== id))
         } catch (error) {
             console.error("Error deleting basic item:", error)
@@ -370,15 +258,6 @@ export function BasicItemsManager() {
                 variant: "destructive",
             })
         }
-    }
-
-    if (!supabase) {
-        return (
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                <h3 className="font-medium text-red-800">Supabase не настроен</h3>
-                <p className="text-red-700 mt-1">Для работы с базовыми вещами необходимо настроить Supabase.</p>
-            </div>
-        )
     }
 
     if (error) {

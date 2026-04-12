@@ -71,40 +71,31 @@ async def list_users(search: str = Query(""), user: dict = Depends(get_admin_use
 
 @router.get("/metrics")
 async def metrics(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    total_users = (await db.execute(text("SELECT count(*) FROM user_profiles"))).scalar() or 0
-    active_subs = (await db.execute(text("SELECT count(*) FROM user_subscriptions WHERE status='active' AND expires_at > NOW()"))).scalar() or 0
+    async def safe_scalar(sql: str, default=0):
+        try:
+            return (await db.execute(text(sql))).scalar() or default
+        except Exception:
+            await db.rollback()
+            return default
 
-    # MAU — users active in last 30 days
-    mau = 0
-    try:
-        mau = (await db.execute(text("SELECT count(DISTINCT user_id) FROM daily_user_activity WHERE activity_date >= CURRENT_DATE - 30"))).scalar() or 0
-    except Exception:
-        pass
+    async def safe_rows(sql: str):
+        try:
+            result = await db.execute(text(sql))
+            return result.all()
+        except Exception:
+            await db.rollback()
+            return []
 
-    # DAU — users active today
-    dau = 0
-    try:
-        dau = (await db.execute(text("SELECT count(DISTINCT user_id) FROM daily_user_activity WHERE activity_date = CURRENT_DATE"))).scalar() or 0
-    except Exception:
-        pass
+    total_users = await safe_scalar("SELECT count(*) FROM user_profiles")
+    active_subs = await safe_scalar("SELECT count(*) FROM user_subscriptions WHERE status='active' AND expires_at > NOW()")
+    mau = await safe_scalar("SELECT count(DISTINCT user_id) FROM daily_user_activity WHERE activity_date >= CURRENT_DATE - 30")
+    dau = await safe_scalar("SELECT count(DISTINCT user_id) FROM daily_user_activity WHERE activity_date = CURRENT_DATE")
 
-    # Registration chart — last 30 days
-    reg_result = await db.execute(text("""
-        SELECT DATE(created_at) as date, count(*) as count
-        FROM user_profiles
-        WHERE created_at >= CURRENT_DATE - 30
-        GROUP BY DATE(created_at) ORDER BY date
-    """))
-    registrations = [{"date": str(r.date), "count": r.count} for r in reg_result.all()]
+    reg_rows = await safe_rows("SELECT DATE(created_at) as date, count(*) as count FROM user_profiles WHERE created_at >= CURRENT_DATE - 30 GROUP BY DATE(created_at) ORDER BY date")
+    registrations = [{"date": str(r.date), "count": r.count} for r in reg_rows]
 
-    # Activity chart — last 30 days
-    act_result = await db.execute(text("""
-        SELECT activity_date as date, count(*) as count
-        FROM daily_user_activity
-        WHERE activity_date >= CURRENT_DATE - 30
-        GROUP BY activity_date ORDER BY activity_date
-    """))
-    activity = [{"date": str(r.date), "count": r.count} for r in act_result.all()]
+    act_rows = await safe_rows("SELECT activity_date as date, count(*) as count FROM daily_user_activity WHERE activity_date >= CURRENT_DATE - 30 GROUP BY activity_date ORDER BY activity_date")
+    activity = [{"date": str(r.date), "count": r.count} for r in act_rows]
 
     return {
         "summary": {
@@ -117,7 +108,6 @@ async def metrics(user: dict = Depends(get_admin_user), db: AsyncSession = Depen
             "registrations": registrations,
             "activity": activity,
         },
-        # Keep flat fields for backward compat
         "total_users": total_users,
         "active_subscriptions": active_subs,
     }
