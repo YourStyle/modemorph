@@ -228,6 +228,31 @@ async def get_avatars(
     return [dict(r) for r in result.mappings().all()]
 
 
+@router.post("/avatars")
+async def save_avatar(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save current avatar to history before replacing."""
+    body = await request.json()
+    url = body.get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="url required")
+    # Avoid duplicate entries
+    existing = await db.execute(
+        text("SELECT id FROM user_avatars WHERE user_id = :uid AND url = :url"),
+        {"uid": user["id"], "url": url},
+    )
+    if not existing.first():
+        await db.execute(
+            text("INSERT INTO user_avatars (user_id, url, is_primary, created_at) VALUES (:uid, :url, false, NOW())"),
+            {"uid": user["id"], "url": url},
+        )
+        await db.commit()
+    return {"success": True}
+
+
 @router.post("/avatars/{avatar_id}/set-primary")
 async def set_primary_avatar(
     avatar_id: int,

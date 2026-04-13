@@ -60,7 +60,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
   const [showOutfitDetails, setShowOutfitDetails] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
-  const feedbackKey = `outfit_feedback_${suggestion?.id}`
+  const feedbackKey = `outfit_feedback_${sectionSource || "x"}_${suggestion?.id}`
   const [feedback, setFeedback] = useState<"like" | "dislike" | null>(() => {
     if (typeof window === "undefined" || !suggestion?.id) return null
     try {

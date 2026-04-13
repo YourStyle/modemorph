@@ -209,7 +209,12 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
       })
       if (!result.success) throw new Error(result.error || 'Upload failed')
 
-      // 4) Обновление профиля через API
+      // 4) Save old avatar to history before replacing
+      if (profile.avatar_url) {
+        await api.post("/api/me/avatars", { url: profile.avatar_url }).catch(() => {})
+      }
+
+      // 5) Обновление профиля через API
       await api.post("/api/me/profile-session", {
         avatar_url: result.url
       })

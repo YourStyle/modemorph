@@ -192,13 +192,19 @@ async def generate_recommendations(
         "image_url": i.get("image_url"), "user_id": i.get("user_id"),
     } for i in wardrobe_items], ensure_ascii=False)
 
-    system_prompt = """You are a fashion stylist AI. Generate outfit recommendations based on the user's wardrobe, weather, and gender.
+    system_prompt = """You are a fashion stylist AI. Generate COMPLETE outfit recommendations based on the user's wardrobe, weather, and gender.
 
 RULES:
 - Build outfits ONLY from items in the user's wardrobe (use exact item IDs).
 - Create 2-4 thematic sections (e.g. "На каждый день", "Деловой стиль", "На прогулку").
 - Each section has 2-3 outfit suggestions.
-- Each suggestion uses 3-5 items that work together.
+- IMPORTANT: Each outfit MUST have 4-6 items covering ALL body parts:
+  * Upper body (shirt/blouse/t-shirt/hoodie/sweater)
+  * Lower body (pants/jeans/skirt) OR a dress
+  * Outerwear (jacket/coat) if weather is below 18°C
+  * Footwear (shoes/boots/sneakers) — ALWAYS include shoes
+  * Optionally an accessory (bag/scarf/belt/hat)
+- NEVER create outfits with only 2-3 items. A real outfit needs at least upper+lower+shoes.
 - Consider the weather when choosing outfits.
 - All text in Russian.
 
