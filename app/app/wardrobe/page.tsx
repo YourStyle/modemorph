@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
-import { Progress } from "@/components/ui/progress"
 import { Plus, ChevronDown, ChevronUp, Search } from "lucide-react"
 import { useAddToCloset } from "@/contexts/add-to-closet-context"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
@@ -22,20 +21,7 @@ import { useFeature } from "@/hooks/use-feature"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
 
-const STYLE_LABELS: Record<string, string> = {
-  casual: "Повседневный",
-  formal: "Формальный",
-  business: "Деловой",
-  sport: "Спортивный",
-  streetwear: "Уличный",
-  bohemian: "Бохо",
-  minimalist: "Минимализм",
-  classic: "Классика",
-  romantic: "Романтичный",
-  grunge: "Гранж",
-  preppy: "Преппи",
-  vintage: "Винтаж",
-}
+import { STYLE_LABELS } from "@/lib/labels"
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -414,24 +400,43 @@ export default function WardrobePage() {
           <p className="text-gray-600 text-sm">Управляйте своими вещами</p>
         </div>
 
-        {/* Progress Section */}
-        <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
-          <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-serif font-semibold text-gray-900">Цель гардероба</h3>
-              <span className="text-sm text-gray-500">
-                {userItemsCount}/{targetItemsCount} вещей
-              </span>
+        {/* Style & Add Section */}
+        <Card className="mb-8 bg-white border-0 shadow-sm overflow-hidden">
+          {/* Style banner */}
+          {dominantStyle ? (
+            <div className="px-6 pt-6 pb-4">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Ваш стиль</p>
+                  <h3 className="text-xl font-serif font-bold text-gray-900">
+                    {STYLE_LABELS[dominantStyle] || dominantStyle}
+                  </h3>
+                </div>
+                <span className="text-sm text-gray-500">{userItemsCount} {userItemsCount === 1 ? "вещь" : userItemsCount < 5 ? "вещи" : "вещей"}</span>
+              </div>
+              {styleTags.length > 1 && (
+                <div className="flex gap-2 flex-wrap">
+                  {styleTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className={`text-xs px-3 py-1 rounded-full font-medium ${
+                        tag === dominantStyle
+                          ? "bg-gray-900 text-white"
+                          : "bg-gray-100 text-gray-600"
+                      }`}
+                    >
+                      {STYLE_LABELS[tag] || tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
-            <Progress value={progressPercentage} className="h-2 mb-3" />
-            <p className="text-sm text-gray-600">
-              {userItemsCount >= targetItemsCount
-                ? "Поздравляем! Вы достигли цели базового гардероба"
-                : `Добавьте еще ${targetItemsCount - userItemsCount} ${targetItemsCount - userItemsCount === 1 ? "вещь" : targetItemsCount - userItemsCount < 5 ? "вещи" : "вещей"} для достижения цели`}
-            </p>
-          </div>
-
-          {/* Category Icons */}
+          ) : (
+            <div className="px-6 pt-6 pb-4">
+              <h3 className="text-lg font-serif font-semibold text-gray-900 mb-1">Ваш гардероб</h3>
+              <p className="text-sm text-gray-500">{userItemsCount > 0 ? `${userItemsCount} вещей` : "Добавьте вещи, чтобы узнать ваш стиль"}</p>
+            </div>
+          )}
 
           {/* Hidden file input */}
           <input
@@ -443,12 +448,14 @@ export default function WardrobePage() {
             multiple
           />
 
-          <Button
-            onClick={handleAddToWardrobe}
-            className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
-          >
-            + Добавить в гардероб
-          </Button>
+          <div className="px-6 pb-6">
+            <Button
+              onClick={handleAddToWardrobe}
+              className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
+            >
+              + Добавить в гардероб
+            </Button>
+          </div>
         </Card>
 
         {/* Фильтры и поиск */}
@@ -479,22 +486,7 @@ export default function WardrobePage() {
 
         {/* User's Wardrobe */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-serif font-semibold text-gray-900">Ваши вещи</h2>
-            {dominantStyle && (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Ваш стиль:</span>
-                <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
-                  {STYLE_LABELS[dominantStyle] || dominantStyle}
-                </span>
-                {styleTags.slice(1, 3).map((tag) => (
-                  <span key={tag} className="hidden sm:inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                    {STYLE_LABELS[tag] || tag}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
+          <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Ваши вещи</h2>
           {isLoadingUserItems ? (
             <UserWardrobeSkeleton />
           ) : (
