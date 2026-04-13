@@ -31,7 +31,7 @@ async def main():
         rows = await conn.fetch(
             "SELECT id, image_url FROM wardrobe_items "
             "WHERE embedding IS NULL AND image_url IS NOT NULL "
-            "AND image_url NOT LIKE '%yandexcloud%/original/%' "
+            "AND (image_url LIKE '%insales-cdn%' OR image_url LIKE '%lacoste.ru%' OR image_url LIKE '%loverepublic%' OR image_url LIKE '%imgcdn%') "
             "ORDER BY id LIMIT 5000"
         )
 

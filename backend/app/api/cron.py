@@ -61,7 +61,8 @@ async def _clip_recommend(user_id: str, k: int = 50) -> list:
 
 
 async def _gemini_organize(
-    user_items: list, partner_items: list, weather: dict, gender: str, sections_count: int = 3,
+    user_items: list, partner_items: list, weather: dict, gender: str,
+    dominant_style: str = "", sections_count: int = 3,
 ) -> list | None:
     """Use OpenRouter Gemini to organize items into themed outfit sections."""
     api_key = settings.OPENROUTER_API_KEY
@@ -73,10 +74,11 @@ async def _gemini_organize(
         name = i.get("item_name", "?")
         ct = i.get("clothing_type", "")
         color = i.get("color", "")
-        user_desc.append(f"[USER id={i['id']}] {name} ({ct}, {color})")
+        style = i.get("style", "")
+        user_desc.append(f"[USER id={i['id']}] {name} ({ct}, {color}, стиль: {style})")
 
     partner_desc = []
-    for i in partner_items[:30]:
+    for i in partner_items[:40]:
         name = i.get("item_name") or i.get("name", "?")
         ct = i.get("clothing_type", "")
         color = i.get("color", "")
@@ -87,31 +89,43 @@ async def _gemini_organize(
     temp = weather.get("temperature", 20)
     desc = weather.get("description", "ясно")
 
-    prompt = f"""Ты - стилист. Составь {sections_count} тематических раздела с образами.
+    style_instruction = ""
+    if dominant_style:
+        style_instruction = f"""
+СТИЛЬ ПОЛЬЗОВАТЕЛЯ: {dominant_style}
+- Большинство образов (70-80%) должны соответствовать стилю "{dominant_style}"
+- 1-2 образа могут быть в ДРУГОМ стиле — для разнообразия и экспериментов (укажи это в названии, например "Попробуй: уличный стиль")
+"""
+
+    prompt = f"""Ты - стилист. Составь {sections_count + 1} тематических раздела с образами.
 
 Погода: {temp}°C, {desc}
 Пол: {gender or 'не указан'}
-
+{style_instruction}
 Доступные вещи:
 {all_items}
 
 ПРАВИЛА:
-1. Разделы по событиям: "На каждый день", "На работу/учёбу", "На свидание", "На прогулку" и т.п.
-2. В каждом разделе 3-5 образов
-3. ВАЖНО! Каждый образ должен быть ПОЛНЫМ и содержать 4-6 вещей:
-   - Верх (рубашка/футболка/блузка/свитер) — 1 шт
-   - Низ (брюки/джинсы/юбка) ИЛИ платье — 1 шт
-   - Верхняя одежда (куртка/пальто) — если температура ниже 18°C
-   - ОБУВЬ — ВСЕГДА включай обувь (туфли/кроссовки/ботинки)!
-   - Аксессуар (сумка/шарф/ремень) — по возможности
-4. НИКОГДА не создавай образ из 2-3 вещей. Реальный образ = верх + низ + обувь минимум.
+1. Первые {sections_count} разделов — образы с МИКСОМ вещей пользователя и партнёрских:
+   - По событиям: "На каждый день", "На работу", "На свидание", "На прогулку" и т.п.
+   - В каждом разделе 3-4 образа
+   - Хотя бы 1 вещь пользователя [USER] в каждом образе
+2. ПОСЛЕДНИЙ раздел — "Готовые образы от брендов":
+   - 3-4 образа ЦЕЛИКОМ из партнёрских [PARTNER] вещей (без USER)
+   - Подбери стильные комплекты из одного бренда или миксуй бренды
+3. ВАЖНО! Каждый образ = 4-6 вещей:
+   - Верх (рубашка/футболка/блузка/свитер)
+   - Низ (брюки/джинсы/юбка) ИЛИ платье
+   - Верхняя одежда — если {temp}°C < 18
+   - ОБУВЬ — ВСЕГДА
+   - Аксессуар — по возможности
+4. НЕ создавай образ из 2-3 вещей. Минимум: верх + низ + обувь.
 5. НЕ ставь 2 штанов или 2 куртки в один образ.
-6. МИКСУЙ вещи пользователя [USER] и партнёрские [PARTNER]. Хотя бы 1 вещь пользователя в каждом образе.
-7. ОБЯЗАТЕЛЬНО учитывай погоду ({temp}°C, {desc}).
-8. Придумай стильное короткое название для каждого образа (3-5 слов)
-9. Учитывай пол ({gender or 'не указан'}): не предлагай платья мужчинам
+6. Учитывай погоду ({temp}°C, {desc}).
+7. Стильное короткое название для каждого образа (3-5 слов).
+8. Учитывай пол: не предлагай платья мужчинам.
 
-JSON: [{{"title":"Название раздела","suggestions":[{{"title":"Название образа","item_ids":[id1,id2,id3]}}]}}]
+JSON: [{{"title":"Название раздела","suggestions":[{{"title":"Название образа","item_ids":[id1,id2,id3,id4,id5]}}]}}]
 Только JSON, без markdown."""
 
     try:
@@ -211,6 +225,13 @@ async def cron_generate_recommendations(
             """), {"uid": user_id})
             user_items = [dict(r) for r in user_items_result.mappings().all()]
 
+            # Get user's dominant style
+            style_result = await db.execute(text(
+                "SELECT dominant_style FROM user_profiles WHERE user_id = :uid"
+            ), {"uid": user_id})
+            style_row = style_result.mappings().first()
+            dominant_style = (style_row["dominant_style"] if style_row else "") or ""
+
             # Get weather
             weather_result = await db.execute(text("""
                 SELECT temperature, description, city_name
@@ -277,7 +298,7 @@ async def cron_generate_recommendations(
             # Ask Gemini to organize
             n_sections = min(4, max(2, len(user_items) // 3 + 1))
             gemini_sections = await _gemini_organize(
-                user_items, partner_items, weather, gender, n_sections,
+                user_items, partner_items, weather, gender, dominant_style, n_sections,
             )
 
             sections = []
@@ -652,3 +673,41 @@ async def analyze_styles(request: Request, db: AsyncSession = Depends(get_db)):
     await db.commit()
     logger.info(f"[analyze-styles] Classified {classified} items, updated {updated_users} user profiles")
     return {"items_classified": classified, "users_updated": updated_users}
+
+
+# ---------------------------------------------------------------------------
+# Fill temp_min/temp_max for catalog items based on clothing_type
+# ---------------------------------------------------------------------------
+
+TEMP_RANGES: dict[str, tuple[int, int]] = {
+    # type: (min_temp, max_temp) in Celsius
+    "t-shirt": (18, 35), "tank-top": (22, 35), "shirt": (10, 30),
+    "blouse": (12, 30), "lonsleeve": (5, 22), "turtleneck": (0, 15),
+    "pullover": (0, 18), "cardigan": (5, 20), "hoodie": (5, 20),
+    "sweatshirt": (5, 22), "vest": (5, 20), "suit-jacket": (8, 25),
+    "coat": (-10, 15), "puffer-jacket": (-20, 10), "parka": (-25, 5),
+    "dress": (10, 30), "skirt": (12, 30), "pants": (-5, 30),
+    "jeans": (0, 28), "sporty-pants": (5, 25), "shorts": (20, 35),
+    "classic": (5, 28),
+}
+
+
+@router.post("/fill-temp-ranges")
+async def fill_temp_ranges(request: Request, db: AsyncSession = Depends(get_db)):
+    """Fill temp_min/temp_max for catalog items that don't have them."""
+    _verify_cron_auth(request)
+
+    updated = 0
+    for clothing_type, (tmin, tmax) in TEMP_RANGES.items():
+        result = await db.execute(
+            text("""
+                UPDATE wardrobe_items SET temp_min = :tmin, temp_max = :tmax
+                WHERE clothing_type = :ct AND (temp_min IS NULL OR temp_max IS NULL)
+            """),
+            {"ct": clothing_type, "tmin": tmin, "tmax": tmax},
+        )
+        updated += result.rowcount
+
+    await db.commit()
+    logger.info(f"[fill-temp-ranges] Updated {updated} items")
+    return {"updated": updated}

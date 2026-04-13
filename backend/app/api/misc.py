@@ -332,35 +332,76 @@ Return ONLY a valid JSON array. No markdown."""
 
 @router.post("/ai-assistant")
 async def ai_assistant(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """AI fashion assistant via OpenRouter Gemini."""
+    """AI fashion assistant with RAG — searches catalog via CLIP for relevant items."""
     body = await request.json()
     prompt = body.get("prompt", "")
     weather = body.get("weather", {})
 
+    # 1. Get user's wardrobe
     items_result = await db.execute(
         text("SELECT id, item_name, color, shade, style, material, clothing_type, has_print, image_url, user_id FROM wardrobe_user_items WHERE user_id = :uid LIMIT 50"),
         {"uid": user["id"]},
     )
     wardrobe = [dict(r) for r in items_result.mappings().all()]
 
-    system_prompt = """You are a fashion stylist AI assistant for ModeMorph. Help users with outfit recommendations, style advice, and wardrobe management.
+    # 2. Get user's dominant style
+    style_result = await db.execute(
+        text("SELECT dominant_style FROM user_profiles WHERE user_id = :uid"),
+        {"uid": user["id"]},
+    )
+    style_row = style_result.mappings().first()
+    dominant_style = (style_row["dominant_style"] if style_row else "") or ""
+
+    # 3. RAG: search catalog for relevant items via CLIP text search
+    catalog_items = []
+    ai_service = settings.AI_SERVICE_URL or "http://modemorph-ai:8000"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as clip_client:
+            clip_resp = await clip_client.post(
+                f"{ai_service}/clip/search",
+                json={"text": prompt, "k": 10},
+            )
+            if clip_resp.status_code == 200:
+                clip_results = clip_resp.json().get("results", [])
+                if clip_results:
+                    cat_ids = [r["id"] for r in clip_results]
+                    cat_result = await db.execute(
+                        text("SELECT id, item_name, color, clothing_type, url, notes, image_url FROM wardrobe_items WHERE id = ANY(:ids)"),
+                        {"ids": cat_ids},
+                    )
+                    catalog_items = [dict(r) for r in cat_result.mappings().all()]
+    except Exception:
+        pass  # RAG is optional, don't block assistant
+
+    system_prompt = f"""You are a fashion stylist AI assistant for ModeMorph. Help users with outfit recommendations, style advice, and wardrobe management.
+User's dominant style: {dominant_style or 'not determined yet'}
 
 RULES:
-1. If NOT about fashion/clothing/style → respond: [{"type": "trash"}]
-2. If general fashion question → respond: [{"content": "answer in Russian"}]
-3. If outfit recommendation → build from user's wardrobe items
+1. If NOT about fashion/clothing/style → respond: [{{"type": "trash"}}]
+2. If general fashion question → respond: [{{"content": "answer in Russian"}}]
+3. If outfit recommendation → build from user's wardrobe items + optionally recommend catalog items
+4. When recommending catalog items, include their shop URL so user can buy them
 
 For outfits return JSON array:
-[{"id": "unique_id", "title": "Russian title", "description": "Russian desc", "items": [{"id": item_id, "name": "name", "user_id": "uid", "image_url": "url", "color": "color"}], "suggested_items_count": N}]
+[{{"id": "unique_id", "title": "Russian title", "description": "Russian desc", "items": [{{"id": item_id, "name": "name", "user_id": "uid", "image_url": "url", "color": "color"}}], "suggested_items_count": N}}]
 
 Always respond with JSON array. Use Russian for all text."""
 
     wardrobe_json = json_lib.dumps([{
         "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
-        "type": i.get("clothing_type"), "image_url": i.get("image_url"), "user_id": i.get("user_id"),
+        "style": i.get("style", ""), "type": i.get("clothing_type"),
+        "image_url": i.get("image_url"), "user_id": i.get("user_id"),
     } for i in wardrobe], ensure_ascii=False)
 
-    user_msg = f"{prompt}\n\nWeather: {weather.get('location', '')}, {weather.get('temperature', '')}°C, {weather.get('description', '')}\n\nWardrobe ({len(wardrobe)} items):\n{wardrobe_json}"
+    catalog_json = ""
+    if catalog_items:
+        catalog_json = "\n\nRelevant catalog items (partner brands, user can buy):\n" + json_lib.dumps([{
+            "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
+            "type": i.get("clothing_type"), "url": i.get("url"), "image_url": i.get("image_url"),
+            "brand": (i.get("notes") or "").split(":")[0],
+        } for i in catalog_items], ensure_ascii=False)
+
+    user_msg = f"{prompt}\n\nWeather: {weather.get('location', '')}, {weather.get('temperature', '')}°C, {weather.get('description', '')}\n\nWardrobe ({len(wardrobe)} items):\n{wardrobe_json}{catalog_json}"
 
     result = await _openrouter_chat(
         messages=[
@@ -469,3 +510,72 @@ async def clip_search(request: Request, user: dict = Depends(get_current_user)):
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(f"{settings.AI_SERVICE_URL}/clip/search", json=params)
         return resp.json()
+
+
+# ── /api/style-check — "Will this item fit my wardrobe?" ──
+
+@router.post("/style-check")
+async def style_check(
+    image: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a photo of an item → get style compatibility score with user's wardrobe.
+    Uses CLIP: computes embedding of the photo, compares with average wardrobe embedding.
+    """
+    content = await image.read()
+    ai_service = settings.AI_SERVICE_URL or "http://modemorph-ai:8000"
+
+    # 1. Classify the uploaded item
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        classify_resp = await client.post(
+            f"{ai_service}/clip/classify",
+            files={"image": ("item.jpg", content, "image/jpeg")},
+        )
+        if classify_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Classification failed")
+        classification = classify_resp.json()
+
+    # 2. Search for similar items in user's wardrobe via CLIP
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        search_resp = await client.post(
+            f"{ai_service}/clip/search",
+            files={"image": ("item.jpg", content, "image/jpeg")},
+            data={"k": "5", "user_id": user["id"]},
+        )
+        similar = search_resp.json().get("results", []) if search_resp.status_code == 200 else []
+
+    # 3. Get user's dominant style
+    style_result = await db.execute(
+        text("SELECT dominant_style, style_tags FROM user_profiles WHERE user_id = :uid"),
+        {"uid": user["id"]},
+    )
+    profile = style_result.mappings().first()
+    dominant_style = (profile["dominant_style"] if profile else "") or "casual"
+
+    # 4. Compute compatibility
+    item_styles = classification.get("style_tags", [])
+    item_primary_style = item_styles[0] if item_styles else "casual"
+    style_match = item_primary_style == dominant_style
+
+    # Score: 0-100 based on style match + similar items found
+    base_score = 70 if style_match else 40
+    similar_bonus = min(30, len(similar) * 6)  # up to 30 points for similar items
+    score = min(100, base_score + similar_bonus)
+
+    return {
+        "score": score,
+        "item_style": item_primary_style,
+        "item_color": classification.get("color", ""),
+        "item_type": classification.get("clothing_type", ""),
+        "user_style": dominant_style,
+        "style_match": style_match,
+        "similar_items": len(similar),
+        "verdict": (
+            "Отлично подходит вашему стилю!" if score >= 80
+            else "Хорошо дополнит гардероб" if score >= 60
+            else "Интересный эксперимент — попробуйте!" if score >= 40
+            else "Не совсем ваш стиль, но почему бы и нет?"
+        ),
+    }

@@ -184,7 +184,15 @@ async def generate_recommendations(
         "temperature": 15, "description": "ясно", "city_name": "Москва",
     }
 
-    # Build prompt (same as Next.js)
+    # Get user's dominant style
+    style_result = await db.execute(
+        text("SELECT dominant_style FROM user_profiles WHERE user_id = :uid"),
+        {"uid": user["id"]},
+    )
+    style_row = style_result.mappings().first()
+    dominant_style = (style_row["dominant_style"] if style_row else "") or ""
+
+    # Build prompt
     wardrobe_json = json_lib.dumps([{
         "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
         "shade": i.get("shade"), "style": i.get("style"), "material": i.get("material"),
@@ -192,8 +200,10 @@ async def generate_recommendations(
         "image_url": i.get("image_url"), "user_id": i.get("user_id"),
     } for i in wardrobe_items], ensure_ascii=False)
 
-    system_prompt = """You are a fashion stylist AI. Generate COMPLETE outfit recommendations based on the user's wardrobe, weather, and gender.
+    style_hint = f"\nUser's preferred style: {dominant_style}. Most outfits should match this style, but 1-2 can experiment with other styles." if dominant_style else ""
 
+    system_prompt = f"""You are a fashion stylist AI. Generate COMPLETE outfit recommendations based on the user's wardrobe, weather, and gender.
+{style_hint}
 RULES:
 - Build outfits ONLY from items in the user's wardrobe (use exact item IDs).
 - Create 2-4 thematic sections (e.g. "На каждый день", "Деловой стиль", "На прогулку").
