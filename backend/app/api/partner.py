@@ -172,6 +172,24 @@ async def revoke_token(token_id: int, user: dict = Depends(get_current_user), db
     return {"success": True}
 
 
+@router.patch("/tokens/{token_id}/rate-limit")
+async def update_token_rate_limit(token_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    partner = await _require_approved_partner(user, db)
+    body = await request.json()
+    new_limit = body.get("rate_limit_per_minute")
+    if not isinstance(new_limit, int) or new_limit < 1 or new_limit > 1000:
+        raise HTTPException(status_code=400, detail="rate_limit_per_minute must be 1-1000")
+
+    result = await db.execute(
+        text("UPDATE partner_api_tokens SET rate_limit_per_minute = :lim WHERE id = :tid AND partner_id = :pid RETURNING id"),
+        {"lim": new_limit, "tid": token_id, "pid": partner["id"]},
+    )
+    if not result.first():
+        raise HTTPException(status_code=404, detail="Token not found")
+    await db.commit()
+    return {"success": True, "rate_limit_per_minute": new_limit}
+
+
 # ── Feeds ──
 
 @router.get("/feeds")

@@ -48,6 +48,24 @@ export default function PartnerTokensPage() {
   const [creating, setCreating] = useState(false)
   const [revoking, setRevoking] = useState<number | null>(null)
   const [copied, setCopied] = useState(false)
+  const [editingLimit, setEditingLimit] = useState<number | null>(null)
+  const [limitValue, setLimitValue] = useState("")
+
+  const handleUpdateLimit = async (tokenId: number) => {
+    const val = parseInt(limitValue)
+    if (!val || val < 1 || val > 1000) {
+      toast({ title: "Лимит должен быть от 1 до 1000", variant: "destructive" })
+      return
+    }
+    try {
+      await api.patch(`/api/partner/tokens/${tokenId}/rate-limit`, { rate_limit_per_minute: val })
+      toast({ title: `Лимит обновлён: ${val}/мин` })
+      setEditingLimit(null)
+      loadTokens()
+    } catch {
+      toast({ title: "Ошибка обновления лимита", variant: "destructive" })
+    }
+  }
 
   const loadTokens = async () => {
     try {
@@ -157,7 +175,29 @@ export default function PartnerTokensPage() {
                         {token.is_active ? "Активен" : "Отозван"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm">{token.rate_limit_per_minute}</TableCell>
+                    <TableCell className="text-sm">
+                      {editingLimit === token.id ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number" min={1} max={1000}
+                            value={limitValue}
+                            onChange={(e) => setLimitValue(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") handleUpdateLimit(token.id); if (e.key === "Escape") setEditingLimit(null) }}
+                            className="w-20 h-7 text-xs"
+                            autoFocus
+                          />
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => handleUpdateLimit(token.id)}>OK</Button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => { if (token.is_active) { setEditingLimit(token.id); setLimitValue(String(token.rate_limit_per_minute)) } }}
+                          className={`${token.is_active ? "hover:bg-gray-100 cursor-pointer" : ""} rounded px-2 py-0.5`}
+                          title={token.is_active ? "Нажмите для изменения" : undefined}
+                        >
+                          {token.rate_limit_per_minute}/мин
+                        </button>
+                      )}
+                    </TableCell>
                     <TableCell className="text-sm text-gray-500">
                       {token.last_used_at
                         ? formatDistanceToNow(new Date(token.last_used_at), { addSuffix: true, locale: ru })

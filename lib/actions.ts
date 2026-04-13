@@ -1,7 +1,8 @@
 "use server"
 
-import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+
+const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:8080"
 
 export async function signIn(prevState: any, formData: FormData) {
   if (!formData) {
@@ -15,16 +16,20 @@ export async function signIn(prevState: any, formData: FormData) {
     return { error: "Email and password are required" }
   }
 
-  const supabase = await createClient()
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/email-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.toString(), password: password.toString() }),
+    })
 
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.toString(),
-    password: password.toString(),
-  })
-
-  if (error) {
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      return { error: data.detail || "Invalid credentials" }
+    }
+  } catch (error) {
     console.error("Sign in error:", error)
-    return { error: error.message }
+    return { error: "Connection error" }
   }
 
   redirect("/")
@@ -42,23 +47,25 @@ export async function signUp(prevState: any, formData: FormData) {
     return { error: "Email and password are required" }
   }
 
-  const supabase = await createClient()
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.toString(), password: password.toString() }),
+    })
 
-  const { data, error } = await supabase.auth.signUp({
-    email: email.toString(),
-    password: password.toString(),
-  })
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}))
+      return { error: data.detail || "Registration failed" }
+    }
 
-  if (error) {
+    return { success: "Аккаунт создан. Теперь вы можете войти." }
+  } catch (error) {
     console.error("Sign up error:", error)
-    return { error: error.message }
+    return { error: "Connection error" }
   }
-
-  return { success: "Check your email to confirm your account." }
 }
 
 export async function signOut() {
-  const supabase = await createClient()
-  await supabase.auth.signOut()
   redirect("/")
 }

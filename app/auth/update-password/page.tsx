@@ -1,10 +1,9 @@
 // app/auth/update-password/page.tsx — страница смены пароля после перехода из письма
 "use client"
 import { useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { api } from "@/lib/api-client"
 
 export default function UpdatePasswordPage() {
-  const supabase = createClient()
   const [password, setPassword] = useState("")
   const [ok, setOk] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -12,9 +11,12 @@ export default function UpdatePasswordPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErr(null)
-    const { error } = await supabase.auth.updateUser({ password })
-    if (error) setErr(error.message)
-    else setOk(true)
+    try {
+      await api.post("/api/auth/update-password", { password })
+      setOk(true)
+    } catch (error: any) {
+      setErr(error?.message || "Не удалось обновить пароль")
+    }
   }
 
   return (

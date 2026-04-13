@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { createClient } from "@/lib/supabase/client"
+import { sessionAuth } from "@/lib/tma/session-auth"
 import { PhotoAnalysisForm } from "@/components/photo-analysis-form"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
 import { SubscriptionSheet } from "@/components/subscription-sheet"
@@ -84,7 +84,6 @@ export default function AIAssistantPage() {
   const [userId, setUserId] = useState<string | null>(null)
   const [showPhotoForm, setShowPhotoForm] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const supabase = createClient()
 
   const { log, consume } = useFeature()
   const { trackEvent, trackOnce } = useAnalytics()
@@ -120,17 +119,10 @@ export default function AIAssistantPage() {
   }, [messages])
 
   useEffect(() => {
-    // Получаем ID пользователя при загрузке
-    const getUserId = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-      if (user) {
-        setUserId(user.id)
-      }
-    }
-    getUserId()
-  }, [supabase])
+    // Получаем ID пользователя из session storage
+    const uid = sessionAuth.getUserId()
+    if (uid) setUserId(uid)
+  }, [])
 
   useEffect(() => {
     // Автоскролл к последнему сообщению
@@ -138,6 +130,8 @@ export default function AIAssistantPage() {
   }, [messages])
 
   const getCurrentWeather = async () => {
+    const fallback = { temperature: 20, condition: "Clear", description: "ясно", location: "Москва" }
+
     try {
       // Сначала пробуем получить кэшированную погоду
       try {
@@ -148,75 +142,50 @@ export default function AIAssistantPage() {
           description: cachedWeather.description,
           location: cachedWeather.location,
         }
-      } catch (cachedError) {
+      } catch {
         // Continue to geolocation if cached weather fails
       }
 
-      // Если кэша нет, получаем текущую геолокацию
-      return new Promise((resolve) => {
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            async (position) => {
-              const { latitude, longitude } = position.coords
-              try {
-                try {
-                  const weatherData = await api.get(`/api/weather?lat=${latitude}&lon=${longitude}`)
-                  resolve({
-                    temperature: weatherData.temperature,
-                    condition: weatherData.condition,
-                    description: weatherData.description,
-                    location: weatherData.location,
-                  })
-                } catch (weatherError) {
-                  resolve({
-                    temperature: 20,
-                    condition: "Clear",
-                    description: "ясно",
-                    location: "Москва",
-                  })
-                }
-              } catch (error) {
-                resolve({
-                  temperature: 20,
-                  condition: "Clear",
-                  description: "ясно",
-                  location: "Москва",
-                })
-              }
-            },
-            () => {
-              // Fallback на Москву при ошибке геолокации
-              resolve({
-                temperature: 20,
-                condition: "Clear",
-                description: "ясно",
-                location: "Москва",
-              })
-            },
-          )
-        } else {
-          resolve({
-            temperature: 20,
-            condition: "Clear",
-            description: "ясно",
-            location: "Москва",
-          })
+      // Геолокация через Promise с safety-таймаутом.
+      // В TMA WebView getCurrentPosition может молча не вызвать callback.
+      const coords = await new Promise<{ latitude: number; longitude: number }>((resolve) => {
+        const moscowCoords = { latitude: 55.7558, longitude: 37.6176 }
+        const timer = setTimeout(() => resolve(moscowCoords), 6000)
+
+        if (!navigator.geolocation) {
+          clearTimeout(timer)
+          resolve(moscowCoords)
+          return
         }
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            clearTimeout(timer)
+            resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude })
+          },
+          () => {
+            clearTimeout(timer)
+            resolve(moscowCoords)
+          },
+          { timeout: 5000 },
+        )
       })
+
+      try {
+        const weatherData = await api.get(`/api/weather?lat=${coords.latitude}&lon=${coords.longitude}`)
+        return {
+          temperature: weatherData.temperature,
+          condition: weatherData.condition,
+          description: weatherData.description,
+          location: weatherData.location,
+        }
+      } catch {
+        return fallback
+      }
     } catch (error) {
       console.error("Error getting weather:", error)
-      return {
-        temperature: 20,
-        condition: "Clear",
-        description: "ясно",
-        location: "Москва",
-      }
+      return fallback
     }
-  }
-
-  const getAuthToken = async () => {
-    const { sessionAuth } = await import("@/lib/tma/session-auth")
-    return sessionAuth.getAccessToken()
   }
 
   const handleSend = async (customPrompt?: string) => {
@@ -256,13 +225,10 @@ export default function AIAssistantPage() {
       let currentUserId = userId
       if (!currentUserId) {
         console.log("User ID not loaded yet, fetching...")
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) {
+        currentUserId = sessionAuth.getUserId()
+        if (!currentUserId) {
           throw new Error("User not authenticated")
         }
-        currentUserId = user.id
         setUserId(currentUserId)
       }
 
@@ -282,41 +248,24 @@ export default function AIAssistantPage() {
         temperature: weather?.temperature ?? 20,
         description: weather?.description || "ясно",
       }
-      const authToken = await getAuthToken()
 
       console.log("Sending request to /api/ai-assistant:", { promptLength: messageToSend.length, weather: safeWeather })
 
-      const response = await fetch("/api/ai-assistant", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authToken && { Authorization: `Bearer ${authToken}` }),
-        },
-        body: JSON.stringify({ prompt: messageToSend, weather: safeWeather }),
+      // Use api.post — it auto-adds Bearer token and retries on 401 (token refresh)
+      const responseData: AIPromptResponse[] = await api.post("/api/ai-assistant", {
+        prompt: messageToSend,
+        weather: safeWeather,
       })
-
-      console.log("AI API response status:", response.status)
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "")
-        console.error("AI API error:", response.status, errorText)
-        throw new Error(`AI API error: ${response.status}`)
-      }
-
-      const responseText = await response.text()
-      console.log("AI API raw response:", responseText)
-
-      let responseData: AIPromptResponse[]
-      try {
-        responseData = JSON.parse(responseText)
-      } catch (parseError) {
-        console.error("Failed to parse AI API response:", parseError, "Response text:", responseText)
-        throw new Error("Invalid JSON response from AI API")
-      }
 
       console.log("AI API parsed response:", responseData)
 
+      // api.post returns parsed JSON; handle non-array or error shapes
       if (!Array.isArray(responseData) || responseData.length === 0) {
+        const errMsg = (responseData as any)?.error
+        if (errMsg) {
+          console.error("AI API returned error:", errMsg)
+          throw new Error(errMsg)
+        }
         console.error("Invalid response format - not an array or empty:", responseData)
         throw new Error("Invalid response format from AI API")
       }

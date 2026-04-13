@@ -140,6 +140,13 @@ export function TopNavigation() {
     }
   }
 
+  const FALLBACK_WEATHER: WeatherData = {
+    temperature: 20,
+    description: "ясно",
+    location: "Москва",
+    icon: "☀️",
+  }
+
   const loadWeather = async () => {
     try {
       setWeatherLoading(true)
@@ -156,34 +163,41 @@ export function TopNavigation() {
         setWeatherLoading(false)
         return
       } catch {
-        // ignore cache errors
+        // ignore cache errors — will try geolocation next
       }
 
-      if (navigator.geolocation) {
+      // Геолокация через Promise с safety-таймаутом.
+      // В TMA WebView navigator.geolocation существует, но getCurrentPosition
+      // часто молча не вызывает ни один callback — без таймаута weatherLoading
+      // навсегда остаётся true и погода не рендерится.
+      const coords = await new Promise<{ latitude: number; longitude: number }>((resolve) => {
+        const fallback = { latitude: 55.7558, longitude: 37.6176 } // Москва
+        // Safety timeout: если ни один callback не вызван за 6 сек — используем Москву
+        const timer = setTimeout(() => resolve(fallback), 6000)
+
+        if (!navigator.geolocation) {
+          clearTimeout(timer)
+          resolve(fallback)
+          return
+        }
+
         navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const { latitude, longitude } = position.coords
-            await fetchWeather(latitude, longitude)
+          (position) => {
+            clearTimeout(timer)
+            resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude })
           },
-          async () => {
-            // Fallback на Москву
-            await fetchWeather(55.7558, 37.6176)
+          () => {
+            clearTimeout(timer)
+            resolve(fallback) // Ошибка геолокации → Москва
           },
-          { timeout: 5000, maximumAge: 300000 }, // 5 секунд таймаут, кэш 5 минут
+          { timeout: 5000, maximumAge: 300000 },
         )
-      } else {
-        // Fallback на Москву
-        await fetchWeather(55.7558, 37.6176)
-      }
+      })
+
+      await fetchWeather(coords.latitude, coords.longitude)
     } catch {
       setWeatherLoading(false)
-      // Устанавливаем fallback данные только при критической ошибке
-      setWeather({
-        temperature: 20,
-        description: "ясно",
-        location: "Москва",
-        icon: "☀️",
-      })
+      setWeather(FALLBACK_WEATHER)
     }
   }
 
@@ -198,13 +212,7 @@ export function TopNavigation() {
         icon: weatherData.icon || "🌤️",
       })
     } catch {
-      // Fallback данные при ошибке API
-      setWeather({
-        temperature: 20,
-        description: "ясно",
-        location: "Москва",
-        icon: "☀️",
-      })
+      setWeather(FALLBACK_WEATHER)
     } finally {
       setWeatherLoading(false)
     }

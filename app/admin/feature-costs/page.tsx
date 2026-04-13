@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
-import { createClient } from "@/lib/supabase/client"
+import { api } from "@/lib/api-client"
 
 interface FeatureCost {
   id: number
@@ -45,7 +45,6 @@ export default function FeatureCostsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
-  const supabase = createClient() // Still needed for fetching data
 
   // Debounce timers for auto-save
   const debounceTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
@@ -79,46 +78,31 @@ export default function FeatureCostsPage() {
 
   const fetchFeatureCosts = async () => {
     try {
-      const { data, error } = await supabase.from("feature_costs").select("*").order("feature_name")
-      if (error) throw error
-      setFeatureCosts(data || [])
+      const result = await api.get("/api/admin/feature-costs")
+      setFeatureCosts(result.data || [])
     } catch (error) {
       console.error(error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось загрузить настройки стоимости",
-        variant: "destructive",
-      })
+      toast({ title: "Ошибка", description: "Не удалось загрузить настройки стоимости", variant: "destructive" })
     }
   }
 
   const fetchCreditPacks = async () => {
     try {
-      const { data, error } = await supabase.from("credit_packs").select("*").order("credits")
-      if (error) throw error
-      setCreditPacks(data || [])
+      const result = await api.get("/api/admin/credit-packs")
+      setCreditPacks(result.data || [])
     } catch (error) {
       console.error(error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось загрузить пакеты кредитов",
-        variant: "destructive",
-      })
+      toast({ title: "Ошибка", description: "Не удалось загрузить пакеты кредитов", variant: "destructive" })
     }
   }
 
   const fetchSubscriptionPricing = async () => {
     try {
-      const { data, error } = await supabase.from("subscription_pricing").select("*").order("plan_type")
-      if (error) throw error
-      setSubscriptionPricing(data || [])
+      const result = await api.get("/api/admin/subscription-pricing")
+      setSubscriptionPricing(result.data || [])
     } catch (error) {
       console.error(error)
-      toast({
-        title: "Ошибка",
-        description: "Не удалось загрузить цены подписок",
-        variant: "destructive",
-      })
+      toast({ title: "Ошибка", description: "Не удалось загрузить цены подписок", variant: "destructive" })
     }
   }
 

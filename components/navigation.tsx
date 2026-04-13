@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { api } from "@/lib/api-client"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -26,7 +26,6 @@ export function Navigation() {
   const [loading, setLoading] = useState(true)
   const router = useRouter()
   const pathname = usePathname()
-  const supabase = createClient()
 
   useEffect(() => {
     loadUserProfile()
@@ -34,42 +33,17 @@ export function Navigation() {
 
   const loadUserProfile = async () => {
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-
-      if (userError || !user) {
-        setLoading(false)
-        return
-      }
-
-      // Получаем профиль пользователя
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single()
-
-      if (profileError) {
-        const { data: newProfile, error: createError } = await supabase
-          .from("profiles")
-          .insert({
-            id: user.id,
-            full_name: user.user_metadata?.full_name || "",
-            avatar_url: user.user_metadata?.avatar_url || "",
-          })
-          .select()
-          .single()
-
-        if (!createError) {
-          setProfile(newProfile)
-        }
-      } else {
-        setProfile(profileData)
+      const data = await api.get("/api/me/profile-session")
+      if (data?.profile) {
+        setProfile({
+          id: data.profile.id || data.user?.id,
+          full_name: data.profile.full_name,
+          avatar_url: data.profile.avatar_url,
+          is_admin: data.profile.is_admin || false,
+        })
       }
     } catch {
-      // ignore
+      // Not authenticated or profile not found
     } finally {
       setLoading(false)
     }
@@ -77,10 +51,7 @@ export function Navigation() {
 
   const handleSignOut = async () => {
     try {
-      await fetch("/api/auth/signout", {
-        method: "POST",
-        credentials: "include",
-      })
+      await api.post("/api/auth/signout")
       router.push("/")
     } catch {
       // ignore

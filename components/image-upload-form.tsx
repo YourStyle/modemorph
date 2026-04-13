@@ -8,7 +8,6 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Upload, X, Loader2, Check, Plus } from "lucide-react"
 import Image from "next/image"
-import { createClient } from "@/lib/supabase/client"
 import { api } from "@/lib/api-client"
 import { type ResponseItem, type ItemWithImage, loadBasicItemImages } from "@/lib/image-processing"
 

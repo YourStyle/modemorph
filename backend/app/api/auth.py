@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.deps import get_current_user
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -276,4 +277,25 @@ async def reset_password(request: Request, body: ResetRequest):
 
 @router.post("/signout")
 async def signout():
+    return {"success": True}
+
+
+class UpdatePasswordRequest(BaseModel):
+    password: str
+
+
+@router.post("/update-password")
+async def update_password(
+    body: UpdatePasswordRequest,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    hashed = hash_password(body.password)
+    await db.execute(
+        text("UPDATE users SET encrypted_password = :pw WHERE id = :uid"),
+        {"pw": hashed, "uid": user["id"]},
+    )
+    await db.commit()
     return {"success": True}

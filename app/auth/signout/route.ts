@@ -1,14 +1,11 @@
-import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 
 export async function POST() {
-  const supabase = await createClient()
-  await supabase.auth.signOut()
+  // Session cleanup happens client-side via sessionAuth.clearSession()
+  // FastAPI /api/auth/signout is stateless (no-op)
   redirect("/")
 }
 
 export async function GET() {
-  const supabase = await createClient()
-  await supabase.auth.signOut()
   redirect("/")
 }

@@ -171,7 +171,56 @@ async def get_user_likes(user: dict = Depends(get_current_user), db: AsyncSessio
     return {"liked": [str(r[0]) for r in result.all()]}
 
 
-# ── /api/detect-clothing (OpenRouter — no n8n) ──
+# ── /api/detect-clothing (OpenRouter — detection + image generation) ──
+
+
+def _build_flatlay_prompt(item: dict) -> str:
+    """Build prompt for flat-lay product image generation."""
+    COMMON = (
+        "Top-down studio flat-lay on a neutral light-grey background. "
+        "No model, mannequin, props, logos, tags, or text. "
+        "Render exact described colors and material texture under soft, even lighting. "
+        "High resolution, crisp edges, no strong shadows."
+    )
+    desc = item.get("description_en") or item.get("description") or item.get("item_name", "")
+    clothing = item.get("clothing_item", "item")
+    part = item.get("part", "")
+
+    if part == "lower":
+        return f"Studio-quality flat-lay of a single pair of {clothing}. {desc} Lay perfectly flat: both legs straight and parallel; hems aligned. {COMMON}"
+    if part == "upper":
+        return f"Studio-quality flat-lay of a single {clothing}. {desc} Lay perfectly flat and symmetrical: sleeves extended, all parts fully visible. {COMMON}"
+    if part == "dress":
+        return f"Studio-quality flat-lay of a single {clothing}. {desc} Show full length from neckline to hem; sleeves extended symmetrically. {COMMON}"
+    if part == "footwear":
+        return f"Studio-quality flat-lay of a matched pair of {clothing}. {desc} Two shoes mirror-symmetric; toes pointing up, heels down. {COMMON}"
+    return f"Studio-quality flat-lay of a single {clothing}. {desc} Item laid perfectly flat with all parts visible. {COMMON}"
+
+
+async def _upload_base64_to_s3(data_uri: str, folder: str = "detected") -> str:
+    """Upload base64 data URI to Yandex S3 and return public URL."""
+    matches = re.match(r"data:image/(\w+);base64,(.+)", data_uri, re.DOTALL)
+    if not matches:
+        return data_uri
+    ext = "jpg" if matches.group(1) == "jpeg" else matches.group(1)
+    img_bytes = base64.b64decode(matches.group(2))
+    key = f"{folder}/{int(time.time())}-{hashlib.md5(img_bytes[:100]).hexdigest()[:8]}.{ext}"
+    try:
+        import boto3
+        s3 = boto3.client(
+            "s3", endpoint_url=settings.YANDEX_S3_ENDPOINT,
+            aws_access_key_id=settings.YANDEX_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.YANDEX_SECRET_ACCESS_KEY,
+            region_name="ru-central1",
+        )
+        s3.put_object(Bucket=settings.YANDEX_BUCKET_NAME, Key=key, Body=img_bytes,
+                      ContentType=f"image/{matches.group(1)}")
+        return f"{settings.YANDEX_S3_ENDPOINT}/{settings.YANDEX_BUCKET_NAME}/{key}"
+    except Exception as e:
+        print(f"[S3 upload] Failed: {e}")
+        # Return data URI as fallback — frontend can still display it
+        return data_uri
+
 
 @router.post("/detect-clothing")
 async def detect_clothing(
@@ -179,8 +228,10 @@ async def detect_clothing(
     request: Request = None,
     user: dict = Depends(get_current_user),
 ):
-    """Detect clothing from uploaded image via OpenRouter Gemini."""
-    # Get image as base64
+    """Detect clothing from uploaded image + generate flat-lay product photos."""
+    import asyncio
+
+    # --- Read image as base64 ---
     if image:
         content = await image.read()
         ct = image.content_type or "image/jpeg"
@@ -195,20 +246,22 @@ async def detect_clothing(
             ct = resp.headers.get("content-type", "image/jpeg")
             img_b64 = f"data:{ct};base64,{base64.b64encode(resp.content).decode()}"
 
-    detection_prompt = """Analyze the image and identify ALL clothing and accessories that are clearly visible.
-Return ONLY a JSON array with detected items. For each item:
-- clothing_item: concise English name
+    # --- Step 1: Detect clothing items ---
+    detection_prompt = """Analyze this photo and detect ALL clothing items and accessories the person is wearing.
+For each item return a JSON object with these fields:
+- clothing_item: item type in English (e.g. t-shirt, jeans, sneakers)
 - part: one of 'upper', 'lower', 'dress', 'footwear', 'accessories'
-- description: short phrase (5-6 words, include color and style)
-- item_name: Russian name
-- material: in Russian
-- style: in Russian (optional)
+- description: brief description in Russian
+- description_en: detailed description in English including color, material, texture, pattern. This will be used to generate a product image.
+- item_name: item name in Russian (e.g. "Серая футболка")
+- material: material in Russian
+- style: style in Russian (optional)
 - has_print: 'no' or brief description
-- color: base color
-- shade: specific shade
+- color: primary color in Russian
+- shade: shade/tone in Russian
 - has_details: distinctive features or 'no'
 
-Return ONLY valid JSON array. No markdown."""
+Return ONLY a valid JSON array. No markdown."""
 
     result = await _openrouter_chat(
         messages=[{"role": "user", "content": [
@@ -222,14 +275,57 @@ Return ONLY valid JSON array. No markdown."""
     content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
     items = _parse_ai_json(content)
 
-    # Add index and flags
-    for i, item in enumerate(items):
-        item["index"] = i
-        item["basic_item_id"] = None
-        item["need_gen"] = True
-        item["image_url"] = None
+    if not items:
+        return [{"acceptable": False, "reason": "Не найдено предметов одежды на фото"}]
 
-    return items
+    # --- Step 2: Generate flat-lay product images in parallel ---
+    async def gen_image(item: dict) -> str | None:
+        try:
+            prompt = _build_flatlay_prompt(item)
+            img_result = await _openrouter_chat(
+                messages=[{"role": "user", "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": img_b64}},
+                ]}],
+                model="google/gemini-3.1-flash-image-preview",
+                temperature=0.8,
+                modalities=["image", "text"],
+                image_config={"aspect_ratio": "1:1"},
+            )
+            images = img_result.get("choices", [{}])[0].get("message", {}).get("images", [])
+            if not images:
+                return None
+            data_uri = images[0].get("image_url", {}).get("url", "")
+            # Return base64 data URI directly — fast preview for user.
+            # S3 upload happens later when user clicks "save item".
+            return data_uri or None
+        except Exception as e:
+            print(f"[detect-clothing] Image gen failed: {e}")
+            return None
+
+    image_urls = await asyncio.gather(*(gen_image(item) for item in items))
+
+    # --- Step 3: Build response ---
+    response_items = []
+    for i, item in enumerate(items):
+        response_items.append({
+            "index": i,
+            "basic_item_id": None,
+            "need_gen": False,
+            "clothing_item": item.get("clothing_item", ""),
+            "description": item.get("description", ""),
+            "item_name": item.get("item_name", ""),
+            "material": item.get("material", ""),
+            "style": item.get("style", ""),
+            "has_print": item.get("has_print", "no"),
+            "color": item.get("color", ""),
+            "shade": item.get("shade", ""),
+            "has_details": item.get("has_details", "no"),
+            "image_url": image_urls[i],
+            "img_url": image_urls[i],
+        })
+
+    return response_items
 
 
 # ── /api/ai-assistant (OpenRouter — no n8n) ──

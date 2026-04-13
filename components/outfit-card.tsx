@@ -60,16 +60,25 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
   const [showOutfitDetails, setShowOutfitDetails] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
-  const [feedback, setFeedback] = useState<"like" | "dislike" | null>(null)
+  const feedbackKey = `outfit_feedback_${suggestion?.id}`
+  const [feedback, setFeedback] = useState<"like" | "dislike" | null>(() => {
+    if (typeof window === "undefined" || !suggestion?.id) return null
+    try {
+      return localStorage.getItem(feedbackKey) as "like" | "dislike" | null
+    } catch {
+      return null
+    }
+  })
   const { startTryOn, session } = useTryOn()
 
   const sendFeedback = (action: "like" | "dislike") => {
     if (feedback) return
     setFeedback(action)
+    try { localStorage.setItem(feedbackKey, action) } catch { /* ignore */ }
     api.post("/api/usage/log", {
-      type: "recommendation_feedback",
-      action,
-      meta: { suggestion_id: suggestion.id, source: sectionSource ?? null },
+      feature: "ai_requests",
+      action: "click",
+      meta: { suggestion_id: suggestion.id, source: sectionSource ?? null, feedback: action },
     }).catch(() => {
       // fire-and-forget — ignore errors silently
     })
@@ -225,7 +234,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                     {item.brand && (
                       <div className="absolute bottom-2 left-2 bg-white/90 rounded px-1.5 py-0.5 flex items-center">
                         {item.brand === "SELA" ? (
-                          <svg viewBox="0 0 109 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-3 w-auto text-gray-700">
+                          <svg viewBox="0 0 109 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-3 w-auto text-[#00875A]">
                             <path d="M39.73 6c-7.63 0-13.25 6.02-13.25 13.97 0 8.37 5.42 14.03 13.4 14.03 5.16 0 9.89-2.6 11.92-7.55l-6.6-2.5c-.75 2.35-3 3.56-5.5 3.56-3.07 0-5.5-2.82-5.48-5.75h17.91v-2.14c0-7.6-4.52-13.62-12.4-13.62zm-5.27 10.76c.8-2.96 2.35-4.44 4.99-4.44 2.96 0 4.69 2.04 4.74 4.44h-9.73z" fill="currentColor"/>
                             <path d="M68.59 26.6c-3.51 0-5.12-1.27-5.12-4.95V6h-8.38v16.93c0 7.7 4.82 11.07 12.44 11.07 1.66 0 3.26-.1 4.67-.36.47-.08.95-.17 1.15-.21-1.77-1.79-2.85-4.17-2.97-6.9-.57.05-1.13.08-1.79.08z" fill="currentColor"/>
                             <path d="M105.03 34a3.73 3.73 0 100-7.45 3.73 3.73 0 000 7.45z" fill="currentColor"/>

@@ -62,7 +62,9 @@ async def create_item(
     # Build dynamic insert from body keys
     allowed = ["item_name", "description", "color", "shade", "material", "style",
                "has_print", "has_details", "notes", "image_url", "url",
-               "wardrobe_item_id", "is_hidden"]
+               "wardrobe_item_id", "is_hidden", "basic_item_id", "clothing_type",
+               "size_type", "basic_material_id", "is_basic", "shop_url",
+               "item_name_en", "description_en", "temp_min", "temp_max"]
     fields = {k: body[k] for k in allowed if k in body and body[k] is not None}
     fields["user_id"] = user["id"]
 
@@ -95,7 +97,10 @@ async def get_item(item_id: int, user: dict = Depends(get_current_user), db: Asy
 async def update_item(item_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     allowed = ["item_name", "description", "color", "shade", "material", "style",
-               "has_print", "has_details", "notes", "image_url", "url", "is_hidden"]
+               "has_print", "has_details", "notes", "image_url", "url", "is_hidden",
+               "basic_item_id", "clothing_type", "size_type", "basic_material_id",
+               "is_basic", "shop_url", "item_name_en", "description_en",
+               "temp_min", "temp_max"]
     updates = {k: body[k] for k in allowed if k in body}
 
     if not updates:

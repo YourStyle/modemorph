@@ -13,7 +13,6 @@ import { Upload, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
 import { useRouter } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
 import { api } from "@/lib/api-client"
 
 const CLOTHING_TYPES = [

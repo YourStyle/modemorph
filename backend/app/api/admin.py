@@ -274,6 +274,18 @@ async def mark_clothing_types(user: dict = Depends(get_admin_user), db: AsyncSes
     return {"success": True, "updated": result.rowcount}
 
 
+@router.get("/credit-packs")
+async def get_credit_packs(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(text("SELECT * FROM credit_packs ORDER BY price_rub"))
+    return {"data": [dict(r) for r in result.mappings().all()]}
+
+
+@router.get("/subscription-pricing")
+async def get_subscription_pricing(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(text("SELECT * FROM subscription_pricing ORDER BY price_rub"))
+    return {"data": [dict(r) for r in result.mappings().all()]}
+
+
 @router.get("/feature-costs")
 async def get_feature_costs(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT * FROM feature_costs ORDER BY feature_name"))

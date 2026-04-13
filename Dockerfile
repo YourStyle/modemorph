@@ -16,13 +16,11 @@ RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 COPY --from=deps /src/node_modules ./node_modules
 COPY . .
 
-# NEXT_PUBLIC_* vars are inlined at build time
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+# Build-time vars: NEXT_PUBLIC_* are inlined, BACKEND_URL used by rewrites
 ARG NEXT_PUBLIC_AI_API_URL
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+ARG BACKEND_URL=http://backend:8080
 ENV NEXT_PUBLIC_AI_API_URL=$NEXT_PUBLIC_AI_API_URL
+ENV BACKEND_URL=$BACKEND_URL
 
 RUN pnpm run build
 

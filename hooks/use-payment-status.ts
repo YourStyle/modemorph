@@ -1,28 +1,34 @@
 "use client"
 import { useEffect, useState } from "react"
-import { createClient } from "@/lib/supabase/client"
+import { api } from "@/lib/api-client"
 
 export function usePaymentStatus(paymentId?: string) {
   const [status, setStatus] = useState<"pending"|"paid"|"failed"|"canceled"|"unknown">("unknown")
 
   useEffect(() => {
     if (!paymentId) return
-    const sb = createClient()
     let mounted = true
+    let timer: ReturnType<typeof setInterval>
 
-    sb.from("payments").select("status").eq("id", paymentId).maybeSingle()
-      .then(({ data }) => mounted && setStatus((data?.status as any) ?? "pending"))
-
-    const ch = sb.channel(`payments:${paymentId}`).on(
-      "postgres_changes",
-      { event: "UPDATE", schema: "public", table: "payments", filter: `id=eq.${paymentId}` },
-      (p) => {
-        const s = (p.new as any)?.status
+    const poll = async () => {
+      try {
+        const data = await api.get(`/api/payments/by-inv?id=${paymentId}`)
+        if (!mounted) return
+        const s = data?.status || data?.data?.status
         if (s) setStatus(s)
+        // Stop polling on terminal states
+        if (s === "paid" || s === "failed" || s === "canceled") {
+          clearInterval(timer)
+        }
+      } catch {
+        // ignore polling errors
       }
-    ).subscribe()
+    }
 
-    return () => { mounted = false; sb.removeChannel(ch) }
+    poll()
+    timer = setInterval(poll, 4000)
+
+    return () => { mounted = false; clearInterval(timer) }
   }, [paymentId])
 
   return status
