@@ -22,6 +22,7 @@ import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
 
 import { STYLE_LABELS } from "@/lib/labels"
+import { StyleProfileCard } from "@/components/style-profile-card"
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -400,63 +401,29 @@ export default function WardrobePage() {
           <p className="text-gray-600 text-sm">Управляйте своими вещами</p>
         </div>
 
-        {/* Style & Add Section */}
-        <Card className="mb-8 bg-white border-0 shadow-sm overflow-hidden">
-          {/* Style banner */}
-          {dominantStyle ? (
-            <div className="px-6 pt-6 pb-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-xs text-gray-500 mb-1">Ваш стиль</p>
-                  <h3 className="text-xl font-serif font-bold text-gray-900">
-                    {STYLE_LABELS[dominantStyle] || dominantStyle}
-                  </h3>
-                </div>
-                <span className="text-sm text-gray-500">{userItemsCount} {userItemsCount === 1 ? "вещь" : userItemsCount < 5 ? "вещи" : "вещей"}</span>
-              </div>
-              {styleTags.length > 1 && (
-                <div className="flex gap-2 flex-wrap">
-                  {styleTags.map((tag) => (
-                    <span
-                      key={tag}
-                      className={`text-xs px-3 py-1 rounded-full font-medium ${
-                        tag === dominantStyle
-                          ? "bg-gray-900 text-white"
-                          : "bg-gray-100 text-gray-600"
-                      }`}
-                    >
-                      {STYLE_LABELS[tag] || tag}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="px-6 pt-6 pb-4">
-              <h3 className="text-lg font-serif font-semibold text-gray-900 mb-1">Ваш гардероб</h3>
-              <p className="text-sm text-gray-500">{userItemsCount > 0 ? `${userItemsCount} вещей` : "Добавьте вещи, чтобы узнать ваш стиль"}</p>
-            </div>
-          )}
+        {/* Style profile + Add button */}
+        <StyleProfileCard
+          dominantStyle={dominantStyle}
+          styleTags={styleTags}
+          userItemsCount={userItemsCount}
+        />
 
-          {/* Hidden file input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/heic,image/heif,image/heic-sequence,image/jpeg,image/jpg,image/webp,image/png"
-            onChange={handleFileSelect}
-            className="hidden"
-            multiple
-          />
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/heic,image/heif,image/heic-sequence,image/jpeg,image/jpg,image/webp,image/png"
+          onChange={handleFileSelect}
+          className="hidden"
+          multiple
+        />
 
-          <div className="px-6 pb-6">
-            <Button
-              onClick={handleAddToWardrobe}
-              className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
-            >
-              + Добавить в гардероб
-            </Button>
-          </div>
-        </Card>
+        <Button
+          onClick={handleAddToWardrobe}
+          className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium mb-6"
+        >
+          + Добавить в гардероб
+        </Button>
 
         {/* Фильтры и поиск */}
         <div className="space-y-4 mb-6">

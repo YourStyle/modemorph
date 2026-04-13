@@ -265,20 +265,20 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
             </div>
           )}
 
-          {/* Partner item actions: shop link + add to wardrobe */}
-          {items.slice(0, 4).some((item) => !item.user_id) && (
-            <div className="flex flex-wrap gap-2 mb-4">
+          {/* Partner item actions — compact row */}
+          {items.slice(0, 4).some((item) => !item.user_id || item.url) && (
+            <div className="flex flex-wrap gap-1.5 mb-4">
               {items.slice(0, 4).filter((item) => !item.user_id).map((item, index) => (
-                <div key={`actions-${item.id}-${index}`} className="flex gap-1.5">
+                <div key={`actions-${item.id}-${index}`} className="flex gap-1">
                   {item.url && (
                     <a
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full transition-colors"
+                      className="inline-flex items-center text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full transition-colors"
                     >
-                      В магазин
+                      🛒 {item.brand || "Магазин"}
                     </a>
                   )}
                   <button
@@ -295,16 +295,15 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                           material: item.material || "",
                           clothing_type: (item as any).clothing_type || "",
                           url: item.url || "",
-                          brand: item.brand || "",
                         })
                         toast.success("Добавлено в гардероб")
                       } catch {
                         toast.error("Не удалось добавить")
                       }
                     }}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-full transition-colors"
+                    className="inline-flex items-center text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full transition-colors"
                   >
-                    + В гардероб
+                    + Гардероб
                   </button>
                 </div>
               ))}
