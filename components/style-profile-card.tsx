@@ -18,20 +18,20 @@ interface StyleProfileCardProps {
   userItemsCount: number
 }
 
-// Gradient colors for pie chart segments
+// Colors from the brand gradient (#EC9DE2 → #89AEFF) + complementary soft tones
 const STYLE_COLORS: Record<string, string> = {
-  casual: "#6366f1",
-  classic: "#8b5cf6",
-  minimalist: "#a78bfa",
-  streetwear: "#c084fc",
-  formal: "#818cf8",
-  sport: "#60a5fa",
-  romantic: "#f472b6",
-  bohemian: "#fb923c",
-  vintage: "#fbbf24",
-  preppy: "#34d399",
-  grunge: "#6b7280",
-  business: "#3b82f6",
+  casual: "#89AEFF",
+  classic: "#A78BFA",
+  minimalist: "#B8A0F0",
+  streetwear: "#C49BE5",
+  formal: "#D196DA",
+  sport: "#DE91CF",
+  romantic: "#EC9DE2",
+  bohemian: "#E8A8D6",
+  vintage: "#D4B3EA",
+  preppy: "#9CB8FF",
+  grunge: "#B0A6E8",
+  business: "#96B2FF",
 }
 
 // Style advice data — researched recommendations
@@ -115,14 +115,18 @@ function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <defs>
+        <linearGradient id="pie-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#EC9DE2" />
+          <stop offset="100%" stopColor="#89AEFF" />
+        </linearGradient>
         <filter id="pie-shadow">
-          <feDropShadow dx="0" dy="2" stdDeviation="3" floodOpacity="0.15" />
+          <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.1" />
         </filter>
       </defs>
       <g filter="url(#pie-shadow)">
         {segments}
         {/* Inner white circle for donut effect */}
-        <circle cx={cx} cy={cy} r={r * 0.55} fill="white" />
+        <circle cx={cx} cy={cy} r={r * 0.52} fill="white" />
       </g>
     </svg>
   )
@@ -160,9 +164,14 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
+  const scrollPosRef = useRef(0)
+
   const openStyleAdvice = (style: string) => {
+    scrollPosRef.current = window.scrollY
     setSelectedStyle(style)
     setStyleSheet(true)
+    // Prevent scroll jump when sheet opens
+    requestAnimationFrame(() => window.scrollTo(0, scrollPosRef.current))
   }
 
   const advice = selectedStyle ? STYLE_ADVICE[selectedStyle] || STYLE_ADVICE.casual : null
@@ -183,7 +192,7 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
       <Card
         ref={cardRef}
         className={`mb-8 bg-white border-0 shadow-sm overflow-hidden transition-all duration-300 ${
-          isCollapsed ? "sticky top-16 z-30" : ""
+          isCollapsed ? "sticky top-[72px] z-30 shadow-md" : ""
         }`}
       >
         {isCollapsed ? (
@@ -206,10 +215,10 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
         ) : (
           /* Expanded: full pie chart + tags */
           <div className="px-6 pt-6 pb-5">
-            <div className="flex items-start gap-5">
+            <div className="flex items-start gap-4">
               {/* Pie chart */}
               <div className="flex-shrink-0">
-                <PieChart data={styleDistribution} size={120} />
+                <PieChart data={styleDistribution} size={96} />
               </div>
 
               {/* Style info */}
@@ -248,7 +257,10 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
       {/* Style advice sheet */}
       <CommonSheet
         isOpen={styleSheet}
-        onClose={() => setStyleSheet(false)}
+        onClose={() => {
+          setStyleSheet(false)
+          requestAnimationFrame(() => window.scrollTo(0, scrollPosRef.current))
+        }}
         title={advice?.title || "Советы по стилю"}
         backgroundColor="white"
         swipeAction="close"

@@ -75,13 +75,12 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
     if (feedback) return
     setFeedback(action)
     try { localStorage.setItem(feedbackKey, action) } catch { /* ignore */ }
+    toast.success(action === "like" ? "Спасибо! Учтём в подборках" : "Спасибо за обратную связь")
     api.post("/api/usage/log", {
       feature: "ai_requests",
       action: "click",
       meta: { suggestion_id: suggestion.id, source: sectionSource ?? null, feedback: action },
-    }).catch(() => {
-      // fire-and-forget — ignore errors silently
-    })
+    }).catch(() => {})
   }
 
   if (!suggestion) return null
@@ -340,17 +339,19 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
           </div>
 
           {/* Like / Dislike feedback */}
-          <div className="flex items-center justify-end gap-1 mt-3">
-            <span className="text-xs text-gray-400 mr-1">Подходит?</span>
+          <div className="flex items-center justify-end gap-1.5 mt-3">
+            <span className="text-xs text-gray-400 mr-1">{feedback ? (feedback === "like" ? "Вам понравилось" : "Учтём") : "Подходит?"}</span>
             <button
               type="button"
               aria-label="Нравится"
               onClick={() => sendFeedback("like")}
               disabled={!!feedback}
-              className={`p-1.5 rounded-full transition-colors ${
+              className={`p-2 rounded-full transition-all duration-300 ${
                 feedback === "like"
-                  ? "text-emerald-600 bg-emerald-50"
-                  : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50"
+                  ? "text-white bg-emerald-500 scale-110 shadow-sm"
+                  : feedback === "dislike"
+                  ? "text-gray-300 bg-gray-50 scale-90 opacity-50"
+                  : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 active:scale-95"
               } disabled:cursor-default`}
             >
               <ThumbsUp className="w-4 h-4" />
@@ -360,10 +361,12 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
               aria-label="Не нравится"
               onClick={() => sendFeedback("dislike")}
               disabled={!!feedback}
-              className={`p-1.5 rounded-full transition-colors ${
+              className={`p-2 rounded-full transition-all duration-300 ${
                 feedback === "dislike"
-                  ? "text-red-500 bg-red-50"
-                  : "text-gray-400 hover:text-red-500 hover:bg-red-50"
+                  ? "text-white bg-red-500 scale-110 shadow-sm"
+                  : feedback === "like"
+                  ? "text-gray-300 bg-gray-50 scale-90 opacity-50"
+                  : "text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-95"
               } disabled:cursor-default`}
             >
               <ThumbsDown className="w-4 h-4" />
