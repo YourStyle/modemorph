@@ -149,11 +149,11 @@ async def get_combinations(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("""
         SELECT c.*, COALESCE(
             (SELECT json_agg(json_build_object(
-                'id', ce.id, 'element_type', ce.element_type,
+                'id', ce.id, 'position', ce.position,
                 'basic_item_id', ce.basic_item_id, 'basic_material_id', ce.basic_material_id,
                 'bwi_name', bwi.name_ru, 'bwi_image', bwi.image_url,
                 'bm_name', bm.name_ru, 'bm_image', bm.image_url
-            ))
+            ) ORDER BY ce.position)
              FROM combination_elements ce
              LEFT JOIN basic_wardrobe_items bwi ON bwi.id = ce.basic_item_id
              LEFT JOIN basic_materials bm ON bm.id = ce.basic_material_id
@@ -173,10 +173,10 @@ async def create_combination(request: Request, user: dict = Depends(get_current_
     )
     combo = dict(result.mappings().first())
     # Add elements
-    for el in body.get("elements", []):
+    for idx, el in enumerate(body.get("elements", []), 1):
         await db.execute(
-            text("INSERT INTO combination_elements (combination_id, element_type, basic_item_id, basic_material_id) VALUES (:cid, :et, :bid, :mid)"),
-            {"cid": combo["id"], "et": el.get("element_type"), "bid": el.get("basic_item_id"), "mid": el.get("basic_material_id")},
+            text("INSERT INTO combination_elements (combination_id, basic_item_id, basic_material_id, position) VALUES (:cid, :bid, :mid, :pos)"),
+            {"cid": combo["id"], "bid": el.get("basic_item_id"), "mid": el.get("basic_material_id"), "pos": idx},
         )
     await db.commit()
     return {"data": combo}
@@ -194,10 +194,10 @@ async def update_combination(combo_id: int, request: Request, user: dict = Depen
     # Replace elements if provided
     if "elements" in body:
         await db.execute(text("DELETE FROM combination_elements WHERE combination_id = :cid"), {"cid": combo_id})
-        for el in body["elements"]:
+        for idx, el in enumerate(body["elements"], 1):
             await db.execute(
-                text("INSERT INTO combination_elements (combination_id, element_type, basic_item_id, basic_material_id) VALUES (:cid, :et, :bid, :mid)"),
-                {"cid": combo_id, "et": el.get("element_type"), "bid": el.get("basic_item_id"), "mid": el.get("basic_material_id")},
+                text("INSERT INTO combination_elements (combination_id, basic_item_id, basic_material_id, position) VALUES (:cid, :bid, :mid, :pos)"),
+                {"cid": combo_id, "bid": el.get("basic_item_id"), "mid": el.get("basic_material_id"), "pos": idx},
             )
     await db.commit()
     return {"success": True}

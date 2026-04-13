@@ -130,6 +130,101 @@ async def get_inspiration(
     return {"outfits": feed, "nextCursor": None}
 
 
+@router.get("/{outfit_id}")
+async def get_outfit(
+    outfit_id: int,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(text("SELECT * FROM outfits WHERE id = :id"), {"id": outfit_id})
+    outfit = result.mappings().first()
+    if not outfit:
+        raise HTTPException(status_code=404, detail="Outfit not found")
+    # Get items
+    items_result = await db.execute(
+        text("SELECT oi.position, wi.* FROM outfit_items oi JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id WHERE oi.outfit_id = :oid ORDER BY oi.position"),
+        {"oid": outfit_id},
+    )
+    items = [dict(r) for r in items_result.mappings().all()]
+    return {"outfit": {**dict(outfit), "items": items}}
+
+
+@router.post("")
+async def create_outfit(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    name = body.get("name", "Образ")
+    description = body.get("description")
+    preview_url = body.get("preview_url") or body.get("preview_image_url")
+    gender = body.get("gender")
+    item_ids = body.get("items", [])
+
+    result = await db.execute(
+        text("INSERT INTO outfits (user_id, name, description, preview_image_url, gender, created_at) VALUES (:uid, :name, :desc, :preview, :gender, NOW()) RETURNING *"),
+        {"uid": user["id"], "name": name, "desc": description, "preview": preview_url, "gender": gender},
+    )
+    outfit = dict(result.mappings().first())
+
+    for idx, item_id in enumerate(item_ids):
+        await db.execute(
+            text("INSERT INTO outfit_items (outfit_id, wardrobe_item_id, position) VALUES (:oid, :wid, :pos)"),
+            {"oid": outfit["id"], "wid": item_id, "pos": idx + 1},
+        )
+
+    await db.commit()
+    return {"outfit": outfit, "success": True}
+
+
+@router.put("/{outfit_id}")
+async def update_outfit(
+    outfit_id: int,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    allowed = ["name", "description", "preview_image_url", "gender"]
+    updates = {}
+    for k in allowed:
+        if k in body:
+            updates[k] = body[k]
+    # Also accept preview_url as alias
+    if "preview_url" in body and "preview_image_url" not in updates:
+        updates["preview_image_url"] = body["preview_url"]
+
+    if updates:
+        set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+        updates["id"] = outfit_id
+        await db.execute(text(f"UPDATE outfits SET {set_clause} WHERE id = :id"), updates)
+
+    # Replace items if provided
+    if "items" in body:
+        await db.execute(text("DELETE FROM outfit_items WHERE outfit_id = :oid"), {"oid": outfit_id})
+        for idx, item_id in enumerate(body["items"]):
+            await db.execute(
+                text("INSERT INTO outfit_items (outfit_id, wardrobe_item_id, position) VALUES (:oid, :wid, :pos)"),
+                {"oid": outfit_id, "wid": item_id, "pos": idx + 1},
+            )
+
+    await db.commit()
+    return {"success": True}
+
+
+@router.delete("/{outfit_id}")
+async def delete_outfit(
+    outfit_id: int,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await db.execute(text("DELETE FROM outfit_items WHERE outfit_id = :oid"), {"oid": outfit_id})
+    await db.execute(text("DELETE FROM outfits WHERE id = :oid"), {"oid": outfit_id})
+    await db.commit()
+    return {"success": True}
+
+
 @router.post("/like")
 async def toggle_like(
     request: Request,

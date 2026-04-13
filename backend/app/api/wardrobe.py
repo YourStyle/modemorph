@@ -156,14 +156,17 @@ async def get_wardrobe_item(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        text(f"SELECT {WUI_COLS} FROM wardrobe_user_items WHERE id = :id AND user_id = :uid"),
-        {"id": item_id, "uid": user["id"]},
-    )
+    if user.get("is_admin"):
+        result = await db.execute(text("SELECT * FROM wardrobe_items WHERE id = :id"), {"id": item_id})
+    else:
+        result = await db.execute(
+            text(f"SELECT {WUI_COLS} FROM wardrobe_user_items WHERE id = :id AND user_id = :uid"),
+            {"id": item_id, "uid": user["id"]},
+        )
     row = result.mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
-    return dict(row)
+    return {"item": dict(row)}
 
 
 @router.put("/{item_id}")
@@ -177,24 +180,30 @@ async def update_wardrobe_item(
     body = await request.json()
     allowed = ["item_name", "description", "color", "shade", "material", "style",
                "has_print", "has_details", "notes", "image_url", "is_hidden",
-               "clothing_type", "basic_item_id"]
+               "clothing_type", "basic_item_id", "gender", "url"]
     updates = {k: body[k] for k in allowed if k in body}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
     set_clause = ", ".join(f'"{k}" = :{k}' for k in updates)
     updates["id"] = item_id
-    updates["uid"] = user["id"]
 
-    result = await db.execute(
-        text(f'UPDATE wardrobe_user_items SET {set_clause}, updated_at = NOW() WHERE id = :id AND user_id = :uid RETURNING {WUI_COLS}'),
-        updates,
-    )
+    if user.get("is_admin"):
+        result = await db.execute(
+            text(f'UPDATE wardrobe_items SET {set_clause}, updated_at = NOW() WHERE id = :id RETURNING *'),
+            updates,
+        )
+    else:
+        updates["uid"] = user["id"]
+        result = await db.execute(
+            text(f'UPDATE wardrobe_user_items SET {set_clause}, updated_at = NOW() WHERE id = :id AND user_id = :uid RETURNING {WUI_COLS}'),
+            updates,
+        )
     await db.commit()
     row = result.mappings().first()
     if not row:
         raise HTTPException(status_code=404, detail="Item not found")
-    return dict(row)
+    return {"item": dict(row)}
 
 
 @router.delete("/{item_id}")
