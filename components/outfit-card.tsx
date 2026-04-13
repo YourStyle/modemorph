@@ -265,20 +265,48 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
             </div>
           )}
 
-          {/* Affiliate "Купить" links for partner items */}
-          {items.slice(0, 4).some((item) => item.url) && (
+          {/* Partner item actions: shop link + add to wardrobe */}
+          {items.slice(0, 4).some((item) => !item.user_id) && (
             <div className="flex flex-wrap gap-2 mb-4">
-              {items.slice(0, 4).filter((item) => item.url).map((item, index) => (
-                <a
-                  key={`buy-${item.id}-${index}`}
-                  href={item.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full transition-colors"
-                >
-                  Посмотреть в магазине
-                </a>
+              {items.slice(0, 4).filter((item) => !item.user_id).map((item, index) => (
+                <div key={`actions-${item.id}-${index}`} className="flex gap-1.5">
+                  {item.url && (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full transition-colors"
+                    >
+                      В магазин
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      try {
+                        await api.post("/api/wardrobe-user-items", {
+                          item_name: item.name,
+                          image_url: item.image_url,
+                          color: item.color || "",
+                          shade: item.shade || "",
+                          style: item.style || "",
+                          material: item.material || "",
+                          clothing_type: (item as any).clothing_type || "",
+                          url: item.url || "",
+                          brand: item.brand || "",
+                        })
+                        toast.success("Добавлено в гардероб")
+                      } catch {
+                        toast.error("Не удалось добавить")
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-full transition-colors"
+                  >
+                    + В гардероб
+                  </button>
+                </div>
               ))}
             </div>
           )}

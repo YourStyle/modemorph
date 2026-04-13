@@ -3,11 +3,13 @@ Cron-style endpoints — called by scheduler (e.g., system cron).
 
 1. Nightly recommendation generation (CLIP + OpenRouter Gemini)
 2. Weather cache refresh
+3. Feed sync — refresh Admitad feeds, remove stale items, add new
 """
 
 import json as json_lib
 import logging
 import random
+import xml.etree.ElementTree as ET
 from datetime import date
 
 import httpx
@@ -458,3 +460,188 @@ async def cron_refresh_weather(request: Request, db: AsyncSession = Depends(get_
 
     await db.commit()
     return {"updated": updated, "total": len(users)}
+
+
+# ---------------------------------------------------------------------------
+# Feed sync — refresh Admitad feeds, hide stale items, add new ones
+# ---------------------------------------------------------------------------
+
+# Registered feeds: source_name → feed URL
+ADMITAD_FEEDS = {
+    "SELA": "http://export.admitad.com/ru/webmaster/websites/2883898/products/export_adv_products/?user=anton_chukseev9c1e2&code=4e79g72v7f&feed_id=24700&format=xml",
+    "Gate31": "http://export.admitad.com/ru/webmaster/websites/2883898/products/export_adv_products/?user=anton_chukseev9c1e2&code=4e79g72v7f&feed_id=18983&format=xml",
+    "Lacoste": "http://export.admitad.com/ru/webmaster/websites/2883898/products/export_adv_products/?user=anton_chukseev9c1e2&code=4e79g72v7f&feed_id=26532&format=xml",
+    "Love Republic": "http://export.admitad.com/ru/webmaster/websites/2883898/products/export_adv_products/?user=anton_chukseev9c1e2&code=4e79g72v7f&feed_id=14764&format=xml",
+}
+
+# Threshold: if more than this % of items missing from feed, hide them
+STALE_THRESHOLD_PCT = 10
+
+
+def _parse_feed_skus(xml_bytes: bytes) -> set[str]:
+    """Extract all offer IDs/models from YML feed XML."""
+    root = ET.fromstring(xml_bytes)
+    shop = root.find("shop")
+    if not shop:
+        return set()
+    skus = set()
+    for offer in shop.findall(".//offer"):
+        model = offer.findtext("model", "")
+        oid = offer.get("id", "")
+        skus.add(model or oid)
+    return skus
+
+
+@router.post("/sync-feeds")
+async def sync_feeds(request: Request, db: AsyncSession = Depends(get_db)):
+    """Sync catalog feeds: hide items removed from feed, report stats."""
+    _verify_cron_auth(request)
+
+    results = {}
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        for source_name, feed_url in ADMITAD_FEEDS.items():
+            try:
+                # 1. Download feed
+                resp = await client.get(feed_url)
+                resp.raise_for_status()
+                feed_skus = _parse_feed_skus(resp.content)
+                if not feed_skus:
+                    results[source_name] = {"error": "Empty feed or parse error"}
+                    continue
+
+                # 2. Get current DB items for this source
+                db_rows = await db.execute(
+                    text("SELECT id, notes FROM wardrobe_items WHERE notes LIKE :prefix AND is_hidden = false"),
+                    {"prefix": f"{source_name}:%"},
+                )
+                db_items = db_rows.all()
+
+                # 3. Find stale items (in DB but not in feed)
+                stale_ids = []
+                for row in db_items:
+                    sku = row.notes.split(":", 1)[1] if ":" in row.notes else ""
+                    if sku and sku not in feed_skus:
+                        stale_ids.append(row.id)
+
+                stale_pct = (len(stale_ids) / max(len(db_items), 1)) * 100
+
+                # 4. Hide stale items (only if above threshold to avoid false positives)
+                hidden = 0
+                if stale_ids and stale_pct >= STALE_THRESHOLD_PCT:
+                    await db.execute(
+                        text("UPDATE wardrobe_items SET is_hidden = true WHERE id = ANY(:ids)"),
+                        {"ids": stale_ids},
+                    )
+                    hidden = len(stale_ids)
+
+                results[source_name] = {
+                    "feed_items": len(feed_skus),
+                    "db_items": len(db_items),
+                    "stale": len(stale_ids),
+                    "stale_pct": round(stale_pct, 1),
+                    "hidden": hidden,
+                }
+                logger.info(f"[sync-feeds] {source_name}: feed={len(feed_skus)} db={len(db_items)} stale={len(stale_ids)} ({stale_pct:.1f}%) hidden={hidden}")
+            except Exception as e:
+                logger.error(f"[sync-feeds] {source_name} failed: {e}")
+                results[source_name] = {"error": str(e)}
+
+    await db.commit()
+
+    # 5. Trigger import_catalog.py for new items (via AI service)
+    # New items are added by the regular import_catalog.py script which skips duplicates
+    trigger_note = "Run import_catalog.py --encode-embeddings for each feed to add new items"
+
+    return {"feeds": results, "note": trigger_note}
+
+
+# ---------------------------------------------------------------------------
+# Style analysis — classify wardrobe items + compute user dominant style
+# ---------------------------------------------------------------------------
+
+AI_SERVICE_URL = settings.AI_SERVICE_URL or "http://modemorph-ai:8000"
+
+
+@router.post("/analyze-styles")
+async def analyze_styles(request: Request, db: AsyncSession = Depends(get_db)):
+    """Classify style for user wardrobe items, then compute dominant style per user."""
+    _verify_cron_auth(request)
+
+    # 1. Find user items without style (or with generic 'Casual')
+    rows = await db.execute(text("""
+        SELECT id, image_url FROM wardrobe_user_items
+        WHERE image_url IS NOT NULL
+          AND (style IS NULL OR style = '' OR style = 'Casual')
+        ORDER BY id
+        LIMIT 500
+    """))
+    items = rows.all()
+    logger.info(f"[analyze-styles] Found {len(items)} items to classify")
+
+    classified = 0
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for item in items:
+            try:
+                # Download image and send to CLIP classify
+                img_resp = await client.get(item.image_url, timeout=10.0)
+                if img_resp.status_code != 200:
+                    continue
+
+                clip_resp = await client.post(
+                    f"{AI_SERVICE_URL}/clip/classify",
+                    files={"image": ("img.jpg", img_resp.content, "image/jpeg")},
+                    timeout=15.0,
+                )
+                if clip_resp.status_code != 200:
+                    continue
+
+                result = clip_resp.json()
+                style_tags = result.get("style_tags", [])
+                primary_style = style_tags[0] if style_tags else None
+
+                if primary_style:
+                    await db.execute(
+                        text("UPDATE wardrobe_user_items SET style = :style WHERE id = :id"),
+                        {"style": primary_style, "id": item.id},
+                    )
+                    classified += 1
+            except Exception as e:
+                logger.error(f"[analyze-styles] Item {item.id}: {e}")
+                continue
+
+    # 2. Compute dominant style per user and save to user_profiles
+    style_agg = await db.execute(text("""
+        SELECT user_id, style, COUNT(*) as cnt
+        FROM wardrobe_user_items
+        WHERE style IS NOT NULL AND style != '' AND style != 'Casual'
+        GROUP BY user_id, style
+        ORDER BY user_id, cnt DESC
+    """))
+    style_rows = style_agg.all()
+
+    # Group by user, pick top style
+    user_styles: dict[str, list] = {}
+    for row in style_rows:
+        uid = str(row.user_id)
+        if uid not in user_styles:
+            user_styles[uid] = []
+        user_styles[uid].append({"style": row.style, "count": row.cnt})
+
+    updated_users = 0
+    for uid, styles in user_styles.items():
+        # Top style = first (already sorted by count DESC)
+        dominant = styles[0]["style"]
+        top3 = [s["style"] for s in styles[:3]]
+        await db.execute(
+            text("""
+                UPDATE user_profiles
+                SET dominant_style = :style, style_tags = :tags
+                WHERE user_id = :uid
+            """),
+            {"style": dominant, "tags": ",".join(top3), "uid": uid},
+        )
+        updated_users += 1
+
+    await db.commit()
+    logger.info(f"[analyze-styles] Classified {classified} items, updated {updated_users} user profiles")
+    return {"items_classified": classified, "users_updated": updated_users}

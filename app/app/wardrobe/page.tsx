@@ -22,6 +22,21 @@ import { useFeature } from "@/hooks/use-feature"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
 
+const STYLE_LABELS: Record<string, string> = {
+  casual: "Повседневный",
+  formal: "Формальный",
+  business: "Деловой",
+  sport: "Спортивный",
+  streetwear: "Уличный",
+  bohemian: "Бохо",
+  minimalist: "Минимализм",
+  classic: "Классика",
+  romantic: "Романтичный",
+  grunge: "Гранж",
+  preppy: "Преппи",
+  vintage: "Винтаж",
+}
+
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
   { id: "pants", name: "Брюки", icon: "👖", emoji: "👖" },
@@ -132,6 +147,8 @@ export default function WardrobePage() {
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
   const [searchQuery, setSearchQuery] = useState("")
+  const [dominantStyle, setDominantStyle] = useState<string | null>(null)
+  const [styleTags, setStyleTags] = useState<string[]>([])
 
   useReconcileLimits(true)
 
@@ -202,6 +219,8 @@ export default function WardrobePage() {
       try {
         const data = await api.get("/api/me/profile")
         setUserGender(data?.profile?.gender || "")
+        if (data?.profile?.dominant_style) setDominantStyle(data.profile.dominant_style)
+        if (data?.profile?.style_tags) setStyleTags(data.profile.style_tags.split(",").filter(Boolean))
       } catch (err) {
         console.error(err)
       }
@@ -460,7 +479,22 @@ export default function WardrobePage() {
 
         {/* User's Wardrobe */}
         <div className="mb-8">
-          <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Ваши вещи</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-serif font-semibold text-gray-900">Ваши вещи</h2>
+            {dominantStyle && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Ваш стиль:</span>
+                <span className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                  {STYLE_LABELS[dominantStyle] || dominantStyle}
+                </span>
+                {styleTags.slice(1, 3).map((tag) => (
+                  <span key={tag} className="hidden sm:inline-flex items-center text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                    {STYLE_LABELS[tag] || tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
           {isLoadingUserItems ? (
             <UserWardrobeSkeleton />
           ) : (
