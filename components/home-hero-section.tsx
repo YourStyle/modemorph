@@ -16,10 +16,10 @@ export function HomeHeroSection({
   onExploreFeatures,
 }: HomeHeroSectionProps) {
   return (
-    <div className="mb-6 bg-white rounded-2xl shadow-lg">
+    <div className="mb-6 bg-card rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06),0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden">
       {/* Gradient top bar */}
       <div
-        className="h-1 rounded-t-2xl"
+        className="h-1"
         style={{
           background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
         }}
@@ -27,11 +27,11 @@ export function HomeHeroSection({
 
       <div className="p-6">
         {/* Heading */}
-        <h2 className="text-2xl font-bold mb-2" style={{ color: "#101010" }}>
+        <h2 className="text-2xl font-bold mb-2 tracking-tight text-foreground">
           Твой AI-стилист в кармане
         </h2>
 
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-muted-foreground mb-6">
           Добавь вещи — и получи персональные образы от нейросети
         </p>
 
@@ -126,15 +126,15 @@ function FeatureBullet({
     <div className="flex items-start gap-3">
       <div
         className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-        style={{ backgroundColor: "#F5F4FF", color: "#89AEFF" }}
+        style={{ backgroundColor: "hsl(var(--secondary))", color: "#89AEFF" }}
       >
         {icon}
       </div>
       <div>
-        <p className="text-sm font-semibold" style={{ color: "#101010" }}>
+        <p className="text-sm font-semibold text-foreground">
           {title}
         </p>
-        <p className="text-xs text-gray-500">{description}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
     </div>
   )

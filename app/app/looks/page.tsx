@@ -221,7 +221,7 @@ export default function LooksPage() {
               return (
                 <div
                   key={`${item.source}-${item.id}-${index}`}
-                  className={`flex items-center justify-center bg-white rounded-lg p-2 ${
+                  className={`flex items-center justify-center bg-secondary/40 rounded-xl p-2 ${
                     items.length === 1
                       ? "col-span-3"
                       : items.length === 2 && index === 0
@@ -256,7 +256,7 @@ export default function LooksPage() {
 
         <div className="mt-4">
           <h4 className="font-medium text-base truncate">{look.name}</h4>
-          {look.description && <p className="text-sm text-gray-500 truncate mt-1">{look.description}</p>}
+          {look.description && <p className="text-sm text-muted-foreground truncate mt-1">{look.description}</p>}
           <p className="text-xs text-gray-400 mt-1">
             {items.length} вещей ({look.items?.length || 0} в данных)
           </p>
@@ -296,14 +296,14 @@ export default function LooksPage() {
     return (
       <Card
         onClick={() => handleOpenAddOutfits(section)}
-        className="p-4 bg-white border-2 border-dashed border-gray-300 hover:border-gray-400 cursor-pointer transition-colors flex-shrink-0 w-80 min-h-[320px] flex items-center justify-center group"
+        className="p-4 bg-secondary/30 border-2 border-dashed border-border/50 hover:border-border cursor-pointer transition-all duration-300 flex-shrink-0 w-80 min-h-[320px] flex items-center justify-center group hover:bg-secondary/50"
       >
         <div className="text-center">
-          <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3 group-hover:bg-gray-200 transition-colors">
-            <Plus className="w-6 h-6 text-gray-500" />
+          <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center mx-auto mb-3 group-hover:bg-secondary/80 transition-colors">
+            <Plus className="w-6 h-6 text-muted-foreground" />
           </div>
-          <p className="text-gray-600 font-medium">Добавить образы</p>
-          <p className="text-sm text-gray-400 mt-1">Выберите образы для подборки</p>
+          <p className="text-foreground font-medium text-sm">Добавить образы</p>
+          <p className="text-xs text-muted-foreground mt-1">Выберите образы для подборки</p>
         </div>
       </Card>
     )
@@ -317,8 +317,8 @@ export default function LooksPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-xl font-semibold text-gray-900">{section.name}</h3>
-            <p className="text-sm text-gray-500">
+            <h3 className="text-lg font-semibold text-foreground tracking-tight">{section.name}</h3>
+            <p className="text-sm text-muted-foreground">
               {sectionLooks.length} образ{sectionLooks.length !== 1 ? "ов" : ""}
             </p>
           </div>
@@ -329,7 +329,7 @@ export default function LooksPage() {
                   onClick={() => handleOpenFilter(section)}
                   variant="outline"
                   size="sm"
-                  className="text-gray-700 border-gray-200 hover:bg-gray-50 w-full md:w-auto"
+                  className="text-muted-foreground border-border/50 hover:bg-secondary/80 w-full md:w-auto"
                 >
                   <Search className="w-4 h-4 mr-1" />
                   Поиск и фильтры
@@ -338,7 +338,7 @@ export default function LooksPage() {
                   onClick={() => handleOpenAddOutfits(section)}
                   variant="outline"
                   size="sm"
-                  className="text-gray-700 border-gray-200 hover:bg-gray-50 w-full md:w-auto"
+                  className="text-muted-foreground border-border/50 hover:bg-secondary/80 w-full md:w-auto"
                 >
                   <Plus className="w-4 h-4 mr-1" />
                   Добавить образы
@@ -415,12 +415,12 @@ export default function LooksPage() {
     <div className="px-4 py-6 space-y-8">
       {/* Header */}
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-gray-900">Образы</h1>
+        <h1 className="text-2xl font-bold text-foreground tracking-tight">Образы</h1>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button
             onClick={() => setIsCreateLookOpen(true)}
-            className="w-full sm:flex-1 bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-xl font-medium"
+            className="w-full sm:flex-1 bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium shadow-md"
           >
             <Plus className="w-5 h-5 mr-2" />
             Создать образ
@@ -429,7 +429,7 @@ export default function LooksPage() {
           <Button
             onClick={() => setIsAddCollectionOpen(true)}
             variant="outline"
-            className="w-full sm:flex-1 border-gray-200 text-gray-700 hover:bg-gray-50 h-12 rounded-xl font-medium"
+            className="w-full sm:flex-1 border-border/50 text-foreground hover:bg-secondary/80 h-12 rounded-2xl font-medium"
           >
             <Plus className="w-5 h-5 mr-2" />
             Добавить в чемодан
@@ -441,8 +441,8 @@ export default function LooksPage() {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-gray-900">Все образы</h2>
-            <p className="text-sm text-gray-500">{regularLooks.length} образов</p>
+            <h2 className="text-lg font-semibold text-foreground tracking-tight">Все образы</h2>
+            <p className="text-sm text-muted-foreground">{regularLooks.length} образов</p>
           </div>
         </div>
 
@@ -461,8 +461,8 @@ export default function LooksPage() {
               >
                 <Sparkles className="w-7 h-7 text-white" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-1">Сохраните первый образ</h3>
-              <p className="text-sm text-gray-500 mb-5 max-w-xs">Получите рекомендации на главной странице и сохраняйте понравившиеся образы здесь.</p>
+              <h3 className="text-lg font-bold text-foreground tracking-tight mb-1">Сохраните первый образ</h3>
+              <p className="text-sm text-muted-foreground mb-5 max-w-xs">Получите рекомендации на главной странице и сохраняйте понравившиеся образы здесь.</p>
               <Button
                 onClick={() => setIsCreateLookOpen(true)}
                 className="rounded-2xl text-white text-sm font-semibold px-6 py-3 shadow-md border-0"
@@ -488,11 +488,11 @@ export default function LooksPage() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground tracking-tight flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-purple-500" />
                 Примерки
               </h2>
-              <p className="text-sm text-gray-500">{tryOnLooks.length} примерок</p>
+              <p className="text-sm text-muted-foreground">{tryOnLooks.length} примерок</p>
             </div>
           </div>
 
@@ -556,7 +556,7 @@ export default function LooksPage() {
       {/* Collections */}
       {sections.length > 0 && (
         <div className="space-y-8">
-          <h2 className="text-xl font-semibold text-gray-900">Подборки</h2>
+          <h2 className="text-lg font-semibold text-foreground tracking-tight">Подборки</h2>
           {sections.map((section) => (
             <CollectionSection key={section.id} section={section} />
           ))}

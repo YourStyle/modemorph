@@ -152,24 +152,24 @@ const GenerationLoadingScreen = () => {
         </div>
       </div>
 
-      <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">
+      <h2 className="text-xl font-bold text-foreground tracking-tight mb-2 text-center">
         Подбираем лучшие образы для вас{dots}
       </h2>
 
-      <p className="text-sm text-gray-500 mb-6 text-center max-w-xs">
+      <p className="text-sm text-muted-foreground mb-6 text-center max-w-xs">
         Первая генерация может занять от 1 до 2 минут. AI анализирует ваш гардероб и создаёт персональные рекомендации.
       </p>
 
       {/* Animated tip */}
-      <div className="bg-white rounded-xl px-5 py-3 shadow-sm border border-gray-100 mb-6 min-w-[260px] text-center">
-        <p className="text-sm text-gray-600 transition-opacity duration-300">
+      <div className="bg-card rounded-2xl px-5 py-3 shadow-sm border border-border/30 mb-6 min-w-[260px] text-center">
+        <p className="text-sm text-foreground/70 transition-opacity duration-300">
           <Sparkles className="w-3.5 h-3.5 inline mr-1.5 text-purple-400" />
           {tips[tipIndex]}
         </p>
       </div>
 
       {/* Progress bar animation */}
-      <div className="w-64 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+      <div className="w-64 h-1.5 bg-secondary rounded-full overflow-hidden">
         <div
           className="h-full rounded-full animate-progress"
           style={{
@@ -507,21 +507,21 @@ export default function HomePage() {
                 ) : recommendationsLoading ? (
                     <GenerationLoadingScreen />
                 ) : outfitSections.length === 0 ? (
-                    <div className="text-center py-16 fade-in">
-                      <div className="w-20 h-20 mx-auto mb-5 rounded-full flex items-center justify-center"
-                        style={{ background: "linear-gradient(135deg, rgba(236,157,226,0.15), rgba(137,174,255,0.15))" }}>
+                    <div className="text-center py-16 fade-in-up">
+                      <div className="w-20 h-20 mx-auto mb-5 rounded-2xl flex items-center justify-center shadow-sm"
+                        style={{ background: "linear-gradient(135deg, rgba(236,157,226,0.12), rgba(137,174,255,0.12))" }}>
                         <Sparkles className="h-8 w-8" style={{ color: "#A78BFA" }} />
                       </div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                      <h3 className="text-lg font-semibold text-foreground tracking-tight mb-2">
                         {generationError ? "Что-то пошло не так" : "Ваши образы ждут"}
                       </h3>
-                      <p className="text-sm text-gray-500 mb-6 max-w-[260px] mx-auto">
+                      <p className="text-sm text-muted-foreground mb-6 max-w-[260px] mx-auto">
                         {generationError ? "Попробуйте ещё раз — мы подберём для вас" : "Мы создадим подборки на основе вашего гардероба и стиля"}
                       </p>
                       <Button
                           onClick={handleGetRecommendations}
                           disabled={recommendationsLoading}
-                          className="h-12 px-8 rounded-2xl text-white border-0"
+                          className="h-12 px-8 rounded-2xl text-white border-0 shadow-md"
                           style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
                       >
                         <Sparkles className="h-4 w-4 mr-2" />
@@ -540,8 +540,8 @@ export default function HomePage() {
                             <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-3 fade-in" style={{ animationDelay: `${sectionIndex * 0.1}s` }}>
                               {/* Section Header */}
                               <div className="flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-gray-900 tracking-tight">{section.title || "Образы"}</h2>
-                                <span className="text-xs text-gray-400">
+                                <h2 className="text-lg font-semibold text-foreground tracking-tight">{section.title || "Образы"}</h2>
+                                <span className="text-xs text-muted-foreground">
                           {section.looks_count || section.suggestions.length} образов
                         </span>
                               </div>

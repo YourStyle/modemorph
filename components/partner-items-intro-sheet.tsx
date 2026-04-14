@@ -74,7 +74,7 @@ export function PartnerItemsIntroSheet({ sampleImages, shouldShow }: PartnerItem
           </span>
         </div>
 
-        <h2 className="text-xl font-bold text-gray-900 text-center mb-2">
+        <h2 className="text-xl font-bold text-foreground tracking-tight text-center mb-2">
           Вещи от наших партнёров
         </h2>
 

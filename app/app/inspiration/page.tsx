@@ -592,7 +592,7 @@ export default function InspirationPage(): ReactElement {
                 "px-2 pb-1 text-lg font-semibold transition-colors tracking-wide",
                 activeTab === "popular" ? "text-white" : "text-neutral-400 hover:text-white",
               )}
-              style={{ fontFamily: 'Inter, sans-serif' }}
+
               onClick={() => setActiveTab("popular")}
             >
               Популярные
@@ -603,7 +603,7 @@ export default function InspirationPage(): ReactElement {
                 "px-2 pb-1 text-lg font-semibold transition-colors tracking-wide",
                 activeTab === "liked" ? "text-white" : "text-neutral-400 hover:text-white",
               )}
-              style={{ fontFamily: 'Inter, sans-serif' }}
+
               onClick={() => setActiveTab("liked")}
             >
               Понравившиеся

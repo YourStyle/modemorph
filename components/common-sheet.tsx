@@ -84,13 +84,14 @@ export function CommonSheet({
       <SheetPortal>
         {/* Dark overlay like in subscription sheet */}
         <SheetPrimitive.Overlay
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
         />
         <SheetPrimitive.Content
           ref={contentRef}
           className={cn(
-            "fixed z-50 inset-x-0 bottom-0 h-[80vh] rounded-t-3xl border-0 p-0 bg-[#F9FAFB]",
-            "transition-all duration-300 overflow-hidden shadow-lg",
+            "fixed z-50 inset-x-0 bottom-0 h-[80vh] rounded-t-[28px] border-0 p-0 bg-background",
+            "transition-all duration-300 overflow-hidden",
+            "shadow-[0_-4px_24px_rgba(0,0,0,0.12),0_-1px_4px_rgba(0,0,0,0.04)]",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom"
           )}
@@ -105,14 +106,14 @@ export function CommonSheet({
         >
         {/* Drag handle */}
         <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
-          <div className="w-12 h-1 rounded-full bg-gray-300" />
+          <div className="w-10 h-1 rounded-full bg-foreground/15" />
         </div>
 
         {/* Кнопка сворачивания (если передана) */}
         {onMinimize && (
           <button
             onClick={onMinimize}
-            className="absolute top-4 right-16 p-2 rounded-full transition-colors z-10 text-[#101010] hover:bg-gray-200"
+            className="absolute top-4 right-16 p-2 rounded-full transition-all duration-200 z-10 text-foreground/60 hover:bg-secondary hover:text-foreground active:scale-95"
             aria-label="Свернуть в виджет"
           >
             <ChevronDown className="w-5 h-5" />
@@ -121,27 +122,20 @@ export function CommonSheet({
 
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full transition-colors z-10 text-[#101010] hover:bg-gray-200"
+          className="absolute top-4 right-4 p-2 rounded-full transition-all duration-200 z-10 text-foreground/60 hover:bg-secondary hover:text-foreground active:scale-95"
         >
           <X className="w-5 h-5" />
         </button>
 
         {title && (
           <SheetHeader className="px-6 pb-4">
-            <SheetTitle
-              className="text-left text-[#101010]"
-              style={{
-                fontFamily: 'Inter, sans-serif',
-                fontSize: '24px',
-                fontWeight: 600
-              }}
-            >
+            <SheetTitle className="text-left text-foreground text-2xl font-semibold tracking-tight">
               {title}
             </SheetTitle>
           </SheetHeader>
         )}
 
-        <div className={cn("px-6 pb-6 h-full overflow-y-auto text-[#101010]", !title && "pt-4")}>{children}</div>
+        <div className={cn("px-6 pb-6 h-full overflow-y-auto text-foreground", !title && "pt-4")}>{children}</div>
         </SheetPrimitive.Content>
       </SheetPortal>
     </Sheet>

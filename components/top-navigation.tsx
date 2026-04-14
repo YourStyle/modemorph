@@ -235,7 +235,7 @@ export function TopNavigation() {
     return (
       <>
         <div
-          className="fixed inset-x-0 top-0 z-40 bg-gray-50"
+          className="fixed inset-x-0 top-0 z-40 bg-background"
           style={{ height: "calc(env(safe-area-inset-top, 0px) + 70px)", pointerEvents: "auto" }}
         />
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
@@ -290,13 +290,13 @@ export function TopNavigation() {
   }
 
   return (
-    <div className="bg-white border-b border-gray-200 px-4 py-3">
+    <div className="bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-3">
       <div className="flex items-center justify-between">
         {/* Левая часть - Время и дата */}
         <div className="flex items-center space-x-4">
           <div className="text-left">
             <div className="flex items-center space-x-2">
-              <div className="text-sm font-medium text-gray-900">{currentDate}</div>
+              <div className="text-sm font-semibold text-foreground">{currentDate}</div>
               {/* Компактная погода на мобильных */}
               {weather && !weatherLoading && (
                 <div className="flex items-center space-x-1 sm:hidden">

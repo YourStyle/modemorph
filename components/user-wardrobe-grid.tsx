@@ -169,11 +169,11 @@ export function UserWardrobeGrid({
           <Camera className="w-9 h-9 text-white" />
         </div>
 
-        <h3 className="text-xl font-bold text-gray-900 mb-2">
+        <h3 className="text-xl font-bold text-foreground tracking-tight mb-2">
           Гардероб пустой
         </h3>
 
-        <p className="text-sm text-gray-500 mb-3 max-w-xs">
+        <p className="text-sm text-muted-foreground mb-3 max-w-xs">
           Сфотографируйте вещи, и AI распознает их за секунды — цвет, стиль, материал.
           Чем больше вещей — точнее образы от вашего персонального стилиста.
         </p>

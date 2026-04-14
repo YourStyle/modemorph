@@ -31,14 +31,13 @@ export function AnimatedLanding() {
           {/* Заголовок с анимацией */}
           <div className="space-y-4 lg:space-y-6">
             <h1
-              className="text-4xl lg:text-6xl font-bold text-gray-900 tracking-tight leading-tight animate-fade-in-up animation-delay-200"
-              style={{ fontFamily: "Inter, sans-serif" }}
+              className="text-4xl lg:text-6xl font-extrabold text-foreground tracking-tight leading-tight animate-fade-in-up animation-delay-200"
             >
               Mode Morph
             </h1>
 
             {/* Описание с анимацией */}
-            <p className="text-base lg:text-xl text-gray-600 leading-relaxed max-w-lg lg:max-w-2xl mx-auto animate-fade-in-up animation-delay-400">
+            <p className="text-base lg:text-xl text-muted-foreground leading-relaxed max-w-lg lg:max-w-2xl mx-auto animate-fade-in-up animation-delay-400">
               Создавайте стильные образы за секунды с помощью умного анализа вашего гардероба. Mode Morph поможет найти
               идеальные сочетания для любого случая.
             </p>

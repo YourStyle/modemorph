@@ -399,8 +399,8 @@ export default function WardrobePage() {
       <div className="px-4 py-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Гардероб</h1>
-          <p className="text-gray-600 text-sm">Управляйте своими вещами</p>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight mb-1">Гардероб</h1>
+          <p className="text-muted-foreground text-sm">Управляйте своими вещами</p>
         </div>
 
         {/* Style profile + Add button */}
@@ -423,37 +423,37 @@ export default function WardrobePage() {
         <div className="flex gap-3 mb-6">
           <Button
             onClick={handleAddToWardrobe}
-            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
+            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium shadow-md"
           >
             + Добавить
           </Button>
           <Button
             onClick={() => setStyleCheckOpen(true)}
             variant="outline"
-            className="h-12 rounded-2xl px-4 border-gray-200"
+            className="h-12 rounded-2xl px-4 border-border/50"
             style={{ background: "linear-gradient(to right, rgba(236,157,226,0.08), rgba(137,174,255,0.08))" }}
           >
             <Sparkles className="h-4 w-4 mr-1.5" style={{ color: "#A78BFA" }} />
-            <span className="text-sm">Подойдёт?</span>
+            <span className="text-sm font-medium">Подойдёт?</span>
           </Button>
         </div>
 
         {/* Фильтры и поиск */}
-        <div className="space-y-4 mb-6">
+        <div className="space-y-3 mb-6">
           {/* Поиск */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder="Поиск по названию вещи..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-white border-gray-200"
+              className="pl-10 bg-secondary/50 border-border/50 rounded-xl h-11"
             />
           </div>
 
           {/* Сортировка */}
           <Select value={sortBy} onValueChange={(value: "newest" | "oldest" | "name") => setSortBy(value)}>
-            <SelectTrigger className="w-48 bg-white border-gray-200">
+            <SelectTrigger className="w-48 bg-secondary/50 border-border/50 rounded-xl">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -466,7 +466,7 @@ export default function WardrobePage() {
 
         {/* User's Wardrobe */}
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Ваши вещи</h2>
+          <h2 className="text-lg font-semibold text-foreground tracking-tight mb-4">Ваши вещи</h2>
           {isLoadingUserItems ? (
             <UserWardrobeSkeleton />
           ) : (
@@ -482,7 +482,7 @@ export default function WardrobePage() {
 
         {/* Basic Items */}
         <div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Рекомендуемые базовые вещи</h2>
+          <h2 className="text-lg font-semibold text-foreground tracking-tight mb-4">Рекомендуемые базовые вещи</h2>
 
           {isLoadingBasicItems ? (
             <BasicItemsSkeleton />
