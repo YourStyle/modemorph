@@ -48,6 +48,8 @@ export interface VtonSession {
   resultUrl: string | null
   error: string | null
   saved: boolean
+  /** Override avatar URL for this try-on session (uses profile avatar if null). */
+  avatarUrl: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -88,6 +90,8 @@ interface TryOnContextType {
   saveTryOn: () => Promise<void>
   /** Destroys the active session entirely. */
   clearSession: () => void
+  /** Set the avatar URL to use for the current try-on session. */
+  setSessionAvatarUrl: (url: string | null) => void
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +216,7 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
         resultUrl: null,
         error: null,
         saved: false,
+        avatarUrl: null,
       }
       setSession(newSession)
       setSheetOpen(true)
@@ -301,7 +306,11 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
           material: item.material,
           image_url: item.image_url,
         }))
-        const response = await api.post("/api/vton", { items: vtonItems, requestId })
+        const payload: Record<string, unknown> = { items: vtonItems, requestId }
+        if (sessionRef.current?.avatarUrl) {
+          payload.avatar_url = sessionRef.current.avatarUrl
+        }
+        const response = await api.post("/api/vton", payload)
 
         stopProgressTimer()
         confirmingRef.current = false
@@ -384,6 +393,10 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
     updateSession({ saved: true })
   }, [session, updateSession])
 
+  const setSessionAvatarUrl = useCallback((url: string | null) => {
+    setSession((prev) => (prev ? { ...prev, avatarUrl: url } : prev))
+  }, [])
+
   const clearSession = useCallback(() => {
     stopProgressTimer()
     confirmingRef.current = false
@@ -408,6 +421,7 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
         minimizeSession,
         saveTryOn,
         clearSession,
+        setSessionAvatarUrl,
       }}
     >
       {children}

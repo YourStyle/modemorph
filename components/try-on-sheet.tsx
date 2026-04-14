@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import Image from "next/image"
-import { Sparkles, Share2, Bookmark, BookmarkCheck, AlertCircle, ChevronDown } from "lucide-react"
+import { Sparkles, Share2, Bookmark, BookmarkCheck, AlertCircle, ChevronDown, Camera, Check } from "lucide-react"
 import { toast } from "sonner"
 
 import { CommonSheet } from "@/components/common-sheet"
@@ -10,6 +10,7 @@ import { SubscriptionSheet } from "@/components/subscription-sheet"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import { useTryOn } from "@/contexts/try-on-context"
 import { api } from "@/lib/api-client"
+import { normalizeImageFile } from "@/lib/image-normalize"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 // ---------------------------------------------------------------------------
@@ -267,6 +268,251 @@ const LoadingExperience = ({ showGame, setShowGame, progress }: LoadingExperienc
 }
 
 // ---------------------------------------------------------------------------
+// Avatar picker for try-on
+// ---------------------------------------------------------------------------
+
+interface AvatarOption {
+  id: string | number
+  url: string
+  isPrimary?: boolean
+  isNew?: boolean
+}
+
+interface AvatarPickerProps {
+  selectedUrl: string | null
+  onSelect: (url: string | null) => void
+}
+
+const AvatarPicker = ({ selectedUrl, onSelect }: AvatarPickerProps) => {
+  const [avatars, setAvatars] = useState<AvatarOption[]>([])
+  const [currentAvatarUrl, setCurrentAvatarUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [newPhotoUrl, setNewPhotoUrl] = useState<string | null>(null)
+  const [setAsAvatar, setSetAsAvatar] = useState(true)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      try {
+        const [profileData, avatarList] = await Promise.all([
+          api.get("/api/me/profile-session"),
+          api.get("/api/me/avatars"),
+        ])
+
+        if (cancelled) return
+
+        const profileAvatarUrl = profileData?.profile?.avatar_url || null
+        setCurrentAvatarUrl(profileAvatarUrl)
+
+        // Build avatar options: current first, then history (excluding current)
+        const options: AvatarOption[] = []
+        if (profileAvatarUrl) {
+          options.push({ id: "current", url: profileAvatarUrl, isPrimary: true })
+        }
+
+        const historyAvatars = Array.isArray(avatarList) ? avatarList : []
+        for (const a of historyAvatars) {
+          if (a.url && a.url !== profileAvatarUrl) {
+            options.push({ id: a.id, url: a.url })
+          }
+        }
+
+        setAvatars(options)
+
+        // Auto-select current avatar if nothing selected yet
+        if (!selectedUrl && profileAvatarUrl) {
+          onSelect(profileAvatarUrl)
+        }
+      } catch {
+        // Silently fail — user can still proceed
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setUploading(true)
+    try {
+      let normalized = await normalizeImageFile(file, {
+        maxWidth: 1024,
+        output: "image/jpeg",
+        quality: 0.9,
+      })
+
+      if (normalized.size > 5 * 1024 * 1024) {
+        normalized = await normalizeImageFile(normalized, {
+          maxWidth: 1024,
+          output: "image/jpeg",
+          quality: 0.8,
+        })
+      }
+
+      const fd = new FormData()
+      fd.append("file", normalized, normalized.name)
+      fd.append("folder", "avatars")
+
+      const result = await api.post("/api/upload-to-yandex", fd, { headers: {} })
+      if (!result.success) throw new Error(result.error || "Upload failed")
+
+      const url = result.url as string
+      setNewPhotoUrl(url)
+
+      // Add to avatar list and select it
+      setAvatars((prev) => [{ id: "new", url, isNew: true }, ...prev])
+      onSelect(url)
+
+      // If "set as avatar" is checked (default), immediately save as primary avatar
+      if (setAsAvatar) {
+        try {
+          if (currentAvatarUrl) {
+            await api.post("/api/me/avatars", { url: currentAvatarUrl }).catch(() => {})
+          }
+          await api.post("/api/me/profile-session", { avatar_url: url })
+          window.dispatchEvent(new CustomEvent("profile:avatar-updated", { detail: { avatar_url: url } }))
+          setCurrentAvatarUrl(url)
+          toast.success("Аватар обновлён")
+        } catch {
+          // Non-critical — photo is still selected for try-on
+        }
+      } else {
+        // Just add to collection
+        await api.post("/api/me/avatars", { url }).catch(() => {})
+      }
+    } catch (err: any) {
+      toast.error(`Ошибка загрузки фото: ${err?.message || "Неизвестная ошибка"}`)
+    } finally {
+      setUploading(false)
+      if (cameraInputRef.current) cameraInputRef.current.value = ""
+      if (fileInputRef.current) fileInputRef.current.value = ""
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-3 py-2">
+        <div className="w-16 h-16 rounded-full bg-gray-100 animate-pulse" />
+        <div className="w-12 h-12 rounded-full bg-gray-100 animate-pulse" />
+        <div className="w-12 h-12 rounded-full bg-gray-100 animate-pulse" />
+      </div>
+    )
+  }
+
+  const effectiveSelected = selectedUrl || currentAvatarUrl
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium text-[#101010]/60">Ваше фото для примерки</p>
+
+      <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-none">
+        {/* Camera button */}
+        <button
+          type="button"
+          onClick={() => cameraInputRef.current?.click()}
+          disabled={uploading}
+          className="flex-shrink-0 w-16 h-16 rounded-full border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-purple-300 hover:text-purple-400 transition-colors"
+        >
+          {uploading ? (
+            <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <>
+              <Camera className="w-5 h-5" />
+              <span className="text-[8px] leading-none">Фото</span>
+            </>
+          )}
+        </button>
+
+        {/* Hidden camera input (front camera on mobile) */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="user"
+          onChange={handleCapture}
+          className="hidden"
+        />
+
+        {/* Hidden file input (gallery fallback) */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/heic,image/heif,image/jpeg,image/jpg,image/webp,image/png,image/*"
+          onChange={handleCapture}
+          className="hidden"
+        />
+
+        {/* Avatar options */}
+        {avatars.map((avatar) => (
+          <button
+            key={avatar.id}
+            type="button"
+            onClick={() => onSelect(avatar.url)}
+            className={`flex-shrink-0 relative rounded-full overflow-hidden transition-all ${
+              avatar.url === effectiveSelected
+                ? "ring-2 ring-offset-2 ring-purple-400 w-16 h-16"
+                : "w-12 h-12 opacity-70 hover:opacity-100"
+            }`}
+          >
+            <Image
+              src={avatar.url}
+              alt="Аватар"
+              fill
+              className="object-cover"
+              sizes="64px"
+            />
+            {avatar.url === effectiveSelected && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                <Check className="w-4 h-4 text-white" />
+              </div>
+            )}
+            {avatar.isPrimary && avatar.url !== effectiveSelected && (
+              <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[7px] text-center py-0.5">
+                Текущий
+              </div>
+            )}
+          </button>
+        ))}
+
+        {/* Gallery button if no avatars yet */}
+        {avatars.length === 0 && !uploading && (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-shrink-0 w-16 h-16 rounded-full border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-0.5 text-gray-400"
+          >
+            <span className="text-lg">📷</span>
+            <span className="text-[8px] leading-none">Галерея</span>
+          </button>
+        )}
+      </div>
+
+      {/* "Set as avatar" checkbox for newly captured photo */}
+      {newPhotoUrl && (
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={setAsAvatar}
+            onChange={(e) => setSetAsAvatar(e.target.checked)}
+            className="w-4 h-4 rounded border-gray-300 text-purple-500 focus:ring-purple-400"
+          />
+          <span className="text-xs text-[#101010]/70">Использовать как новый аватар</span>
+        </label>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Share helper
 // ---------------------------------------------------------------------------
 
@@ -319,7 +565,7 @@ async function shareResult(resultUrl: string, title: string) {
  * <TryOnSheet />
  */
 export function TryOnSheet() {
-  const { session, sheetOpen, setSheetOpen, confirmTryOn, minimizeSession, saveTryOn, clearSession } = useTryOn()
+  const { session, sheetOpen, setSheetOpen, confirmTryOn, minimizeSession, saveTryOn, clearSession, setSessionAvatarUrl } = useTryOn()
 
   const [showPaywall, setShowPaywall] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -498,28 +744,19 @@ export function TryOnSheet() {
               <div className="flex flex-col gap-5 pb-6">
                 {/* Description */}
                 <p className="text-sm text-[#101010]/70 leading-relaxed">
-                  Примерим этот образ на вас? AI создаст фото с вашим аватаром.
+                  Примерим этот образ на вас? Выберите фото или сделайте новое.
                 </p>
 
-                {/* Requirements */}
-                <ul className="space-y-2">
-                  {[
-                    "Убедитесь, что загружен аватар",
-                    "Примерка займёт 30–60 секунд",
-                  ].map((req) => (
-                    <li key={req} className="flex items-start gap-2 text-sm text-[#101010]/80">
-                      <span
-                        className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center"
-                        style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-                      >
-                        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                          <path d="M1.5 4L3.5 6L6.5 2" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                        </svg>
-                      </span>
-                      {req}
-                    </li>
-                  ))}
-                </ul>
+                {/* Avatar picker */}
+                <AvatarPicker
+                  selectedUrl={session?.avatarUrl ?? null}
+                  onSelect={setSessionAvatarUrl}
+                />
+
+                {/* Info */}
+                <p className="text-xs text-[#101010]/50 leading-relaxed">
+                  Примерка займёт 30–60 секунд
+                </p>
 
                 {/* Outfit title + item cards */}
                 {session?.suggestion?.title && (
