@@ -126,6 +126,192 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
                  "outfit_saved": r["outfit_saved"], "ai_assistant_used": r["ai_assistant_used"]}
                 for r in timeline_rows]
 
+    # ── Revenue ──
+    # MRR: active monthly subs + yearly subs / 12
+    mrr_monthly = await scalar("""
+        SELECT COALESCE(SUM(p.amount), 0) FROM payments p
+        JOIN user_subscriptions us ON us.user_profile_id = (
+            SELECT id FROM user_profiles WHERE user_id = p.user_id
+        )
+        WHERE p.status = 'paid' AND p.meta->>'action' = 'subscribe'
+        AND p.meta->>'type' = 'monthly'
+        AND us.status = 'active' AND us.expires_at > NOW()
+    """)
+    mrr_yearly = await scalar("""
+        SELECT COALESCE(SUM(p.amount / 12.0), 0) FROM payments p
+        JOIN user_subscriptions us ON us.user_profile_id = (
+            SELECT id FROM user_profiles WHERE user_id = p.user_id
+        )
+        WHERE p.status = 'paid' AND p.meta->>'action' = 'subscribe'
+        AND p.meta->>'type' = 'yearly'
+        AND us.status = 'active' AND us.expires_at > NOW()
+    """)
+    mrr = round(float(mrr_monthly) + float(mrr_yearly), 0)
+
+    total_revenue = await scalar("SELECT COALESCE(SUM(amount), 0) FROM payments WHERE status = 'paid'")
+    total_revenue = float(total_revenue)
+    paying_count = await scalar("SELECT count(DISTINCT user_id) FROM payments WHERE status = 'paid'")
+
+    arpu = round(total_revenue / max(total_users, 1), 1)
+    arppu = round(total_revenue / max(paying_count, 1), 1)
+
+    # LTV estimate: ARPPU × avg subscription lifetime in months
+    avg_lifetime_months = await scalar("""
+        SELECT COALESCE(
+            AVG(EXTRACT(EPOCH FROM (LEAST(expires_at, NOW()) - start_date)) / 2592000.0),
+            1.0
+        ) FROM user_subscriptions WHERE start_date IS NOT NULL
+    """)
+    avg_lifetime_months = max(float(avg_lifetime_months), 1.0)
+    ltv = round(arppu * avg_lifetime_months, 0)
+
+    # Churn rate: expired subs in last 30 days / total subs that existed
+    churned = await scalar("""
+        SELECT count(*) FROM user_subscriptions
+        WHERE expires_at BETWEEN NOW() - INTERVAL '30 days' AND NOW()
+        AND status != 'active'
+    """)
+    total_subs_ever = await scalar("SELECT count(*) FROM user_subscriptions") or 1
+    churn_rate = round(churned / max(total_subs_ever, 1) * 100, 1)
+
+    # ── Stickiness ──
+    stickiness = round(dau / max(mau, 1) * 100, 1) if mau else 0
+    # Avg days active per user in last 30 days
+    avg_days_active = await scalar("""
+        SELECT COALESCE(AVG(days), 0) FROM (
+            SELECT user_profile_id, count(DISTINCT activity_date) as days
+            FROM daily_user_activity
+            WHERE activity_date >= CURRENT_DATE - 30
+            GROUP BY user_profile_id
+        ) sub
+    """)
+    avg_days_active = round(float(avg_days_active), 1)
+
+    # ── Cohort Retention (by registration week, last 12 weeks) ──
+    cohort_rows = await rows("""
+        WITH cohorts AS (
+            SELECT
+                up.id as profile_id,
+                DATE_TRUNC('week', up.created_at)::date as cohort_week,
+                up.created_at
+            FROM user_profiles up
+            WHERE up.created_at >= NOW() - INTERVAL '12 weeks'
+        ),
+        activity AS (
+            SELECT
+                c.cohort_week,
+                count(DISTINCT c.profile_id) as cohort_size,
+                count(DISTINCT c.profile_id) FILTER (
+                    WHERE EXISTS (SELECT 1 FROM daily_user_activity d WHERE d.user_profile_id = c.profile_id
+                        AND d.activity_date BETWEEN DATE(c.created_at) + 1 AND DATE(c.created_at) + 7)
+                ) as week_1,
+                count(DISTINCT c.profile_id) FILTER (
+                    WHERE EXISTS (SELECT 1 FROM daily_user_activity d WHERE d.user_profile_id = c.profile_id
+                        AND d.activity_date BETWEEN DATE(c.created_at) + 8 AND DATE(c.created_at) + 14)
+                ) as week_2,
+                count(DISTINCT c.profile_id) FILTER (
+                    WHERE EXISTS (SELECT 1 FROM daily_user_activity d WHERE d.user_profile_id = c.profile_id
+                        AND d.activity_date BETWEEN DATE(c.created_at) + 15 AND DATE(c.created_at) + 21)
+                ) as week_3,
+                count(DISTINCT c.profile_id) FILTER (
+                    WHERE EXISTS (SELECT 1 FROM daily_user_activity d WHERE d.user_profile_id = c.profile_id
+                        AND d.activity_date BETWEEN DATE(c.created_at) + 22 AND DATE(c.created_at) + 28)
+                ) as week_4
+            FROM cohorts c
+            GROUP BY c.cohort_week
+            ORDER BY c.cohort_week
+        )
+        SELECT * FROM activity
+    """)
+    cohort_retention = [{
+        "week": str(r["cohort_week"]),
+        "cohort_size": r["cohort_size"],
+        "week_1": r["week_1"],
+        "week_2": r["week_2"],
+        "week_3": r["week_3"],
+        "week_4": r["week_4"],
+        "week_1_pct": round(r["week_1"] / max(r["cohort_size"], 1) * 100, 1),
+        "week_2_pct": round(r["week_2"] / max(r["cohort_size"], 1) * 100, 1),
+        "week_3_pct": round(r["week_3"] / max(r["cohort_size"], 1) * 100, 1),
+        "week_4_pct": round(r["week_4"] / max(r["cohort_size"], 1) * 100, 1),
+    } for r in cohort_rows]
+
+    # ── Activation Analysis ──
+    # For each key action, calculate D7 retention of users who did it vs. didn't
+    activation_actions = [
+        ("first_item", "wardrobe_user_items", "user_id"),
+        ("first_outfit", "outfits", "user_id"),
+        ("first_look_saved", "user_looks", "user_id"),
+    ]
+    activation = []
+    for label, table, uid_col in activation_actions:
+        did_action = await rows(f"""
+            SELECT
+                count(DISTINCT up.id) as total,
+                count(DISTINCT up.id) FILTER (
+                    WHERE EXISTS (SELECT 1 FROM daily_user_activity d
+                        WHERE d.user_profile_id = up.id
+                        AND d.activity_date BETWEEN DATE(up.created_at) + 1 AND DATE(up.created_at) + 7)
+                ) as retained
+            FROM user_profiles up
+            WHERE up.created_at <= NOW() - INTERVAL '7 days'
+            AND EXISTS (SELECT 1 FROM {table} t WHERE t.{uid_col} = up.user_id)
+        """)
+        didnt_action = await rows(f"""
+            SELECT
+                count(DISTINCT up.id) as total,
+                count(DISTINCT up.id) FILTER (
+                    WHERE EXISTS (SELECT 1 FROM daily_user_activity d
+                        WHERE d.user_profile_id = up.id
+                        AND d.activity_date BETWEEN DATE(up.created_at) + 1 AND DATE(up.created_at) + 7)
+                ) as retained
+            FROM user_profiles up
+            WHERE up.created_at <= NOW() - INTERVAL '7 days'
+            AND NOT EXISTS (SELECT 1 FROM {table} t WHERE t.{uid_col} = up.user_id)
+        """)
+        did = did_action[0] if did_action else {"total": 0, "retained": 0}
+        didnt = didnt_action[0] if didnt_action else {"total": 0, "retained": 0}
+        activation.append({
+            "action": label,
+            "did_total": did["total"],
+            "did_retained": did["retained"],
+            "did_retention_pct": round(did["retained"] / max(did["total"], 1) * 100, 1),
+            "didnt_total": didnt["total"],
+            "didnt_retained": didnt["retained"],
+            "didnt_retention_pct": round(didnt["retained"] / max(didnt["total"], 1) * 100, 1),
+        })
+
+    # ── Time to Value ──
+    ttv_first_item = await scalar("""
+        SELECT COALESCE(
+            EXTRACT(EPOCH FROM AVG(first_item_at - up.created_at)) / 3600.0, 0
+        )
+        FROM user_profiles up
+        JOIN (SELECT user_id, MIN(created_at) as first_item_at FROM wardrobe_user_items GROUP BY user_id) wi
+        ON wi.user_id = up.user_id
+    """)
+    ttv_first_outfit = await scalar("""
+        SELECT COALESCE(
+            EXTRACT(EPOCH FROM AVG(first_outfit_at - up.created_at)) / 3600.0, 0
+        )
+        FROM user_profiles up
+        JOIN (SELECT user_id, MIN(created_at) as first_outfit_at FROM user_looks GROUP BY user_id) ul
+        ON ul.user_id = up.user_id
+    """)
+    # Median (approximated via percentile)
+    ttv_median_item = await scalar("""
+        SELECT COALESCE(
+            EXTRACT(EPOCH FROM PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY wi.first_item_at - up.created_at)) / 3600.0, 0
+        )
+        FROM user_profiles up
+        JOIN (SELECT user_id, MIN(created_at) as first_item_at FROM wardrobe_user_items GROUP BY user_id) wi
+        ON wi.user_id = up.user_id
+    """)
+
+    # ── DAU/MAU for stickiness (reuse from /metrics if available) ──
+    dau_val = await scalar("SELECT count(DISTINCT user_profile_id) FROM daily_user_activity WHERE activity_date = CURRENT_DATE")
+    mau_val = await scalar("SELECT count(DISTINCT user_profile_id) FROM daily_user_activity WHERE activity_date >= CURRENT_DATE - 30")
+
     return {
         "onboarding": {
             "users_with_first_item": users_with_first_item,
@@ -168,6 +354,29 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
         },
         "funnel": funnel,
         "timeline": timeline,
+        "revenue": {
+            "mrr": mrr,
+            "total_revenue": total_revenue,
+            "arpu": arpu,
+            "arppu": arppu,
+            "ltv": ltv,
+            "paying_users": paying_count,
+            "churn_rate": churn_rate,
+            "avg_lifetime_months": round(avg_lifetime_months, 1),
+        },
+        "stickiness": {
+            "dau": dau_val,
+            "mau": mau_val,
+            "ratio": stickiness,
+            "avg_days_active": avg_days_active,
+        },
+        "cohortRetention": cohort_retention,
+        "activation": activation,
+        "timeToValue": {
+            "avg_to_first_item_hours": round(float(ttv_first_item), 1),
+            "avg_to_first_outfit_hours": round(float(ttv_first_outfit), 1),
+            "median_to_first_item_hours": round(float(ttv_median_item), 1),
+        },
     }
 
 

@@ -61,6 +61,48 @@ interface AnalyticsData {
     outfit_saved: number
     ai_assistant_used: number
   }>
+  revenue: {
+    mrr: number
+    total_revenue: number
+    arpu: number
+    arppu: number
+    ltv: number
+    paying_users: number
+    churn_rate: number
+    avg_lifetime_months: number
+  }
+  stickiness: {
+    dau: number
+    mau: number
+    ratio: number
+    avg_days_active: number
+  }
+  cohortRetention: Array<{
+    week: string
+    cohort_size: number
+    week_1: number
+    week_2: number
+    week_3: number
+    week_4: number
+    week_1_pct: number
+    week_2_pct: number
+    week_3_pct: number
+    week_4_pct: number
+  }>
+  activation: Array<{
+    action: string
+    did_total: number
+    did_retained: number
+    did_retention_pct: number
+    didnt_total: number
+    didnt_retained: number
+    didnt_retention_pct: number
+  }>
+  timeToValue: {
+    avg_to_first_item_hours: number
+    avg_to_first_outfit_hours: number
+    median_to_first_item_hours: number
+  }
 }
 
 interface PayingUser {
@@ -167,6 +209,27 @@ export default function AnalyticsPage() {
       ["Конверсия", `${data.monetization.conversion_rate}%`],
       ["Premium пользователей", data.monetization.premium_users],
       ["Premium функций использовано", data.monetization.premium_feature_uses],
+      ["", ""],
+      ["=== ЮНИТ-ЭКОНОМИКА ===", ""],
+      ["MRR", `${data.revenue.mrr} ₽`],
+      ["Общая выручка", `${data.revenue.total_revenue} ₽`],
+      ["ARPU", `${data.revenue.arpu} ₽`],
+      ["ARPPU", `${data.revenue.arppu} ₽`],
+      ["LTV", `${data.revenue.ltv} ₽`],
+      ["Платящих пользователей", data.revenue.paying_users],
+      ["Churn Rate", `${data.revenue.churn_rate}%`],
+      ["Ср. время подписки", `${data.revenue.avg_lifetime_months} мес.`],
+      ["", ""],
+      ["=== STICKINESS ===", ""],
+      ["DAU", data.stickiness.dau],
+      ["MAU", data.stickiness.mau],
+      ["DAU/MAU", `${data.stickiness.ratio}%`],
+      ["Ср. дней активности / 30 дней", data.stickiness.avg_days_active],
+      ["", ""],
+      ["=== TIME TO VALUE ===", ""],
+      ["Среднее до первой вещи", `${data.timeToValue.avg_to_first_item_hours} ч`],
+      ["Медиана до первой вещи", `${data.timeToValue.median_to_first_item_hours} ч`],
+      ["Среднее до первого образа", `${data.timeToValue.avg_to_first_outfit_hours} ч`],
     ]
     const ws1 = XLSX.utils.aoa_to_sheet(summaryData)
     XLSX.utils.book_append_sheet(wb, ws1, "Сводка")
@@ -189,6 +252,33 @@ export default function AnalyticsPage() {
     ]
     const ws3 = XLSX.utils.aoa_to_sheet(timelineData)
     XLSX.utils.book_append_sheet(wb, ws3, "Динамика")
+
+    // Sheet 4: Cohort Retention
+    if (data.cohortRetention?.length) {
+      const cohortData = [
+        ["Неделя", "Когорта", "W1 %", "W1", "W2 %", "W2", "W3 %", "W3", "W4 %", "W4"],
+        ...data.cohortRetention.map((c) => [
+          c.week, c.cohort_size,
+          c.week_1_pct, c.week_1, c.week_2_pct, c.week_2, c.week_3_pct, c.week_3, c.week_4_pct, c.week_4,
+        ]),
+      ]
+      const ws4 = XLSX.utils.aoa_to_sheet(cohortData)
+      XLSX.utils.book_append_sheet(wb, ws4, "Когорты")
+    }
+
+    // Sheet 5: Activation
+    if (data.activation?.length) {
+      const activationData = [
+        ["Действие", "Сделали", "D7 retention %", "Не сделали", "D7 retention %", "Разница pp"],
+        ...data.activation.map((a) => [
+          a.action, a.did_total, a.did_retention_pct,
+          a.didnt_total, a.didnt_retention_pct,
+          +(a.did_retention_pct - a.didnt_retention_pct).toFixed(1),
+        ]),
+      ]
+      const ws5 = XLSX.utils.aoa_to_sheet(activationData)
+      XLSX.utils.book_append_sheet(wb, ws5, "Activation")
+    }
 
     // Export
     const date = new Date().toISOString().split("T")[0]
@@ -505,6 +595,268 @@ export default function AnalyticsPage() {
           </Card>
         </div>
       </div>
+
+      {/* Revenue / Unit Economics */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <DollarSign className="h-5 w-5 text-green-600" />
+          Юнит-экономика
+        </h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">MRR</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.revenue.mrr.toLocaleString("ru")} &#8381;</div>
+              <p className="text-xs text-muted-foreground mt-1">Monthly Recurring Revenue</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">ARPU</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.revenue.arpu.toLocaleString("ru")} &#8381;</div>
+              <p className="text-xs text-muted-foreground mt-1">Выручка / все пользователи</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">ARPPU</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.revenue.arppu.toLocaleString("ru")} &#8381;</div>
+              <p className="text-xs text-muted-foreground mt-1">Выручка / платящие ({data.revenue.paying_users})</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">LTV</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.revenue.ltv.toLocaleString("ru")} &#8381;</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                ARPPU x {data.revenue.avg_lifetime_months} мес.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3 mt-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Общая выручка</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.revenue.total_revenue.toLocaleString("ru")} &#8381;</div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Churn Rate</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.revenue.churn_rate}%</div>
+              <p className="text-xs text-muted-foreground mt-1">Отток за 30 дней</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Ср. время подписки</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.revenue.avg_lifetime_months} мес.</div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Stickiness + Time to Value */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-blue-600" />
+            Stickiness (DAU/MAU)
+          </h2>
+          <div className="grid gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">DAU / MAU</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-4xl font-bold">{data.stickiness.ratio}%</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {data.stickiness.dau} DAU / {data.stickiness.mau} MAU
+                </p>
+                <div className="mt-3 w-full bg-gray-100 rounded-full h-3">
+                  <div
+                    className="h-3 rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(data.stickiness.ratio, 100)}%`,
+                      backgroundColor: data.stickiness.ratio >= 20 ? "#10b981" : data.stickiness.ratio >= 10 ? "#f59e0b" : "#ef4444",
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {data.stickiness.ratio >= 20 ? "Отлично (20%+)" : data.stickiness.ratio >= 10 ? "Нормально (10-20%)" : "Нужно улучшать (<10%)"}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Ср. дней активности</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{data.stickiness.avg_days_active}</div>
+                <p className="text-xs text-muted-foreground mt-1">За последние 30 дней на пользователя</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <Zap className="h-5 w-5 text-orange-500" />
+            Time to Value
+          </h2>
+          <div className="grid gap-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">До первой вещи</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {data.timeToValue.avg_to_first_item_hours < 1
+                    ? `${Math.round(data.timeToValue.avg_to_first_item_hours * 60)} мин`
+                    : `${data.timeToValue.avg_to_first_item_hours} ч`}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Среднее (медиана: {data.timeToValue.median_to_first_item_hours < 1
+                    ? `${Math.round(data.timeToValue.median_to_first_item_hours * 60)} мин`
+                    : `${data.timeToValue.median_to_first_item_hours} ч`})
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">До первого образа</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {data.timeToValue.avg_to_first_outfit_hours < 1
+                    ? `${Math.round(data.timeToValue.avg_to_first_outfit_hours * 60)} мин`
+                    : data.timeToValue.avg_to_first_outfit_hours < 24
+                      ? `${data.timeToValue.avg_to_first_outfit_hours} ч`
+                      : `${Math.round(data.timeToValue.avg_to_first_outfit_hours / 24)} дн`}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Среднее время от регистрации</p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Cohort Retention Table */}
+      {data.cohortRetention && data.cohortRetention.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Когортный Retention</CardTitle>
+            <CardDescription>По неделе регистрации — % вернувшихся на неделе N</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Неделя</TableHead>
+                  <TableHead className="text-center">Когорта</TableHead>
+                  <TableHead className="text-center">W1</TableHead>
+                  <TableHead className="text-center">W2</TableHead>
+                  <TableHead className="text-center">W3</TableHead>
+                  <TableHead className="text-center">W4</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.cohortRetention.map((c) => (
+                  <TableRow key={c.week}>
+                    <TableCell className="font-medium text-sm">
+                      {new Date(c.week).toLocaleDateString("ru", { day: "numeric", month: "short" })}
+                    </TableCell>
+                    <TableCell className="text-center font-bold">{c.cohort_size}</TableCell>
+                    {[c.week_1_pct, c.week_2_pct, c.week_3_pct, c.week_4_pct].map((pct, i) => (
+                      <TableCell key={i} className="text-center">
+                        <span
+                          className="inline-block px-2 py-0.5 rounded text-xs font-medium"
+                          style={{
+                            backgroundColor: pct === 0 ? "#f3f4f6" : `rgba(16, 185, 129, ${Math.min(pct / 100, 0.8) + 0.1})`,
+                            color: pct >= 30 ? "white" : pct > 0 ? "#065f46" : "#9ca3af",
+                          }}
+                        >
+                          {pct}%
+                        </span>
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Activation Analysis */}
+      {data.activation && data.activation.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Activation: что предсказывает retention?</CardTitle>
+            <CardDescription>D7 retention для пользователей, которые сделали / не сделали действие</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Действие</TableHead>
+                  <TableHead className="text-center">Сделали</TableHead>
+                  <TableHead className="text-center">D7 retention</TableHead>
+                  <TableHead className="text-center">Не сделали</TableHead>
+                  <TableHead className="text-center">D7 retention</TableHead>
+                  <TableHead className="text-center">Разница</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.activation.map((a) => {
+                  const diff = a.did_retention_pct - a.didnt_retention_pct
+                  const actionLabels: Record<string, string> = {
+                    first_item: "Добавили вещь",
+                    first_outfit: "Создали образ",
+                    first_look_saved: "Сохранили look",
+                  }
+                  return (
+                    <TableRow key={a.action}>
+                      <TableCell className="font-medium">{actionLabels[a.action] || a.action}</TableCell>
+                      <TableCell className="text-center">{a.did_total}</TableCell>
+                      <TableCell className="text-center">
+                        <span className="font-bold text-green-600">{a.did_retention_pct}%</span>
+                      </TableCell>
+                      <TableCell className="text-center">{a.didnt_total}</TableCell>
+                      <TableCell className="text-center">
+                        <span className="font-bold text-red-500">{a.didnt_retention_pct}%</span>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant={diff > 10 ? "default" : "secondary"} className={diff > 10 ? "bg-green-600" : ""}>
+                          {diff > 0 ? "+" : ""}{diff.toFixed(1)}pp
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Conversion Funnel */}
       <Card>
