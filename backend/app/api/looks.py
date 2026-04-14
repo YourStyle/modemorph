@@ -51,7 +51,7 @@ async def get_user_looks(user: dict = Depends(get_current_user), db: AsyncSessio
 
     if all_basic_ids:
         bi_result = await db.execute(
-            text("SELECT id, item_name, name_ru, image_url, color, material FROM wardrobe_items WHERE id = ANY(:ids)"),
+            text("SELECT id, item_name, image_url, color, material FROM wardrobe_items WHERE id = ANY(:ids)"),
             {"ids": list(all_basic_ids)},
         )
         for r in bi_result.mappings().all():
