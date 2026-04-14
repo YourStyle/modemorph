@@ -371,42 +371,43 @@ export default function AIAssistantPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-gray-50">
+    <div className="flex flex-col h-screen overflow-hidden bg-background">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-4">
+      <div className="bg-background/80 backdrop-blur-xl border-b border-border/50 p-4">
         <div className="flex items-center space-x-3">
-          <div className="bg-gradient-to-r from-purple-500 to-pink-500 rounded-full p-2">
-            <Sparkles className="h-6 w-6 text-white" />
+          <div className="rounded-2xl p-2.5 shadow-sm" style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}>
+            <Sparkles className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-gray-900">ИИ-Стилист</h1>
-            <p className="text-sm text-gray-500">Подбор образов и анализ фото</p>
+            <h1 className="text-lg font-semibold text-foreground tracking-tight">ИИ-Стилист</h1>
+            <p className="text-xs text-muted-foreground">Подбор образов и анализ фото</p>
           </div>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 pb-56">
+      <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-56">
         {messages.map((message, index) => (
-          <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+          <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} fade-in`}>
             <div
-              className={`flex space-x-3 max-w-3xl ${message.role === "user" ? "flex-row-reverse space-x-reverse" : ""}`}
+              className={`flex space-x-2.5 max-w-[85%] ${message.role === "user" ? "flex-row-reverse space-x-reverse" : ""}`}
             >
-              <Avatar className="h-8 w-8 flex-shrink-0">
+              <Avatar className="h-7 w-7 flex-shrink-0 shadow-sm">
                 <AvatarFallback
-                  className={message.role === "user" ? "bg-blue-500 text-white" : "bg-purple-500 text-white"}
+                  className={message.role === "user" ? "bg-gray-900 text-white text-xs" : "text-white text-xs"}
+                  style={message.role !== "user" ? { background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" } : undefined}
                 >
                   {message.role === "user" ? "Вы" : "ИИ"}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                <Card className={message.role === "user" ? "bg-blue-500 text-white" : "bg-white"}>
-                  <CardContent className="p-3">
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                <Card className={message.role === "user" ? "bg-gray-900 text-white shadow-sm" : "bg-white shadow-sm"}>
+                  <CardContent className="p-3.5">
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
                     {message.outfit && (
-                      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-semibold text-gray-900">{message.outfit.title}</h4>
+                      <div className="mt-4 p-4 bg-gray-50 rounded-2xl">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-semibold text-gray-900 text-sm">{message.outfit.title}</h4>
                           <Button
                             size="sm"
                             variant="outline"
@@ -417,11 +418,11 @@ export default function AIAssistantPage() {
                             Сохранить
                           </Button>
                         </div>
-                        <p className="text-sm text-gray-600 mb-3">{message.outfit.description}</p>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        <p className="text-xs text-gray-500 mb-3">{message.outfit.description}</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                           {message.outfit.items.map((item) => (
                             <div key={item.id} className="text-center">
-                              <div className="aspect-square bg-gray-200 rounded-lg mb-2 overflow-hidden">
+                              <div className="aspect-square bg-white rounded-xl mb-2 overflow-hidden shadow-sm">
                                 <img
                                   src={item.image_url || "/placeholder.svg"}
                                   alt={item.name}
@@ -446,16 +447,20 @@ export default function AIAssistantPage() {
         ))}
 
         {isLoading && (
-          <div className="flex justify-start">
-            <div className="flex space-x-3 max-w-3xl">
-              <Avatar className="h-8 w-8 flex-shrink-0">
-                <AvatarFallback className="bg-purple-500 text-white">ИИ</AvatarFallback>
+          <div className="flex justify-start fade-in">
+            <div className="flex space-x-2.5 max-w-[85%]">
+              <Avatar className="h-7 w-7 flex-shrink-0 shadow-sm">
+                <AvatarFallback className="text-white text-xs" style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}>ИИ</AvatarFallback>
               </Avatar>
-              <Card className="bg-white">
-                <CardContent className="p-3">
-                  <div className="flex items-center space-x-2">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500"></div>
-                    <p className="text-sm text-gray-600">Думаю над вашим запросом...</p>
+              <Card className="bg-white shadow-sm">
+                <CardContent className="p-3.5">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "0ms" }} />
+                      <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "150ms" }} />
+                      <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "300ms" }} />
+                    </div>
+                    <p className="text-sm text-muted-foreground">Думаю...</p>
                   </div>
                 </CardContent>
               </Card>
@@ -467,16 +472,16 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Input Area */}
-      <div className="fixed inset-x-0 bottom-0 bg-white border-t border-gray-200 pb-24">
+      <div className="fixed inset-x-0 bottom-0 bg-background/80 backdrop-blur-xl border-t border-border/50 pb-24">
         <div className="max-w-7xl mx-auto">
-          {/* Quick Actions - НАД инпутом */}
-          <div className="px-4 pt-3 pb-2 flex flex-col sm:flex-row gap-2">
+          {/* Quick Actions */}
+          <div className="px-4 pt-3 pb-2">
             <Button
               size="sm"
               variant="outline"
               onClick={() => handleQuickAction("outfit")}
               disabled={isLoading}
-              className="w-full sm:w-auto whitespace-nowrap justify-center"
+              className="whitespace-nowrap border-border/50 text-muted-foreground hover:text-foreground"
             >
               <Sparkles className="h-3 w-3 mr-1.5" />
               Подобрать образ
@@ -485,18 +490,23 @@ export default function AIAssistantPage() {
 
           {/* Input */}
           <div className="px-4 pb-4">
-            <div className="flex space-x-3">
+            <div className="flex space-x-2.5">
               <div className="flex-1">
                 <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Опишите ваш стиль или задайте вопрос..."
-                  className="w-full"
+                  className="w-full bg-secondary/50 border-border/50"
                   disabled={isLoading}
                 />
               </div>
-              <Button onClick={() => handleSend()} disabled={isLoading || !inputValue.trim()} size="icon">
+              <Button
+                onClick={() => handleSend()}
+                disabled={isLoading || !inputValue.trim()}
+                size="icon"
+                className="rounded-xl shadow-sm"
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </div>
@@ -506,10 +516,10 @@ export default function AIAssistantPage() {
 
       {/* Photo Analysis Modal */}
       {showPhotoForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl fade-in-up">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Анализ фото</h3>
+              <h3 className="text-lg font-semibold tracking-tight">Анализ фото</h3>
               <Button variant="ghost" size="sm" onClick={() => setShowPhotoForm(false)}>
                 ✕
               </Button>

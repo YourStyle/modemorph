@@ -18,59 +18,65 @@ interface StyleProfileCardProps {
   userItemsCount: number
 }
 
-// Colors from the brand gradient (#EC9DE2 → #89AEFF) + complementary soft tones
+// Clean, light pastel palette — Apple-like soft tones
 const STYLE_COLORS: Record<string, string> = {
-  casual: "#89AEFF",
-  classic: "#A78BFA",
-  minimalist: "#B8A0F0",
-  streetwear: "#C49BE5",
-  formal: "#D196DA",
-  sport: "#DE91CF",
-  romantic: "#EC9DE2",
-  bohemian: "#E8A8D6",
-  vintage: "#D4B3EA",
-  preppy: "#9CB8FF",
-  grunge: "#B0A6E8",
-  business: "#96B2FF",
+  casual: "#7EB8FF",
+  classic: "#A8B4FF",
+  minimalist: "#B8CFFF",
+  streetwear: "#FFB088",
+  formal: "#8BC6E8",
+  sport: "#7FD4A8",
+  romantic: "#F5A0D0",
+  bohemian: "#E8B87A",
+  vintage: "#C8A8E8",
+  preppy: "#88C8FF",
+  grunge: "#B0B0C8",
+  business: "#80B8E8",
 }
 
-// Style advice data — researched recommendations
-const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: string[]; colorNames: string[] }> = {
+// Style advice data — color palettes from «A Dictionary of Color Combinations» by Sanzo Wada (1933)
+const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: string[]; colorNames: string[]; wadaCombo: string }> = {
   casual: {
     title: "Повседневный стиль",
     advice: "Основа — комфорт и универсальность. Исследования Nielsen Norman Group показывают, что 73% людей чувствуют себя увереннее в одежде, которая не стесняет движений.\n\nСтройте гардероб вокруг базовых вещей: хорошие джинсы, качественные футболки, кроссовки. Добавляйте акценты через аксессуары — шарф, часы, сумку.\n\nПравило «третьей вещи»: к футболке + джинсам добавьте куртку, кардиган или рубашку нараспашку — образ сразу становится завершённым.",
-    colors: ["#1e293b", "#f5f5f4", "#3b82f6", "#a3a3a3"],
-    colorNames: ["тёмно-синий", "белый", "голубой", "серый"],
+    colors: ["#f48067", "#fdbf68", "#b5decc", "#78cdd0"],
+    colorNames: ["Grenadine Pink", "Cream Yellow", "Turquoise Green", "Calamine Blue"],
+    wadaCombo: "#300",
   },
   classic: {
     title: "Классический стиль",
     advice: "Вне времени и всегда уместен. По данным исследований Journal of Fashion Marketing, классический стиль воспринимается как наиболее профессиональный и надёжный.\n\nИнвестируйте в качество: хороший блейзер, прямые брюки, рубашки из натуральных тканей. Палитра — нейтральная с акцентами.\n\nПравило пропорций: сочетайте приталенный верх со свободным низом или наоборот — никогда не всё одновременно оверсайз.",
-    colors: ["#1e293b", "#f5f5f4", "#92400e", "#374151"],
-    colorNames: ["тёмно-синий", "белый", "коричневый", "графитовый"],
+    colors: ["#bb7125", "#eea78c", "#c2ae93", "#12354e"],
+    colorNames: ["Raw Sienna", "Vinaceous Cinnamon", "Ecru", "Dark Tyrian Blue"],
+    wadaCombo: "#279",
   },
   minimalist: {
     title: "Минимализм",
     advice: "Меньше — значит лучше. Исследование Cornell University показало, что люди в минималистичной одежде воспринимаются как более компетентные.\n\nКапсульный гардероб из 30-40 вещей покрывает все ситуации. Ключ — безупречный крой и монохромные сочетания.\n\nТри правила: максимум 3 цвета в образе, чистые линии без декора, качественные ткани с хорошей драпировкой.",
-    colors: ["#000000", "#f5f5f4", "#a3a3a3", "#e5e5e5"],
-    colorNames: ["чёрный", "белый", "серый", "светло-серый"],
+    colors: ["#c1c494", "#bce4e5", "#97acc8", "#099197"],
+    colorNames: ["Olive Buff", "Nile Blue", "Salvia Blue", "Green Blue"],
+    wadaCombo: "#330",
   },
   streetwear: {
     title: "Уличный стиль",
     advice: "Самовыражение через одежду. Согласно Highsnobiety, уличная мода — самый быстрорастущий сегмент fashion-индустрии.\n\nМиксуйте бренды и ценовые категории. Оверсайз-силуэты, яркие кроссовки, statement-аксессуары — ваши инструменты.\n\nПравило контраста: сочетайте спортивные вещи с более «взрослыми» — худи + пальто, кроссовки + классические брюки.",
-    colors: ["#000000", "#f5f5f4", "#ef4444", "#fbbf24"],
-    colorNames: ["чёрный", "белый", "красный", "жёлтый"],
+    colors: ["#e31f26", "#fcb315", "#006eb8", "#a36aa5"],
+    colorNames: ["Spectrum Red", "Orange Yellow", "Blue", "Aconite Violet"],
+    wadaCombo: "#257",
   },
   formal: {
     title: "Формальный стиль",
     advice: "Элегантность в деталях. Harvard Business Review отмечает, что формальная одежда повышает абстрактное мышление и уверенность на переговорах.\n\nФокус на посадке: одежда должна сидеть идеально. Плечевой шов — на плече, рукава — до косточки запястья.\n\nПравило «одного акцента»: в строгом образе допустим один яркий элемент — галстук, брошь или часы.",
-    colors: ["#1e293b", "#f5f5f4", "#991b1b", "#78716c"],
-    colorNames: ["тёмно-синий", "белый", "бордовый", "бежевый"],
+    colors: ["#ae5224", "#ebd3a2", "#635a3a", "#064f6e"],
+    colorNames: ["Burnt Sienna", "Ivory Buff", "Deep Grayish Olive", "Vandar Poel's Blue"],
+    wadaCombo: "#343",
   },
   sport: {
     title: "Спортивный стиль",
     advice: "Функциональность + эстетика. По данным McKinsey, athleisure составляет 25% всего fashion-рынка — это больше не «только для зала».\n\nВыбирайте технологичные ткани: влагоотводящие, эластичные, дышащие. Монохромные спортивные образы выглядят дороже.\n\nПравило «спорт + город»: комбинируйте спортивные вещи с casual — лосины + оверсайз свитер, кроссовки + тренч.",
-    colors: ["#000000", "#f5f5f4", "#16a34a", "#3b82f6"],
-    colorNames: ["чёрный", "белый", "зелёный", "синий"],
+    colors: ["#ae5224", "#f8ed43", "#96d1aa", "#006eb8"],
+    colorNames: ["Burnt Sienna", "Lemon Yellow", "Cobalt Green", "Blue"],
+    wadaCombo: "#333",
   },
 }
 
@@ -113,20 +119,11 @@ function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
   })
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <defs>
-        <linearGradient id="pie-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#EC9DE2" />
-          <stop offset="100%" stopColor="#89AEFF" />
-        </linearGradient>
-        <filter id="pie-shadow">
-          <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.1" />
-        </filter>
-      </defs>
-      <g filter="url(#pie-shadow)">
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block">
+      <g>
         {segments}
-        {/* Inner white circle for donut effect */}
-        <circle cx={cx} cy={cy} r={r * 0.52} fill="white" />
+        {/* Inner circle for donut effect */}
+        <circle cx={cx} cy={cy} r={r * 0.55} fill="white" />
       </g>
     </svg>
   )
@@ -183,9 +180,9 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
 
   if (!dominantStyle) {
     return (
-      <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-900 mb-1">Ваш гардероб</h3>
-        <p className="text-sm text-gray-500">
+      <Card className="p-6 mb-8 bg-card border-0 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.06)]">
+        <h3 className="text-lg font-semibold text-foreground tracking-tight mb-1">Ваш гардероб</h3>
+        <p className="text-sm text-muted-foreground">
           {userItemsCount > 0 ? `${userItemsCount} вещей — анализируем стиль...` : "Добавьте вещи, чтобы узнать ваш стиль"}
         </p>
       </Card>
@@ -197,34 +194,34 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
       {/* Main card — always expanded, never changes height */}
       <Card
         ref={cardRef}
-        className="mb-8 bg-white border-0 shadow-sm overflow-hidden"
+        className="mb-8 bg-card border-0 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.06)]"
       >
         <div className="px-6 pt-6 pb-5">
-          <div className="flex items-start gap-4">
-            <div className="flex-shrink-0">
+          <div className="flex items-start gap-5">
+            <div className="flex-shrink-0 p-1">
               <PieChart data={styleDistribution} size={96} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-1">Ваш стиль</p>
-              <h3 className="text-xl font-bold text-gray-900 mb-3">
+              <p className="text-xs text-muted-foreground mb-1">Ваш стиль</p>
+              <h3 className="text-xl font-bold text-foreground tracking-tight mb-3">
                 {STYLE_LABELS[dominantStyle] || dominantStyle}
               </h3>
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 {styleDistribution.map((item) => (
                   <button
                     key={item.style}
                     onClick={() => openStyleAdvice(item.style)}
-                    className="flex items-center gap-2 w-full text-left group"
+                    className="flex items-center gap-2.5 w-full text-left group"
                   >
                     <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: STYLE_COLORS[item.style] || "#9ca3af" }}
+                      className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm"
+                      style={{ backgroundColor: STYLE_COLORS[item.style] || "#B0B0C8" }}
                     />
-                    <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
+                    <span className="text-sm text-foreground/70 group-hover:text-foreground transition-colors">
                       {STYLE_LABELS[item.style] || item.style}
                     </span>
-                    <span className="text-xs text-gray-400 ml-auto">{item.percentage}%</span>
-                    <ChevronRight className="w-3 h-3 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                    <span className="text-xs text-muted-foreground ml-auto">{item.percentage}%</span>
+                    <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-foreground transition-colors" />
                   </button>
                 ))}
               </div>
@@ -235,23 +232,23 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
 
       {/* Sticky compact bar — fixed, separate from document flow */}
       <div
-        className={`fixed top-[72px] left-0 right-0 z-30 bg-white shadow-md transition-all duration-300 ${
+        className={`fixed top-[72px] left-0 right-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/30 transition-all duration-300 ${
           showStickyBar
             ? "translate-y-0 opacity-100"
             : "-translate-y-full opacity-0 pointer-events-none"
         }`}
       >
-        <div className="flex items-center gap-3 px-4 py-3 max-w-screen-xl mx-auto">
-          <PieChart data={styleDistribution} size={40} />
+        <div className="flex items-center gap-3 px-4 py-2.5 max-w-screen-xl mx-auto">
+          <PieChart data={styleDistribution} size={36} />
           <div className="flex-1">
-            <span className="text-sm font-semibold text-gray-900">
+            <span className="text-sm font-semibold text-foreground">
               {STYLE_LABELS[dominantStyle] || dominantStyle}
             </span>
-            <span className="text-xs text-gray-500 ml-2">{userItemsCount} вещей</span>
+            <span className="text-xs text-muted-foreground ml-2">{userItemsCount} вещей</span>
           </div>
           <button
             onClick={() => openStyleAdvice(dominantStyle)}
-            className="text-xs text-blue-600 font-medium"
+            className="text-xs font-medium px-3 py-1.5 rounded-full bg-secondary text-foreground/70 hover:text-foreground transition-colors"
           >
             Советы
           </button>
@@ -272,22 +269,25 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
         {advice && (
           <div className="space-y-6 pb-6">
             <div>
-              <p className="text-sm font-medium text-gray-700 mb-3">Рекомендуемая палитра</p>
+              <div className="flex items-baseline justify-between mb-3">
+                <p className="text-sm font-medium text-foreground">Рекомендуемая палитра</p>
+                <span className="text-[10px] text-muted-foreground">Sanzo Wada {advice.wadaCombo}</span>
+              </div>
               <div className="flex gap-3">
                 {advice.colors.map((color, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1">
+                  <div key={i} className="flex flex-col items-center gap-1.5">
                     <div
-                      className="w-12 h-12 rounded-full border-2 border-white shadow-md"
+                      className="w-12 h-12 rounded-2xl shadow-sm"
                       style={{ backgroundColor: color }}
                     />
-                    <span className="text-xs text-gray-500">{advice.colorNames[i]}</span>
+                    <span className="text-[10px] text-muted-foreground text-center leading-tight">{advice.colorNames[i]}</span>
                   </div>
                 ))}
               </div>
             </div>
             <div className="space-y-3">
               {advice.advice.split("\n\n").map((paragraph, i) => (
-                <p key={i} className="text-sm text-gray-700 leading-relaxed">
+                <p key={i} className="text-sm text-foreground/70 leading-relaxed">
                   {paragraph}
                 </p>
               ))}
