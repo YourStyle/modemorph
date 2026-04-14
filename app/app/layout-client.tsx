@@ -25,7 +25,7 @@ export default function AppClientLayout({
   // Убрана проверка сессии - этим занимается MiniAppRegistrationGate
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {!hideTopNavigation && <TopNavigation />}
       <main className={cn("pt-0 max-w-7xl m-auto", isAssistant ? "pb-0" : "pb-10")}>{children}</main>
       <BottomNavigation />
