@@ -133,7 +133,7 @@ function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
 }
 
 export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: StyleProfileCardProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [showStickyBar, setShowStickyBar] = useState(false)
   const [styleSheet, setStyleSheet] = useState(false)
   const [selectedStyle, setSelectedStyle] = useState<string | null>(null)
   const [styleDistribution, setStyleDistribution] = useState<StyleData[]>([])
@@ -142,7 +142,6 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
   // Compute style distribution from styleTags
   useEffect(() => {
     if (!styleTags.length || !userItemsCount) return
-    // We have top styles from tags, approximate percentages
     const totalWeight = styleTags.reduce((sum, _, i) => sum + (styleTags.length - i), 0)
     const dist = styleTags.map((tag, i) => {
       const weight = styleTags.length - i
@@ -155,14 +154,21 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
     setStyleDistribution(dist)
   }, [styleTags, userItemsCount])
 
-  // Collapse on scroll
+  // Show sticky bar when the main card leaves viewport
   useEffect(() => {
-    const handleScroll = () => {
-      setIsCollapsed(window.scrollY > 200)
-    }
-    window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [])
+    const card = cardRef.current
+    if (!card) return
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowStickyBar(!entry.isIntersecting)
+      },
+      { threshold: 0, rootMargin: "-72px 0px 0px 0px" }
+    )
+
+    observer.observe(card)
+    return () => observer.disconnect()
+  }, [dominantStyle])
 
   const scrollPosRef = useRef(0)
 
@@ -170,7 +176,6 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
     scrollPosRef.current = window.scrollY
     setSelectedStyle(style)
     setStyleSheet(true)
-    // Prevent scroll jump when sheet opens
     requestAnimationFrame(() => window.scrollTo(0, scrollPosRef.current))
   }
 
@@ -179,7 +184,7 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
   if (!dominantStyle) {
     return (
       <Card className="p-6 mb-8 bg-white border-0 shadow-sm">
-        <h3 className="text-lg font-serif font-semibold text-gray-900 mb-1">Ваш гардероб</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-1">Ваш гардероб</h3>
         <p className="text-sm text-gray-500">
           {userItemsCount > 0 ? `${userItemsCount} вещей — анализируем стиль...` : "Добавьте вещи, чтобы узнать ваш стиль"}
         </p>
@@ -189,70 +194,69 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
 
   return (
     <>
+      {/* Main card — always expanded, never changes height */}
       <Card
         ref={cardRef}
-        className={`mb-8 bg-white border-0 shadow-sm overflow-hidden transition-all duration-300 ${
-          isCollapsed ? "sticky top-[72px] z-30 shadow-md" : ""
+        className="mb-8 bg-white border-0 shadow-sm overflow-hidden"
+      >
+        <div className="px-6 pt-6 pb-5">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0">
+              <PieChart data={styleDistribution} size={96} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-gray-500 mb-1">Ваш стиль</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-3">
+                {STYLE_LABELS[dominantStyle] || dominantStyle}
+              </h3>
+              <div className="space-y-2">
+                {styleDistribution.map((item) => (
+                  <button
+                    key={item.style}
+                    onClick={() => openStyleAdvice(item.style)}
+                    className="flex items-center gap-2 w-full text-left group"
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: STYLE_COLORS[item.style] || "#9ca3af" }}
+                    />
+                    <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
+                      {STYLE_LABELS[item.style] || item.style}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-auto">{item.percentage}%</span>
+                    <ChevronRight className="w-3 h-3 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {/* Sticky compact bar — fixed, separate from document flow */}
+      <div
+        className={`fixed top-[72px] left-0 right-0 z-30 bg-white shadow-md transition-all duration-300 ${
+          showStickyBar
+            ? "translate-y-0 opacity-100"
+            : "-translate-y-full opacity-0 pointer-events-none"
         }`}
       >
-        {isCollapsed ? (
-          /* Collapsed: small pie + dominant style */
-          <div className="flex items-center gap-3 px-4 py-3">
-            <PieChart data={styleDistribution} size={40} />
-            <div className="flex-1">
-              <span className="text-sm font-semibold text-gray-900">
-                {STYLE_LABELS[dominantStyle] || dominantStyle}
-              </span>
-              <span className="text-xs text-gray-500 ml-2">{userItemsCount} вещей</span>
-            </div>
-            <button
-              onClick={() => openStyleAdvice(dominantStyle)}
-              className="text-xs text-blue-600 font-medium"
-            >
-              Советы
-            </button>
+        <div className="flex items-center gap-3 px-4 py-3 max-w-screen-xl mx-auto">
+          <PieChart data={styleDistribution} size={40} />
+          <div className="flex-1">
+            <span className="text-sm font-semibold text-gray-900">
+              {STYLE_LABELS[dominantStyle] || dominantStyle}
+            </span>
+            <span className="text-xs text-gray-500 ml-2">{userItemsCount} вещей</span>
           </div>
-        ) : (
-          /* Expanded: full pie chart + tags */
-          <div className="px-6 pt-6 pb-5">
-            <div className="flex items-start gap-4">
-              {/* Pie chart */}
-              <div className="flex-shrink-0">
-                <PieChart data={styleDistribution} size={96} />
-              </div>
-
-              {/* Style info */}
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 mb-1">Ваш стиль</p>
-                <h3 className="text-xl font-serif font-bold text-gray-900 mb-3">
-                  {STYLE_LABELS[dominantStyle] || dominantStyle}
-                </h3>
-
-                {/* Style tags with percentages */}
-                <div className="space-y-2">
-                  {styleDistribution.map((item) => (
-                    <button
-                      key={item.style}
-                      onClick={() => openStyleAdvice(item.style)}
-                      className="flex items-center gap-2 w-full text-left group"
-                    >
-                      <div
-                        className="w-3 h-3 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: STYLE_COLORS[item.style] || "#9ca3af" }}
-                      />
-                      <span className="text-sm text-gray-700 group-hover:text-gray-900 transition-colors">
-                        {STYLE_LABELS[item.style] || item.style}
-                      </span>
-                      <span className="text-xs text-gray-400 ml-auto">{item.percentage}%</span>
-                      <ChevronRight className="w-3 h-3 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </Card>
+          <button
+            onClick={() => openStyleAdvice(dominantStyle)}
+            className="text-xs text-blue-600 font-medium"
+          >
+            Советы
+          </button>
+        </div>
+      </div>
 
       {/* Style advice sheet */}
       <CommonSheet
@@ -267,7 +271,6 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
       >
         {advice && (
           <div className="space-y-6 pb-6">
-            {/* Color palette */}
             <div>
               <p className="text-sm font-medium text-gray-700 mb-3">Рекомендуемая палитра</p>
               <div className="flex gap-3">
@@ -282,8 +285,6 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
                 ))}
               </div>
             </div>
-
-            {/* Advice text with inline color circles */}
             <div className="space-y-3">
               {advice.advice.split("\n\n").map((paragraph, i) => (
                 <p key={i} className="text-sm text-gray-700 leading-relaxed">

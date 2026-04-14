@@ -2,14 +2,12 @@
 
 import { useBackgroundTasks } from "@/contexts/background-tasks-context"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
-import { useAddToCloset } from "@/contexts/add-to-closet-context"
 import { useTryOn } from "@/contexts/try-on-context"
 import { Card, CardContent } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { X, CheckCircle2, Loader2, AlertCircle, Shirt, Sparkles, ChevronDown } from "lucide-react"
-import { useState, useEffect, useRef, useMemo } from "react"
+import { X, CheckCircle2, Loader2, AlertCircle, Shirt, Sparkles } from "lucide-react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { CommonSheet } from "@/components/common-sheet"
 import { api } from "@/lib/api-client"
@@ -129,7 +127,6 @@ const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: nu
 export function BackgroundTasksWidget() {
   const { tasks, removeTask } = useBackgroundTasks()
   const aiAnalysis = useAIAnalysis()
-  const { openSheet } = useAddToCloset()
   const { setSheetOpen: setTryOnSheetOpen } = useTryOn()
   const [showTooltip, setShowTooltip] = useState<string | null>(null)
   const [showResultsSheet, setShowResultsSheet] = useState(false)
@@ -143,6 +140,7 @@ export function BackgroundTasksWidget() {
 
   const [showGame, setShowGame] = useState(false)
   const [now, setNow] = useState(Date.now())
+  const [activeTabIndex, setActiveTabIndex] = useState(0)
 
   // Update 'now' every second to check for expired error tasks
   useEffect(() => {
@@ -154,70 +152,102 @@ export function BackgroundTasksWidget() {
 
   // Показываем tooltip когда задача завершена
   useEffect(() => {
-    tasks.forEach((task) => {
-      if (task.status === "completed" && !shownTooltipsRef.current.has(task.id)) {
-        shownTooltipsRef.current.add(task.id)
-        setShowTooltip(task.id)
-        // Скрываем tooltip через 5 секунд
-        setTimeout(() => {
-          setShowTooltip((current) => (current === task.id ? null : current))
-        }, 5000)
-      }
-    })
+    const newlyCompleted = tasks.filter(
+      (task) => task.status === "completed" && !shownTooltipsRef.current.has(task.id)
+    )
+    if (newlyCompleted.length > 0) {
+      newlyCompleted.forEach((t) => shownTooltipsRef.current.add(t.id))
+      setShowTooltip("aggregate")
+      setTimeout(() => {
+        setShowTooltip((current) => (current === "aggregate" ? null : current))
+      }, 5000)
+    }
   }, [tasks])
 
   const activeTasks = useMemo(() => {
     return tasks.filter((task) => task.status !== "error" || now - task.startedAt.getTime() < 10000)
   }, [tasks, now])
 
-  const handleTaskClick = (task: any) => {
-    // Virtual try-on tasks — re-open the TryOnSheet
-    if (task.type === "virtual_tryon") {
+  // Агрегированное состояние бабла
+  const bubbleState = useMemo(() => {
+    const processing = activeTasks.filter((t) => t.status === "processing")
+    const completed = activeTasks.filter((t) => t.status === "completed")
+    const errors = activeTasks.filter((t) => t.status === "error")
+
+    // Приоритет: processing > completed > error
+    let status: "processing" | "completed" | "error" = "error"
+    if (completed.length > 0) status = "completed"
+    if (processing.length > 0) status = "processing"
+
+    // Прогресс — среднее по processing задачам
+    const avgProgress = processing.length > 0
+      ? processing.reduce((sum, t) => sum + t.progress, 0) / processing.length
+      : 0
+
+    // Тип иконки — если есть try-on, показываем Sparkles
+    const hasTryOn = activeTasks.some((t) => t.type === "virtual_tryon")
+
+    return { status, avgProgress, count: activeTasks.length, processing, completed, errors, hasTryOn }
+  }, [activeTasks])
+
+  // Завершённые задачи с сессиями (для табов в шторке результатов)
+  const completedSessions = useMemo(() => {
+    return bubbleState.completed
+      .filter((t) => t.type !== "virtual_tryon" && t.data?.sessionId)
+      .map((t) => ({
+        taskId: t.id,
+        sessionId: t.data.sessionId as string,
+        itemsCount: t.data?.itemsCount || 0,
+        type: t.type,
+      }))
+  }, [bubbleState.completed])
+
+  const handleBubbleClick = useCallback(() => {
+    // Если единственная задача — try-on, открываем TryOnSheet
+    if (activeTasks.length === 1 && activeTasks[0].type === "virtual_tryon") {
       setTryOnSheetOpen(true)
       return
     }
 
-    console.log("[BackgroundTasksWidget] handleTaskClick called")
-    console.log("[BackgroundTasksWidget] Task:", task)
-    console.log("[BackgroundTasksWidget] Task status:", task.status)
-    console.log("[BackgroundTasksWidget] Task data:", task.data)
-
-    // Если задача в процессе или завершена - открываем шторку
-    if (task.data?.sessionId) {
-      console.log("[BackgroundTasksWidget] Task has sessionId:", task.data.sessionId)
-      const session = aiAnalysis.getSession(task.data.sessionId)
-      console.log("[BackgroundTasksWidget] Session found:", session)
-
-      if (session) {
-        // Если задача завершена и есть результаты - показываем результаты
-        if (task.status === "completed" && session.items.length > 0) {
-          console.log("[BackgroundTasksWidget] Opening results sheet for completed task")
-          setSelectedSessionId(task.data.sessionId)
-          setShowResultsSheet(true)
-        }
-        // Если задача в процессе - открываем шторку для просмотра прогресса
-        else if (task.status === "processing") {
-          console.log("[BackgroundTasksWidget] Opening progress sheet for processing task")
-          setSelectedSessionId(task.data.sessionId)
-          setShowProgressSheet(true)
-        }
-      } else {
-        console.warn("[BackgroundTasksWidget] Session not found for sessionId:", task.data.sessionId)
-      }
-    } else {
-      console.log("[BackgroundTasksWidget] Task has no sessionId")
-      // Если нет sessionId, но есть активная сессия - используем её
-      const activeSession = aiAnalysis.getActiveSession()
-      console.log("[BackgroundTasksWidget] Active session:", activeSession)
-
-      if (activeSession && task.status === "processing") {
-        console.log("[BackgroundTasksWidget] Opening sheet using active session")
-        openSheet()
-      } else {
-        console.warn("[BackgroundTasksWidget] Cannot open sheet - no active session or task not processing")
-      }
+    // Если есть try-on среди задач и он единственный завершённый
+    const completedTryOn = activeTasks.filter((t) => t.type === "virtual_tryon" && t.status === "completed")
+    if (completedTryOn.length > 0 && completedSessions.length === 0) {
+      setTryOnSheetOpen(true)
+      return
     }
-  }
+
+    // Если есть завершённые сессии с результатами — открываем шторку результатов
+    if (completedSessions.length > 0) {
+      setActiveTabIndex(0)
+      setSelectedSessionId(completedSessions[0].sessionId)
+      setShowResultsSheet(true)
+      return
+    }
+
+    // Если есть processing задачи — открываем прогресс
+    const firstProcessing = activeTasks.find((t) => t.status === "processing" && t.type !== "virtual_tryon")
+    if (firstProcessing?.data?.sessionId) {
+      setSelectedSessionId(firstProcessing.data.sessionId)
+      setShowProgressSheet(true)
+      return
+    }
+
+    // Если processing try-on
+    if (activeTasks.some((t) => t.status === "processing" && t.type === "virtual_tryon")) {
+      setTryOnSheetOpen(true)
+      return
+    }
+  }, [activeTasks, completedSessions, setTryOnSheetOpen])
+
+  const handleTabChange = useCallback((index: number) => {
+    if (completedSessions[index]) {
+      setActiveTabIndex(index)
+      setSelectedSessionId(completedSessions[index].sessionId)
+      setAddedItems(new Set())
+      setAddingItems(new Set())
+      setHasShownCloseConfirm(false)
+    }
+  }, [completedSessions])
 
   const handleAddItem = async (item: any, index: number) => {
     try {
@@ -278,41 +308,45 @@ export function BackgroundTasksWidget() {
     }
   }
 
-  const handleCleanupSession = () => {
-    if (selectedSessionId) {
-      // Удаляем task
-      const task = tasks.find(t => t.data?.sessionId === selectedSessionId)
-      if (task) {
-        removeTask(task.id)
-      }
-      // Удаляем сессию из контекста
-      aiAnalysis.removeSession(selectedSessionId)
+  const handleCleanupSession = (sessionId?: string) => {
+    const targetSessionId = sessionId || selectedSessionId
+    if (targetSessionId) {
+      const task = tasks.find(t => t.data?.sessionId === targetSessionId)
+      if (task) removeTask(task.id)
+      aiAnalysis.removeSession(targetSessionId)
     }
-    // Очищаем стейты
+  }
+
+  const handleCleanupAllSessions = () => {
+    // Очищаем все завершённые сессии
+    completedSessions.forEach((s) => handleCleanupSession(s.sessionId))
     setAddedItems(new Set())
     setAddingItems(new Set())
     setHasShownCloseConfirm(false)
     setSelectedSessionId(null)
+    setActiveTabIndex(0)
   }
 
   const handleResultsSheetClose = () => {
-    const session = selectedSessionId ? aiAnalysis.getSession(selectedSessionId) : null
+    // Проверяем есть ли незавершённые сессии (с неподтверждённым закрытием)
+    const hasUnconfirmed = completedSessions.some((s) => {
+      const session = aiAnalysis.getSession(s.sessionId)
+      return session?.status === "completed"
+    })
 
-    // Если анализ завершён и это первая попытка закрытия - показываем подтверждение
-    if (session?.status === "completed" && !hasShownCloseConfirm) {
+    if (hasUnconfirmed && !hasShownCloseConfirm) {
       setShowCloseConfirmDialog(true)
       return
     }
 
-    // Иначе просто закрываем и очищаем
     setShowResultsSheet(false)
-    handleCleanupSession()
+    handleCleanupAllSessions()
   }
 
   const handleConfirmClose = () => {
     setShowCloseConfirmDialog(false)
     setShowResultsSheet(false)
-    handleCleanupSession()
+    handleCleanupAllSessions()
   }
 
   const handleCancelClose = () => {
@@ -345,28 +379,22 @@ export function BackgroundTasksWidget() {
   useEffect(() => {
     if (showProgressSheet && selectedSessionId) {
       const session = aiAnalysis.getSession(selectedSessionId)
-      // Find the corresponding task
       const task = tasks.find(t => t.data?.sessionId === selectedSessionId)
 
-      // Check multiple conditions for completion
       const isCompleted = task?.status === "completed" ||
                          (session?.status === "completed") ||
                          (session?.progress === 100 && session?.items && session.items.length > 0)
 
       if (isCompleted && session && session.items && session.items.length > 0) {
-        console.log("[BackgroundTasksWidget] Analysis completed, switching to results sheet", {
-          taskStatus: task?.status,
-          sessionStatus: session?.status,
-          progress: session?.progress,
-          itemsCount: session?.items?.length
-        })
         setShowProgressSheet(false)
         setShowResultsSheet(true)
-        // Сбрасываем флаг при переходе к результатам
         setHasShownCloseConfirm(false)
+        // Ставим таб на только что завершённую сессию
+        const tabIdx = completedSessions.findIndex((s) => s.sessionId === selectedSessionId)
+        if (tabIdx >= 0) setActiveTabIndex(tabIdx)
       }
     }
-  }, [showProgressSheet, selectedSessionId, aiAnalysis, tasks])
+  }, [showProgressSheet, selectedSessionId, aiAnalysis, tasks, completedSessions])
 
   // Отслеживаем смену сессии для очистки стейтов
   const prevSessionIdRef = useRef<string | null>(null)
@@ -385,110 +413,113 @@ export function BackgroundTasksWidget() {
 
   return (
     <>
-      <div className="fixed bottom-24 right-4 z-50 space-y-3">
-      {activeTasks.map((task) => {
-        const isCompleted = task.status === "completed"
-        const isError = task.status === "error"
-        const showCompletedTooltip = showTooltip === task.id && isCompleted
-
-        return (
-          <div key={task.id} className="relative">
-            {/* Компактный круглый виджет с liquid glass эффектом */}
+      {/* Единый агрегированный бабл */}
+      <div className="fixed bottom-24 right-4 z-50">
+        <div className="relative">
+          <div
+            onClick={handleBubbleClick}
+            className="relative w-16 h-16 rounded-full shadow-xl transition-all duration-300 cursor-pointer hover:scale-105"
+            style={{
+              background: bubbleState.status === "completed"
+                ? 'rgba(34, 197, 94, 0.15)'
+                : bubbleState.status === "error"
+                ? 'rgba(239, 68, 68, 0.15)'
+                : 'rgba(255, 255, 255, 0.85)',
+              backdropFilter: 'blur(20px) saturate(180%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+              boxShadow: bubbleState.status === "completed"
+                ? '0 8px 32px 0 rgba(34, 197, 94, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
+                : bubbleState.status === "error"
+                ? '0 8px 32px 0 rgba(239, 68, 68, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
+                : '0 8px 32px 0 rgba(0, 0, 0, 0.1), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)',
+              border: bubbleState.status === "completed"
+                ? '1px solid rgba(34, 197, 94, 0.3)'
+                : bubbleState.status === "error"
+                ? '1px solid rgba(239, 68, 68, 0.3)'
+                : '1px solid rgba(255, 255, 255, 0.18)',
+            }}
+          >
+            {/* Gradient overlay */}
             <div
-              onClick={() => handleTaskClick(task)}
-              className="relative w-16 h-16 rounded-full shadow-xl transition-all duration-300 cursor-pointer hover:scale-105"
+              className="absolute inset-0 rounded-full pointer-events-none"
               style={{
-                background: isCompleted
-                  ? 'rgba(34, 197, 94, 0.15)'
-                  : isError
-                  ? 'rgba(239, 68, 68, 0.15)'
-                  : 'rgba(255, 255, 255, 0.85)',
-                backdropFilter: 'blur(20px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                boxShadow: isCompleted
-                  ? '0 8px 32px 0 rgba(34, 197, 94, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
-                  : isError
-                  ? '0 8px 32px 0 rgba(239, 68, 68, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
-                  : '0 8px 32px 0 rgba(0, 0, 0, 0.1), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)',
-                border: isCompleted
-                  ? '1px solid rgba(34, 197, 94, 0.3)'
-                  : isError
-                  ? '1px solid rgba(239, 68, 68, 0.3)'
-                  : '1px solid rgba(255, 255, 255, 0.18)',
+                background: bubbleState.status === "completed"
+                  ? 'radial-gradient(circle at 30% 30%, rgba(34, 197, 94, 0.3) 0%, transparent 70%)'
+                  : bubbleState.status === "error"
+                  ? 'radial-gradient(circle at 30% 30%, rgba(239, 68, 68, 0.3) 0%, transparent 70%)'
+                  : 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, transparent 70%)',
               }}
-            >
-              {/* Gradient overlay для liquid glass эффекта */}
-              <div
-                className="absolute inset-0 rounded-full pointer-events-none"
-                style={{
-                  background: isCompleted
-                    ? 'radial-gradient(circle at 30% 30%, rgba(34, 197, 94, 0.3) 0%, transparent 70%)'
-                    : isError
-                    ? 'radial-gradient(circle at 30% 30%, rgba(239, 68, 68, 0.3) 0%, transparent 70%)'
-                    : 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, transparent 70%)',
-                }}
-              />
-              {/* Круговой прогресс */}
-              {task.status === "processing" && (
-                <div className="absolute inset-0">
-                  <CircularProgress progress={task.progress} size={64} />
-                </div>
-              )}
+            />
 
-              {/* Иконка и процент */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                {task.status === "processing" && (
-                  <>
-                    {task.type === "virtual_tryon" ? (
-                      <Sparkles className="w-5 h-5 text-purple-500 -mt-1" />
-                    ) : (
-                      <Shirt className="w-5 h-5 text-blue-600 -mt-1" />
-                    )}
-                    <span className="text-[10px] font-bold text-gray-700 mt-0.5 ml-[1px]">
-                      {Math.round(task.progress)}%
-                    </span>
-                  </>
-                )}
-                {isCompleted && <CheckCircle2 className="w-7 h-7 text-green-600" />}
-                {isError && <AlertCircle className="w-7 h-7 text-red-600" />}
-              </div>
-
-              {/* Кнопка закрытия */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  // Если это завершённая задача и открыта шторка с результатами, закрываем шторку
-                  if (isCompleted && showResultsSheet && task.data?.sessionId === selectedSessionId) {
-                    setShowResultsSheet(false)
-                  }
-                  removeTask(task.id)
-                }}
-                className="absolute -top-1 -right-1 w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center hover:bg-gray-700 transition-colors shadow-md"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-
-            {/* Tooltip для завершённой задачи */}
-            {showCompletedTooltip && (
-              <div className="absolute -top-14 right-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="bg-gray-900 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg whitespace-nowrap">
-                  {task.type === "virtual_tryon" ? "Примерка готова!" : "Анализ завершён!"}
-                  {task.data?.itemsCount && (
-                    <span className="ml-1">
-                      ({task.data.itemsCount} {task.data.itemsCount === 1 ? "вещь" : "вещей"})
-                    </span>
-                  )}
-                  <div className="absolute bottom-0 right-6 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900" />
-                </div>
+            {/* Круговой прогресс */}
+            {bubbleState.status === "processing" && (
+              <div className="absolute inset-0">
+                <CircularProgress progress={bubbleState.avgProgress} size={64} />
               </div>
             )}
-          </div>
-        )
-      })}
-    </div>
 
-      {/* Шторка с результатами */}
+            {/* Иконка и процент */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              {bubbleState.status === "processing" && (
+                <>
+                  {bubbleState.hasTryOn ? (
+                    <Sparkles className="w-5 h-5 text-purple-500 -mt-1" />
+                  ) : (
+                    <Shirt className="w-5 h-5 text-blue-600 -mt-1" />
+                  )}
+                  <span className="text-[10px] font-bold text-gray-700 mt-0.5 ml-[1px]">
+                    {Math.round(bubbleState.avgProgress)}%
+                  </span>
+                </>
+              )}
+              {bubbleState.status === "completed" && <CheckCircle2 className="w-7 h-7 text-green-600" />}
+              {bubbleState.status === "error" && <AlertCircle className="w-7 h-7 text-red-600" />}
+            </div>
+
+            {/* Бейдж с количеством задач */}
+            {bubbleState.count > 1 && (
+              <div className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-md"
+                style={{
+                  background: bubbleState.status === "completed"
+                    ? '#16a34a'
+                    : bubbleState.status === "error"
+                    ? '#dc2626'
+                    : '#2563eb',
+                }}
+              >
+                {bubbleState.count}
+              </div>
+            )}
+
+            {/* Кнопка закрытия — убирает все задачи */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                if (showResultsSheet) setShowResultsSheet(false)
+                if (showProgressSheet) setShowProgressSheet(false)
+                activeTasks.forEach((t) => removeTask(t.id))
+              }}
+              className="absolute -top-1 -right-1 w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center hover:bg-gray-700 transition-colors shadow-md"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+
+          {/* Tooltip */}
+          {showTooltip === "aggregate" && bubbleState.completed.length > 0 && (
+            <div className="absolute -top-14 right-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              <div className="bg-gray-900 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg whitespace-nowrap">
+                {bubbleState.completed.length === 1
+                  ? (bubbleState.completed[0].type === "virtual_tryon" ? "Примерка готова!" : "Анализ завершён!")
+                  : `Готово: ${bubbleState.completed.length} ${bubbleState.completed.length < 5 ? "задачи" : "задач"}`}
+                <div className="absolute bottom-0 right-6 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900" />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Шторка с результатами (с табами при нескольких сессиях) */}
       <CommonSheet
         isOpen={showResultsSheet}
         onClose={handleResultsSheetClose}
@@ -496,6 +527,39 @@ export function BackgroundTasksWidget() {
         swipeAction="close"
       >
         <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100">
+            {/* Табы — показываем только если больше одной сессии */}
+            {completedSessions.length > 1 && (
+              <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+                {completedSessions.map((s, i) => {
+                  const session = aiAnalysis.getSession(s.sessionId)
+                  const count = session?.items?.length || s.itemsCount || 0
+                  const isActive = i === activeTabIndex
+                  return (
+                    <button
+                      key={s.sessionId}
+                      onClick={() => handleTabChange(i)}
+                      className={cn(
+                        "flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200",
+                        isActive
+                          ? "bg-white text-gray-900 shadow-md"
+                          : "bg-white/10 text-gray-400 hover:bg-white/20"
+                      )}
+                    >
+                      Анализ {i + 1}
+                      {count > 0 && (
+                        <span className={cn(
+                          "ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold",
+                          isActive ? "bg-gray-900 text-white" : "bg-white/20 text-gray-300"
+                        )}>
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
             {(() => {
               const session = selectedSessionId ? aiAnalysis.getSession(selectedSessionId) : null
               const itemsCount = session?.items.length || 0

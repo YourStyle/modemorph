@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2, ThumbsUp, ThumbsDown } from "lucide-react"
+import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2, ThumbsUp, ThumbsDown, CircleOff } from "lucide-react"
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
@@ -41,7 +41,7 @@ interface OutfitSuggestion {
 
 interface OutfitCardProps {
   suggestion: OutfitSuggestion
-  sectionSource?: "clip" | "ai"
+  sectionSource?: "user_only" | "mix" | "partner_only" | "clip" | "ai"
   onSaveOutfit?: (suggestion: OutfitSuggestion) => void
   userLooks?: any[]
   onTryOnClick?: (payload: {
@@ -53,9 +53,27 @@ interface OutfitCardProps {
     requestId: string
     suggestion: OutfitSuggestion
   }) => void
+  onDislikeItem?: (itemId: string) => void
 }
 
-export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess }: OutfitCardProps) {
+function getSourceBadge(source?: string): { label: string; className: string } | null {
+  switch (source) {
+    case "user_only":
+      return { label: "Из вашего гардероба", className: "bg-gray-100 text-gray-700 border border-gray-200" }
+    case "mix":
+      return { label: "Подобрано для вас", className: "bg-blue-50 text-blue-700 border border-blue-200" }
+    case "partner_only":
+      return { label: "От партнёров", className: "bg-purple-50 text-purple-700 border border-purple-200" }
+    case "clip":
+      return { label: "Подобрано для вас", className: "bg-blue-50 text-blue-700 border border-blue-200" }
+    case "ai":
+      return { label: "Рекомендация стилиста", className: "bg-purple-50 text-purple-700 border border-purple-200" }
+    default:
+      return null
+  }
+}
+
+export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess, onDislikeItem }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showOutfitDetails, setShowOutfitDetails] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
@@ -131,21 +149,20 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
 
   return (
     <>
-      <Card className="bg-white border-0 overflow-hidden w-[calc(100vw-2rem)] max-w-96 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06),0_12px_32px_rgba(0,0,0,0.1)] transition-shadow duration-300">
+      <Card className="bg-white border-0 overflow-hidden w-[calc(100vw-2rem)] max-w-96 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06),0_12px_32px_rgba(0,0,0,0.1)] transition-all duration-300">
         <CardContent className="p-6">
           {/* Source badge */}
-          {sectionSource && (
-            <div className="mb-3">
-              <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${
-                sectionSource === "clip"
-                  ? "bg-blue-50 text-blue-700 border border-blue-200"
-                  : "bg-purple-50 text-purple-700 border border-purple-200"
-              }`}>
-                <Sparkles className="w-3 h-3" />
-                {sectionSource === "clip" ? "Подобрано для вас" : "Рекомендация стилиста"}
-              </span>
-            </div>
-          )}
+          {(() => {
+            const badge = getSourceBadge(sectionSource)
+            return badge ? (
+              <div className="mb-3">
+                <span className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full ${badge.className}`}>
+                  <Sparkles className="w-3 h-3" />
+                  {badge.label}
+                </span>
+              </div>
+            ) : null
+          })()}
 
           {/* Header */}
           <div className="flex items-start justify-between mb-4">
@@ -228,6 +245,19 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                         </span>
                       </div>
                     )}
+
+                    {/* Dislike item button */}
+                    <button
+                      type="button"
+                      aria-label="Не рекомендовать"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onDislikeItem?.(item.id)
+                      }}
+                      className="absolute bottom-2 right-2 p-1.5 rounded-full bg-white/80 hover:bg-red-50 text-gray-400 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all duration-200 z-10"
+                    >
+                      <CircleOff className="w-3.5 h-3.5" />
+                    </button>
 
                     {/* Brand badge */}
                     {item.brand && (
