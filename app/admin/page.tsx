@@ -12,87 +12,83 @@ export default function AdminDashboard() {
         <div className="max-w-6xl mx-auto space-y-8">
           {/* Приветствие */}
           <div className="mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Добро пожаловать в админ панель!</h2>
-            <p className="text-xl text-gray-600">Управляйте системой гардероба и базовыми элементами</p>
+            <h2 className="text-3xl font-bold text-gray-900 mb-2 tracking-tight">Админ панель</h2>
+            <p className="text-lg text-gray-500">Управление системой гардероба и базовыми элементами</p>
           </div>
 
           {/* Админ действия */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+            <Card className="hover:shadow-lg transition-all duration-200 cursor-pointer group">
               <Link href="/admin/wardrobe">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg">
-                      <Shirt className="h-6 w-6 text-blue-600" />
+                    <div className="p-2.5 bg-gradient-to-br from-[#EC9DE2]/15 to-[#89AEFF]/15 rounded-xl group-hover:from-[#EC9DE2]/25 group-hover:to-[#89AEFF]/25 transition-colors">
+                      <Shirt className="h-5 w-5 text-[#B97DC6]" />
                     </div>
-                    <CardTitle className="text-lg">Управление гардеробом</CardTitle>
+                    <CardTitle className="text-base">Гардероб</CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-600 mb-4">Управляйте элементами гардероба и добавляйте новые вещи</p>
-                  <Button className="w-full">
-                    <Shirt className="h-4 w-4 mr-2" />
-                    Открыть гардероб
+                  <p className="text-sm text-gray-500 mb-4">Элементы гардероба и новые вещи</p>
+                  <Button className="w-full bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white rounded-xl" size="sm">
+                    Открыть
                   </Button>
                 </CardContent>
               </Link>
             </Card>
 
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+            <Card className="hover:shadow-lg transition-all duration-200 cursor-pointer group">
               <Link href="/admin/outfits">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-100 rounded-lg">
-                      <Hanger className="h-6 w-6 text-green-600" />
+                    <div className="p-2.5 bg-gradient-to-br from-purple-100 to-blue-50 rounded-xl group-hover:from-purple-200 group-hover:to-blue-100 transition-colors">
+                      <Hanger className="h-5 w-5 text-purple-500" />
                     </div>
-                    <CardTitle className="text-lg">Управление образами</CardTitle>
+                    <CardTitle className="text-base">Образы</CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-600 mb-4">Просматривайте и управляйте всеми созданными образами</p>
-                  <Button variant="outline" className="w-full">
-                    <Hanger className="h-4 w-4 mr-2" />
-                    Открыть образы
+                  <p className="text-sm text-gray-500 mb-4">Просмотр и управление образами</p>
+                  <Button variant="outline" className="w-full rounded-xl" size="sm">
+                    Открыть
                   </Button>
                 </CardContent>
               </Link>
             </Card>
 
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+            <Card className="hover:shadow-lg transition-all duration-200 cursor-pointer group">
               <Link href="/admin/wardrobe/basics">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-100 rounded-lg">
-                      <Package className="h-6 w-6 text-purple-600" />
+                    <div className="p-2.5 bg-gradient-to-br from-pink-50 to-purple-50 rounded-xl group-hover:from-pink-100 group-hover:to-purple-100 transition-colors">
+                      <Package className="h-5 w-5 text-pink-500" />
                     </div>
-                    <CardTitle className="text-lg">Базовые элементы</CardTitle>
+                    <CardTitle className="text-base">Базовые элементы</CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-600 mb-4">Управляйте базовыми элементами гардероба и материалами</p>
-                  <Button variant="outline" className="w-full">
-                    <Package className="h-4 w-4 mr-2" />
-                    Базовые элементы
+                  <p className="text-sm text-gray-500 mb-4">Основы гардероба и материалы</p>
+                  <Button variant="outline" className="w-full rounded-xl" size="sm">
+                    Открыть
                   </Button>
                 </CardContent>
               </Link>
             </Card>
 
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+            <Card className="hover:shadow-lg transition-all duration-200 cursor-pointer group">
               <Link href="/admin/combinations">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-orange-100 rounded-lg">
-                      <Palette className="h-6 w-6 text-orange-600" />
+                    <div className="p-2.5 bg-gradient-to-br from-amber-50 to-rose-50 rounded-xl group-hover:from-amber-100 group-hover:to-rose-100 transition-colors">
+                      <Palette className="h-5 w-5 text-amber-500" />
                     </div>
-                    <CardTitle className="text-lg">Сочетания</CardTitle>
+                    <CardTitle className="text-base">Сочетания</CardTitle>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-gray-600 mb-4">Управляйте цветовыми сочетаниями и комбинациями</p>
-                  <Button variant="outline" className="w-full">
-                    <Palette className="h-4 w-4 mr-2" />
-                    Открыть сочетания
+                  <p className="text-sm text-gray-500 mb-4">Цветовые сочетания и комбинации</p>
+                  <Button variant="outline" className="w-full rounded-xl" size="sm">
+                    Открыть
                   </Button>
                 </CardContent>
               </Link>
@@ -100,87 +96,87 @@ export default function AdminDashboard() {
           </div>
 
           {/* Статистика системы */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <TrendingUp className="h-5 w-5 text-[#B97DC6]" />
                   Статистика системы
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-[#EC9DE2]/5 to-transparent rounded-xl">
                   <div className="flex items-center gap-3">
-                    <Shirt className="h-5 w-5 text-blue-600" />
-                    <span>Элементов гардероба</span>
+                    <Shirt className="h-5 w-5 text-[#B97DC6]" />
+                    <span className="text-sm text-gray-700">Элементов гардероба</span>
                   </div>
-                  <span className="font-semibold">-</span>
+                  <span className="font-semibold text-gray-900">-</span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50/50 to-transparent rounded-xl">
                   <div className="flex items-center gap-3">
-                    <Hanger className="h-5 w-5 text-green-600" />
-                    <span>Созданных образов</span>
+                    <Hanger className="h-5 w-5 text-purple-500" />
+                    <span className="text-sm text-gray-700">Созданных образов</span>
                   </div>
-                  <span className="font-semibold">-</span>
+                  <span className="font-semibold text-gray-900">-</span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-pink-50/50 to-transparent rounded-xl">
                   <div className="flex items-center gap-3">
-                    <Package className="h-5 w-5 text-purple-600" />
-                    <span>Базовых элементов</span>
+                    <Package className="h-5 w-5 text-pink-500" />
+                    <span className="text-sm text-gray-700">Базовых элементов</span>
                   </div>
-                  <span className="font-semibold">-</span>
+                  <span className="font-semibold text-gray-900">-</span>
                 </div>
-                <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between p-3 bg-gradient-to-r from-amber-50/50 to-transparent rounded-xl">
                   <div className="flex items-center gap-3">
-                    <Palette className="h-5 w-5 text-orange-600" />
-                    <span>Цветовых сочетаний</span>
+                    <Palette className="h-5 w-5 text-amber-500" />
+                    <span className="text-sm text-gray-700">Цветовых сочетаний</span>
                   </div>
-                  <span className="font-semibold">-</span>
+                  <span className="font-semibold text-gray-900">-</span>
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5 text-yellow-600" />
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Zap className="h-5 w-5 text-amber-500" />
                   Быстрые действия
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 gap-3">
                   <Link href="/admin/wardrobe/add" className="block">
-                    <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg hover:from-blue-100 hover:to-blue-200 transition-all cursor-pointer border border-blue-200">
-                      <div className="p-2 bg-blue-600 rounded-lg">
+                    <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-[#EC9DE2]/10 to-[#89AEFF]/10 rounded-xl hover:from-[#EC9DE2]/20 hover:to-[#89AEFF]/20 transition-all cursor-pointer border border-[#EC9DE2]/20">
+                      <div className="p-2 bg-gradient-to-br from-[#EC9DE2] to-[#89AEFF] rounded-xl">
                         <Plus className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <div className="font-medium text-blue-900">Добавить элемент</div>
-                        <div className="text-sm text-blue-700">Новая вещь в гардероб</div>
+                        <div className="font-medium text-gray-900">Добавить элемент</div>
+                        <div className="text-sm text-gray-500">Новая вещь в гардероб</div>
                       </div>
                     </div>
                   </Link>
 
                   <Link href="/admin/wardrobe/basics" className="block">
-                    <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg hover:from-purple-100 hover:to-purple-200 transition-all cursor-pointer border border-purple-200">
-                      <div className="p-2 bg-purple-600 rounded-lg">
+                    <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl hover:from-purple-100 hover:to-pink-100 transition-all cursor-pointer border border-purple-100">
+                      <div className="p-2 bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl">
                         <Package className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <div className="font-medium text-purple-900">Базовые элементы</div>
-                        <div className="text-sm text-purple-700">Управление основами</div>
+                        <div className="font-medium text-gray-900">Базовые элементы</div>
+                        <div className="text-sm text-gray-500">Управление основами</div>
                       </div>
                     </div>
                   </Link>
 
                   <Link href="/admin/combinations" className="block">
-                    <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg hover:from-orange-100 hover:to-orange-200 transition-all cursor-pointer border border-orange-200">
-                      <div className="p-2 bg-orange-600 rounded-lg">
+                    <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-amber-50 to-rose-50 rounded-xl hover:from-amber-100 hover:to-rose-100 transition-all cursor-pointer border border-amber-100">
+                      <div className="p-2 bg-gradient-to-br from-amber-500 to-rose-500 rounded-xl">
                         <Palette className="h-4 w-4 text-white" />
                       </div>
                       <div>
-                        <div className="font-medium text-orange-900">Создать сочетание</div>
-                        <div className="text-sm text-orange-700">Новые комбинации</div>
+                        <div className="font-medium text-gray-900">Создать сочетание</div>
+                        <div className="text-sm text-gray-500">Новые комбинации</div>
                       </div>
                     </div>
                   </Link>

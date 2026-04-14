@@ -14,9 +14,161 @@ router = APIRouter()
 
 @router.get("/analytics")
 async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    activity = await db.execute(text("SELECT activity_date, count(*) as users FROM daily_user_activity GROUP BY activity_date ORDER BY activity_date DESC LIMIT 30"))
-    total = await db.execute(text("SELECT count(*) FROM user_profiles"))
-    return {"daily_activity": [dict(r) for r in activity.mappings().all()], "total_users": total.scalar()}
+    """Full product analytics — onboarding, aha-moment, value, engagement, retention, monetization, funnel, timeline."""
+
+    async def scalar(sql: str, default=0):
+        try:
+            return (await db.execute(text(sql))).scalar() or default
+        except Exception:
+            await db.rollback()
+            return default
+
+    async def rows(sql: str):
+        try:
+            return (await db.execute(text(sql))).mappings().all()
+        except Exception:
+            await db.rollback()
+            return []
+
+    total_users = await scalar("SELECT count(*) FROM user_profiles")
+
+    # ── Onboarding ──
+    users_with_first_item = await scalar("SELECT count(DISTINCT user_id) FROM wardrobe_user_items")
+    users_onboarding_complete = await scalar("SELECT count(*) FROM user_profiles WHERE onboarding_complete = true")
+
+    # Wardrobe progress: count items per user, bucket by thresholds
+    wardrobe_counts = await rows("""
+        SELECT user_id, count(*) as cnt FROM wardrobe_user_items GROUP BY user_id
+    """)
+    users_wardrobe_30 = sum(1 for r in wardrobe_counts if r["cnt"] >= 15)
+    users_wardrobe_50 = sum(1 for r in wardrobe_counts if r["cnt"] >= 25)
+    users_wardrobe_100 = sum(1 for r in wardrobe_counts if r["cnt"] >= 50)
+
+    # ── Aha-moment ──
+    users_first_outfit = await scalar("SELECT count(DISTINCT user_id) FROM outfits")
+    users_first_tryon = await scalar("SELECT count(DISTINCT user_profile_id) FROM usage_events WHERE feature = 'vton_used' OR feature = 'first_tryon_opened'")
+    users_clicked_rec = await scalar("SELECT count(DISTINCT user_profile_id) FROM usage_events WHERE feature = 'recommendation_clicked'")
+
+    # ── Value delivery ──
+    total_outfits_saved = await scalar("SELECT count(*) FROM user_looks")
+    users_saved_outfits = await scalar("SELECT count(DISTINCT user_id) FROM user_looks")
+    total_outfits_shared = await scalar("SELECT count(DISTINCT user_profile_id) FROM usage_events WHERE feature = 'outfit_shared'")
+    total_tasks_completed = await scalar("SELECT count(*) FROM usage_events WHERE feature = 'session_task_completed'")
+
+    # Repeat task rate: % of users who did 2+ outfit saves
+    users_with_repeat = await scalar("""
+        SELECT count(*) FROM (SELECT user_id FROM user_looks GROUP BY user_id HAVING count(*) >= 2) sub
+    """)
+    repeat_task_rate = round(users_with_repeat / max(users_saved_outfits, 1) * 100, 1)
+    outfits_per_user = round(total_outfits_saved / max(users_saved_outfits, 1), 1)
+
+    # ── Engagement ──
+    users_used_ai = await scalar("SELECT count(DISTINCT user_profile_id) FROM usage_events WHERE feature IN ('ai_assistant_used', 'ai_requests')")
+    total_ai_sessions = await scalar("SELECT count(*) FROM usage_events WHERE feature IN ('ai_assistant_used', 'ai_requests')")
+
+    # ── Retention (from daily_user_activity + user_profiles.created_at) ──
+    # D1: users who came back the day after registration
+    d1_users = await scalar("""
+        SELECT count(DISTINCT up.id) FROM user_profiles up
+        JOIN daily_user_activity dua ON dua.user_profile_id = up.id
+        WHERE dua.activity_date = DATE(up.created_at) + 1
+    """)
+    d7_users = await scalar("""
+        SELECT count(DISTINCT up.id) FROM user_profiles up
+        JOIN daily_user_activity dua ON dua.user_profile_id = up.id
+        WHERE dua.activity_date BETWEEN DATE(up.created_at) + 2 AND DATE(up.created_at) + 7
+    """)
+    d30_users = await scalar("""
+        SELECT count(DISTINCT up.id) FROM user_profiles up
+        JOIN daily_user_activity dua ON dua.user_profile_id = up.id
+        WHERE dua.activity_date BETWEEN DATE(up.created_at) + 8 AND DATE(up.created_at) + 30
+    """)
+    # Users eligible for each retention window (registered at least N days ago)
+    eligible_d1 = await scalar("SELECT count(*) FROM user_profiles WHERE created_at <= NOW() - INTERVAL '1 day'") or 1
+    eligible_d7 = await scalar("SELECT count(*) FROM user_profiles WHERE created_at <= NOW() - INTERVAL '7 days'") or 1
+    eligible_d30 = await scalar("SELECT count(*) FROM user_profiles WHERE created_at <= NOW() - INTERVAL '30 days'") or 1
+
+    d1_retention = round(d1_users / max(eligible_d1, 1) * 100, 1)
+    d7_retention = round(d7_users / max(eligible_d7, 1) * 100, 1)
+    d30_retention = round(d30_users / max(eligible_d30, 1) * 100, 1)
+
+    # ── Monetization ──
+    paywall_shown = await scalar("SELECT count(*) FROM usage_events WHERE feature = 'paywall_shown'")
+    conversions_to_premium = await scalar("SELECT count(*) FROM payments WHERE status = 'paid' AND meta->>'action' = 'subscribe'")
+    premium_users = await scalar("SELECT count(*) FROM user_subscriptions WHERE status = 'active' AND expires_at > NOW()")
+    premium_feature_uses = await scalar("SELECT count(*) FROM usage_events WHERE feature = 'premium_feature_used'")
+    conversion_rate = round(conversions_to_premium / max(paywall_shown, 1) * 100, 1)
+
+    # ── Funnel ──
+    funnel = [
+        {"stage": "Регистрация", "users": total_users},
+        {"stage": "Первая вещь", "users": users_with_first_item},
+        {"stage": "Онбординг завершён", "users": users_onboarding_complete},
+        {"stage": "Первый образ", "users": users_first_outfit},
+        {"stage": "Сохранили образ", "users": users_saved_outfits},
+        {"stage": "AI ассистент", "users": users_used_ai},
+        {"stage": "Premium", "users": premium_users},
+    ]
+
+    # ── Timeline (last 30 days from usage_events) ──
+    timeline_rows = await rows("""
+        SELECT DATE(occurred_at) as date,
+            count(*) FILTER (WHERE feature = 'first_item_added') as first_item_added,
+            count(*) FILTER (WHERE feature IN ('first_outfit_generated', 'outfit_saved')) as first_outfit_generated,
+            count(*) FILTER (WHERE feature = 'outfit_saved') as outfit_saved,
+            count(*) FILTER (WHERE feature IN ('ai_assistant_used', 'ai_requests')) as ai_assistant_used
+        FROM usage_events
+        WHERE occurred_at >= CURRENT_DATE - 30
+        GROUP BY DATE(occurred_at) ORDER BY date
+    """)
+    timeline = [{"date": str(r["date"]), "first_item_added": r["first_item_added"],
+                 "first_outfit_generated": r["first_outfit_generated"],
+                 "outfit_saved": r["outfit_saved"], "ai_assistant_used": r["ai_assistant_used"]}
+                for r in timeline_rows]
+
+    return {
+        "onboarding": {
+            "users_with_first_item": users_with_first_item,
+            "users_onboarding_complete": users_onboarding_complete,
+            "users_wardrobe_30": users_wardrobe_30,
+            "users_wardrobe_50": users_wardrobe_50,
+            "users_wardrobe_100": users_wardrobe_100,
+        },
+        "ahaMoment": {
+            "users_first_outfit": users_first_outfit,
+            "users_first_tryon": users_first_tryon,
+            "users_clicked_recommendation": users_clicked_rec,
+        },
+        "value": {
+            "total_outfits_saved": total_outfits_saved,
+            "users_saved_outfits": users_saved_outfits,
+            "total_outfits_shared": total_outfits_shared,
+            "total_tasks_completed": total_tasks_completed,
+            "repeat_task_rate": repeat_task_rate,
+            "outfits_per_active_user": outfits_per_user,
+        },
+        "engagement": {
+            "users_used_ai": users_used_ai,
+            "total_ai_sessions": total_ai_sessions,
+        },
+        "retention": {
+            "d1_retention": d1_retention,
+            "d7_retention": d7_retention,
+            "d30_retention": d30_retention,
+            "d1_users": d1_users,
+            "d7_users": d7_users,
+            "d30_users": d30_users,
+        },
+        "monetization": {
+            "paywall_shown": paywall_shown,
+            "conversions_to_premium": conversions_to_premium,
+            "conversion_rate": conversion_rate,
+            "premium_users": premium_users,
+            "premium_feature_uses": premium_feature_uses,
+        },
+        "funnel": funnel,
+        "timeline": timeline,
+    }
 
 
 @router.get("/users")
@@ -69,6 +221,70 @@ async def list_users(search: str = Query(""), user: dict = Depends(get_admin_use
     return {"users": users}
 
 
+@router.get("/paying-users")
+async def paying_users(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """List all users who ever paid — subscriptions + credit purchases."""
+    result = await db.execute(text("""
+        SELECT DISTINCT ON (u.id)
+            up.id as profile_id,
+            up.user_id,
+            u.email,
+            u.raw_user_meta_data,
+            up.full_name,
+            up.created_at as registered_at,
+            p.amount,
+            p.status as payment_status,
+            p.meta as payment_meta,
+            p.created_at as payment_date,
+            us.subscription_type,
+            us.status as sub_status,
+            us.expires_at as sub_expires
+        FROM payments p
+        JOIN user_profiles up ON up.user_id = p.user_id
+        JOIN users u ON u.id = p.user_id
+        LEFT JOIN user_subscriptions us ON us.user_profile_id = up.id AND us.status = 'active'
+        WHERE p.status = 'paid'
+        ORDER BY u.id, p.created_at DESC
+    """))
+    rows = result.mappings().all()
+
+    paying = []
+    for r in rows:
+        row = dict(r)
+        meta = row.get("raw_user_meta_data") or {}
+        if isinstance(meta, str):
+            try:
+                meta = json_lib.loads(meta)
+            except Exception:
+                meta = {}
+
+        # Get all payments for this user
+        payments_result = await db.execute(text("""
+            SELECT amount, status, meta, created_at FROM payments
+            WHERE user_id = :uid AND status = 'paid' ORDER BY created_at DESC
+        """), {"uid": row["user_id"]})
+
+        paying.append({
+            "profile_id": row["profile_id"],
+            "user_id": str(row["user_id"]),
+            "email": row.get("email") or "",
+            "full_name": row.get("full_name") or meta.get("full_name") or meta.get("telegram_first_name") or "",
+            "telegram_username": meta.get("telegram_username") or "",
+            "telegram_id": meta.get("telegram_id") or meta.get("sub") or "",
+            "registered_at": str(row.get("registered_at") or ""),
+            "subscription_type": row.get("subscription_type"),
+            "sub_status": row.get("sub_status"),
+            "sub_expires": str(row.get("sub_expires") or ""),
+            "payments": [
+                {"amount": float(p["amount"]), "action": (p["meta"] or {}).get("action", ""),
+                 "type": (p["meta"] or {}).get("type", ""), "date": str(p["created_at"])}
+                for p in payments_result.mappings().all()
+            ],
+        })
+
+    return {"paying_users": paying, "total": len(paying)}
+
+
 @router.get("/metrics")
 async def metrics(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     async def safe_scalar(sql: str, default=0):
@@ -88,8 +304,8 @@ async def metrics(user: dict = Depends(get_admin_user), db: AsyncSession = Depen
 
     total_users = await safe_scalar("SELECT count(*) FROM user_profiles")
     active_subs = await safe_scalar("SELECT count(*) FROM user_subscriptions WHERE status='active' AND expires_at > NOW()")
-    mau = await safe_scalar("SELECT count(DISTINCT user_id) FROM daily_user_activity WHERE activity_date >= CURRENT_DATE - 30")
-    dau = await safe_scalar("SELECT count(DISTINCT user_id) FROM daily_user_activity WHERE activity_date = CURRENT_DATE")
+    mau = await safe_scalar("SELECT count(DISTINCT user_profile_id) FROM daily_user_activity WHERE activity_date >= CURRENT_DATE - 30")
+    dau = await safe_scalar("SELECT count(DISTINCT user_profile_id) FROM daily_user_activity WHERE activity_date = CURRENT_DATE")
 
     reg_rows = await safe_rows("SELECT DATE(created_at) as date, count(*) as count FROM user_profiles WHERE created_at >= CURRENT_DATE - 30 GROUP BY DATE(created_at) ORDER BY date")
     registrations = [{"date": str(r.date), "count": r.count} for r in reg_rows]

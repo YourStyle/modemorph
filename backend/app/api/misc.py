@@ -94,18 +94,43 @@ async def log_usage(request: Request, user: dict = Depends(get_current_user), db
     body = await request.json()
     feature = body.get("key") or body.get("feature")
     action = body.get("action", "view")
+    meta = body.get("meta", {})
 
     profile_result = await db.execute(text("SELECT id FROM user_profiles WHERE user_id = :uid"), {"uid": user["id"]})
     profile = profile_result.first()
     if not profile:
         return {"success": True}
 
+    pid = profile[0]
+
+    # Check subscriber/credits status for usage_events enrichment
+    is_sub = await db.execute(text(
+        "SELECT EXISTS(SELECT 1 FROM user_subscriptions WHERE user_profile_id = :pid AND status = 'active' AND expires_at > NOW())"
+    ), {"pid": pid})
+    has_sub = is_sub.scalar() or False
+
+    has_cred = await db.execute(text(
+        "SELECT EXISTS(SELECT 1 FROM credit_transactions WHERE user_profile_id = :pid AND reason = 'purchase')"
+    ), {"pid": pid})
+    has_bought = has_cred.scalar() or False
+
     await db.execute(
-        text("INSERT INTO usage_events (user_profile_id, feature, action, count, page_path, item_id, request_id, occurred_at) VALUES (:pid, :feat, :act, :cnt, :page, :item, :req, NOW())"),
-        {"pid": profile[0], "feat": feature, "act": action, "cnt": body.get("count", 1),
-         "page": body.get("meta", {}).get("pagePath"), "item": body.get("meta", {}).get("itemId"),
-         "req": body.get("meta", {}).get("requestId")},
+        text("""INSERT INTO usage_events
+                (user_profile_id, user_anon_id, feature, action, count,
+                 is_subscriber, has_bought_credits,
+                 page_path, item_id, request_id, metadata, occurred_at)
+                VALUES (:pid, :anon, :feat, :act, :cnt,
+                        :is_sub, :has_bought,
+                        :page, :item, :req, CAST(:meta AS jsonb), NOW())"""),
+        {"pid": pid, "anon": str(pid), "feat": feature, "act": action, "cnt": body.get("count", 1),
+         "is_sub": has_sub, "has_bought": has_bought,
+         "page": meta.get("pagePath"), "item": meta.get("itemId"),
+         "req": meta.get("requestId"), "meta": json_lib.dumps(meta) if meta else "{}"},
     )
+
+    # Record daily activity for DAU/MAU tracking
+    await db.execute(text("SELECT record_user_activity(:pid)"), {"pid": pid})
+
     await db.commit()
     return {"success": True}
 
@@ -429,13 +454,17 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     if not items:
         raise HTTPException(status_code=400, detail="Items are required")
 
-    profile = await db.execute(text("SELECT avatar_url FROM user_profiles WHERE user_id = :uid"), {"uid": user["id"]})
-    profile_row = profile.first()
-    if not profile_row or not profile_row[0]:
-        raise HTTPException(status_code=400, detail="Upload an avatar in your profile first.")
+    # Use avatar_url from request body if provided, otherwise fall back to profile
+    avatar_url = body.get("avatar_url")
+    if not avatar_url:
+        profile = await db.execute(text("SELECT avatar_url FROM user_profiles WHERE user_id = :uid"), {"uid": user["id"]})
+        profile_row = profile.first()
+        if not profile_row or not profile_row[0]:
+            raise HTTPException(status_code=400, detail="Upload an avatar in your profile first.")
+        avatar_url = profile_row[0]
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        avatar_resp = await client.get(profile_row[0])
+        avatar_resp = await client.get(avatar_url)
         if avatar_resp.status_code != 200:
             raise HTTPException(status_code=400, detail="Failed to download avatar")
         ct = avatar_resp.headers.get("content-type", "image/jpeg")

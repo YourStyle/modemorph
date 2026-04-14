@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api-client"
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, FunnelChart, Funnel, Cell, LabelList } from "recharts"
-import { Users, TrendingUp, Target, Zap, CreditCard, Loader2, Sparkles, CheckCircle2, Download } from "lucide-react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Users, TrendingUp, Target, Zap, CreditCard, Loader2, Sparkles, CheckCircle2, Download, DollarSign } from "lucide-react"
 import * as XLSX from "xlsx"
 
 interface AnalyticsData {
@@ -62,20 +63,41 @@ interface AnalyticsData {
   }>
 }
 
+interface PayingUser {
+  profile_id: number
+  user_id: string
+  email: string
+  full_name: string
+  telegram_username: string
+  telegram_id: string
+  registered_at: string
+  subscription_type: string | null
+  sub_status: string | null
+  sub_expires: string
+  payments: Array<{
+    amount: number
+    action: string
+    type: string
+    date: string
+  }>
+}
+
 const COLORS = {
-  primary: "#3b82f6",
-  success: "#10b981",
+  primary: "#EC9DE2",
+  success: "#89AEFF",
   warning: "#f59e0b",
   danger: "#ef4444",
-  purple: "#8b5cf6",
+  purple: "#B97DC6",
 }
 
 export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null)
+  const [payingUsers, setPayingUsers] = useState<PayingUser[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchAnalytics()
+    fetchPayingUsers()
   }, [])
 
   const fetchAnalytics = async () => {
@@ -86,6 +108,15 @@ export default function AnalyticsPage() {
       console.error("Failed to load analytics:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchPayingUsers = async () => {
+    try {
+      const result = await api.get("/api/admin/paying-users")
+      setPayingUsers(result.paying_users || [])
+    } catch (error) {
+      console.error("Failed to load paying users:", error)
     }
   }
 
@@ -187,7 +218,7 @@ export default function AnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Аналитика продукта</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Аналитика продукта</h1>
           <p className="text-muted-foreground mt-2">Ключевые метрики и поведение пользователей</p>
         </div>
         <Button onClick={exportToExcel} className="gap-2">
@@ -199,7 +230,7 @@ export default function AnalyticsPage() {
       {/* Onboarding Metrics */}
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Target className="h-5 w-5 text-blue-600" />
+          <Target className="h-5 w-5 text-[#B97DC6]" />
           Онбординг
         </h2>
         <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
@@ -258,7 +289,7 @@ export default function AnalyticsPage() {
       {/* Aha-Moment Metrics */}
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Zap className="h-5 w-5 text-yellow-600" />
+          <Zap className="h-5 w-5 text-amber-500" />
           Aha-момент
         </h2>
         <div className="grid gap-4 md:grid-cols-3">
@@ -297,7 +328,7 @@ export default function AnalyticsPage() {
       {/* Value Delivery */}
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-green-600" />
+          <CheckCircle2 className="h-5 w-5 text-emerald-500" />
           Доставка ценности
         </h2>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -347,7 +378,7 @@ export default function AnalyticsPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <div>
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-600" />
+            <Sparkles className="h-5 w-5 text-[#EC9DE2]" />
             Вовлечённость
           </h2>
           <div className="grid gap-4">
@@ -375,7 +406,7 @@ export default function AnalyticsPage() {
 
         <div>
           <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-green-600" />
+            <TrendingUp className="h-5 w-5 text-[#89AEFF]" />
             Retention
           </h2>
           <div className="grid gap-4">
@@ -429,7 +460,7 @@ export default function AnalyticsPage() {
       {/* Monetization */}
       <div>
         <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <CreditCard className="h-5 w-5 text-blue-600" />
+          <CreditCard className="h-5 w-5 text-amber-500" />
           Монетизация
         </h2>
         <div className="grid gap-4 md:grid-cols-4">
@@ -591,6 +622,84 @@ export default function AnalyticsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Paying Users */}
+      {payingUsers.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <DollarSign className="h-5 w-5 text-green-600" />
+              Оплатившие пользователи ({payingUsers.length})
+            </CardTitle>
+            <CardDescription>Все пользователи с оплаченными транзакциями</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Пользователь</TableHead>
+                  <TableHead>Email / Telegram</TableHead>
+                  <TableHead>Подписка</TableHead>
+                  <TableHead>Платежи</TableHead>
+                  <TableHead>Дата регистрации</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payingUsers.map((pu) => (
+                  <TableRow key={pu.user_id}>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{pu.full_name || "Пользователь"}</span>
+                        <span className="text-xs text-muted-foreground">{pu.user_id.slice(0, 8)}...</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        {pu.email && <span className="text-sm">{pu.email}</span>}
+                        {pu.telegram_username && <span className="text-xs text-blue-600">@{pu.telegram_username}</span>}
+                        {pu.telegram_id && <span className="text-xs text-muted-foreground">TG ID: {pu.telegram_id}</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {pu.sub_status === "active" ? (
+                        <div className="flex flex-col gap-0.5">
+                          <Badge variant="default" className="bg-green-600 w-fit">
+                            {pu.subscription_type === "yearly" ? "Pro (год)" : "Pro (мес)"}
+                          </Badge>
+                          {pu.sub_expires && (
+                            <span className="text-xs text-muted-foreground">
+                              до {new Date(pu.sub_expires).toLocaleDateString("ru")}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <Badge variant="secondary">Истекла</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col gap-0.5">
+                        {pu.payments.map((p, i) => (
+                          <span key={i} className="text-xs">
+                            {p.amount} RUB — {p.action === "subscribe" ? `подписка ${p.type}` : "кредиты"}
+                            <span className="text-muted-foreground ml-1">
+                              ({new Date(p.date).toLocaleDateString("ru")})
+                            </span>
+                          </span>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {pu.registered_at ? new Date(pu.registered_at).toLocaleDateString("ru") : "—"}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
