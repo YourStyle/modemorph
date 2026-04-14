@@ -20,6 +20,10 @@ def _get_db(request: Request):
     return request.app.state.db_pool
 
 
+def _get_clusters(request: Request):
+    return request.app.state.cluster_service
+
+
 class SearchRequest(BaseModel):
     query_text: Optional[str] = None
     composed_text: Optional[str] = None
@@ -90,15 +94,17 @@ async def text_search(request: Request, body: SearchRequest):
 
 
 # ---------------------------------------------------------------------------
-# /clip/recommend — user_id → personalized recs from mean embedding
+# /clip/recommend — user_id → personalized recs with dislike penalties
 # ---------------------------------------------------------------------------
 
 @router.post('/recommend')
 async def recommend(request: Request, body: RecommendRequest):
     encoder, faiss_index = _get_services(request)
     pool = _get_db(request)
+    cluster_service = _get_clusters(request)
     from .recommender import CLIPRecommenderService
 
+    # 1. Fetch user's wardrobe embeddings (preference signal)
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, embedding FROM wardrobe_user_items "
@@ -110,13 +116,65 @@ async def recommend(request: Request, body: RecommendRequest):
     for row in rows:
         raw = row["embedding"]
         if raw:
-            # embedding stored as TEXT[] in PostgreSQL
-            vec = [float(x) for x in raw]
-            embeddings.append(vec)
+            try:
+                vec = [float(x) for x in raw]
+                embeddings.append(vec)
+            except (ValueError, TypeError):
+                continue
 
+    # 2. Fetch disliked item embeddings (anti-preference signal)
+    dislike_embeddings = []
+    exclude_ids = set()
+    try:
+        async with pool.acquire() as conn:
+            dislike_rows = await conn.fetch("""
+                SELECT d.item_id, d.item_source,
+                       COALESCE(wi.embedding, wui.embedding) as embedding
+                FROM user_item_dislikes d
+                LEFT JOIN wardrobe_items wi
+                    ON d.item_id = wi.id AND d.item_source = 'wardrobe_items'
+                LEFT JOIN wardrobe_user_items wui
+                    ON d.item_id = wui.id AND d.item_source = 'wardrobe_user_items'
+                WHERE d.user_id = $1
+            """, body.user_id)
+
+        for dr in dislike_rows:
+            exclude_ids.add(dr['item_id'])
+            if dr['embedding']:
+                try:
+                    vec = [float(x) for x in dr['embedding']]
+                    dislike_embeddings.append(vec)
+                except (ValueError, TypeError):
+                    continue
+    except Exception as e:
+        logger.warning(f"[recommend] Failed to fetch dislikes: {e}")
+
+    # 3. Get collaborative dislike signal from user's cluster
+    cluster_dislike_emb = None
+    user_cluster = cluster_service.get_user_cluster(body.user_id)
+    if user_cluster is not None:
+        cluster_dislike_emb = cluster_service.get_cluster_dislike_embedding(user_cluster)
+
+    # 4. Recommend with penalties
     rec = CLIPRecommenderService(encoder, faiss_index)
-    results = rec.recommend_for_user(embeddings, k=body.k)
-    return {'results': results, 'profile_size': len(embeddings)}
+
+    if dislike_embeddings or cluster_dislike_emb is not None:
+        results = rec.recommend_for_user_with_dislikes(
+            user_embeddings=embeddings,
+            dislike_embeddings=dislike_embeddings if dislike_embeddings else None,
+            cluster_dislike_emb=cluster_dislike_emb,
+            exclude_ids=exclude_ids if exclude_ids else None,
+            k=body.k,
+        )
+    else:
+        results = rec.recommend_for_user(embeddings, k=body.k)
+
+    return {
+        'results': results,
+        'profile_size': len(embeddings),
+        'dislikes_count': len(dislike_embeddings),
+        'cluster_id': user_cluster,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +253,18 @@ async def build_index(request: Request):
         "encoded": len(enriched),
         "skipped": skipped,
     }
+
+
+# ---------------------------------------------------------------------------
+# /clip/clusters/build — build user clusters for collaborative filtering
+# ---------------------------------------------------------------------------
+
+@router.post('/clusters/build')
+async def build_clusters(request: Request):
+    pool = _get_db(request)
+    cluster_service = _get_clusters(request)
+    result = await cluster_service.build_clusters(pool)
+    return result
 
 
 # ---------------------------------------------------------------------------

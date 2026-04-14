@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from clip.encoder import CLIPEncoderService
 from clip.index import FAISSIndexService
+from clip.profile import UserClusterService
 from clip.routes import router as clip_router
 
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,9 @@ async def lifespan(app: FastAPI):
 
     app.state.faiss_index = FAISSIndexService()
     logger.info(f"FAISS index loaded — {app.state.faiss_index.size} vectors")
+
+    app.state.cluster_service = UserClusterService()
+    logger.info("User cluster service loaded")
 
     # Connect to PostgreSQL
     dsn = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
