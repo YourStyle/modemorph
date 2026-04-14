@@ -97,7 +97,9 @@ async def _gemini_organize(
 - 1-2 образа могут быть в ДРУГОМ стиле — для разнообразия и экспериментов (укажи это в названии, например "Попробуй: уличный стиль")
 """
 
-    prompt = f"""Ты - стилист. Составь {sections_count + 1} тематических раздела с образами.
+    has_partners = bool(partner_items)
+
+    prompt = f"""Ты - стилист. Составь тематические разделы с образами ТРЁХ типов.
 
 Погода: {temp}°C, {desc}
 Пол: {gender or 'не указан'}
@@ -106,26 +108,29 @@ async def _gemini_organize(
 {all_items}
 
 ПРАВИЛА:
-1. Первые {sections_count} разделов — образы с МИКСОМ вещей пользователя и партнёрских:
-   - По событиям: "На каждый день", "На работу", "На свидание", "На прогулку" и т.п.
-   - В каждом разделе 3-4 образа
-   - Хотя бы 1 вещь пользователя [USER] в каждом образе
-2. ПОСЛЕДНИЙ раздел — "Готовые образы от брендов":
-   - 3-4 образа ЦЕЛИКОМ из партнёрских [PARTNER] вещей (без USER)
-   - Подбери стильные комплекты из одного бренда или миксуй бренды
-3. ВАЖНО! Каждый образ = 4-6 вещей:
+1. Раздел(ы) section_type="user_only" — образы ТОЛЬКО из вещей пользователя [USER]:
+   - 1-2 раздела по событиям: "На каждый день", "Выходной день" и т.п.
+   - В каждом 2-3 образа
+   - ТОЛЬКО вещи [USER], БЕЗ [PARTNER]
+{"2. Раздел(ы) section_type=\"mix\" — образы из МИКСА вещей пользователя и партнёрских:" if has_partners else ""}
+{"   - 1-2 раздела: \"На работу\", \"На свидание\", \"На прогулку\" и т.п." if has_partners else ""}
+{"   - Хотя бы 1 вещь пользователя [USER] в каждом образе" if has_partners else ""}
+{"3. Раздел section_type=\"partner_only\" — \"Готовые образы от брендов\":" if has_partners else ""}
+{"   - 1 раздел, 2-3 образа ЦЕЛИКОМ из [PARTNER] вещей (без USER)" if has_partners else ""}
+{"   - Подбери стильные комплекты из одного бренда или миксуй бренды" if has_partners else ""}
+{"4" if has_partners else "2"}. ВАЖНО! Каждый образ = 4-6 вещей:
    - Верх (рубашка/футболка/блузка/свитер)
    - Низ (брюки/джинсы/юбка) ИЛИ платье
    - Верхняя одежда — если {temp}°C < 18
    - ОБУВЬ — ВСЕГДА
    - Аксессуар — по возможности
-4. НЕ создавай образ из 2-3 вещей. Минимум: верх + низ + обувь.
-5. НЕ ставь 2 штанов или 2 куртки в один образ.
-6. Учитывай погоду ({temp}°C, {desc}).
-7. Стильное короткое название для каждого образа (3-5 слов).
-8. Учитывай пол: не предлагай платья мужчинам.
+{"5" if has_partners else "3"}. НЕ создавай образ из 2-3 вещей. Минимум: верх + низ + обувь.
+{"6" if has_partners else "4"}. НЕ ставь 2 штанов или 2 куртки или 2 шорт в один образ. Каждый слот одежды — строго 1 вещь.
+{"7" if has_partners else "5"}. Учитывай погоду ({temp}°C, {desc}).
+{"8" if has_partners else "6"}. Стильное короткое название для каждого образа (3-5 слов).
+{"9" if has_partners else "7"}. Учитывай пол: не предлагай платья мужчинам.
 
-JSON: [{{"title":"Название раздела","suggestions":[{{"title":"Название образа","item_ids":[id1,id2,id3,id4,id5]}}]}}]
+JSON: [{{"title":"Название раздела","section_type":"user_only|mix|partner_only","suggestions":[{{"title":"Название образа","item_ids":[id1,id2,id3,id4,id5]}}]}}]
 Только JSON, без markdown."""
 
     try:
@@ -225,6 +230,20 @@ async def cron_generate_recommendations(
             """), {"uid": user_id})
             user_items = [dict(r) for r in user_items_result.mappings().all()]
 
+            # Filter out disliked items (graceful if table doesn't exist yet)
+            disliked_ids = set()
+            try:
+                disliked_result = await db.execute(
+                    text("SELECT item_id FROM user_item_dislikes WHERE user_id = :uid"),
+                    {"uid": user_id},
+                )
+                disliked_ids = {r[0] for r in disliked_result.all()}
+            except Exception:
+                logger.warning("[Cron Recs] user_item_dislikes table not found, skipping")
+                await db.rollback()
+            if disliked_ids:
+                user_items = [i for i in user_items if i["id"] not in disliked_ids]
+
             # Get user's dominant style
             style_result = await db.execute(text(
                 "SELECT dominant_style FROM user_profiles WHERE user_id = :uid"
@@ -266,6 +285,8 @@ async def cron_generate_recommendations(
                         # Gender filter
                         if gender and row.get("gender") and row["gender"] != gender:
                             continue
+                        if row["id"] in disliked_ids:
+                            continue
                         brand = (row.get("notes") or "").split(":")[0] or None
                         row["brand"] = brand
                         partner_items.append(row)
@@ -301,12 +322,19 @@ async def cron_generate_recommendations(
                 user_items, partner_items, weather, gender, dominant_style, n_sections,
             )
 
+            SOURCE_LABELS = {
+                "user_only": "Из вашего гардероба",
+                "mix": "Подобрано для вас",
+                "partner_only": "От партнёров",
+            }
+
             sections = []
-            source = "clip" if use_clip and partner_items else "ai"
-            source_label = "Подобрано для вас" if source == "clip" else "Рекомендация стилиста"
 
             if gemini_sections and isinstance(gemini_sections, list):
                 for gs in gemini_sections:
+                    section_type = gs.get("section_type", "user_only")
+                    if section_type not in SOURCE_LABELS:
+                        section_type = "mix" if partner_items else "user_only"
                     suggestions = []
                     for sug in gs.get("suggestions", []):
                         outfit_items = []
@@ -316,7 +344,7 @@ async def cron_generate_recommendations(
                                 outfit_items.append(item_data)
                         if outfit_items:
                             suggestions.append({
-                                "id": f"{source}_{user_id[:8]}_{len(suggestions)}",
+                                "id": f"{section_type}_{user_id[:8]}_{len(sections)}_{len(suggestions)}",
                                 "title": sug.get("title", "Образ"),
                                 "items": outfit_items,
                                 "suggested_items_count": len(outfit_items),
@@ -324,8 +352,8 @@ async def cron_generate_recommendations(
                     if suggestions:
                         sections.append({
                             "title": gs.get("title", "Рекомендации"),
-                            "source": source,
-                            "source_label": source_label,
+                            "source": section_type,
+                            "source_label": SOURCE_LABELS[section_type],
                             "suggestions": suggestions,
                         })
 
@@ -344,10 +372,11 @@ async def cron_generate_recommendations(
             await db.commit()
 
             total_outfits = sum(len(s["suggestions"]) for s in sections)
-            logger.info(f"[Cron Recs] User {user_id[:8]}... [{source}] {len(sections)} sections, {total_outfits} outfits")
+            section_types = [s["source"] for s in sections]
+            logger.info(f"[Cron Recs] User {user_id[:8]}... {section_types} {len(sections)} sections, {total_outfits} outfits")
 
             results["success"] += 1
-            if source == "clip":
+            if use_clip and partner_items:
                 results["clip"] += 1
             else:
                 results["gemini_only"] += 1
