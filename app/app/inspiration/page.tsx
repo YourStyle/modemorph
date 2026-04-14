@@ -613,7 +613,7 @@ export default function InspirationPage(): ReactElement {
         </div>
       </div>
 
-      <main className="absolute left-0 right-0 bottom-0 top-[115px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
+      <main className="absolute left-0 right-0 bottom-0 top-[135px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
         {/* Контейнер карточек: вертикальный скролл, снап к экрану, плавный скролл */}
         <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 select-none">
           {/* Оверлей лимита */}

@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import { TopNavigation } from "@/components/top-navigation"
 import { BottomNavigation } from "@/components/bottom-navigation"
@@ -20,6 +21,23 @@ export default function AppClientLayout({
   const isAssistant = pathname?.startsWith("/app/ai-assistant") ?? false
   const { isOpen, initialPhotos, closeSheet, onAnalysisSuccess } = useAddToCloset()
 
+  const [isTmaIos, setIsTmaIos] = useState(false)
+
+  useEffect(() => {
+    try {
+      const tg = (window as any).Telegram?.WebApp
+      const hasInit = !!tg?.initData && String(tg.initData).trim().length > 0
+      const hasUser = !!tg?.initDataUnsafe?.user?.id || !!tg?.initDataUnsafe?.query_id
+      const platform = String(tg?.platform || "").toLowerCase()
+      const inTma = hasInit && hasUser && platform && platform !== "unknown"
+      if (inTma && /ios/.test(platform)) {
+        setIsTmaIos(true)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
   console.log("[AppClientLayout] Rendering")
 
   // Убрана проверка сессии - этим занимается MiniAppRegistrationGate
@@ -27,7 +45,12 @@ export default function AppClientLayout({
   return (
     <div className="min-h-screen bg-background">
       {!hideTopNavigation && <TopNavigation />}
-      <main className={cn("pt-0 max-w-7xl m-auto", isAssistant ? "pb-0" : "pb-10")}>{children}</main>
+      <main
+        className={cn("pt-0 max-w-7xl m-auto", isAssistant ? "pb-0" : "pb-10")}
+        style={isTmaIos && !hideTopNavigation ? { paddingTop: "calc(env(safe-area-inset-top, 0px) + 70px)" } : undefined}
+      >
+        {children}
+      </main>
       <BottomNavigation />
       <BackgroundTasksWidget />
       <TryOnSheet />

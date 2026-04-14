@@ -56,6 +56,20 @@ interface OutfitCardProps {
   onDislikeItem?: (itemId: string) => void
 }
 
+const BRAND_STYLES: Record<string, { display: string; color: string }> = {
+  sela: { display: "SELA", color: "#00875A" },
+  lacoste: { display: "LACOSTE", color: "#005A34" },
+  gate31: { display: "GATE31", color: "#1A1A1A" },
+  loverepublic: { display: "LOVE REPUBLIC", color: "#1A1A1A" },
+  "love republic": { display: "LOVE REPUBLIC", color: "#1A1A1A" },
+}
+
+function getBrandDisplay(brand: string): { display: string; color: string } | null {
+  const key = brand.toLowerCase().replace(/\s+/g, "")
+  // Try exact match first, then normalized
+  return BRAND_STYLES[brand.toLowerCase()] || BRAND_STYLES[key] || null
+}
+
 function getSourceBadge(source?: string): { label: string; className: string } | null {
   switch (source) {
     case "user_only":
@@ -260,21 +274,19 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                     </button>
 
                     {/* Brand badge */}
-                    {item.brand && (
-                      <div className="absolute bottom-2 left-2 bg-white/90 rounded px-1.5 py-0.5 flex items-center">
-                        {item.brand === "SELA" ? (
-                          <svg viewBox="0 0 109 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-3 w-auto text-[#00875A]">
-                            <path d="M39.73 6c-7.63 0-13.25 6.02-13.25 13.97 0 8.37 5.42 14.03 13.4 14.03 5.16 0 9.89-2.6 11.92-7.55l-6.6-2.5c-.75 2.35-3 3.56-5.5 3.56-3.07 0-5.5-2.82-5.48-5.75h17.91v-2.14c0-7.6-4.52-13.62-12.4-13.62zm-5.27 10.76c.8-2.96 2.35-4.44 4.99-4.44 2.96 0 4.69 2.04 4.74 4.44h-9.73z" fill="currentColor"/>
-                            <path d="M68.59 26.6c-3.51 0-5.12-1.27-5.12-4.95V6h-8.38v16.93c0 7.7 4.82 11.07 12.44 11.07 1.66 0 3.26-.1 4.67-.36.47-.08.95-.17 1.15-.21-1.77-1.79-2.85-4.17-2.97-6.9-.57.05-1.13.08-1.79.08z" fill="currentColor"/>
-                            <path d="M105.03 34a3.73 3.73 0 100-7.45 3.73 3.73 0 000 7.45z" fill="currentColor"/>
-                            <path d="M99.1 27.49c-1.42.15-1.89-.27-1.89-1.6V15.54c0-6.27-4.26-9.49-11.19-9.49-6.92 0-10.89 3.88-12.04 8.62l7.68 1.17c.5-2.19 1.88-3.21 4.01-3.21 2.44 0 3.66 1.28 3.66 3.27v.46l-5.92 1.02c-5.57.82-10.19 3.06-10.19 8.62 0 4.74 3.81 8.01 9.13 8.01 3.46 0 6.52-1.47 8.28-3.31 1.35 2.3 4.01 3.57 8.63 2.8 0 0-.77-1.49-.77-3.22 0-.99.22-1.93.6-2.78zm-9.77-3.64c0 2.75-2.6 4.28-5.26 4.28-1.9 0-3.02-.7-3.02-2.7 0-1.89 1.56-2.6 3.66-2.96l4.62-.74v2.12z" fill="currentColor"/>
-                            <path d="M14.37 16.5c-3.21-.61-4.75-1.07-4.75-2.55 0-1.22 1.24-1.73 3.19-1.73 2.61 0 5.22 1.17 7.23 3.31l4.3-4.95s-.23-.28-.5-.53C21.58 7.72 17.48 6 12.86 6 5.84 6 1.57 9.62 1.57 15.08c0 6.07 4.67 6.99 9.03 7.85 4.22.77 5.96 1.18 5.96 2.97 0 1.43-1.74 1.93-3.85 1.93-2.86 0-6.27-1.43-8.43-3.82L0 29.35c2.46 2.91 7.79 4.65 12.41 4.65 7.63 0 12.04-3.42 12.04-9.28 0-5.87-5.32-7.24-10.08-8.21z" fill="currentColor"/>
-                          </svg>
-                        ) : (
-                          <span className="text-xs font-medium text-gray-600">{item.brand}</span>
-                        )}
-                      </div>
-                    )}
+                    {item.brand && item.brand.toLowerCase() !== "unknown" && (() => {
+                      const brandInfo = getBrandDisplay(item.brand!)
+                      return (
+                        <div className="absolute bottom-2 left-2 bg-white/90 rounded px-1.5 py-0.5 flex items-center">
+                          <span
+                            className="text-xs font-semibold tracking-wide"
+                            style={brandInfo ? { color: brandInfo.color } : { color: "#4B5563" }}
+                          >
+                            {brandInfo ? brandInfo.display : item.brand}
+                          </span>
+                        </div>
+                      )
+                    })()}
                   </div>
                 )
               })}
@@ -307,7 +319,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                       onClick={(e) => e.stopPropagation()}
                       className="inline-flex items-center text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full transition-colors"
                     >
-                      🛒 {item.brand || "Магазин"}
+                      🛒 {item.brand && item.brand.toLowerCase() !== "unknown" ? item.brand : "Магазин"}
                     </a>
                   )}
                   <button
@@ -486,7 +498,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                     >
                       {item.user_id ? "Ваше" : "Рекомендуем"}
                     </span>
-                    {item.brand && (
+                    {item.brand && item.brand.toLowerCase() !== "unknown" && (
                       <span className="text-xs text-gray-500 font-medium">{item.brand}</span>
                     )}
                   </div>

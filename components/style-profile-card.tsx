@@ -194,11 +194,11 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
       {/* Main card — always expanded, never changes height */}
       <Card
         ref={cardRef}
-        className="mb-8 bg-card border-0 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.06)]"
+        className="mb-8 bg-card border-0 overflow-visible shadow-[0_2px_8px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.06)]"
       >
         <div className="px-6 pt-6 pb-5">
           <div className="flex items-start gap-5">
-            <div className="flex-shrink-0 p-1">
+            <div className="flex-shrink-0 p-2">
               <PieChart data={styleDistribution} size={96} />
             </div>
             <div className="flex-1 min-w-0">
