@@ -34,49 +34,43 @@ const STYLE_COLORS: Record<string, string> = {
   business: "#80B8E8",
 }
 
-// Style advice data — color palettes from «A Dictionary of Color Combinations» by Sanzo Wada (1933)
-const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: string[]; colorNames: string[]; wadaCombo: string }> = {
+// Style advice — palettes based on real user wardrobe data + complementary accents
+const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: string[]; colorNames: string[] }> = {
   casual: {
     title: "Повседневный стиль",
-    advice: "Основа — комфорт и универсальность. Исследования Nielsen Norman Group показывают, что 73% людей чувствуют себя увереннее в одежде, которая не стесняет движений.\n\nСтройте гардероб вокруг базовых вещей: хорошие джинсы, качественные футболки, кроссовки. Добавляйте акценты через аксессуары — шарф, часы, сумку.\n\nПравило «третьей вещи»: к футболке + джинсам добавьте куртку, кардиган или рубашку нараспашку — образ сразу становится завершённым.",
-    colors: ["#f48067", "#fdbf68", "#b5decc", "#78cdd0"],
-    colorNames: ["Grenadine Pink", "Cream Yellow", "Turquoise Green", "Calamine Blue"],
-    wadaCombo: "#300",
+    advice: "Основа — комфорт и универсальность. Стройте гардероб вокруг базовых вещей: хорошие джинсы, качественные футболки, кроссовки. Добавляйте акценты через аксессуары — шарф, часы, сумку.\n\nПравило «третьей вещи»: к футболке + джинсам добавьте куртку, кардиган или рубашку нараспашку — образ сразу становится завершённым.\n\nВаша база — нейтральные тона. Разбавляйте их одним акцентом: голубая рубашка, бордовый шарф или оливковая куртка.",
+    colors: ["#1C1C1E", "#F5F0EB", "#6B8CAE", "#C8A882"],
+    colorNames: ["Чёрный", "Слоновая кость", "Приглушённый голубой", "Кэмел"],
   },
   classic: {
     title: "Классический стиль",
-    advice: "Вне времени и всегда уместен. По данным исследований Journal of Fashion Marketing, классический стиль воспринимается как наиболее профессиональный и надёжный.\n\nИнвестируйте в качество: хороший блейзер, прямые брюки, рубашки из натуральных тканей. Палитра — нейтральная с акцентами.\n\nПравило пропорций: сочетайте приталенный верх со свободным низом или наоборот — никогда не всё одновременно оверсайз.",
-    colors: ["#bb7125", "#eea78c", "#c2ae93", "#12354e"],
-    colorNames: ["Raw Sienna", "Vinaceous Cinnamon", "Ecru", "Dark Tyrian Blue"],
-    wadaCombo: "#279",
+    advice: "Вне времени и всегда уместен. Инвестируйте в качество: хороший блейзер, прямые брюки, рубашки из натуральных тканей.\n\nПравило пропорций: сочетайте приталенный верх со свободным низом или наоборот — никогда не всё одновременно оверсайз.\n\nВаш гардероб строится на тёмной базе. Добавляйте глубину через нейви и тёплые нейтралы — шоколадный, верблюжий.",
+    colors: ["#1C1C1E", "#2C3E5A", "#F5F0EB", "#8B6F4E"],
+    colorNames: ["Чёрный", "Тёмно-синий", "Молочный", "Шоколадный"],
   },
   minimalist: {
     title: "Минимализм",
-    advice: "Меньше — значит лучше. Исследование Cornell University показало, что люди в минималистичной одежде воспринимаются как более компетентные.\n\nКапсульный гардероб из 30-40 вещей покрывает все ситуации. Ключ — безупречный крой и монохромные сочетания.\n\nТри правила: максимум 3 цвета в образе, чистые линии без декора, качественные ткани с хорошей драпировкой.",
-    colors: ["#c1c494", "#bce4e5", "#97acc8", "#099197"],
-    colorNames: ["Olive Buff", "Nile Blue", "Salvia Blue", "Green Blue"],
-    wadaCombo: "#330",
+    advice: "Меньше — значит лучше. Капсульный гардероб из 30-40 вещей покрывает все ситуации. Ключ — безупречный крой и монохромные сочетания.\n\nТри правила: максимум 3 цвета в образе, чистые линии без декора, качественные ткани с хорошей драпировкой.\n\nВаша палитра — самая строгая. Играйте оттенками серого и добавляйте один тихий тон: оливковый или пыльно-розовый.",
+    colors: ["#1C1C1E", "#F5F5F5", "#9B9B9B", "#7A8B6F"],
+    colorNames: ["Чёрный", "Белый", "Серый", "Приглушённый оливковый"],
   },
   streetwear: {
     title: "Уличный стиль",
-    advice: "Самовыражение через одежду. Согласно Highsnobiety, уличная мода — самый быстрорастущий сегмент fashion-индустрии.\n\nМиксуйте бренды и ценовые категории. Оверсайз-силуэты, яркие кроссовки, statement-аксессуары — ваши инструменты.\n\nПравило контраста: сочетайте спортивные вещи с более «взрослыми» — худи + пальто, кроссовки + классические брюки.",
-    colors: ["#e31f26", "#fcb315", "#006eb8", "#a36aa5"],
-    colorNames: ["Spectrum Red", "Orange Yellow", "Blue", "Aconite Violet"],
-    wadaCombo: "#257",
+    advice: "Самовыражение через одежду. Миксуйте бренды и ценовые категории. Оверсайз-силуэты, яркие кроссовки, statement-аксессуары — ваши инструменты.\n\nПравило контраста: сочетайте спортивные вещи с более «взрослыми» — худи + пальто, кроссовки + классические брюки.\n\nВаша база — нейтральная. Акценты делают образ: бирюзовый, терракотовый или электрик.",
+    colors: ["#1C1C1E", "#F5F0EB", "#C75B3F", "#3A8A8C"],
+    colorNames: ["Чёрный", "Слоновая кость", "Терракотовый", "Тёмный бирюзовый"],
   },
   formal: {
     title: "Формальный стиль",
-    advice: "Элегантность в деталях. Harvard Business Review отмечает, что формальная одежда повышает абстрактное мышление и уверенность на переговорах.\n\nФокус на посадке: одежда должна сидеть идеально. Плечевой шов — на плече, рукава — до косточки запястья.\n\nПравило «одного акцента»: в строгом образе допустим один яркий элемент — галстук, брошь или часы.",
-    colors: ["#ae5224", "#ebd3a2", "#635a3a", "#064f6e"],
-    colorNames: ["Burnt Sienna", "Ivory Buff", "Deep Grayish Olive", "Vandar Poel's Blue"],
-    wadaCombo: "#343",
+    advice: "Элегантность в деталях. Фокус на посадке: одежда должна сидеть идеально. Плечевой шов — на плече, рукава — до косточки запястья.\n\nПравило «одного акцента»: в строгом образе допустим один яркий элемент — галстук, брошь или часы.\n\nОснова — тёмные тона и молочный. Благородные акценты: бордо, тёмное золото, глубокий синий.",
+    colors: ["#2C2C2E", "#F5F0EB", "#722F37", "#2C3E5A"],
+    colorNames: ["Графит", "Молочный", "Бордо", "Тёмно-синий"],
   },
   sport: {
     title: "Спортивный стиль",
-    advice: "Функциональность + эстетика. По данным McKinsey, athleisure составляет 25% всего fashion-рынка — это больше не «только для зала».\n\nВыбирайте технологичные ткани: влагоотводящие, эластичные, дышащие. Монохромные спортивные образы выглядят дороже.\n\nПравило «спорт + город»: комбинируйте спортивные вещи с casual — лосины + оверсайз свитер, кроссовки + тренч.",
-    colors: ["#ae5224", "#f8ed43", "#96d1aa", "#006eb8"],
-    colorNames: ["Burnt Sienna", "Lemon Yellow", "Cobalt Green", "Blue"],
-    wadaCombo: "#333",
+    advice: "Функциональность + эстетика. Athleisure составляет 25% fashion-рынка — это больше не «только для зала».\n\nВыбирайте технологичные ткани: влагоотводящие, эластичные, дышащие. Монохромные спортивные образы выглядят дороже.\n\nПравило «спорт + город»: комбинируйте спортивные вещи с casual — лосины + оверсайз свитер, кроссовки + тренч.",
+    colors: ["#1C1C1E", "#F5F5F5", "#3D7ABF", "#C8A882"],
+    colorNames: ["Чёрный", "Белый", "Синий электрик", "Бежевый"],
   },
 }
 
@@ -161,7 +155,7 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
       ([entry]) => {
         setShowStickyBar(!entry.isIntersecting)
       },
-      { threshold: 0, rootMargin: "-72px 0px 0px 0px" }
+      { threshold: 0, rootMargin: "-100px 0px 0px 0px" }
     )
 
     observer.observe(card)
@@ -233,7 +227,7 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
 
       {/* Sticky compact bar — fixed, separate from document flow */}
       <div
-        className={`fixed top-[72px] left-0 right-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/30 transition-all duration-300 ${
+        className={`fixed top-[100px] left-0 right-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/30 transition-all duration-300 ${
           showStickyBar
             ? "translate-y-0 opacity-100"
             : "-translate-y-full opacity-0 pointer-events-none"
@@ -270,15 +264,15 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
         {advice && (
           <div className="space-y-6 pb-6">
             <div>
-              <div className="flex items-baseline justify-between mb-3">
+              <div className="mb-3">
                 <p className="text-sm font-medium text-foreground">Рекомендуемая палитра</p>
-                <span className="text-[10px] text-muted-foreground">Sanzo Wada {advice.wadaCombo}</span>
+                <p className="text-[11px] text-muted-foreground mt-0.5">На основе вашего гардероба</p>
               </div>
               <div className="flex gap-3">
                 {advice.colors.map((color, i) => (
-                  <div key={i} className="flex flex-col items-center gap-1.5">
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
                     <div
-                      className="w-12 h-12 rounded-2xl shadow-sm"
+                      className="w-full aspect-square rounded-2xl shadow-sm border border-black/5"
                       style={{ backgroundColor: color }}
                     />
                     <span className="text-[10px] text-muted-foreground text-center leading-tight">{advice.colorNames[i]}</span>
