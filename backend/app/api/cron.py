@@ -98,11 +98,27 @@ async def _gemini_organize(
 """
 
     has_partners = bool(partner_items)
+    small_wardrobe = len(user_items) < 6
 
     mix_rules = ""
     if has_partners:
         mix_rules = """- В разделах "mix" — микс вещей пользователя [USER] и партнёрских [PARTNER]. Минимум 1 вещь [USER] в каждом образе.
 - В разделах "partner_only" — образы целиком из [PARTNER] вещей. Миксуй бренды или собирай из одного."""
+
+    # For small wardrobes: lean heavily on partner items
+    if small_wardrobe and has_partners:
+        section_types_block = f"""ТИПЫ РАЗДЕЛОВ (section_type):
+- "user_only" — с использованием [USER] вещей. Создай 1 раздел (вещей мало, но задействуй все).
+- "mix" — микс [USER] + [PARTNER]. Создай 2-3 таких раздела — это основной тип.
+- "partner_only" — только [PARTNER]. Создай 2-3 раздела — у пользователя мало вещей, поэтому подбери ему МНОГО готовых образов из рекомендованных."""
+    elif has_partners:
+        section_types_block = f"""ТИПЫ РАЗДЕЛОВ (section_type):
+- "user_only" — образы ТОЛЬКО из [USER] вещей. Создай 2-3 таких раздела.
+- "mix" — микс [USER] + [PARTNER]. Создай 2-3 таких раздела.
+- "partner_only" — только [PARTNER]. Создай 1 раздел."""
+    else:
+        section_types_block = """ТИПЫ РАЗДЕЛОВ (section_type):
+- "user_only" — образы из вещей пользователя [USER]. Создай все разделы этого типа."""
 
     prompt = f"""Ты - топ-стилист. Составь МНОГО тематических разделов с образами.
 
@@ -113,14 +129,12 @@ async def _gemini_organize(
 {all_items}
 
 ЗАДАЧА: Создай 5-7 тематических разделов, в каждом по 3-4 образа. Итого 15-25 образов.
+{"У пользователя мало своих вещей — активно используй рекомендованные [PARTNER] вещи для полных комплектов!" if small_wardrobe and has_partners else ""}
 
 ТЕМЫ РАЗДЕЛОВ (примеры, выбирай подходящие по погоде и гардеробу):
 - "На каждый день", "В офис", "На свидание", "На прогулку", "Выходной день", "Спорт и активный отдых", "Вечерний выход", "Уютный день дома", "На встречу с друзьями"
 
-ТИПЫ РАЗДЕЛОВ (section_type):
-- "user_only" — образы ТОЛЬКО из [USER] вещей. Создай 2-3 таких раздела.
-{"- 'mix' — микс [USER] + [PARTNER]. Создай 2-3 таких раздела." if has_partners else ""}
-{"- 'partner_only' — только [PARTNER]. Создай 1 раздел." if has_partners else ""}
+{section_types_block}
 {mix_rules}
 
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ДЛЯ КАЖДОГО ОБРАЗА:
@@ -186,20 +200,44 @@ async def cron_generate_recommendations(
 
     today = date.today()
 
-    # Find active users
+    # Find users eligible for recommendation refresh.
+    # Logic: skip users who haven't logged in recently AND already have fresh recs.
+    #   - active recently (last 14 days) → always refresh
+    #   - inactive but stale recs (>3 days old or none) → refresh
+    #   - inactive AND fresh recs (<3 days) → skip
     users_result = await db.execute(text("""
-        SELECT DISTINCT up.user_id, up.gender,
+        SELECT up.user_id, up.gender,
                (SELECT count(*) FROM wardrobe_user_items wui
                 WHERE wui.user_id = up.user_id
-                AND COALESCE(wui.is_hidden, false) = false) as item_count
+                AND COALESCE(wui.is_hidden, false) = false) as item_count,
+               (SELECT max(dua.last_seen_at)
+                FROM daily_user_activity dua
+                WHERE dua.user_profile_id = up.id) as last_seen,
+               (SELECT max(mr.run_date)
+                FROM main_recommendations mr
+                WHERE mr.user_id = up.user_id) as last_recs_date
         FROM user_profiles up
         WHERE (SELECT count(*) FROM wardrobe_user_items wui
                WHERE wui.user_id = up.user_id
-               AND COALESCE(wui.is_hidden, false) = false) >= 3
+               AND COALESCE(wui.is_hidden, false) = false) >= 1
     """))
-    users = users_result.mappings().all()
+    all_users = users_result.mappings().all()
 
-    logger.info(f"[Cron Recs] Found {len(users)} active users")
+    # Filter: skip inactive users with fresh recs
+    users = []
+    skipped_fresh = 0
+    for u in all_users:
+        last_seen = u["last_seen"]
+        last_recs = u["last_recs_date"]
+        active_recently = last_seen and (today - last_seen.date()).days <= 14
+        has_fresh_recs = last_recs and (today - last_recs).days < 3
+
+        if not active_recently and has_fresh_recs:
+            skipped_fresh += 1
+            continue
+        users.append(u)
+
+    logger.info(f"[Cron Recs] {len(all_users)} total users, {len(users)} eligible, {skipped_fresh} skipped (inactive + fresh recs)")
 
     # Fetch current Moscow weather as fallback for users without weather_cache
     moscow_weather = {"temperature": 15, "description": "ясно"}
@@ -222,10 +260,14 @@ async def cron_generate_recommendations(
 
     results = {"total": len(users), "success": 0, "failed": 0, "clip": 0, "gemini_only": 0}
 
+    results["skipped_fresh"] = skipped_fresh
+
     for user_row in users:
         user_id = str(user_row["user_id"])
         gender = user_row.get("gender") or None
-        use_clip = random.random() < CLIP_PROBABILITY
+        item_count = user_row["item_count"] or 0
+        # Small wardrobe (<6 items) → always use CLIP partners
+        use_clip = True if item_count < 6 else random.random() < CLIP_PROBABILITY
 
         try:
             # Get user wardrobe items
@@ -273,9 +315,11 @@ async def cron_generate_recommendations(
             temp = weather["temperature"] or 20
 
             # Get partner items via CLIP (if chosen)
+            # Small wardrobes get more partner items to build full outfits
             partner_items = []
+            clip_k = 80 if item_count < 6 else 50
             if use_clip:
-                clip_results = await _clip_recommend(user_id, k=50)
+                clip_results = await _clip_recommend(user_id, k=clip_k)
                 if clip_results:
                     partner_ids = [r["id"] for r in clip_results]
                     partner_result = await db.execute(text("""
