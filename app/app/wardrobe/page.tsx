@@ -396,11 +396,10 @@ export default function WardrobePage() {
 
   return (
     <div className="min-h-screen bg-background pb-32">
-      <div className="px-4 py-6">
+      <div className="px-4 pt-2 pb-6">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-foreground tracking-tight mb-1">Гардероб</h1>
-          <p className="text-muted-foreground text-sm">Управляйте своими вещами</p>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">Гардероб</h1>
         </div>
 
         {/* Style profile + Add button */}

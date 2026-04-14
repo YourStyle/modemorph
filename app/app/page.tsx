@@ -487,7 +487,7 @@ export default function HomePage() {
 
   return (
       <div className="min-h-screen bg-background pb-10">
-        <div className="px-4 py-4">
+        <div className="px-4 pt-2 pb-4">
           {/* Hero for users with no items */}
           {userItemsCount === 0 && !itemsLoading && (
               <HomeHeroSection
@@ -546,9 +546,9 @@ export default function HomePage() {
                         </span>
                               </div>
 
-                              {/* Horizontal Scrolling Container */}
-                              <div className="relative scroll-section">
-                                <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 pt-1 snap-x snap-mandatory">
+                              {/* Horizontal Scrolling Container — full bleed */}
+                              <div className="relative scroll-section -mx-4">
+                                <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-6 pt-1 px-4 snap-x snap-mandatory">
                                   {section.suggestions.map((suggestion, suggestionIndex) => {
                                     // Add safety check for suggestion
                                     if (!suggestion) {

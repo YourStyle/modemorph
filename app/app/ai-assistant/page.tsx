@@ -373,15 +373,12 @@ export default function AIAssistantPage() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
       {/* Header */}
-      <div className="bg-background/80 backdrop-blur-xl border-b border-border/50 p-4">
+      <div className="bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-3">
         <div className="flex items-center space-x-3">
-          <div className="rounded-2xl p-2.5 shadow-sm" style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}>
-            <Sparkles className="h-5 w-5 text-white" />
+          <div className="rounded-xl p-2 shadow-sm" style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}>
+            <Sparkles className="h-4 w-4 text-white" />
           </div>
-          <div>
-            <h1 className="text-lg font-semibold text-foreground tracking-tight">ИИ-Стилист</h1>
-            <p className="text-xs text-muted-foreground">Подбор образов и анализ фото</p>
-          </div>
+          <h1 className="text-2xl font-bold text-foreground tracking-tight">ИИ-Стилист</h1>
         </div>
       </div>
 

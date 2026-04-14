@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2, ThumbsUp, ThumbsDown, CircleOff } from "lucide-react"
+import { Bookmark, Package, BookmarkCheck, Sparkles, User, Loader2, ThumbsUp, ThumbsDown, CircleOff, ExternalLink } from "lucide-react"
 import Image from "next/image"
 import { toast } from "sonner"
 import { ItemDetailsModal } from "./item-details-modal"
@@ -306,51 +306,6 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
             </div>
           )}
 
-          {/* Partner item actions — compact row */}
-          {items.slice(0, 4).some((item) => !item.user_id || item.url) && (
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              {items.slice(0, 4).filter((item) => !item.user_id).map((item, index) => (
-                <div key={`actions-${item.id}-${index}`} className="flex gap-1">
-                  {item.url && (
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex items-center text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full transition-colors"
-                    >
-                      🛒 {item.brand && item.brand.toLowerCase() !== "unknown" ? item.brand : "Магазин"}
-                    </a>
-                  )}
-                  <button
-                    type="button"
-                    onClick={async (e) => {
-                      e.stopPropagation()
-                      try {
-                        await api.post("/api/wardrobe-user-items", {
-                          item_name: item.name,
-                          image_url: item.image_url,
-                          color: item.color || "",
-                          shade: item.shade || "",
-                          style: item.style || "",
-                          material: item.material || "",
-                          clothing_type: (item as any).clothing_type || "",
-                          url: item.url || "",
-                        })
-                        toast.success("Добавлено в гардероб")
-                      } catch {
-                        toast.error("Не удалось добавить")
-                      }
-                    }}
-                    className="inline-flex items-center text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-2 py-0.5 rounded-full transition-colors"
-                  >
-                    + Гардероб
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Action buttons */}
           <div className="flex flex-col gap-2">
             <Button
@@ -508,9 +463,10 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="mt-2 inline-flex items-center text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-full transition-colors"
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full transition-colors"
                     >
-                      Посмотреть в магазине
+                      <ExternalLink className="w-3 h-3" />
+                      В магазин
                     </a>
                   )}
                 </div>

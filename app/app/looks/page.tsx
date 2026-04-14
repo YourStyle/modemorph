@@ -373,7 +373,7 @@ export default function LooksPage() {
 
   if (loading) {
     return (
-      <div className="px-4 py-6 space-y-8 animate-pulse">
+      <div className="px-4 pt-2 pb-6 space-y-8 animate-pulse">
         {/* Header Skeleton */}
         <div className="space-y-4">
           <div className="h-9 bg-gray-200 rounded-lg w-48" />
@@ -412,7 +412,7 @@ export default function LooksPage() {
   }
 
   return (
-    <div className="px-4 py-6 space-y-8">
+    <div className="px-4 pt-2 pb-6 space-y-8">
       {/* Header */}
       <div className="space-y-4">
         <h1 className="text-2xl font-bold text-foreground tracking-tight">Образы</h1>

@@ -81,9 +81,10 @@ const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: stri
 }
 
 function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
-  const r = size / 2
-  const cx = r
-  const cy = r
+  const pad = 2
+  const r = (size - pad * 2) / 2
+  const cx = size / 2
+  const cy = size / 2
 
   let currentAngle = -90 // Start from top
 
@@ -106,20 +107,20 @@ function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
 
     // Single item = full circle
     if (data.length === 1) {
-      return <circle key={i} cx={cx} cy={cy} r={r - 2} fill={color} />
+      return <circle key={i} cx={cx} cy={cy} r={r} fill={color} />
     }
 
     return (
       <path
         key={i}
-        d={`M ${cx} ${cy} L ${x1} ${y1} A ${r - 2} ${r - 2} 0 ${largeArc} 1 ${x2} ${y2} Z`}
+        d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} Z`}
         fill={color}
       />
     )
   })
 
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block">
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="block flex-shrink-0">
       <g>
         {segments}
         {/* Inner circle for donut effect */}
@@ -197,8 +198,8 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
         className="mb-8 bg-card border-0 overflow-visible shadow-[0_2px_8px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.06)]"
       >
         <div className="px-6 pt-6 pb-5">
-          <div className="flex items-start gap-5">
-            <div className="flex-shrink-0 p-2">
+          <div className="flex items-center gap-5">
+            <div className="flex-shrink-0">
               <PieChart data={styleDistribution} size={96} />
             </div>
             <div className="flex-1 min-w-0">
