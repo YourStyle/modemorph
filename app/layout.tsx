@@ -1,6 +1,6 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { Plus_Jakarta_Sans } from "next/font/google"
 import Script from "next/script"
 import "./globals.css"
 import "./tma.css"
@@ -12,7 +12,11 @@ import TmaBodyClass from "@/components/TmaBodyClass"
 import VpnWarning from "@/components/vpn-warning"
 import ErudaDebug from "@/components/ErudaDebug"
 
-const inter = Inter({ subsets: ["latin"] })
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-jakarta",
+})
 
 export const metadata: Metadata = {
   title: "Mode Morph - Умный гардероб",
@@ -31,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="verify-admitad" content="1605c0f13c" />
         <Script src="https://telegram.org/js/telegram-web-app.js" strategy="beforeInteractive" />
       </head>
-      <body className={`${inter.className} bg-gray-50`} suppressHydrationWarning>
+      <body className={`${jakarta.className} bg-background`} suppressHydrationWarning>
         <ErudaDebug />
         <TmaBodyClass/>
         <MiniAppRegistrationGate>
