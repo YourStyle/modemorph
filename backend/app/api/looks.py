@@ -20,24 +20,80 @@ async def get_user_looks(user: dict = Depends(get_current_user), db: AsyncSessio
         text("SELECT * FROM user_looks WHERE user_id = :uid ORDER BY created_at DESC"),
         {"uid": user["id"]},
     )
-    # Return plain array — frontend does setUserLooks(response) directly
-    return [dict(r) for r in result.mappings().all()]
+    looks = [dict(r) for r in result.mappings().all()]
+
+    # Expand item references into full objects with images/names
+    all_user_ids = set()
+    all_basic_ids = set()
+    for look in looks:
+        items = look.get("items") or []
+        if isinstance(items, str):
+            items = json_lib.loads(items)
+        for ref in items:
+            item_id = ref.get("id")
+            if not item_id:
+                continue
+            if ref.get("type") == "basic":
+                all_basic_ids.add(item_id)
+            else:
+                all_user_ids.add(item_id)
+
+    user_items_map = {}
+    basic_items_map = {}
+
+    if all_user_ids:
+        ui_result = await db.execute(
+            text("SELECT id, item_name, image_url, color, material FROM wardrobe_user_items WHERE id = ANY(:ids)"),
+            {"ids": list(all_user_ids)},
+        )
+        for r in ui_result.mappings().all():
+            user_items_map[r["id"]] = dict(r)
+
+    if all_basic_ids:
+        bi_result = await db.execute(
+            text("SELECT id, item_name, name_ru, image_url, color, material FROM wardrobe_items WHERE id = ANY(:ids)"),
+            {"ids": list(all_basic_ids)},
+        )
+        for r in bi_result.mappings().all():
+            basic_items_map[r["id"]] = dict(r)
+
+    for look in looks:
+        items = look.get("items") or []
+        if isinstance(items, str):
+            items = json_lib.loads(items)
+        expanded = []
+        for ref in items:
+            item_id = ref.get("id")
+            if not item_id:
+                continue
+            source = ref.get("type", "user")
+            if source == "basic":
+                data = basic_items_map.get(item_id)
+            else:
+                data = user_items_map.get(item_id)
+            if data:
+                expanded.append({**data, "source": source})
+        look["expandedItems"] = expanded
+        # DB column is "name" — ensure it's present in response
+
+    return looks
 
 
 @router.post("/user-looks")
 async def create_user_look(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     items = body.get("items", [])
+    name = body.get("name") or body.get("title") or ""
 
     result = await db.execute(
         text("""
-            INSERT INTO user_looks (user_id, title, description, items, image_url, created_at)
-            VALUES (:uid, :title, :desc, CAST(:items AS jsonb), :img, NOW())
+            INSERT INTO user_looks (user_id, name, description, items, image_url, created_at)
+            VALUES (:uid, :name, :desc, CAST(:items AS jsonb), :img, NOW())
             RETURNING *
         """),
         {
             "uid": user["id"],
-            "title": body.get("title", ""),
+            "name": name,
             "desc": body.get("description"),
             "items": json_lib.dumps(items, ensure_ascii=False),
             "img": body.get("image_url"),
@@ -67,7 +123,7 @@ async def update_user_look(look_id: int, request: Request, user: dict = Depends(
 
     result = await db.execute(
         text("""
-            UPDATE user_looks SET title = COALESCE(:title, title),
+            UPDATE user_looks SET name = COALESCE(:name, name),
                 description = COALESCE(:desc, description),
                 items = COALESCE(CAST(:items AS jsonb), items),
                 image_url = COALESCE(:img, image_url)
@@ -75,7 +131,7 @@ async def update_user_look(look_id: int, request: Request, user: dict = Depends(
         """),
         {
             "id": look_id, "uid": user["id"],
-            "title": body.get("title"),
+            "name": body.get("name") or body.get("title"),
             "desc": body.get("description"),
             "items": json_lib.dumps(items, ensure_ascii=False) if items is not None else None,
             "img": body.get("image_url"),
@@ -152,10 +208,10 @@ async def create_section(request: Request, user: dict = Depends(get_current_user
     body = await request.json()
     result = await db.execute(
         text("""
-            INSERT INTO looks_sections (user_id, title, created_at)
-            VALUES (:uid, :title, NOW()) RETURNING *
+            INSERT INTO looks_sections (user_id, name, created_at)
+            VALUES (:uid, :name, NOW()) RETURNING *
         """),
-        {"uid": user["id"], "title": body.get("title", "")},
+        {"uid": user["id"], "name": body.get("name") or body.get("title", "")},
     )
     await db.commit()
     # Return section object directly — frontend does setSections(prev => [newSection, ...prev])

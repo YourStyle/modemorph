@@ -10,6 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import Image from "next/image"
 import { ItemDetailsModal, type WardrobeItem } from "./item-details-modal"
 import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
+import { colorToHex, colorDisplayName } from "@/lib/color-map"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/contexts/auth-context"
@@ -172,15 +173,21 @@ export function WardrobeItemCard({
             <h3 className="font-medium text-sm line-clamp-2">{item.item_name}</h3>
 
             <div className="flex items-center gap-2">
-              {item.color && (
-                <div className="flex items-center gap-1">
-                  <div
-                    className="w-3 h-3 rounded-full border border-gray-300"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-xs text-gray-500">{item.color}</span>
-                </div>
-              )}
+              {item.color && (() => {
+                const hex = colorToHex(item.color)
+                return (
+                  <div className="flex items-center gap-1">
+                    {hex && (
+                      <div
+                        className="w-3 h-3 rounded-full border border-gray-300"
+                        style={{ backgroundColor: hex }}
+                      />
+                    )}
+                    <span className="text-xs text-gray-500">{colorDisplayName(item.color)}</span>
+                  </div>
+                )
+              })()}
+              {item.style && <span className="text-xs text-gray-500">{item.style}</span>}
               {item.size_type && <span className="text-xs text-gray-500">{item.size_type}</span>}
             </div>
 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { ExternalLink, Package } from "lucide-react"
 import Image from "next/image"
 import { useState } from "react"
+import { colorToHex, colorDisplayName } from "@/lib/color-map"
 
 export interface WardrobeItem {
   id: number
@@ -51,13 +52,16 @@ export function ItemDetailsModal({ item, isOpen, onClose }: ItemDetailsModalProp
   const getColorDisplay = (color?: string, shade?: string) => {
     if (!color) return null
 
-    const colorValue = color.startsWith("#") ? color : `#${color}`
+    const hex = colorToHex(color)
+    const label = colorDisplayName(color)
 
     return (
       <div className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-full border border-gray-200" style={{ backgroundColor: colorValue }} />
-        <span className="text-sm font-medium">{colorValue}</span>
-        {shade && <span className="text-sm text-gray-600">{shade}</span>}
+        {hex && (
+          <div className="w-6 h-6 rounded-full border border-gray-200" style={{ backgroundColor: hex }} />
+        )}
+        <span className="text-sm font-medium">{label}</span>
+        {shade && <span className="text-sm text-gray-600">({shade})</span>}
       </div>
     )
   }
@@ -93,10 +97,17 @@ export function ItemDetailsModal({ item, isOpen, onClose }: ItemDetailsModalProp
             <div>
               <h3 className="text-lg font-semibold mb-4">Основная информация</h3>
               <div className="space-y-3">
-                {item.size_type && (
+                {item.clothing_type && (
                   <div>
-                    <span className="text-sm font-medium text-gray-700">Размер:</span>
-                    <p className="text-sm text-gray-900">{item.size_type}</p>
+                    <span className="text-sm font-medium text-gray-700">Тип:</span>
+                    <p className="text-sm text-gray-900">{item.clothing_type}</p>
+                  </div>
+                )}
+
+                {item.style && (
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Стиль:</span>
+                    <p className="text-sm text-gray-900">{item.style}</p>
                   </div>
                 )}
 
@@ -107,10 +118,17 @@ export function ItemDetailsModal({ item, isOpen, onClose }: ItemDetailsModalProp
                   </div>
                 )}
 
-                {item.style && (
+                {item.size_type && (
                   <div>
-                    <span className="text-sm font-medium text-gray-700">Стиль:</span>
-                    <p className="text-sm text-gray-900">{item.style}</p>
+                    <span className="text-sm font-medium text-gray-700">Размер:</span>
+                    <p className="text-sm text-gray-900">{item.size_type}</p>
+                  </div>
+                )}
+
+                {item.description && (
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Описание:</span>
+                    <p className="text-sm text-gray-900">{item.description}</p>
                   </div>
                 )}
               </div>

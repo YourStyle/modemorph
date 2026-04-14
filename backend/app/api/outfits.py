@@ -163,7 +163,7 @@ async def create_outfit(
     description = body.get("description")
     preview_url = body.get("preview_url") or body.get("preview_image_url")
     gender = body.get("gender")
-    item_ids = body.get("items", [])
+    raw_items = body.get("items", [])
 
     result = await db.execute(
         text("INSERT INTO outfits (user_id, name, description, preview_image_url, gender, created_at) VALUES (:uid, :name, :desc, :preview, :gender, NOW()) RETURNING *"),
@@ -171,11 +171,19 @@ async def create_outfit(
     )
     outfit = dict(result.mappings().first())
 
-    for idx, item_id in enumerate(item_ids):
-        await db.execute(
-            text("INSERT INTO outfit_items (outfit_id, wardrobe_item_id, position) VALUES (:oid, :wid, :pos)"),
-            {"oid": outfit["id"], "wid": item_id, "pos": idx + 1},
-        )
+    # Accept both flat IDs [1,2,3] and objects [{wardrobe_item_id: 1, position: 1}, ...]
+    for idx, item in enumerate(raw_items):
+        if isinstance(item, dict):
+            wid = item.get("wardrobe_item_id") or item.get("id")
+            pos = item.get("position", idx + 1)
+        else:
+            wid = item
+            pos = idx + 1
+        if wid:
+            await db.execute(
+                text("INSERT INTO outfit_items (outfit_id, wardrobe_item_id, position) VALUES (:oid, :wid, :pos)"),
+                {"oid": outfit["id"], "wid": wid, "pos": pos},
+            )
 
     await db.commit()
     return {"outfit": outfit, "success": True}
@@ -206,11 +214,18 @@ async def update_outfit(
     # Replace items if provided
     if "items" in body:
         await db.execute(text("DELETE FROM outfit_items WHERE outfit_id = :oid"), {"oid": outfit_id})
-        for idx, item_id in enumerate(body["items"]):
-            await db.execute(
-                text("INSERT INTO outfit_items (outfit_id, wardrobe_item_id, position) VALUES (:oid, :wid, :pos)"),
-                {"oid": outfit_id, "wid": item_id, "pos": idx + 1},
-            )
+        for idx, item in enumerate(body["items"]):
+            if isinstance(item, dict):
+                wid = item.get("wardrobe_item_id") or item.get("id")
+                pos = item.get("position", idx + 1)
+            else:
+                wid = item
+                pos = idx + 1
+            if wid:
+                await db.execute(
+                    text("INSERT INTO outfit_items (outfit_id, wardrobe_item_id, position) VALUES (:oid, :wid, :pos)"),
+                    {"oid": outfit_id, "wid": wid, "pos": pos},
+                )
 
     await db.commit()
     return {"success": True}

@@ -108,6 +108,50 @@ const BASE_STYLES = [
   "Уличный",
 ]
 
+const CLOTHING_TYPES = [
+  "Футболка",
+  "Рубашка",
+  "Блузка",
+  "Свитер",
+  "Худи",
+  "Куртка",
+  "Пальто",
+  "Пиджак",
+  "Жилет",
+  "Платье",
+  "Юбка",
+  "Брюки",
+  "Джинсы",
+  "Шорты",
+  "Костюм",
+  "Комбинезон",
+  "Кардиган",
+  "Жакет",
+  "Ветровка",
+  "Пуховик",
+  "Тренч",
+  "Свитшот",
+  "Топ",
+  "Боди",
+  "Леггинсы",
+  "Спортивные штаны",
+  "Кроссовки",
+  "Туфли",
+  "Ботинки",
+  "Сапоги",
+  "Сандалии",
+  "Кеды",
+  "Сумка",
+  "Рюкзак",
+  "Шарф",
+  "Шапка",
+  "Перчатки",
+  "Ремень",
+  "Очки",
+  "Часы",
+  "Украшение",
+]
+
 const GENDER_OPTIONS = ["male", "female", "unisex"] as const
 
 export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: EditWardrobeItemSheetProps) {
@@ -115,6 +159,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
     size_type: "",
     material: "",
     style: "",
+    clothing_type: "",
     has_print: false,
     shade: "",
     url: "",
@@ -126,6 +171,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
   const [shades, setShades] = useState<string[]>(BASE_SHADES)
   const [materials, setMaterials] = useState<string[]>(BASE_MATERIALS)
   const [styles, setStyles] = useState<string[]>(BASE_STYLES)
+  const [clothingTypes, setClothingTypes] = useState<string[]>(CLOTHING_TYPES)
 
   // Функция для добавления значения в список, если его там нет
   const addToListIfNotExists = (list: string[], value: string | undefined): string[] => {
@@ -145,11 +191,13 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
       setShades(addToListIfNotExists(BASE_SHADES, item.shade))
       setMaterials(addToListIfNotExists(BASE_MATERIALS, item.material))
       setStyles(addToListIfNotExists(BASE_STYLES, item.style))
+      setClothingTypes(addToListIfNotExists(CLOTHING_TYPES, item.clothing_type))
 
       setFormData({
         size_type: item.size_type || "",
         material: item.material || "",
         style: item.style || "",
+        clothing_type: item.clothing_type || "",
         has_print: item.has_print === true || item.has_print === "true",
         shade: item.shade || "",
         url: item.url || "",
@@ -178,10 +226,11 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
     try {
       // Подготовка данных для отправки
-      const submitData = {
+      const submitData: Record<string, string | null> = {
         size_type: formData.size_type || null,
         material: formData.material || null,
         style: formData.style || null,
+        clothing_type: formData.clothing_type || null,
         has_print: formData.has_print ? "true" : "false",
         shade: formData.shade || null,
         url: formData.url || null,
@@ -189,8 +238,28 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
         gender: formData.gender || null,
       }
 
-      await api.put(`/api/wardrobe/${item.id}`, {submitData})
+      await api.put(`/api/wardrobe/${item.id}`, submitData)
+
+      // Log user corrections for model retraining
+      const corrections: Record<string, { from: string | undefined; to: string | null }> = {}
+      if (formData.clothing_type && formData.clothing_type !== (item.clothing_type || "")) {
+        corrections.clothing_type = { from: item.clothing_type, to: formData.clothing_type }
+      }
+      if (formData.style && formData.style !== (item.style || "")) {
+        corrections.style = { from: item.style, to: formData.style }
+      }
+      if (Object.keys(corrections).length > 0) {
+        api.post("/api/usage/log", {
+          feature: "wardrobe_items_anlyzed",
+          action: "click",
+          count: 1,
+          meta: { item_id: item.id, event: "item_correction", corrections },
+        }).catch(() => {}) // fire and forget
+      }
+
       toast.success("Вещь успешно обновлена!")
+      onSuccess?.()
+      onClose()
     } catch (error) {
       console.error("Error updating item:", error)
       toast.error("Ошибка при обновлении вещи")
@@ -229,6 +298,23 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
               {/* Поля формы */}
               <div className="space-y-4">
+                {/* Тип одежды */}
+                <div className="space-y-2">
+                  <Label className="text-[#101010]">Тип одежды</Label>
+                  <Select value={formData.clothing_type} onValueChange={(value) => handleInputChange("clothing_type", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите тип" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clothingTypes.map((ct) => (
+                        <SelectItem key={ct} value={ct}>
+                          {ct}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Размер */}
                 <div className="space-y-2">
                   <Label className="text-[#101010]">Размер</Label>
@@ -337,6 +423,23 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
               {/* Поля справа - 50% */}
               <div className="flex-1 space-y-4">
+                {/* Тип одежды */}
+                <div className="space-y-2">
+                  <Label className="text-[#101010]">Тип одежды</Label>
+                  <Select value={formData.clothing_type} onValueChange={(value) => handleInputChange("clothing_type", value)}>
+                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="Выберите тип" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clothingTypes.map((ct) => (
+                        <SelectItem key={ct} value={ct}>
+                          {ct}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Размер */}
                 <div className="space-y-2">
                   <Label className="text-[#101010]">Размер</Label>
