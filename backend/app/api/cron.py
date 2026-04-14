@@ -70,7 +70,7 @@ async def _gemini_organize(
         return None
 
     user_desc = []
-    for i in user_items[:30]:
+    for i in user_items[:50]:
         name = i.get("item_name", "?")
         ct = i.get("clothing_type", "")
         color = i.get("color", "")
@@ -78,7 +78,7 @@ async def _gemini_organize(
         user_desc.append(f"[USER id={i['id']}] {name} ({ct}, {color}, стиль: {style})")
 
     partner_desc = []
-    for i in partner_items[:40]:
+    for i in partner_items[:50]:
         name = i.get("item_name") or i.get("name", "?")
         ct = i.get("clothing_type", "")
         color = i.get("color", "")
@@ -94,24 +94,17 @@ async def _gemini_organize(
         style_instruction = f"""
 СТИЛЬ ПОЛЬЗОВАТЕЛЯ: {dominant_style}
 - Большинство образов (70-80%) должны соответствовать стилю "{dominant_style}"
-- 1-2 образа могут быть в ДРУГОМ стиле — для разнообразия и экспериментов (укажи это в названии, например "Попробуй: уличный стиль")
+- 2-3 образа могут быть в ДРУГОМ стиле — для разнообразия
 """
 
     has_partners = bool(partner_items)
 
-    # Build conditional rules for mix/partner sections
-    mix_block = ""
+    mix_rules = ""
     if has_partners:
-        mix_block = """2. Раздел(ы) section_type="mix" — образы из МИКСА вещей пользователя и партнёрских:
-   - 1-2 раздела: "На работу", "На свидание", "На прогулку" и т.п.
-   - Хотя бы 1 вещь пользователя [USER] в каждом образе
-3. Раздел section_type="partner_only" — "Готовые образы от брендов":
-   - 1 раздел, 2-3 образа ЦЕЛИКОМ из [PARTNER] вещей (без USER)
-   - Подбери стильные комплекты из одного бренда или миксуй бренды
-"""
-    n = 4 if has_partners else 2
+        mix_rules = """- В разделах "mix" — микс вещей пользователя [USER] и партнёрских [PARTNER]. Минимум 1 вещь [USER] в каждом образе.
+- В разделах "partner_only" — образы целиком из [PARTNER] вещей. Миксуй бренды или собирай из одного."""
 
-    prompt = f"""Ты - стилист. Составь тематические разделы с образами ТРЁХ типов.
+    prompt = f"""Ты - топ-стилист. Составь МНОГО тематических разделов с образами.
 
 Погода: {temp}°C, {desc}
 Пол: {gender or 'не указан'}
@@ -119,22 +112,31 @@ async def _gemini_organize(
 Доступные вещи:
 {all_items}
 
-ПРАВИЛА:
-1. Раздел(ы) section_type="user_only" — образы ТОЛЬКО из вещей пользователя [USER]:
-   - 1-2 раздела по событиям: "На каждый день", "Выходной день" и т.п.
-   - В каждом 2-3 образа
-   - ТОЛЬКО вещи [USER], БЕЗ [PARTNER]
-{mix_block}{n}. ВАЖНО! Каждый образ = 4-6 вещей:
-   - Верх (рубашка/футболка/блузка/свитер)
-   - Низ (брюки/джинсы/юбка) ИЛИ платье
-   - Верхняя одежда — если {temp}°C < 18
-   - ОБУВЬ — ВСЕГДА
-   - Аксессуар — по возможности
-{n+1}. НЕ создавай образ из 2-3 вещей. Минимум: верх + низ + обувь.
-{n+2}. НЕ ставь 2 штанов или 2 куртки или 2 шорт в один образ. Каждый слот одежды — строго 1 вещь.
-{n+3}. Учитывай погоду ({temp}°C, {desc}).
-{n+4}. Стильное короткое название для каждого образа (3-5 слов).
-{n+5}. Учитывай пол: не предлагай платья мужчинам.
+ЗАДАЧА: Создай 5-7 тематических разделов, в каждом по 3-4 образа. Итого 15-25 образов.
+
+ТЕМЫ РАЗДЕЛОВ (примеры, выбирай подходящие по погоде и гардеробу):
+- "На каждый день", "В офис", "На свидание", "На прогулку", "Выходной день", "Спорт и активный отдых", "Вечерний выход", "Уютный день дома", "На встречу с друзьями"
+
+ТИПЫ РАЗДЕЛОВ (section_type):
+- "user_only" — образы ТОЛЬКО из [USER] вещей. Создай 2-3 таких раздела.
+{"- 'mix' — микс [USER] + [PARTNER]. Создай 2-3 таких раздела." if has_partners else ""}
+{"- 'partner_only' — только [PARTNER]. Создай 1 раздел." if has_partners else ""}
+{mix_rules}
+
+ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ДЛЯ КАЖДОГО ОБРАЗА:
+1. Каждый образ = СТРОГО 4-6 вещей, покрывающих ВСЁ тело:
+   - Верх (футболка/рубашка/блузка/свитер/худи) — ОБЯЗАТЕЛЬНО
+   - Низ (брюки/джинсы/юбка/шорты) ИЛИ платье — ОБЯЗАТЕЛЬНО
+   - Верхняя одежда (куртка/пальто/пиджак) — ОБЯЗАТЕЛЬНО если {temp}°C < 18
+   - ОБУВЬ — ОБЯЗАТЕЛЬНО В КАЖДОМ ОБРАЗЕ
+   - Аксессуар (сумка/шарф/ремень/шапка/очки) — по возможности
+2. ЗАПРЕЩЕНО: образ из 2-3 вещей. Если не можешь собрать 4+, пропусти образ.
+3. ЗАПРЕЩЕНО: 2 вещи одного типа (2 штанов, 2 куртки, 2 рубашки). Строго 1 вещь на слот.
+4. Учитывай погоду ({temp}°C, {desc}) — без пуховиков в жару, без шорт в мороз.
+5. Учитывай пол — не предлагай платья мужчинам.
+6. Название каждого образа: стильное, 3-5 слов.
+7. Используй ТОЛЬКО точные ID из списка вещей.
+8. Старайся задействовать МАКСИМУМ вещей из гардероба, не повторяя одни и те же.
 
 JSON: [{{"title":"Название раздела","section_type":"user_only|mix|partner_only","suggestions":[{{"title":"Название образа","item_ids":[id1,id2,id3,id4,id5]}}]}}]
 Только JSON, без markdown."""
@@ -323,23 +325,19 @@ async def cron_generate_recommendations(
                 }
 
             # Ask Gemini to organize
-            n_sections = min(4, max(2, len(user_items) // 3 + 1))
+            n_sections = min(7, max(3, len(user_items) // 3 + 1))
             gemini_sections = await _gemini_organize(
                 user_items, partner_items, weather, gender, dominant_style, n_sections,
             )
 
-            SOURCE_LABELS = {
-                "user_only": "Из вашего гардероба",
-                "mix": "Подобрано для вас",
-                "partner_only": "От партнёров",
-            }
+            VALID_TYPES = {"user_only", "mix", "partner_only"}
 
             sections = []
 
             if gemini_sections and isinstance(gemini_sections, list):
                 for gs in gemini_sections:
                     section_type = gs.get("section_type", "user_only")
-                    if section_type not in SOURCE_LABELS:
+                    if section_type not in VALID_TYPES:
                         section_type = "mix" if partner_items else "user_only"
                     suggestions = []
                     for sug in gs.get("suggestions", []):
@@ -348,7 +346,8 @@ async def cron_generate_recommendations(
                             item_data = all_items_map.get(iid)
                             if item_data:
                                 outfit_items.append(item_data)
-                        if outfit_items:
+                        # Skip outfits with fewer than 3 items (incomplete)
+                        if len(outfit_items) >= 3:
                             suggestions.append({
                                 "id": f"{section_type}_{user_id[:8]}_{len(sections)}_{len(suggestions)}",
                                 "title": sug.get("title", "Образ"),
@@ -359,7 +358,6 @@ async def cron_generate_recommendations(
                         sections.append({
                             "title": gs.get("title", "Рекомендации"),
                             "source": section_type,
-                            "source_label": SOURCE_LABELS[section_type],
                             "suggestions": suggestions,
                         })
 

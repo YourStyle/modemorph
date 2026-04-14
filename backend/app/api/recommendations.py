@@ -269,48 +269,45 @@ async def generate_recommendations(
             "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
             "type": i.get("clothing_type"), "image_url": i.get("image_url"),
             "url": i.get("url"), "brand": i.get("brand"),
-        } for i in partner_items[:40]], ensure_ascii=False)
+        } for i in partner_items[:50]], ensure_ascii=False)
 
-    style_hint = f"\nUser's preferred style: {dominant_style}. Most outfits should match this style, but 1-2 can experiment with other styles." if dominant_style else ""
+    style_hint = f"\nUser's preferred style: {dominant_style}. Most outfits (70-80%) should match this style, 2-3 can experiment." if dominant_style else ""
 
     has_partners = bool(partner_items)
 
-    mix_rule = '  2. "mix" — outfits mixing user [USER] items with partner [PARTNER] items. At least 1 user item per outfit. Create 1-2 such sections.\n' if has_partners else ""
-    partner_rule = '  3. "partner_only" — outfits ONLY from partner [PARTNER] items (no user items). Create 1 such section.\n' if has_partners else ""
+    mix_rules = ""
+    if has_partners:
+        mix_rules = """- "mix" sections: mix [USER] + [PARTNER] items. At least 1 [USER] item per outfit. Create 2-3 such sections.
+- "partner_only" section: outfits entirely from [PARTNER] items. Create 1 such section."""
 
-    system_prompt = f"""You are a fashion stylist AI. Generate COMPLETE outfit recommendations.
+    system_prompt = f"""You are a top fashion stylist AI. Generate MANY complete outfit recommendations.
 {style_hint}
-RULES:
-- Create sections of THREE types (use "section_type" field):
-  1. "user_only" — outfits ONLY from user's wardrobe items [USER]. Create 1-2 such sections.
-{mix_rule}{partner_rule}- Each section has 2-3 outfit suggestions.
-- IMPORTANT: Each outfit MUST have 4-6 items covering ALL body parts:
-  * Upper body (shirt/blouse/t-shirt/hoodie/sweater)
-  * Lower body (pants/jeans/skirt) OR a dress
-  * Outerwear (jacket/coat) if weather is below 18°C
-  * Footwear (shoes/boots/sneakers) — ALWAYS include shoes
-  * Optionally an accessory (bag/scarf/belt/hat)
-- NEVER create outfits with only 2-3 items. A real outfit needs at least upper+lower+shoes.
-- NEVER put 2 items of the same type in one outfit (e.g., no 2 pants, no 2 shorts, no 2 jackets, no 2 shirts). Each clothing slot must have exactly 1 item.
-- Consider the weather when choosing outfits.
-- All text in Russian.
-- Use EXACT item IDs from the lists provided.
+TASK: Create 5-7 themed sections, each with 3-4 outfits. Total 15-25 outfits.
 
-Response format (JSON array of sections):
-[
-  {{
-    "title": "Section title in Russian",
-    "section_type": "user_only" | "mix" | "partner_only",
-    "suggestions": [
-      {{
-        "title": "Outfit title in Russian",
-        "item_ids": [id1, id2, id3, id4]
-      }}
-    ]
-  }}
-]
+SECTION THEMES (pick what fits weather/wardrobe):
+"На каждый день", "В офис", "На свидание", "На прогулку", "Выходной день", "Спорт", "Вечерний выход", "Уютный день дома", "На встречу с друзьями"
 
-IMPORTANT: Return ONLY valid JSON array. No markdown, no backticks."""
+SECTION TYPES (section_type):
+- "user_only" — outfits ONLY from [USER] items. Create 2-3 such sections.
+{mix_rules}
+
+MANDATORY RULES FOR EVERY OUTFIT:
+1. Each outfit = STRICTLY 4-6 items covering the FULL body:
+   * Upper body (shirt/blouse/t-shirt/hoodie/sweater) — REQUIRED
+   * Lower body (pants/jeans/skirt/shorts) OR dress — REQUIRED
+   * Outerwear (jacket/coat/blazer) — REQUIRED if weather < 18°C
+   * FOOTWEAR — REQUIRED IN EVERY OUTFIT
+   * Accessory (bag/scarf/belt/hat/glasses) — when possible
+2. FORBIDDEN: outfits with only 2-3 items. If you can't make 4+, skip it.
+3. FORBIDDEN: 2 items of same type (no 2 pants, 2 jackets, 2 shirts). Strictly 1 per slot.
+4. Consider weather. No heavy coats in heat, no shorts in freezing cold.
+5. Consider gender — no dresses for men.
+6. Short stylish outfit names (3-5 words), in Russian.
+7. Use EXACT item IDs from provided lists.
+8. Try to use MAXIMUM items from the wardrobe, avoid repeating the same items across outfits.
+
+Response: JSON array, no markdown.
+[{{"title":"Section name","section_type":"user_only|mix|partner_only","suggestions":[{{"title":"Outfit name","item_ids":[id1,id2,id3,id4,id5]}}]}}]"""
 
     user_items_block = f"User wardrobe items [USER]:\n{wardrobe_json}"
     partner_items_block = f"\n\nPartner items [PARTNER]:\n{partner_json}" if partner_json else ""
@@ -385,16 +382,12 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
             "url": i.get("url"), "brand": i.get("brand"),
         }
 
-    SOURCE_LABELS = {
-        "user_only": "Из вашего гардероба",
-        "mix": "Подобрано для вас",
-        "partner_only": "От партнёров",
-    }
+    VALID_TYPES = {"user_only", "mix", "partner_only"}
 
     sections = []
     for gs in raw_sections:
         section_type = gs.get("section_type", "user_only")
-        if section_type not in SOURCE_LABELS:
+        if section_type not in VALID_TYPES:
             section_type = "user_only"
         suggestions = []
         for sug in gs.get("suggestions", []):
@@ -411,8 +404,8 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                 item_data = all_items_map.get(iid)
                 if item_data:
                     outfit_items.append(item_data)
-            if outfit_items:
-                # Content-based ID: hash of item IDs to avoid localStorage collisions on regeneration
+            # Skip incomplete outfits (fewer than 3 items)
+            if len(outfit_items) >= 3:
                 items_hash = hashlib.md5(",".join(str(it["id"]) for it in outfit_items).encode()).hexdigest()[:8]
                 suggestions.append({
                     "id": f"{section_type}_{items_hash}",
@@ -424,7 +417,6 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
             sections.append({
                 "title": gs.get("title", "Рекомендации"),
                 "source": section_type,
-                "source_label": SOURCE_LABELS[section_type],
                 "suggestions": suggestions,
             })
 
