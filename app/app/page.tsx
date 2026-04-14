@@ -12,6 +12,7 @@ import { SubscriptionSheet } from "@/components/subscription-sheet";
 import { VisualSearchSheet } from "@/components/visual-search-sheet";
 import { api } from "@/lib/api-client";
 import { useAddToCloset } from "@/contexts/add-to-closet-context";
+import { PartnerItemsIntroSheet } from "@/components/partner-items-intro-sheet";
 
 
 interface OutfitItem {
@@ -469,7 +470,7 @@ export default function HomePage() {
 
   return (
       <div className="min-h-screen bg-gray-50 pb-10">
-        <div className="px-4 py-6">
+        <div className="px-4 py-4">
           {/* Hero for users with no items */}
           {userItemsCount === 0 && !itemsLoading && (
               <HomeHeroSection
@@ -504,7 +505,7 @@ export default function HomePage() {
                       </Button>
                     </div>
                 ) : (
-                    <div className="space-y-8">
+                    <div className="space-y-5">
                       {outfitSections.map((section, sectionIndex) => {
                         // Add safety checks for section data
                         if (!section || !section.suggestions || !Array.isArray(section.suggestions)) {
@@ -583,6 +584,19 @@ export default function HomePage() {
             isOpen={paywallOpen}
             onClose={() => setPaywallOpen(false)}
             onSuccess={() => setPaywallOpen(false)}
+        />
+
+        {/* Partner items intro — shown once when user first sees recommendations */}
+        <PartnerItemsIntroSheet
+          shouldShow={outfitSections.length > 0 && outfitSections.some(s => s.source === "clip" || s.suggestions?.some((sg: any) => sg.items?.some((i: any) => !i.user_id)))}
+          sampleImages={
+            outfitSections
+              .flatMap(s => s.suggestions || [])
+              .flatMap((sg: any) => sg.items || [])
+              .filter((i: any) => !i.user_id && i.image_url)
+              .slice(0, 2)
+              .map((i: any) => i.image_url)
+          }
         />
       </div>
   )

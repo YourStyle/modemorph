@@ -2,13 +2,13 @@
 
 import Link from "next/link"
 import {usePathname} from "next/navigation"
-import {Home, Shirt, Sparkles, Bookmark, Bot} from 'lucide-react'
+import {LayoutGrid, Shirt, Sparkles, Bookmark, Bot} from 'lucide-react'
 import {cn} from "@/lib/utils"
 import {AIAssistantLoader} from "./ai-assistant-loader"
 
 
 const navItems = [
-    {href: "/app", icon: Home, label: "Главная"},
+    {href: "/app", icon: LayoutGrid, label: "Подборки"},
     {href: "/app/wardrobe", icon: Shirt, label: "Одежда"},
     {href: "/app/ai-assistant", icon: Bot, label: "MM", isAI: true},
     {href: "/app/inspiration", icon: Sparkles, label: "Идеи"},

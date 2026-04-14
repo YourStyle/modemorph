@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
-import { Plus, ChevronDown, ChevronUp, Search } from "lucide-react"
+import { Plus, ChevronDown, ChevronUp, Search, Sparkles } from "lucide-react"
 import { useAddToCloset } from "@/contexts/add-to-closet-context"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 
@@ -23,6 +23,7 @@ import { api } from "@/lib/api-client"
 
 import { STYLE_LABELS } from "@/lib/labels"
 import { StyleProfileCard } from "@/components/style-profile-card"
+import { StyleCheckSheet } from "@/components/style-check-sheet"
 
 const clothingCategories = [
   { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
@@ -136,6 +137,7 @@ export default function WardrobePage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [dominantStyle, setDominantStyle] = useState<string | null>(null)
   const [styleTags, setStyleTags] = useState<string[]>([])
+  const [styleCheckOpen, setStyleCheckOpen] = useState(false)
 
   useReconcileLimits(true)
 
@@ -418,12 +420,23 @@ export default function WardrobePage() {
           multiple
         />
 
-        <Button
-          onClick={handleAddToWardrobe}
-          className="w-full bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium mb-6"
-        >
-          + Добавить в гардероб
-        </Button>
+        <div className="flex gap-3 mb-6">
+          <Button
+            onClick={handleAddToWardrobe}
+            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium"
+          >
+            + Добавить
+          </Button>
+          <Button
+            onClick={() => setStyleCheckOpen(true)}
+            variant="outline"
+            className="h-12 rounded-2xl px-4 border-gray-200"
+            style={{ background: "linear-gradient(to right, rgba(236,157,226,0.08), rgba(137,174,255,0.08))" }}
+          >
+            <Sparkles className="h-4 w-4 mr-1.5" style={{ color: "#A78BFA" }} />
+            <span className="text-sm">Подойдёт?</span>
+          </Button>
+        </div>
 
         {/* Фильтры и поиск */}
         <div className="space-y-4 mb-6">
@@ -560,6 +573,11 @@ export default function WardrobePage() {
         isOpen={paywallOpen}
         onClose={() => setPaywallOpen(false)}
         onSuccess={() => setPaywallOpen(false)}
+      />
+
+      <StyleCheckSheet
+        isOpen={styleCheckOpen}
+        onClose={() => setStyleCheckOpen(false)}
       />
     </div>
   )
