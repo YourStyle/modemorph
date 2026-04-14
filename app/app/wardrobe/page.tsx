@@ -395,7 +395,7 @@ export default function WardrobePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
+    <div className="min-h-screen bg-background pb-32">
       <div className="px-4 py-6">
         {/* Header */}
         <div className="mb-8">

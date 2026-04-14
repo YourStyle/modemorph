@@ -131,7 +131,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
 
   return (
     <>
-      <Card className="bg-white border-0 shadow-sm overflow-hidden w-96">
+      <Card className="bg-white border-0 overflow-hidden w-96 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06),0_12px_32px_rgba(0,0,0,0.1)] transition-shadow duration-300">
         <CardContent className="p-6">
           {/* Source badge */}
           {sectionSource && (

@@ -469,7 +469,7 @@ export default function HomePage() {
   }
 
   return (
-      <div className="min-h-screen bg-gray-50 pb-10">
+      <div className="min-h-screen bg-background pb-10">
         <div className="px-4 py-4">
           {/* Hero for users with no items */}
           {userItemsCount === 0 && !itemsLoading && (
@@ -490,18 +490,25 @@ export default function HomePage() {
                 ) : recommendationsLoading ? (
                     <GenerationLoadingScreen />
                 ) : outfitSections.length === 0 ? (
-                    <div className="text-center py-12">
-                      <p className="text-gray-500 mb-4">
-                        {generationError ? "Не удалось сгенерировать образы. Попробуйте ещё раз." : "Пока нет рекомендаций"}
+                    <div className="text-center py-16 fade-in">
+                      <div className="w-20 h-20 mx-auto mb-5 rounded-full flex items-center justify-center"
+                        style={{ background: "linear-gradient(135deg, rgba(236,157,226,0.15), rgba(137,174,255,0.15))" }}>
+                        <Sparkles className="h-8 w-8" style={{ color: "#A78BFA" }} />
+                      </div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                        {generationError ? "Что-то пошло не так" : "Ваши образы ждут"}
+                      </h3>
+                      <p className="text-sm text-gray-500 mb-6 max-w-[260px] mx-auto">
+                        {generationError ? "Попробуйте ещё раз — мы подберём для вас" : "Мы создадим подборки на основе вашего гардероба и стиля"}
                       </p>
                       <Button
                           onClick={handleGetRecommendations}
                           disabled={recommendationsLoading}
-                          variant="outline"
-                          className="text-blue-400 hover:text-blue-300 border-blue-200 hover:border-blue-300 bg-transparent"
+                          className="h-12 px-8 rounded-2xl text-white border-0"
+                          style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
                       >
                         <Sparkles className="h-4 w-4 mr-2" />
-                        Получить рекомендации
+                        Создать подборки
                       </Button>
                     </div>
                 ) : (
@@ -513,14 +520,14 @@ export default function HomePage() {
                         }
 
                         return (
-                            <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-4">
+                            <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-3 fade-in" style={{ animationDelay: `${sectionIndex * 0.1}s` }}>
                               {/* Section Header */}
                               <div className="flex items-center justify-between">
-                                <div className="flex flex-col gap-1">
-                                  <h2 className="text-xl font-semibold text-gray-900">{section.title || "Образы"}</h2>
+                                <div className="flex items-center gap-2.5">
+                                  <h2 className="text-lg font-serif font-semibold text-gray-900 tracking-tight">{section.title || "Образы"}</h2>
                                   {section.source_label && (
                                     <span
-                                      className={`text-xs font-medium px-2 py-0.5 rounded-full w-fit ${
+                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
                                         section.source === "ai"
                                           ? "bg-purple-50 text-purple-600"
                                           : "bg-blue-50 text-blue-600"
@@ -530,7 +537,7 @@ export default function HomePage() {
                                     </span>
                                   )}
                                 </div>
-                                <span className="text-sm text-gray-500">
+                                <span className="text-xs text-gray-400">
                           {section.looks_count || section.suggestions.length} образов
                         </span>
                               </div>
