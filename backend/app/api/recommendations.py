@@ -3,6 +3,7 @@ Recommendations — GET reads cached, POST generates via OpenRouter (Gemini).
 No n8n dependency — calls OpenRouter API directly from backend.
 """
 
+import hashlib
 import json as json_lib
 import logging
 from datetime import datetime, date
@@ -100,6 +101,7 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
 
     for section in sections:
         for sug in section.get("suggestions", []):
+            enriched_items = []
             for item in sug.get("items", []):
                 item_id = int(item.get("id", 0)) if item.get("id") else 0
                 db_row = user_map.get(item_id) or catalog_map.get(item_id)
@@ -109,8 +111,15 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                     item["color"] = item.get("color") or db_row.get("color")
                     item["shade"] = item.get("shade") or db_row.get("shade")
                     item["clothing_type"] = item.get("clothing_type") or db_row.get("clothing_type")
+                    enriched_items.append(item)
+                elif item.get("image_url"):
+                    enriched_items.append(item)
+            sug["items"] = enriched_items
+        # Drop suggestions with no items
+        section["suggestions"] = [s for s in section.get("suggestions", []) if s.get("items")]
 
-    return sections
+    # Drop sections with no suggestions
+    return [s for s in sections if s.get("suggestions")]
 
 
 @router.get("")
@@ -266,14 +275,15 @@ async def generate_recommendations(
 
     has_partners = bool(partner_items)
 
+    mix_rule = '  2. "mix" — outfits mixing user [USER] items with partner [PARTNER] items. At least 1 user item per outfit. Create 1-2 such sections.\n' if has_partners else ""
+    partner_rule = '  3. "partner_only" — outfits ONLY from partner [PARTNER] items (no user items). Create 1 such section.\n' if has_partners else ""
+
     system_prompt = f"""You are a fashion stylist AI. Generate COMPLETE outfit recommendations.
 {style_hint}
 RULES:
 - Create sections of THREE types (use "section_type" field):
   1. "user_only" — outfits ONLY from user's wardrobe items [USER]. Create 1-2 such sections.
-  {"2. \"mix\" — outfits mixing user [USER] items with partner [PARTNER] items. At least 1 user item per outfit. Create 1-2 such sections." if has_partners else ""}
-  {"3. \"partner_only\" — outfits ONLY from partner [PARTNER] items (no user items). Create 1 such section." if has_partners else ""}
-- Each section has 2-3 outfit suggestions.
+{mix_rule}{partner_rule}- Each section has 2-3 outfit suggestions.
 - IMPORTANT: Each outfit MUST have 4-6 items covering ALL body parts:
   * Upper body (shirt/blouse/t-shirt/hoodie/sweater)
   * Lower body (pants/jeans/skirt) OR a dress
@@ -402,8 +412,10 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                 if item_data:
                     outfit_items.append(item_data)
             if outfit_items:
+                # Content-based ID: hash of item IDs to avoid localStorage collisions on regeneration
+                items_hash = hashlib.md5(",".join(str(it["id"]) for it in outfit_items).encode()).hexdigest()[:8]
                 suggestions.append({
-                    "id": f"{section_type}_{user['id'][:8]}_{len(sections)}_{len(suggestions)}",
+                    "id": f"{section_type}_{items_hash}",
                     "title": sug.get("title", "Образ"),
                     "items": outfit_items,
                     "suggested_items_count": len(outfit_items),

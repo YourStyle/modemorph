@@ -17,6 +17,7 @@ services:
       - ./backend/migrations/000_users_table.sql:/docker-entrypoint-initdb.d/000_users_table.sql:ro
       - ./backend/migrations/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
       - ./backend/migrations/002_seed_data.sql:/docker-entrypoint-initdb.d/002_seed_data.sql:ro
+      - ./backend/migrations/004_item_dislikes.sql:/docker-entrypoint-initdb.d/004_item_dislikes.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U modemorph -d modemorph"]
       interval: 10s

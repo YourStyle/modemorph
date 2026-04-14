@@ -99,6 +99,18 @@ async def _gemini_organize(
 
     has_partners = bool(partner_items)
 
+    # Build conditional rules for mix/partner sections
+    mix_block = ""
+    if has_partners:
+        mix_block = """2. Раздел(ы) section_type="mix" — образы из МИКСА вещей пользователя и партнёрских:
+   - 1-2 раздела: "На работу", "На свидание", "На прогулку" и т.п.
+   - Хотя бы 1 вещь пользователя [USER] в каждом образе
+3. Раздел section_type="partner_only" — "Готовые образы от брендов":
+   - 1 раздел, 2-3 образа ЦЕЛИКОМ из [PARTNER] вещей (без USER)
+   - Подбери стильные комплекты из одного бренда или миксуй бренды
+"""
+    n = 4 if has_partners else 2
+
     prompt = f"""Ты - стилист. Составь тематические разделы с образами ТРЁХ типов.
 
 Погода: {temp}°C, {desc}
@@ -112,23 +124,17 @@ async def _gemini_organize(
    - 1-2 раздела по событиям: "На каждый день", "Выходной день" и т.п.
    - В каждом 2-3 образа
    - ТОЛЬКО вещи [USER], БЕЗ [PARTNER]
-{"2. Раздел(ы) section_type=\"mix\" — образы из МИКСА вещей пользователя и партнёрских:" if has_partners else ""}
-{"   - 1-2 раздела: \"На работу\", \"На свидание\", \"На прогулку\" и т.п." if has_partners else ""}
-{"   - Хотя бы 1 вещь пользователя [USER] в каждом образе" if has_partners else ""}
-{"3. Раздел section_type=\"partner_only\" — \"Готовые образы от брендов\":" if has_partners else ""}
-{"   - 1 раздел, 2-3 образа ЦЕЛИКОМ из [PARTNER] вещей (без USER)" if has_partners else ""}
-{"   - Подбери стильные комплекты из одного бренда или миксуй бренды" if has_partners else ""}
-{"4" if has_partners else "2"}. ВАЖНО! Каждый образ = 4-6 вещей:
+{mix_block}{n}. ВАЖНО! Каждый образ = 4-6 вещей:
    - Верх (рубашка/футболка/блузка/свитер)
    - Низ (брюки/джинсы/юбка) ИЛИ платье
    - Верхняя одежда — если {temp}°C < 18
    - ОБУВЬ — ВСЕГДА
    - Аксессуар — по возможности
-{"5" if has_partners else "3"}. НЕ создавай образ из 2-3 вещей. Минимум: верх + низ + обувь.
-{"6" if has_partners else "4"}. НЕ ставь 2 штанов или 2 куртки или 2 шорт в один образ. Каждый слот одежды — строго 1 вещь.
-{"7" if has_partners else "5"}. Учитывай погоду ({temp}°C, {desc}).
-{"8" if has_partners else "6"}. Стильное короткое название для каждого образа (3-5 слов).
-{"9" if has_partners else "7"}. Учитывай пол: не предлагай платья мужчинам.
+{n+1}. НЕ создавай образ из 2-3 вещей. Минимум: верх + низ + обувь.
+{n+2}. НЕ ставь 2 штанов или 2 куртки или 2 шорт в один образ. Каждый слот одежды — строго 1 вещь.
+{n+3}. Учитывай погоду ({temp}°C, {desc}).
+{n+4}. Стильное короткое название для каждого образа (3-5 слов).
+{n+5}. Учитывай пол: не предлагай платья мужчинам.
 
 JSON: [{{"title":"Название раздела","section_type":"user_only|mix|partner_only","suggestions":[{{"title":"Название образа","item_ids":[id1,id2,id3,id4,id5]}}]}}]
 Только JSON, без markdown."""
@@ -387,7 +393,41 @@ async def cron_generate_recommendations(
             await db.rollback()
 
     logger.info(f"[Cron Recs] Done: {results}")
+
+    # After generating recommendations, rebuild user clusters
+    ai_url = settings.AI_SERVICE_URL
+    if ai_url and results["success"] > 0:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                cluster_resp = await client.post(f"{ai_url}/clip/clusters/build")
+                if cluster_resp.status_code == 200:
+                    cluster_data = cluster_resp.json()
+                    logger.info(f"[Cron Recs] Cluster rebuild: {cluster_data}")
+                    results["clusters"] = cluster_data
+        except Exception as e:
+            logger.warning(f"[Cron Recs] Cluster rebuild failed: {e}")
+
     return results
+
+
+@router.post("/rebuild-clusters")
+async def cron_rebuild_clusters(request: Request):
+    """Manually trigger user cluster rebuild."""
+    _verify_cron_auth(request)
+
+    ai_url = settings.AI_SERVICE_URL
+    if not ai_url:
+        return {"error": "AI_SERVICE_URL not configured"}
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(f"{ai_url}/clip/clusters/build")
+            if resp.status_code == 200:
+                return resp.json()
+            return {"error": f"CLIP service returned {resp.status_code}"}
+    except Exception as e:
+        logger.error(f"[Cron] Cluster rebuild failed: {e}")
+        return {"error": str(e)}
 
 
 @router.post("/process-feeds")

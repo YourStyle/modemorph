@@ -111,15 +111,18 @@ async def get_inspiration(
     )
     liked_by_me = {r[0] for r in user_likes_result.all()}
 
-    # Build feed
+    # Build feed — skip outfits with no items
     feed = []
     for o in outfits:
         oid = o["id"]
+        outfit_items = items_by_outfit.get(oid, [])
+        if not outfit_items:
+            continue
         feed.append({
             "id": str(oid),
             "title": o["name"] or "",
             "description": o["description"] or "",
-            "items": items_by_outfit.get(oid, []),
+            "items": outfit_items,
             "tags": [],
             "likes": likes_by_outfit.get(oid, 0),
             "isLiked": oid in liked_by_me,
