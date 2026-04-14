@@ -358,8 +358,8 @@ export default function WardrobePage() {
                     <div className="mb-8">
                         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-4">
                             <div className="flex items-center gap-3">
-                                <Shirt className="h-8 w-8 text-gray-700"/>
-                                <h1 className="text-3xl font-bold text-gray-900">Мой гардероб</h1>
+                                <Shirt className="h-8 w-8 text-[#B97DC6]"/>
+                                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Мой гардероб</h1>
                             </div>
 
                             {/* Actions: show upload only when NOT in create/edit mode */}
@@ -426,7 +426,7 @@ export default function WardrobePage() {
                     </div>
 
                     {/* Filters */}
-                    <div className="bg-white rounded-lg shadow-sm p-4 md:p-6 mb-8">
+                    <div className="bg-white rounded-2xl shadow-sm p-4 md:p-6 mb-8">
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-3 md:gap-4">
                             <div className="md:col-span-2">
                                 <Label htmlFor="search">Поиск</Label>
@@ -528,7 +528,7 @@ export default function WardrobePage() {
                     </div>
 
                     {/* Results */}
-                    <div className="bg-white rounded-lg shadow-sm">
+                    <div className="bg-white rounded-2xl shadow-sm">
                         {loading ? (
                             <div className="flex items-center justify-center py-12">
                                 <Loader2 className="h-8 w-8 animate-spin text-gray-400"/>
@@ -577,9 +577,9 @@ export default function WardrobePage() {
                                     </div>
 
                                     {isCreatingOutfit && (
-                                        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-xl">
                                             <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2 text-blue-800">
+                                                <div className="flex items-center gap-2 text-purple-800">
                                                     <Plus className="h-5 w-5"/>
                                                     <span
                                                         className="font-medium">Режим создания/редактирования образа</span>
@@ -588,12 +588,12 @@ export default function WardrobePage() {
                                                     onClick={handleCreateOutfitToggle}
                                                     variant="ghost"
                                                     size="sm"
-                                                    className="text-blue-600 hover:text-blue-800 hover:bg-blue-100"
+                                                    className="text-purple-600 hover:text-purple-800 hover:bg-purple-100"
                                                 >
                                                     <X className="h-4 w-4"/>
                                                 </Button>
                                             </div>
-                                            <p className="text-sm text-blue-600 mt-1">
+                                            <p className="text-sm text-purple-600 mt-1">
                                                 Выберите вещи для образа. Выбрано: {selectedItems.length}
                                             </p>
                                         </div>
@@ -775,13 +775,13 @@ function SelectableItemCard({
     selected: boolean
     onToggle: () => void
 }) {
-    const borderClass = selected ? "ring-2 ring-blue-500" : "ring-1 ring-transparent hover:ring-gray-200"
+    const borderClass = selected ? "ring-2 ring-[#EC9DE2]" : "ring-1 ring-transparent hover:ring-gray-200"
     return (
         <button
             type="button"
             onClick={onToggle}
             className={cn(
-                "group text-left rounded-lg overflow-hidden bg-white transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500",
+                "group text-left rounded-xl overflow-hidden bg-white transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#EC9DE2]",
                 borderClass,
             )}
             aria-pressed={selected}
@@ -800,7 +800,7 @@ function SelectableItemCard({
                         <span className="text-gray-400 text-sm">Нет фото</span>
                     </div>
                 )}
-                {selected && <div className="absolute inset-0 bg-blue-500/10 pointer-events-none" aria-hidden="true"/>}
+                {selected && <div className="absolute inset-0 bg-[#EC9DE2]/10 pointer-events-none" aria-hidden="true"/>}
             </div>
             <div className="p-3">
                 <div className="font-medium text-sm line-clamp-2">{item.item_name}</div>

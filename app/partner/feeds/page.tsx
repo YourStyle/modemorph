@@ -115,7 +115,7 @@ export default function PartnerFeedsPage() {
           <Button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white"
           >
             {uploading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

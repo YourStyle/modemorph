@@ -10,7 +10,7 @@ export default function BasicsPage() {
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold">Управление базовыми элементами</h1>
+            <h1 className="text-3xl font-bold tracking-tight">Управление базовыми элементами</h1>
             <p className="text-gray-600 mt-2">
               Настройка базовых вещей, материалов и их сочетаний для вашего гардероба
             </p>

@@ -399,7 +399,7 @@ export default function WardrobePage() {
       <div className="px-4 py-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-serif font-bold text-gray-900 mb-2">Гардероб</h1>
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">Гардероб</h1>
           <p className="text-gray-600 text-sm">Управляйте своими вещами</p>
         </div>
 
@@ -466,7 +466,7 @@ export default function WardrobePage() {
 
         {/* User's Wardrobe */}
         <div className="mb-8">
-          <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Ваши вещи</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Ваши вещи</h2>
           {isLoadingUserItems ? (
             <UserWardrobeSkeleton />
           ) : (
@@ -482,7 +482,7 @@ export default function WardrobePage() {
 
         {/* Basic Items */}
         <div>
-          <h2 className="text-lg font-serif font-semibold text-gray-900 mb-4">Рекомендуемые базовые вещи</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Рекомендуемые базовые вещи</h2>
 
           {isLoadingBasicItems ? (
             <BasicItemsSkeleton />

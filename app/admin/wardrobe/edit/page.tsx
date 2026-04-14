@@ -90,7 +90,7 @@ export default function EditWardrobeItemPage() {
 
           {/* Header */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Редактировать вещь</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2 tracking-tight">Редактировать вещь</h1>
             <p className="text-gray-600">Обновите информацию о вещи в гардеробе</p>
           </div>
 

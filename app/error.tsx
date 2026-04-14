@@ -54,7 +54,7 @@ export default function Error({
           <div className="mx-auto mb-4 w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
             <AlertTriangle className="w-8 h-8 text-red-600" />
           </div>
-          <CardTitle className="text-2xl font-serif font-bold text-gray-900">Возникла ошибка</CardTitle>
+          <CardTitle className="text-2xl font-bold text-gray-900">Возникла ошибка</CardTitle>
           <CardDescription className="text-gray-600 mt-2">При выполнении операции произошла ошибка</CardDescription>
         </CardHeader>
 

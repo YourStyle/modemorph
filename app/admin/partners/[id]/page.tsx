@@ -144,7 +144,7 @@ export default function AdminPartnerDetailPage() {
             {partner.website && (
               <div>
                 <span className="text-gray-500">Сайт: </span>
-                <a href={partner.website} target="_blank" rel="noopener" className="text-blue-600 hover:underline">
+                <a href={partner.website} target="_blank" rel="noopener" className="text-[#B97DC6] hover:underline">
                   {partner.website} <ExternalLink className="h-3 w-3 inline" />
                 </a>
               </div>
@@ -200,7 +200,7 @@ export default function AdminPartnerDetailPage() {
             {partner.status === "pending" && (
               <>
                 <Button
-                  className="w-full bg-green-600 hover:bg-green-700"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
                   onClick={() => handleStatusChange("approved")}
                   disabled={actionLoading}
                 >
@@ -228,7 +228,7 @@ export default function AdminPartnerDetailPage() {
             )}
             {partner.status === "suspended" && (
               <Button
-                className="w-full bg-green-600 hover:bg-green-700"
+                className="w-full bg-emerald-600 hover:bg-emerald-700"
                 onClick={() => handleStatusChange("approved")}
                 disabled={actionLoading}
               >

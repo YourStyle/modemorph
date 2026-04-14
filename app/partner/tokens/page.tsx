@@ -133,7 +133,7 @@ export default function PartnerTokensPage() {
           </h1>
           <p className="text-gray-500 mt-1">Управление ключами доступа к API</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={() => setCreateOpen(true)} className="bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white">
           <Plus className="h-4 w-4 mr-2" />
           Создать токен
         </Button>
@@ -299,7 +299,7 @@ export default function PartnerTokensPage() {
                 <Button
                   onClick={handleCreate}
                   disabled={!newTokenName.trim() || creating}
-                  className="bg-blue-600 hover:bg-blue-700"
+                  className="bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white"
                 >
                   {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   Создать

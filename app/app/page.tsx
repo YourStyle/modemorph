@@ -13,6 +13,7 @@ import { VisualSearchSheet } from "@/components/visual-search-sheet";
 import { api } from "@/lib/api-client";
 import { useAddToCloset } from "@/contexts/add-to-closet-context";
 import { PartnerItemsIntroSheet } from "@/components/partner-items-intro-sheet";
+import { toast } from "sonner";
 
 
 interface OutfitItem {
@@ -37,9 +38,9 @@ interface OutfitSuggestion {
 
 interface LookSection {
   title: string
-  looks_count: number
+  looks_count?: number
   suggestions: OutfitSuggestion[]
-  source?: "clip" | "ai"
+  source?: "user_only" | "mix" | "partner_only" | "clip" | "ai"
   source_label?: string
 }
 
@@ -236,6 +237,22 @@ export default function HomePage() {
       outfitId: suggestion.id,
     })
     if (!res.ok && res.code === "payment_required") setPaywallOpen(true)
+  }
+
+  // Handle item dislike
+  const handleDislikeItem = async (itemId: string) => {
+    try {
+      const numericId = Number.parseInt(itemId)
+      if (Number.isNaN(numericId)) return
+      // Determine source: items with user_id are from wardrobe_user_items
+      const allItems = outfitSections.flatMap(s => s.suggestions).flatMap(sg => sg.items)
+      const item = allItems.find(i => i.id === itemId)
+      const source = item?.user_id ? "wardrobe_user_items" : "wardrobe_items"
+      await api.post("/api/items/dislike", { item_id: numericId, item_source: source })
+      toast.success("Больше не будем рекомендовать эту вещь")
+    } catch {
+      toast.error("Не удалось сохранить")
+    }
   }
 
   // Handle save/unsave outfit
@@ -523,28 +540,15 @@ export default function HomePage() {
                             <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-3 fade-in" style={{ animationDelay: `${sectionIndex * 0.1}s` }}>
                               {/* Section Header */}
                               <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2.5">
-                                  <h2 className="text-lg font-serif font-semibold text-gray-900 tracking-tight">{section.title || "Образы"}</h2>
-                                  {section.source_label && (
-                                    <span
-                                      className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                                        section.source === "ai"
-                                          ? "bg-purple-50 text-purple-600"
-                                          : "bg-blue-50 text-blue-600"
-                                      }`}
-                                    >
-                                      {section.source_label}
-                                    </span>
-                                  )}
-                                </div>
+                                <h2 className="text-lg font-semibold text-gray-900 tracking-tight">{section.title || "Образы"}</h2>
                                 <span className="text-xs text-gray-400">
                           {section.looks_count || section.suggestions.length} образов
                         </span>
                               </div>
 
                               {/* Horizontal Scrolling Container */}
-                              <div className="relative">
-                                <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4 snap-x snap-mandatory">
+                              <div className="relative scroll-section">
+                                <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 pt-1 snap-x snap-mandatory">
                                   {section.suggestions.map((suggestion, suggestionIndex) => {
                                     // Add safety check for suggestion
                                     if (!suggestion) {
@@ -563,6 +567,7 @@ export default function HomePage() {
                                               onTryOnSuccess={handleTryOnSuccess}
                                               onSaveOutfit={handleSaveOutfit}
                                               userLooks={userLooks}
+                                              onDislikeItem={handleDislikeItem}
                                           />
                                         </div>
                                     )
@@ -570,8 +575,8 @@ export default function HomePage() {
                                 </div>
 
                                 {/* Scroll indicators */}
-                                <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-gray-50 to-transparent pointer-events-none opacity-50" />
-                                <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-gray-50 to-transparent pointer-events-none opacity-50" />
+                                <div className="absolute top-0 left-0 w-4 h-full bg-gradient-to-r from-background to-transparent pointer-events-none" />
+                                <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-l from-background to-transparent pointer-events-none" />
                               </div>
                             </div>
                         )

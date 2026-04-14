@@ -24,6 +24,7 @@ export const clothingTypes = {
   // Брюки и джинсы
   jeans: "Джинсы",
   pants: "Брюки",
+  shorts: "Шорты",
   "sporty-pants": "Спортивные брюки",
 
   // Комплекты
@@ -56,7 +57,7 @@ export const clothingCategories = {
   },
   pants: {
     name: "Брюки и джинсы",
-    types: ["jeans", "pants", "sporty-pants"],
+    types: ["jeans", "pants", "shorts", "sporty-pants"],
   },
   sets: {
     name: "Комплекты",

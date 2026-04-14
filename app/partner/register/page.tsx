@@ -98,14 +98,17 @@ export default function PartnerRegisterPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="w-full max-w-sm text-center">
-          <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
+          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center mx-auto mb-4">
+            <CheckCircle2 className="h-8 w-8 text-white" />
+          </div>
           <h1 className="text-2xl font-bold text-gray-900 mb-2">Заявка отправлена!</h1>
           <p className="text-gray-600 mb-6">
             Ваша заявка на партнёрство отправлена на рассмотрение. Мы уведомим вас по электронной почте после одобрения.
           </p>
           <Button
             onClick={() => router.push("/partner")}
-            className="bg-blue-600 hover:bg-blue-700"
+            style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+            className="text-white border-0"
           >
             Перейти в кабинет
           </Button>
@@ -118,8 +121,10 @@ export default function PartnerRegisterPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Building2 className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900">Стать партнёром</h1>
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#EC9DE2] to-[#89AEFF] flex items-center justify-center mx-auto mb-4">
+            <Building2 className="h-7 w-7 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Стать партнёром</h1>
           <p className="text-gray-500 mt-1">
             Получите доступ к API виртуальной примерки
           </p>
@@ -237,7 +242,8 @@ export default function PartnerRegisterPage() {
             <Button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-base font-medium rounded-xl h-12"
+              className="w-full text-white py-3 text-base font-medium rounded-xl h-12 border-0"
+              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
             >
               {isLoading ? (
                 <>
@@ -253,7 +259,7 @@ export default function PartnerRegisterPage() {
 
         <p className="text-center text-sm text-gray-500 mt-4">
           Уже есть аккаунт?{" "}
-          <Link href="/partner/login" className="text-blue-600 hover:underline font-medium">
+          <Link href="/partner/login" className="text-[#B97DC6] hover:underline font-medium">
             Войти
           </Link>
         </p>

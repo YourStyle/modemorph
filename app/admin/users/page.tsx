@@ -241,7 +241,7 @@ export default function AdminUsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Управление пользователями</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Управление пользователями</h1>
           <p className="text-muted-foreground mt-2">Аналитика и управление пользователями системы</p>
         </div>
         <Button onClick={exportUsersToExcel} className="gap-2" disabled={users.length === 0}>
@@ -311,8 +311,8 @@ export default function AdminUsersPage() {
                   <AreaChart data={metrics.charts.registrations}>
                     <defs>
                       <linearGradient id="colorRegistrations" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#EC9DE2" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#EC9DE2" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
                     <XAxis
@@ -340,7 +340,7 @@ export default function AdminUsersPage() {
                     <Area
                       type="monotone"
                       dataKey="count"
-                      stroke="#3b82f6"
+                      stroke="#EC9DE2"
                       strokeWidth={2}
                       fill="url(#colorRegistrations)"
                     />
@@ -359,8 +359,8 @@ export default function AdminUsersPage() {
                   <AreaChart data={metrics.charts.activity}>
                     <defs>
                       <linearGradient id="colorActivity" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        <stop offset="5%" stopColor="#89AEFF" stopOpacity={0.3}/>
+                        <stop offset="95%" stopColor="#89AEFF" stopOpacity={0}/>
                       </linearGradient>
                     </defs>
                     <XAxis
@@ -388,7 +388,7 @@ export default function AdminUsersPage() {
                     <Area
                       type="monotone"
                       dataKey="count"
-                      stroke="#10b981"
+                      stroke="#89AEFF"
                       strokeWidth={2}
                       fill="url(#colorActivity)"
                     />
@@ -448,7 +448,7 @@ export default function AdminUsersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="font-bold text-purple-600">{credits}</span>
+                      <span className="font-bold text-[#B97DC6]">{credits}</span>
                     </TableCell>
                     <TableCell>
                       {limits ? (

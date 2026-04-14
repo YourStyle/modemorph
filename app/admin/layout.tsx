@@ -63,8 +63,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0f1117] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-7 w-7 border-2 border-white/20 border-t-white" />
+      <div className="min-h-screen bg-[#1a1520] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-7 w-7 border-2 border-white/20 border-t-[#EC9DE2]" />
       </div>
     )
   }
@@ -100,13 +100,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <Link
         href={href}
         title={collapsed ? label : undefined}
-        className={`group flex items-center gap-3 px-3 py-2 rounded-md text-[13px] font-medium transition-all duration-150 ${
+        className={`group flex items-center gap-3 px-3 py-2 rounded-xl text-[13px] font-medium transition-all duration-150 ${
           on
-            ? "bg-white/10 text-white"
+            ? "bg-gradient-to-r from-[#EC9DE2]/20 to-[#89AEFF]/20 text-white"
             : "text-white/50 hover:text-white/90 hover:bg-white/[0.06]"
         } ${collapsed ? "justify-center px-2" : ""}`}
       >
-        <Icon className={`h-[18px] w-[18px] flex-shrink-0 ${on ? "text-white" : "text-white/40 group-hover:text-white/70"}`} />
+        <Icon className={`h-[18px] w-[18px] flex-shrink-0 ${on ? "text-[#EC9DE2]" : "text-white/40 group-hover:text-white/70"}`} />
         {!collapsed && <span>{label}</span>}
       </Link>
     )
@@ -115,11 +115,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => {
     const show = !collapsed || mobile
     return (
-      <div className="flex flex-col h-full bg-[#0f1117]">
+      <div className="flex flex-col h-full bg-[#1a1520]">
         {/* Brand */}
-        <div className={`flex items-center h-14 border-b border-white/[0.06] ${show ? "px-5" : "px-0 justify-center"}`}>
+        <div className={`flex items-center h-14 border-b border-white/[0.08] ${show ? "px-5" : "px-0 justify-center"}`}>
           <Link href="/admin" className="flex items-center gap-2.5">
-            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center flex-shrink-0">
+            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-[#EC9DE2] to-[#89AEFF] flex items-center justify-center flex-shrink-0">
               <span className="text-white font-bold text-xs">M</span>
             </div>
             {show && <span className="font-semibold text-white text-sm tracking-tight">ModeMorph</span>}
@@ -131,7 +131,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {nav.map((group) => (
             <div key={group.group} className={show ? "px-3" : "px-1.5"}>
               {show && (
-                <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/25">
+                <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#EC9DE2]/40">
                   {group.group}
                 </p>
               )}
@@ -143,10 +143,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         {/* Footer */}
-        <div className={`border-t border-white/[0.06] py-3 ${show ? "px-4" : "px-1.5"}`}>
+        <div className={`border-t border-white/[0.08] py-3 ${show ? "px-4" : "px-1.5"}`}>
           <button
             onClick={() => { sessionAuth.clearSession(); router.push("/auth/login") }}
-            className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-[13px] text-white/40 hover:text-white/80 hover:bg-white/[0.06] transition-colors ${collapsed && !mobile ? "justify-center px-2" : ""}`}
+            className={`flex items-center gap-2.5 w-full px-3 py-2 rounded-xl text-[13px] text-white/40 hover:text-white/80 hover:bg-white/[0.06] transition-colors ${collapsed && !mobile ? "justify-center px-2" : ""}`}
           >
             <LogOut className="h-[18px] w-[18px] flex-shrink-0" />
             {show && <span>Выйти</span>}
@@ -163,7 +163,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <Sidebar />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-[18px] h-6 w-6 bg-[#0f1117] border-2 border-[#f8f9fb] rounded-full flex items-center justify-center hover:bg-[#1a1d27] transition-colors"
+          className="absolute -right-3 top-[18px] h-6 w-6 bg-[#1a1520] border-2 border-[#f8f9fb] rounded-full flex items-center justify-center hover:bg-[#2a2030] transition-colors"
         >
           {collapsed
             ? <ChevronRight className="h-3 w-3 text-white/60" />
@@ -175,9 +175,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Content */}
       <div className={`flex-1 min-w-0 transition-all duration-200 ${collapsed ? "lg:pl-[56px]" : "lg:pl-[220px]"}`}>
         {/* Mobile top bar */}
-        <header className="lg:hidden sticky top-0 z-20 h-14 bg-[#0f1117] flex items-center justify-between px-4">
+        <header className="lg:hidden sticky top-0 z-20 h-14 bg-[#1a1520] flex items-center justify-between px-4">
           <Link href="/admin" className="flex items-center gap-2">
-            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+            <div className="h-7 w-7 rounded-md bg-gradient-to-br from-[#EC9DE2] to-[#89AEFF] flex items-center justify-center">
               <span className="text-white font-bold text-xs">M</span>
             </div>
             <span className="font-semibold text-white text-sm">ModeMorph</span>
@@ -188,7 +188,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="w-[240px] p-0 border-0 bg-[#0f1117]">
+            <SheetContent side="left" className="w-[240px] p-0 border-0 bg-[#1a1520]">
               <Sidebar mobile />
             </SheetContent>
           </Sheet>

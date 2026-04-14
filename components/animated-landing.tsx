@@ -32,7 +32,7 @@ export function AnimatedLanding() {
           <div className="space-y-4 lg:space-y-6">
             <h1
               className="text-4xl lg:text-6xl font-bold text-gray-900 tracking-tight leading-tight animate-fade-in-up animation-delay-200"
-              style={{ fontFamily: "Montserrat, sans-serif" }}
+              style={{ fontFamily: "Inter, sans-serif" }}
             >
               Mode Morph
             </h1>

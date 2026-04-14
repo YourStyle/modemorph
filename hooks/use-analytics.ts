@@ -48,8 +48,8 @@ export function useAnalytics(): AnalyticsHook {
   const trackEvent = useCallback(async (eventType: EventType, eventData?: EventData) => {
     try {
       await api.post("/api/usage/log", {
-        feature: "ai_requests",
-        action: "click",
+        feature: eventType,
+        action: "track",
         meta: { event_type: eventType, ...(eventData || {}) },
       })
     } catch (error) {

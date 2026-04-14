@@ -205,7 +205,7 @@ export default function LooksPage() {
     console.log(`Rendering look ${look.id} with ${items.length} items:`, items)
 
     return (
-      <Card className="p-4 bg-gray-100 border-0 relative group hover:shadow-md transition-shadow flex-shrink-0 w-80">
+      <Card className="p-4 bg-white border-0 relative group hover:shadow-lg transition-all duration-300 flex-shrink-0 w-80 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
         <div className="grid grid-cols-3 gap-3 min-h-[240px]">
           {items.length === 0 ? (
             <div className="col-span-3 flex items-center justify-center text-gray-500">
@@ -352,8 +352,8 @@ export default function LooksPage() {
           </div>
         </div>
 
-        <div className="relative min-h-[200px]">
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+        <div className="relative min-h-[200px] scroll-section">
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 pt-1">
             {!hasLooks && <AddOutfitCard section={section} />}
             {sectionLooks.map((look) => (
               <LookCard key={look.id} look={look} />
@@ -362,8 +362,8 @@ export default function LooksPage() {
 
           {sectionLooks.length > 0 && (
             <>
-              <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
-              <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50" />
+              <div className="absolute top-0 left-0 w-4 h-full bg-gradient-to-r from-background to-transparent pointer-events-none" />
+              <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-l from-background to-transparent pointer-events-none" />
             </>
           )}
         </div>
@@ -415,7 +415,7 @@ export default function LooksPage() {
     <div className="px-4 py-6 space-y-8">
       {/* Header */}
       <div className="space-y-4">
-        <h1 className="text-3xl font-bold text-gray-900">Образы</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Образы</h1>
 
         <div className="flex flex-col gap-3 sm:flex-row">
           <Button
@@ -446,9 +446,9 @@ export default function LooksPage() {
           </div>
         </div>
 
-        <div className="relative">
+        <div className="relative scroll-section">
           {regularLooks.length > 0 ? (
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 pt-1">
               {regularLooks.map((look) => (
                 <LookCard key={look.id} look={look} showDelete={true} />
               ))}
@@ -476,8 +476,8 @@ export default function LooksPage() {
 
           {regularLooks.length > 1 && (
             <>
-              <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
-              <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50" />
+              <div className="absolute top-0 left-0 w-4 h-full bg-gradient-to-r from-background to-transparent pointer-events-none" />
+              <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-l from-background to-transparent pointer-events-none" />
             </>
           )}
         </div>
@@ -496,12 +496,12 @@ export default function LooksPage() {
             </div>
           </div>
 
-          <div className="relative">
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-4">
+          <div className="relative scroll-section">
+            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 pt-1">
               {tryOnLooks.map((look) => (
                 <Card
                   key={look.id}
-                  className="p-0 bg-gray-100 border-0 relative group hover:shadow-md transition-shadow flex-shrink-0 w-64 overflow-hidden"
+                  className="p-0 bg-white border-0 relative group hover:shadow-lg transition-all duration-300 flex-shrink-0 w-64 overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
                 >
                   {/* Try-on result image */}
                   {look.image_url && (
@@ -545,8 +545,8 @@ export default function LooksPage() {
 
             {tryOnLooks.length > 1 && (
               <>
-                <div className="absolute top-1/2 -translate-y-1/2 left-0 w-8 h-full bg-gradient-to-r from-white to-transparent pointer-events-none opacity-50" />
-                <div className="absolute top-1/2 -translate-y-1/2 right-0 w-8 h-full bg-gradient-to-l from-white to-transparent pointer-events-none opacity-50" />
+                <div className="absolute top-0 left-0 w-4 h-full bg-gradient-to-r from-background to-transparent pointer-events-none" />
+                <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-l from-background to-transparent pointer-events-none" />
               </>
             )}
           </div>

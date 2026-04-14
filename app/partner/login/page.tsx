@@ -64,8 +64,10 @@ export default function PartnerLoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <Building2 className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900">Кабинет партнёра</h1>
+          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#EC9DE2] to-[#89AEFF] flex items-center justify-center mx-auto mb-4">
+            <Building2 className="h-7 w-7 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Кабинет партнёра</h1>
           <p className="text-gray-500 mt-1">Войдите в партнёрский аккаунт</p>
         </div>
 
@@ -112,7 +114,8 @@ export default function PartnerLoginPage() {
             <Button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-base font-medium rounded-xl h-12"
+              className="w-full text-white py-3 text-base font-medium rounded-xl h-12"
+              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
             >
               {isLoading ? (
                 <>
@@ -128,7 +131,7 @@ export default function PartnerLoginPage() {
 
         <p className="text-center text-sm text-gray-500 mt-4">
           Нет аккаунта?{" "}
-          <Link href="/partner/register" className="text-blue-600 hover:underline font-medium">
+          <Link href="/partner/register" className="text-[#B97DC6] hover:underline font-medium">
             Стать партнёром
           </Link>
         </p>

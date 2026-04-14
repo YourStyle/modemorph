@@ -90,7 +90,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-purple-100 border-t-[#EC9DE2]" />
       </div>
     )
   }
@@ -111,13 +111,15 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
+      <header className="bg-white/80 backdrop-blur-lg border-b border-gray-200/60 sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <Link href="/partner" className="flex items-center gap-2 text-xl font-bold text-gray-900">
-                <Building2 className="h-5 w-5 text-blue-600" />
-                Кабинет партнёра
+              <Link href="/partner" className="flex items-center gap-2.5 text-xl font-bold text-gray-900">
+                <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-[#EC9DE2] to-[#89AEFF] flex items-center justify-center flex-shrink-0">
+                  <Building2 className="h-4 w-4 text-white" />
+                </div>
+                <span className="tracking-tight">Партнёр</span>
               </Link>
 
               <nav className="hidden md:flex ml-8 space-x-1">
@@ -128,13 +130,13 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                      className={`flex items-center space-x-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
                         isActive
-                          ? "bg-blue-50 text-blue-700"
+                          ? "bg-purple-50 text-purple-700"
                           : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
                       }`}
                     >
-                      <Icon className="h-4 w-4 flex-shrink-0" />
+                      <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? "text-[#EC9DE2]" : ""}`} />
                       <span>{item.label}</span>
                     </Link>
                   )
@@ -151,7 +153,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
                   sessionAuth.clearSession()
                   router.push("/partner/login")
                 }}
-                className="hidden sm:flex items-center gap-1"
+                className="hidden sm:flex items-center gap-1 text-gray-500 hover:text-gray-700"
               >
                 <LogOut className="h-4 w-4" />
                 Выйти
@@ -171,13 +173,18 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
                     <nav className="flex flex-col space-y-1">
                       {navigationItems.map((item) => {
                         const Icon = item.icon
+                        const isActive = pathname === item.href
                         return (
                           <Link
                             key={item.href}
                             href={item.href}
-                            className="flex items-center space-x-3 text-gray-700 hover:text-gray-900 hover:bg-gray-100 px-3 py-3 rounded-md text-base font-medium"
+                            className={`flex items-center space-x-3 px-3 py-3 rounded-xl text-base font-medium transition-colors ${
+                              isActive
+                                ? "bg-purple-50 text-purple-700"
+                                : "text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+                            }`}
                           >
-                            <Icon className="h-5 w-5" />
+                            <Icon className={`h-5 w-5 ${isActive ? "text-[#EC9DE2]" : ""}`} />
                             <span>{item.label}</span>
                           </Link>
                         )
@@ -215,9 +222,9 @@ function PartnerStatusScreen({ status, reason }: { status: string; reason: strin
   const config = {
     pending: {
       icon: Clock,
-      color: "text-yellow-600",
-      bg: "bg-yellow-50",
-      border: "border-yellow-200",
+      color: "text-amber-600",
+      bg: "bg-amber-50",
+      border: "border-amber-200",
       title: "Заявка на рассмотрении",
       description: "Ваша заявка на партнёрство отправлена и ожидает одобрения администратором. Мы уведомим вас по электронной почте.",
     },

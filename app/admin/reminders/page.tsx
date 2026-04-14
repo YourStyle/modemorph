@@ -107,7 +107,7 @@ export default function AdminRemindersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Напоминания</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Напоминания</h1>
           <p className="text-muted-foreground mt-2">
             Настройка автоматических напоминаний через Telegram
           </p>

@@ -240,22 +240,22 @@ export default function AdminOutfitDetailsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="flex items-center gap-3 p-3 rounded-md border">
-                <Heart className="h-5 w-5 text-rose-500" />
+              <div className="flex items-center gap-3 p-3 rounded-xl border">
+                <div className="p-2 bg-rose-50 rounded-xl"><Heart className="h-5 w-5 text-rose-500" /></div>
                 <div>
                   <div className="text-sm text-muted-foreground">Лайки</div>
                   <div className="font-semibold">{outfit.likes_count ?? 0}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-md border">
-                <Eye className="h-5 w-5 text-blue-600" />
+              <div className="flex items-center gap-3 p-3 rounded-xl border">
+                <div className="p-2 bg-purple-50 rounded-xl"><Eye className="h-5 w-5 text-[#B97DC6]" /></div>
                 <div>
                   <div className="text-sm text-muted-foreground">Просмотры</div>
                   <div className="font-semibold">{outfit.views_count ?? 0}</div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-3 rounded-md border">
-                <Bookmark className="h-5 w-5 text-emerald-600" />
+              <div className="flex items-center gap-3 p-3 rounded-xl border">
+                <div className="p-2 bg-emerald-50 rounded-xl"><Bookmark className="h-5 w-5 text-emerald-500" /></div>
                 <div>
                   <div className="text-sm text-muted-foreground">Сохранения</div>
                   <div className="font-semibold">{outfit.saves_count ?? 0}</div>

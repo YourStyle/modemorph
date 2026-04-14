@@ -72,9 +72,9 @@ export default function PartnerStatsPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <SummaryCard title="Сегодня" value={stats.api_calls_today} icon={Activity} />
-        <SummaryCard title="Всего" value={stats.api_calls_total} icon={BarChart3} />
-        <SummaryCard title="Успешных" value={`${stats.success_rate}%`} icon={CheckCircle2} iconColor="text-green-600" />
+        <SummaryCard title="Сегодня" value={stats.api_calls_today} icon={Activity} iconColor="text-[#B97DC6]" />
+        <SummaryCard title="Всего" value={stats.api_calls_total} icon={BarChart3} iconColor="text-[#89AEFF]" />
+        <SummaryCard title="Успешных" value={`${stats.success_rate}%`} icon={CheckCircle2} iconColor="text-emerald-500" />
         <SummaryCard
           title="Ср. время (мс)"
           value={
@@ -83,7 +83,7 @@ export default function PartnerStatsPage() {
               : 0
           }
           icon={Clock}
-          iconColor="text-blue-600"
+          iconColor="text-amber-500"
         />
       </div>
 
@@ -104,16 +104,16 @@ export default function PartnerStatsPage() {
                     <div className="text-xs text-gray-500 w-20 shrink-0">
                       {day.date.slice(5)} {/* MM-DD */}
                     </div>
-                    <div className="flex-1 flex h-6 rounded-full overflow-hidden bg-gray-100">
+                    <div className="flex-1 flex h-5 rounded-full overflow-hidden bg-gray-100">
                       {successPct > 0 && (
                         <div
-                          className="bg-green-500 transition-all"
-                          style={{ width: `${successPct}%` }}
+                          className="transition-all"
+                          style={{ width: `${successPct}%`, background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
                         />
                       )}
                       {errorPct > 0 && (
                         <div
-                          className="bg-red-400 transition-all"
+                          className="bg-red-300 transition-all"
                           style={{ width: `${errorPct}%` }}
                         />
                       )}
@@ -127,7 +127,7 @@ export default function PartnerStatsPage() {
             </div>
             <div className="flex gap-4 mt-4 text-xs text-gray-500">
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-green-500" /> Успешные
+                <div className="w-3 h-3 rounded-full bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF]" /> Успешные
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 rounded-full bg-red-400" /> Ошибки
@@ -195,7 +195,9 @@ function SummaryCard({
   return (
     <Card>
       <CardContent className="pt-6">
-        <Icon className={`h-5 w-5 ${iconColor} mb-2`} />
+        <div className="p-2 bg-gradient-to-br from-[#EC9DE2]/10 to-[#89AEFF]/10 rounded-xl w-fit mb-3">
+          <Icon className={`h-5 w-5 ${iconColor}`} />
+        </div>
         <div className="text-2xl font-bold text-gray-900">{value}</div>
         <div className="text-sm text-gray-500">{title}</div>
       </CardContent>

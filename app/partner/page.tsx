@@ -174,16 +174,16 @@ result = virtual_tryon("photo_person.jpg", "photo_clothing.jpg")`
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Дашборд</h1>
+        <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Дашборд</h1>
         <p className="text-gray-500 mt-1">Обзор вашей партнёрской активности</p>
       </div>
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatsCard title="API сегодня" value={isLoading ? "..." : String(stats?.api_calls_today ?? 0)} icon={Activity} />
-        <StatsCard title="Всего вызовов" value={isLoading ? "..." : String(stats?.api_calls_total ?? 0)} icon={BarChart3} />
-        <StatsCard title="Успешных" value={isLoading ? "..." : `${stats?.success_rate ?? 0}%`} icon={CheckCircle2} iconColor="text-green-600" />
-        <StatsCard title="Токенов" value={isLoading ? "..." : String(stats?.tokens_count ?? 0)} icon={Key} iconColor="text-blue-600" />
+        <StatsCard title="API сегодня" value={isLoading ? "..." : String(stats?.api_calls_today ?? 0)} icon={Activity} iconColor="text-[#B97DC6]" />
+        <StatsCard title="Всего вызовов" value={isLoading ? "..." : String(stats?.api_calls_total ?? 0)} icon={BarChart3} iconColor="text-[#89AEFF]" />
+        <StatsCard title="Успешных" value={isLoading ? "..." : `${stats?.success_rate ?? 0}%`} icon={CheckCircle2} iconColor="text-emerald-500" />
+        <StatsCard title="Токенов" value={isLoading ? "..." : String(stats?.tokens_count ?? 0)} icon={Key} iconColor="text-amber-500" />
       </div>
 
       {/* Quick actions */}
@@ -197,7 +197,7 @@ result = virtual_tryon("photo_person.jpg", "photo_clothing.jpg")`
       <Card>
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
-            <Play className="h-5 w-5 text-blue-600" />
+            <Play className="h-5 w-5 text-[#B97DC6]" />
             API Playground
           </CardTitle>
         </CardHeader>
@@ -210,7 +210,7 @@ result = virtual_tryon("photo_person.jpg", "photo_clothing.jpg")`
               placeholder="mm_pk_..."
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#EC9DE2]/50 focus:border-[#EC9DE2]"
             />
           </div>
 
@@ -222,7 +222,7 @@ result = virtual_tryon("photo_person.jpg", "photo_clothing.jpg")`
                 onChange={(e) => handleFileSelect(e.target.files?.[0] || null, "person")} />
               <div
                 onClick={() => personRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 transition-colors aspect-[3/4] flex items-center justify-center overflow-hidden"
+                className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-[#EC9DE2]/60 transition-colors aspect-[3/4] flex items-center justify-center overflow-hidden"
               >
                 {personPreview ? (
                   <img src={personPreview} alt="Person" className="max-h-full max-w-full object-contain rounded" />
@@ -240,7 +240,7 @@ result = virtual_tryon("photo_person.jpg", "photo_clothing.jpg")`
                 onChange={(e) => handleFileSelect(e.target.files?.[0] || null, "clothing")} />
               <div
                 onClick={() => clothingRef.current?.click()}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-blue-400 transition-colors aspect-[3/4] flex items-center justify-center overflow-hidden"
+                className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-[#EC9DE2]/60 transition-colors aspect-[3/4] flex items-center justify-center overflow-hidden"
               >
                 {clothingPreview ? (
                   <img src={clothingPreview} alt="Clothing" className="max-h-full max-w-full object-contain rounded" />
@@ -371,7 +371,9 @@ function StatsCard({ title, value, icon: Icon, iconColor = "text-gray-600" }: {
   return (
     <Card>
       <CardContent className="pt-6">
-        <Icon className={`h-5 w-5 ${iconColor} mb-2`} />
+        <div className="p-2 bg-gradient-to-br from-[#EC9DE2]/10 to-[#89AEFF]/10 rounded-xl w-fit mb-3">
+          <Icon className={`h-5 w-5 ${iconColor}`} />
+        </div>
         <div className="text-2xl font-bold text-gray-900">{value}</div>
         <div className="text-sm text-gray-500">{title}</div>
       </CardContent>
@@ -384,12 +386,14 @@ function QuickAction({ href, icon: Icon, title, description }: {
 }) {
   return (
     <Link href={href}>
-      <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
+      <Card className="hover:shadow-md transition-all duration-200 cursor-pointer h-full group">
         <CardContent className="pt-6">
-          <Icon className="h-8 w-8 text-blue-600 mb-3" />
+          <div className="p-2.5 bg-gradient-to-br from-[#EC9DE2]/15 to-[#89AEFF]/15 rounded-xl w-fit mb-3 group-hover:from-[#EC9DE2]/25 group-hover:to-[#89AEFF]/25 transition-colors">
+            <Icon className="h-6 w-6 text-[#B97DC6]" />
+          </div>
           <h3 className="font-semibold text-gray-900 mb-1">{title}</h3>
           <p className="text-sm text-gray-500">{description}</p>
-          <div className="flex items-center text-blue-600 text-sm font-medium mt-3">
+          <div className="flex items-center text-[#B97DC6] text-sm font-medium mt-3">
             Перейти <ArrowRight className="h-4 w-4 ml-1" />
           </div>
         </CardContent>

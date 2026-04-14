@@ -68,7 +68,7 @@ export default function AdminOutfitsPage() {
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Образы</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Образы</h1>
       </div>
       {outfits.length === 0 ? (
         <div className="text-center text-muted-foreground">Образы не найдены</div>

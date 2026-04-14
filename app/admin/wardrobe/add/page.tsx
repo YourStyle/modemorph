@@ -35,7 +35,7 @@ export default function AddWardrobeItemPage() {
 
           {/* Заголовок */}
           <div className="mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Добавить новую вещь</h1>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2 tracking-tight">Добавить новую вещь</h1>
             <p className="text-gray-600">Заполните форму, чтобы добавить новую вещь в свой гардероб</p>
           </div>
 

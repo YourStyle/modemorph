@@ -2,17 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Felidae Font - для заголовков */
-@font-face {
-  font-family: 'Felidae';
-  src: url('/fonts/Felidae.woff2') format('woff2'),
-       url('/fonts/Felidae.woff') format('woff'),
-       url('/fonts/Felidae.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-  font-display: swap;
-}
-
 @layer base {
   :root {
     --background: 30 20% 98%;
@@ -88,19 +77,10 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Felidae для больших заголовков h1, h2 */
-  h1, h2 {
-    font-family: 'Felidae', 'Inter', sans-serif;
-    font-weight: 400 !important;
-    letter-spacing: 0.04em;
-  }
-
-  h1 { font-size: 28px; }
-  h2 { font-size: 22px; }
-
-  /* Inter для всего остального */
-  h3, h4, h5, h6, p, span, div {
+  /* Unified typography — Inter for everything */
+  h1, h2, h3, h4, h5, h6 {
     font-family: 'Inter', sans-serif;
+    letter-spacing: -0.02em;
   }
 }
 
@@ -109,18 +89,46 @@
   .card-elevated {
     @apply bg-white rounded-2xl;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06);
+    transition: box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
   .card-elevated:hover {
     box-shadow: 0 2px 6px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08);
   }
+  .card-elevated:active {
+    transform: scale(0.98);
+  }
   .btn-press {
-    @apply transition-transform duration-150 active:scale-[0.97];
+    @apply active:scale-[0.97];
+    transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
   .fade-in {
-    animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+  }
+  .fade-in-up {
+    animation: fadeInUp 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
   }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  /* Horizontal scroll sections — prevent shadow clipping */
+  .scroll-section {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  /* Hide scrollbar across browsers */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }
