@@ -1,12 +1,12 @@
 "use client"
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ExternalLink, Package } from "lucide-react"
 import Image from "next/image"
 import { useState } from "react"
 import { colorToHex, colorDisplayName } from "@/lib/color-map"
+import { CommonSheet } from "./common-sheet"
 
 export interface WardrobeItem {
   id: number
@@ -45,149 +45,107 @@ interface ItemDetailsModalProps {
 export function ItemDetailsModal({ item, isOpen, onClose }: ItemDetailsModalProps) {
   const [imageError, setImageError] = useState(false)
 
-  const handleImageError = () => {
-    setImageError(true)
-  }
-
-  const getColorDisplay = (color?: string, shade?: string) => {
-    if (!color) return null
-
-    const hex = colorToHex(color)
-    const label = colorDisplayName(color)
-
-    return (
-      <div className="flex items-center gap-2">
-        {hex && (
-          <div className="w-6 h-6 rounded-full border border-gray-200" style={{ backgroundColor: hex }} />
-        )}
-        <span className="text-sm font-medium">{label}</span>
-        {shade && <span className="text-sm text-gray-600">({shade})</span>}
-      </div>
-    )
-  }
+  const hex = item.color ? colorToHex(item.color) : null
+  const colorLabel = item.color ? colorDisplayName(item.color) : null
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-xl font-semibold">{item.item_name}</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Image */}
-          <div className="aspect-square bg-gray-50 rounded-lg overflow-hidden">
-            {item.image_url && !imageError ? (
-              <Image
-                src={item.image_url || "/placeholder.svg"}
-                alt={item.item_name}
-                width={400}
-                height={400}
-                className="w-full h-full object-cover"
-                onError={handleImageError}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <Package className="h-16 w-16 text-gray-400" />
-              </div>
-            )}
-          </div>
-
-          {/* Details */}
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-lg font-semibold mb-4">Основная информация</h3>
-              <div className="space-y-3">
-                {item.clothing_type && (
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Тип:</span>
-                    <p className="text-sm text-gray-900">{item.clothing_type}</p>
-                  </div>
-                )}
-
-                {item.style && (
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Стиль:</span>
-                    <p className="text-sm text-gray-900">{item.style}</p>
-                  </div>
-                )}
-
-                {item.material && (
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Материал:</span>
-                    <p className="text-sm text-gray-900">{item.material}</p>
-                  </div>
-                )}
-
-                {item.size_type && (
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Размер:</span>
-                    <p className="text-sm text-gray-900">{item.size_type}</p>
-                  </div>
-                )}
-
-                {item.description && (
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Описание:</span>
-                    <p className="text-sm text-gray-900">{item.description}</p>
-                  </div>
-                )}
-              </div>
+    <CommonSheet
+      isOpen={isOpen}
+      onClose={onClose}
+      title={item.item_name}
+      backgroundColor="white"
+      swipeAction="close"
+    >
+      <div className="space-y-5 pb-6">
+        {/* Image */}
+        <div className="aspect-[4/3] bg-secondary/30 rounded-2xl overflow-hidden">
+          {item.image_url && !imageError ? (
+            <Image
+              src={item.image_url}
+              alt={item.item_name}
+              width={600}
+              height={450}
+              className="w-full h-full object-cover"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <Package className="h-12 w-12 text-muted-foreground" />
             </div>
+          )}
+        </div>
 
-            {/* Color */}
-            {item.color && (
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Цвет</h3>
-                {getColorDisplay(item.color, item.shade)}
-              </div>
+        {/* Info chips */}
+        <div className="flex flex-wrap gap-2">
+          {item.clothing_type && (
+            <Badge variant="secondary" className="text-xs">{item.clothing_type}</Badge>
+          )}
+          {item.style && (
+            <Badge variant="secondary" className="text-xs">{item.style}</Badge>
+          )}
+          {item.material && (
+            <Badge variant="secondary" className="text-xs">{item.material}</Badge>
+          )}
+          {item.size_type && (
+            <Badge variant="secondary" className="text-xs">{item.size_type}</Badge>
+          )}
+        </div>
+
+        {/* Color */}
+        {item.color && (
+          <div className="flex items-center gap-2.5">
+            {hex && (
+              <div className="w-7 h-7 rounded-full border border-black/5 shadow-sm flex-shrink-0" style={{ backgroundColor: hex }} />
             )}
+            <div>
+              <span className="text-sm font-medium text-foreground">{colorLabel}</span>
+              {item.shade && <span className="text-sm text-muted-foreground ml-1.5">({item.shade})</span>}
+            </div>
+          </div>
+        )}
 
-            {/* Characteristics */}
-            {(item.has_print || item.has_details) && (
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Характеристики</h3>
-                <div className="flex flex-wrap gap-2">
-                  {(item.has_print === true ||
-                    item.has_print === "true" ||
-                    (typeof item.has_print === "string" && item.has_print !== "нет")) && (
-                    <Badge variant="secondary">
-                      Принт: {typeof item.has_print === "boolean" ? (item.has_print ? "да" : "нет") : item.has_print}
-                    </Badge>
-                  )}
-                  {(item.has_details === true ||
-                    item.has_details === "true" ||
-                    (typeof item.has_details === "string" && item.has_details !== "нет")) && (
-                    <Badge variant="secondary">
-                      Детали:{" "}
-                      {typeof item.has_details === "boolean" ? (item.has_details ? "да" : "нет") : item.has_details}
-                    </Badge>
-                  )}
-                </div>
-              </div>
+        {/* Description */}
+        {item.description && (
+          <p className="text-sm text-foreground/70 leading-relaxed">{item.description}</p>
+        )}
+
+        {/* Characteristics */}
+        {(item.has_print || item.has_details) && (
+          <div className="flex flex-wrap gap-2">
+            {(item.has_print === true ||
+              item.has_print === "true" ||
+              (typeof item.has_print === "string" && item.has_print !== "нет")) && (
+              <Badge variant="outline" className="text-xs">
+                Принт: {typeof item.has_print === "boolean" ? "да" : item.has_print}
+              </Badge>
             )}
-
-            {/* Notes */}
-            {item.notes && (
-              <div>
-                <h3 className="text-lg font-semibold mb-3">Заметки</h3>
-                <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg">{item.notes}</p>
-              </div>
-            )}
-
-            {/* External Link */}
-            {item.url && (
-              <div>
-                <Button asChild variant="outline" className="w-full bg-transparent">
-                  <a href={item.url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Посмотреть в магазине
-                  </a>
-                </Button>
-              </div>
+            {(item.has_details === true ||
+              item.has_details === "true" ||
+              (typeof item.has_details === "string" && item.has_details !== "нет")) && (
+              <Badge variant="outline" className="text-xs">
+                Детали: {typeof item.has_details === "boolean" ? "да" : item.has_details}
+              </Badge>
             )}
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        )}
+
+        {/* Notes */}
+        {item.notes && (
+          <div className="bg-secondary/50 rounded-xl p-3">
+            <p className="text-sm text-foreground/70">{item.notes}</p>
+          </div>
+        )}
+
+        {/* Shop link */}
+        {item.url && (
+          <Button asChild variant="outline" className="w-full rounded-2xl h-11">
+            <a href={item.url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="h-4 w-4 mr-2" />
+              В магазин
+            </a>
+          </Button>
+        )}
+      </div>
+    </CommonSheet>
   )
 }
