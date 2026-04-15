@@ -333,6 +333,10 @@ async def cron_generate_recommendations(
             if disliked_ids:
                 user_items = [i for i in user_items if i["id"] not in disliked_ids]
 
+            # Weather-filter user items too (remove winter gloves in spring, etc.)
+            # Applied AFTER we know the temperature
+            # (we read weather below, so we do the filter after weather fetch)
+
             # Get user's dominant style
             style_result = await db.execute(text(
                 "SELECT dominant_style FROM user_profiles WHERE user_id = :uid"
@@ -352,6 +356,13 @@ async def cron_generate_recommendations(
                 "description": weather_row["description"] if weather_row else moscow_weather["description"],
             }
             temp = weather["temperature"] or 20
+
+            # Filter user items by weather (remove winter gloves at 11°C, shorts at 0°C)
+            user_items = [
+                i for i in user_items
+                if (i.get("temp_min") is None or i["temp_min"] <= temp)
+                and (i.get("temp_max") is None or i["temp_max"] >= temp)
+            ]
 
             # Get partner items via CLIP (if chosen)
             # Small wardrobes get more partner items to build full outfits
