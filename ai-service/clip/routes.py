@@ -24,6 +24,29 @@ def _get_clusters(request: Request):
     return request.app.state.cluster_service
 
 
+MAX_K = 100
+MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10MB
+ALLOWED_IMAGE_FORMATS = {'JPEG', 'PNG', 'WEBP', 'BMP'}
+
+
+def _clamp_k(k: int) -> int:
+    return max(1, min(k, MAX_K))
+
+
+def _validate_image(data: bytes) -> Image.Image:
+    if len(data) > MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=400, detail=f'Image too large ({len(data)} bytes, max {MAX_IMAGE_BYTES})')
+    try:
+        img = Image.open(io.BytesIO(data))
+        if img.format and img.format not in ALLOWED_IMAGE_FORMATS:
+            raise HTTPException(status_code=400, detail=f'Unsupported image format: {img.format}')
+        return img.convert('RGB')
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=400, detail=f'Invalid image: {e}')
+
+
 class SearchRequest(BaseModel):
     query_text: Optional[str] = None
     composed_text: Optional[str] = None
@@ -55,7 +78,7 @@ async def classify_image(request: Request, image: UploadFile = File(...)):
     from .classifier import CLIPClassifierService
     classifier = CLIPClassifierService(encoder)
     data = await image.read()
-    img = Image.open(io.BytesIO(data)).convert('RGB')
+    img = _validate_image(data)
     result = classifier.classify(img)
     return JSONResponse(result)
 
@@ -71,8 +94,8 @@ async def visual_search(request: Request, image: Optional[UploadFile] = File(Non
     rec = CLIPRecommenderService(encoder, faiss_index)
     if image is not None:
         data = await image.read()
-        img = Image.open(io.BytesIO(data)).convert('RGB')
-        results = rec.search_by_image(img)
+        img = _validate_image(data)
+        results = rec.search_by_image(img, k=_clamp_k(20))
     else:
         raise HTTPException(status_code=400, detail='Provide image file')
     return {'results': results}
@@ -89,7 +112,7 @@ async def text_search(request: Request, body: SearchRequest):
     rec = CLIPRecommenderService(encoder, faiss_index)
     if not body.query_text:
         raise HTTPException(status_code=400, detail='query_text required')
-    results = rec.search_by_text(body.query_text, k=body.k)
+    results = rec.search_by_text(body.query_text, k=_clamp_k(body.k))
     return {'results': results}
 
 
@@ -155,25 +178,74 @@ async def recommend(request: Request, body: RecommendRequest):
     if user_cluster is not None:
         cluster_dislike_emb = cluster_service.get_cluster_dislike_embedding(user_cluster)
 
-    # 4. Recommend with penalties
+    # 4. Recommend
     rec = CLIPRecommenderService(encoder, faiss_index)
+    clamped_k = _clamp_k(body.k)
 
-    if dislike_embeddings or cluster_dislike_emb is not None:
+    if not embeddings:
+        # Cold-start: no wardrobe items — use popular items + gender heuristic
+        popular_ids = []
+        try:
+            async with pool.acquire() as conn:
+                pop_rows = await conn.fetch(
+                    "SELECT item_id, COUNT(*) as cnt FROM recommendation_logs "
+                    "WHERE action IN ('click', 'save', 'try_on') "
+                    "GROUP BY item_id ORDER BY cnt DESC LIMIT $1",
+                    clamped_k * 2,
+                )
+                popular_ids = [r['item_id'] for r in pop_rows]
+        except Exception:
+            pass
+
+        gender = None
+        try:
+            async with pool.acquire() as conn:
+                profile = await conn.fetchrow(
+                    "SELECT gender FROM user_profiles WHERE user_id = $1", body.user_id,
+                )
+                if profile:
+                    gender = profile['gender']
+        except Exception:
+            pass
+
+        results = rec.recommend_cold_start(
+            cluster_service=cluster_service,
+            popular_item_ids=popular_ids if popular_ids else None,
+            gender=gender,
+            k=clamped_k,
+        )
+    elif dislike_embeddings or cluster_dislike_emb is not None:
         results = rec.recommend_for_user_with_dislikes(
             user_embeddings=embeddings,
             dislike_embeddings=dislike_embeddings if dislike_embeddings else None,
             cluster_dislike_emb=cluster_dislike_emb,
             exclude_ids=exclude_ids if exclude_ids else None,
-            k=body.k,
+            k=clamped_k,
         )
     else:
-        results = rec.recommend_for_user(embeddings, k=body.k)
+        results = rec.recommend_for_user(embeddings, k=clamped_k)
+
+    # Log recommendations for feedback loop (async, non-blocking)
+    import uuid
+    rec_session_id = str(uuid.uuid4())[:12]
+    try:
+        async with pool.acquire() as conn:
+            for pos, item in enumerate(results):
+                await conn.execute(
+                    "INSERT INTO recommendation_logs (user_id, rec_session_id, item_id, item_score, position, source) "
+                    "VALUES ($1, $2, $3, $4, $5, $6)",
+                    body.user_id, rec_session_id, item.get('id', 0),
+                    item.get('score', 0.0), pos, 'clip',
+                )
+    except Exception as e:
+        logger.warning(f"[recommend] Failed to log recommendations: {e}")
 
     return {
         'results': results,
         'profile_size': len(embeddings),
         'dislikes_count': len(dislike_embeddings),
         'cluster_id': user_cluster,
+        'rec_session_id': rec_session_id,
     }
 
 
@@ -186,7 +258,7 @@ async def outfit_complements(request: Request, body: OutfitRequest):
     encoder, faiss_index = _get_services(request)
     from .recommender import CLIPRecommenderService
     rec = CLIPRecommenderService(encoder, faiss_index)
-    results = rec.outfit_complements(body.embedding, k=body.k)
+    results = rec.outfit_complements(body.embedding, k=_clamp_k(body.k))
     return {'results': results}
 
 
@@ -202,55 +274,78 @@ async def build_index(request: Request):
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, item_name, image_url, clothing_type, color, embedding "
+            "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at "
             "FROM wardrobe_items WHERE image_url IS NOT NULL"
         )
 
     items = [dict(r) for r in rows]
     logger.info(f"[build-index] Fetched {len(items)} items from DB")
 
+    # Split: items with existing embeddings vs items needing encoding
     enriched = []
+    needs_encoding = []
+    newly_encoded = 0
     skipped = 0
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        for item in items:
-            try:
-                if item.get("embedding"):
-                    # Parse stored TEXT[] embedding
-                    raw = item["embedding"]
-                    item["embedding"] = [float(x) for x in raw]
-                    enriched.append(item)
-                    continue
+    for item in items:
+        if item.get("embedding"):
+            raw = item["embedding"]
+            item["embedding"] = [float(x) for x in raw]
+            enriched.append(item)
+        elif item.get("image_url"):
+            needs_encoding.append(item)
+        else:
+            skipped += 1
 
-                if not item.get("image_url"):
+    logger.info(f"[build-index] {len(enriched)} pre-encoded, {len(needs_encoding)} need encoding")
+
+    # Batch-download images and encode
+    if needs_encoding:
+        batch_images = []
+        batch_items = []
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for item in needs_encoding:
+                try:
+                    r = await client.get(item["image_url"])
+                    r.raise_for_status()
+                    img = Image.open(io.BytesIO(r.content)).convert("RGB")
+                    batch_images.append(img)
+                    batch_items.append(item)
+                except Exception as e:
+                    logger.warning(f"[build-index] Download failed {item.get('id')}: {e}")
                     skipped += 1
-                    continue
 
-                r = await client.get(item["image_url"])
-                r.raise_for_status()
-                img = Image.open(io.BytesIO(r.content)).convert("RGB")
-                emb = encoder.encode_image(img)
-                item["embedding"] = emb.tolist()
+        # Batch encode all downloaded images
+        if batch_images:
+            logger.info(f"[build-index] Batch encoding {len(batch_images)} images...")
+            embeddings_matrix = encoder.encode_batch_images(batch_images)
 
-                # Save embedding back to DB
-                async with pool.acquire() as conn:
+            # Save embeddings to DB and add to enriched list
+            async with pool.acquire() as conn:
+                for i, (item, emb_vec) in enumerate(zip(batch_items, embeddings_matrix)):
+                    item["embedding"] = emb_vec.tolist()
                     emb_str = "{" + ",".join(str(x) for x in item["embedding"]) + "}"
-                    await conn.execute(
-                        "UPDATE wardrobe_items SET embedding = $1 WHERE id = $2",
-                        emb_str, item["id"],
-                    )
+                    try:
+                        await conn.execute(
+                            "UPDATE wardrobe_items SET embedding = $1 WHERE id = $2",
+                            emb_str, item["id"],
+                        )
+                    except Exception as e:
+                        logger.warning(f"[build-index] DB save failed {item['id']}: {e}")
+                    enriched.append(item)
 
-                enriched.append(item)
-            except Exception as e:
-                logger.warning(f"[build-index] Skipped item {item.get('id')}: {e}")
-                skipped += 1
+            newly_encoded = len(batch_images)
+            logger.info(f"[build-index] Batch encoded {newly_encoded} images")
 
+    pre_encoded = len(enriched) - newly_encoded
     count = faiss_index.build(enriched)
     logger.info(f"[build-index] Indexed {count} items, skipped {skipped}")
     return {
         "indexed": count,
         "total_fetched": len(items),
-        "encoded": len(enriched),
+        "pre_encoded": pre_encoded,
+        "newly_encoded": newly_encoded,
         "skipped": skipped,
     }
 
@@ -268,6 +363,41 @@ async def build_clusters(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# /clip/feedback — log user action on a recommended item
+# ---------------------------------------------------------------------------
+
+class FeedbackRequest(BaseModel):
+    user_id: str
+    rec_session_id: str
+    item_id: int
+    action: str  # 'click', 'save', 'dislike', 'try_on'
+
+
+@router.post('/feedback')
+async def log_feedback(request: Request, body: FeedbackRequest):
+    pool = _get_db(request)
+    try:
+        async with pool.acquire() as conn:
+            # Update the existing log row with the action
+            result = await conn.execute(
+                "UPDATE recommendation_logs SET action = $1, action_at = NOW() "
+                "WHERE user_id = $2 AND rec_session_id = $3 AND item_id = $4 AND action IS NULL",
+                body.action, body.user_id, body.rec_session_id, body.item_id,
+            )
+            # If no existing row (e.g., item not from CLIP), insert new
+            if result == 'UPDATE 0':
+                await conn.execute(
+                    "INSERT INTO recommendation_logs (user_id, rec_session_id, item_id, action, action_at, source) "
+                    "VALUES ($1, $2, $3, $4, NOW(), 'direct')",
+                    body.user_id, body.rec_session_id, body.item_id, body.action,
+                )
+    except Exception as e:
+        logger.warning(f"[feedback] Failed to log: {e}")
+        return {'ok': False}
+    return {'ok': True}
+
+
+# ---------------------------------------------------------------------------
 # /clip/encode-image — image → embedding vector
 # ---------------------------------------------------------------------------
 
@@ -275,7 +405,7 @@ async def build_clusters(request: Request):
 async def encode_image(request: Request, image: UploadFile = File(...)):
     encoder, _ = _get_services(request)
     data = await image.read()
-    img = Image.open(io.BytesIO(data)).convert('RGB')
+    img = _validate_image(data)
     emb = encoder.encode_image(img)
     return {'embedding': emb.tolist(), 'dim': len(emb)}
 

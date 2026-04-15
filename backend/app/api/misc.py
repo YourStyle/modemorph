@@ -383,8 +383,8 @@ async def ai_assistant(request: Request, user: dict = Depends(get_current_user),
     try:
         async with httpx.AsyncClient(timeout=10.0) as clip_client:
             clip_resp = await clip_client.post(
-                f"{ai_service}/clip/search",
-                json={"text": prompt, "k": 10},
+                f"{ai_service}/clip/search/text",
+                json={"query_text": prompt, "k": 10},
             )
             if clip_resp.status_code == 200:
                 clip_results = clip_resp.json().get("results", [])
@@ -415,7 +415,7 @@ Always respond with JSON array. Use Russian for all text."""
     wardrobe_json = json_lib.dumps([{
         "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
         "style": i.get("style", ""), "type": i.get("clothing_type"),
-        "image_url": i.get("image_url"), "user_id": i.get("user_id"),
+        "image_url": i.get("image_url"), "user_id": str(i["user_id"]) if i.get("user_id") else None,
     } for i in wardrobe], ensure_ascii=False)
 
     catalog_json = ""
@@ -441,11 +441,57 @@ Always respond with JSON array. Use Russian for all text."""
     return _parse_ai_json(content)
 
 
+# ── /api/vton helpers ──
+
+
+def _extract_vton_image(result: dict) -> str | None:
+    """Extract image URL/data from OpenRouter image generation response."""
+    images = result.get("choices", [{}])[0].get("message", {}).get("images", [])
+    if images:
+        return images[0].get("image_url", {}).get("url", "")
+    return None
+
+
+async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
+    """Send original avatar + generated result, ask model to correct the face
+    so it matches the reference photo exactly. Purely visual — no text description."""
+    try:
+        result = await _openrouter_chat(
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": (
+                    "FACE CORRECTION TASK.\n\n"
+                    "You are given two images:\n"
+                    "  Image 1 = REFERENCE — the original person's photo. This is ground truth.\n"
+                    "  Image 2 = DRAFT — a virtual try-on result. The clothing is correct, but the face may not match the reference.\n\n"
+                    "Produce a CORRECTED version of Image 2 where:\n"
+                    "- The face is replaced with the EXACT face from Image 1 — same bone structure, skin tone, skin texture, eyes, nose, mouth, eyebrows, facial hair, moles, freckles.\n"
+                    "- The EXACT hairstyle, hair color, and hair length from Image 1 are preserved.\n"
+                    "- ALL clothing, pose, lighting, background, and body proportions from Image 2 stay unchanged.\n"
+                    "- Do NOT beautify, smooth, or alter any facial features. Do NOT change age or ethnicity.\n"
+                    "- Output one photorealistic image, portrait 3:4."
+                )},
+                {"type": "image_url", "image_url": {"url": avatar_b64}},
+                {"type": "image_url", "image_url": {"url": generated_b64}},
+                {"type": "image_url", "image_url": {"url": avatar_b64}},  # reminder
+            ]}],
+            model="google/gemini-3.1-flash-image-preview",
+            temperature=0.15,
+            modalities=["image", "text"],
+            image_config={"aspect_ratio": "3:4"},
+        )
+        return _extract_vton_image(result)
+    except Exception:
+        return None
+
+
 # ── /api/vton (OpenRouter Gemini image gen) ──
 
 @router.post("/vton")
 async def virtual_tryon(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Virtual try-on via OpenRouter Gemini."""
+    """Virtual try-on via OpenRouter Gemini — 2-pass pipeline:
+    Pass 1: Generate try-on image with double avatar reference
+    Pass 2: Refine face in generated image to match original exactly
+    """
     if not settings.OPENROUTER_API_KEY:
         raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
 
@@ -457,7 +503,10 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     # Use avatar_url from request body if provided, otherwise fall back to profile
     avatar_url = body.get("avatar_url")
     if not avatar_url:
-        profile = await db.execute(text("SELECT avatar_url FROM user_profiles WHERE user_id = :uid"), {"uid": user["id"]})
+        profile = await db.execute(
+            text("SELECT avatar_url FROM user_profiles WHERE user_id = :uid"),
+            {"uid": user["id"]},
+        )
         profile_row = profile.first()
         if not profile_row or not profile_row[0]:
             raise HTTPException(status_code=400, detail="Upload an avatar in your profile first.")
@@ -470,6 +519,7 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
         ct = avatar_resp.headers.get("content-type", "image/jpeg")
         avatar_b64 = f"data:{ct};base64,{base64.b64encode(avatar_resp.content).decode()}"
 
+    # Download clothing images
     image_contents = []
     async with httpx.AsyncClient(timeout=30.0) as client:
         for item in items:
@@ -485,26 +535,59 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     if not image_contents:
         raise HTTPException(status_code=400, detail="Failed to download clothing images")
 
-    item_descs = "\n".join(f"  Item {i+1}: {', '.join(filter(None, [it.get('name',''), it.get('color',''), it.get('material','')]))})" for i, it in enumerate(items))
+    # ── Pass 1: Generate try-on ──
+    item_descs = "\n".join(
+        f"  Item {i+1}: {', '.join(filter(None, [it.get('name',''), it.get('color',''), it.get('material','')]))}"
+        for i, it in enumerate(items)
+    )
 
-    prompt = f"Virtual try-on. First image = person. Remaining = clothing items.\n{item_descs}\nGenerate photorealistic image of the SAME person wearing ALL items. Preserve face, hair, body shape. Natural pose, clean background."
+    prompt = (
+        "TASK: Virtual clothing try-on.\n\n"
+        "IMAGE LAYOUT:\n"
+        "  [Image 1] = REFERENCE PERSON — the original photo. This is the identity you MUST preserve.\n"
+        "  [Images 2..N] = clothing items to put on the person.\n"
+        "  [Last image] = REFERENCE PERSON again (same photo repeated for reinforcement).\n\n"
+        "RULE #1 — IDENTITY PRESERVATION (non-negotiable, highest priority):\n"
+        "The generated person MUST be the EXACT same individual as in the reference photo.\n"
+        "- COPY the face pixel-for-pixel from the reference: identical bone structure, jawline, cheekbones, nose, lips, eyes, eye color, eyebrows, skin tone, skin texture, freckles, moles, scars, dimples.\n"
+        "- COPY the exact hairstyle, hair color, hair texture, hair length.\n"
+        "- COPY the body type and proportions.\n"
+        "- Do NOT beautify, smooth, de-age, or idealize. Do NOT change ethnicity or gender.\n"
+        "- Preserve glasses, jewelry, watch, piercings, tattoos if visible in reference.\n"
+        "- If you cannot preserve the face exactly, it is better to produce a slightly less perfect outfit than to change the face.\n\n"
+        "RULE #2 — CLOTHING:\n"
+        f"{item_descs}\n"
+        "- Dress the person in ALL items above. Show accurate colors, textures, patterns, logos.\n"
+        "- Clothing should drape naturally on this specific body type.\n\n"
+        "RULE #3 — OUTPUT:\n"
+        "- Photorealistic, portrait 3:4, soft studio lighting, clean neutral background.\n"
+        "- Natural relaxed pose (standing or light turn).\n"
+        "- A viewer who knows this person should immediately recognize them."
+    )
+
+    avatar_img = {"type": "image_url", "image_url": {"url": avatar_b64}}
 
     result = await _openrouter_chat(
         messages=[{"role": "user", "content": [
             {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": avatar_b64}},
-            *image_contents,
+            avatar_img,           # Reference: beginning (primacy)
+            *image_contents,      # Clothing items
+            avatar_img,           # Reference: end (recency) — double anchor
         ]}],
         model="google/gemini-3.1-flash-image-preview",
+        temperature=0.2,
         modalities=["image", "text"],
         image_config={"aspect_ratio": "3:4"},
     )
 
-    images = result.get("choices", [{}])[0].get("message", {}).get("images", [])
-    if not images:
+    image_data = _extract_vton_image(result)
+    if not image_data:
         raise HTTPException(status_code=502, detail="Model returned no image")
 
-    image_data = images[0].get("image_url", {}).get("url", "")
+    # ── Pass 2: Face refinement ──
+    refined = await _vton_refine_face(avatar_b64, image_data)
+    if refined:
+        image_data = refined
 
     # Upload to S3 if base64
     if image_data.startswith("data:image/"):
@@ -565,6 +648,19 @@ async def style_check(
         if classify_resp.status_code != 200:
             raise HTTPException(status_code=502, detail="Classification failed")
         classification = classify_resp.json()
+
+    # Reject non-clothing images
+    if not classification.get("is_clothing", True):
+        return {
+            "score": 0,
+            "item_style": "",
+            "item_color": "",
+            "item_type": "",
+            "user_style": "",
+            "style_match": False,
+            "similar_items": 0,
+            "verdict": "На фото не удалось распознать одежду. Попробуйте загрузить фото вещи крупнее.",
+        }
 
     # 2. Search for similar items in user's wardrobe via CLIP
     async with httpx.AsyncClient(timeout=20.0) as client:

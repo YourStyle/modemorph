@@ -1,8 +1,11 @@
+import logging
 import numpy as np
 from PIL import Image
 from .encoder import CLIPEncoderService
 from .index import FAISSIndexService
-from .profile import StyleProfileService
+from .profile import StyleProfileService, UserClusterService
+
+logger = logging.getLogger(__name__)
 
 
 class CLIPRecommenderService:
@@ -72,6 +75,43 @@ class CLIPRecommenderService:
     def search_composed(self, image: Image.Image, text: str, k: int = 20) -> list:
         emb = self.encoder.encode_composed(image, text)
         return self.index.search(emb, k=k)
+
+    def recommend_cold_start(
+        self,
+        cluster_service: UserClusterService,
+        popular_item_ids: list | None = None,
+        gender: str | None = None,
+        k: int = 20,
+    ) -> list:
+        """Recommendations for users with no wardrobe items.
+
+        Strategy:
+        1. If popular items exist (from recommendation_logs), return those
+        2. If gender is known, use text embedding as proxy: "stylish [gender] outfit"
+        3. Otherwise, return diverse random sample from index
+        """
+        # Strategy 1: Popular items — caller passes pre-computed popular IDs
+        if popular_item_ids and self.index.meta:
+            id_set = set(popular_item_ids)
+            results = [m for m in self.index.meta if m.get('id') in id_set]
+            if len(results) >= k:
+                return results[:k]
+
+        # Strategy 2: Gender-based text query
+        if gender:
+            gender_ru = {"male": "мужской", "female": "женский"}.get(gender, "")
+            if gender_ru:
+                query = f"стильный {gender_ru} образ одежда"
+                logger.info(f"[cold-start] Using text query: {query}")
+                return self.search_by_text(query, k=k)
+
+        # Strategy 3: Diverse random sample
+        if self.index.size > 0:
+            n = min(k, self.index.size)
+            indices = np.random.choice(self.index.size, size=n, replace=False)
+            return [self.index.meta[i] for i in indices if i < len(self.index.meta)]
+
+        return []
 
     def outfit_complements(self, item_embedding: list, k: int = 10) -> list:
         emb = np.array(item_embedding, dtype=np.float32)

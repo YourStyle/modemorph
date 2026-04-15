@@ -59,7 +59,7 @@ async def _auto_build_index(app: FastAPI):
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, item_name, image_url, clothing_type, color, embedding "
+            "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at "
             "FROM wardrobe_items WHERE embedding IS NOT NULL"
         )
 
@@ -77,6 +77,7 @@ async def _auto_build_index(app: FastAPI):
             "clothing_type": r["clothing_type"],
             "color": r["color"],
             "embedding": emb,
+            "created_at": str(r["created_at"]) if r.get("created_at") else "",
         })
 
     count = faiss_index.build(items)
@@ -89,5 +90,10 @@ app.include_router(clip_router, prefix="/clip")
 
 @app.get("/health")
 def health():
-    index_size = app.state.faiss_index.size if hasattr(app.state, "faiss_index") else 0
-    return {"status": "ok", "index_size": index_size}
+    fi = app.state.faiss_index if hasattr(app.state, "faiss_index") else None
+    return {
+        "status": "ok",
+        "index_size": fi.size if fi else 0,
+        "index_type": fi.index_type if fi else "none",
+        "clusters_loaded": bool(app.state.cluster_service.data) if hasattr(app.state, "cluster_service") else False,
+    }
