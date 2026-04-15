@@ -578,6 +578,24 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
 
         logger.info(f"[ProcessFeeds] Feed {feed_id}: {len(parsed['items'])} items from {parsed['total_offers']} offers")
 
+        # Pick best flat-lay photo for items with multiple pictures
+        ai_url = settings.AI_SERVICE_URL
+        multi_pic_items = [i for i in parsed["items"] if len(i.get("all_pictures", [])) > 1]
+        if ai_url and multi_pic_items:
+            logger.info(f"[ProcessFeeds] Picking flat-lay photos for {len(multi_pic_items)} items via CLIP...")
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                for item in multi_pic_items:
+                    try:
+                        resp = await client.post(
+                            f"{ai_url}/clip/pick-flatlay",
+                            json={"urls": item["all_pictures"][:4]},
+                        )
+                        if resp.status_code == 200:
+                            item["image_url"] = resp.json().get("url", item["image_url"])
+                    except Exception as e:
+                        logger.debug(f"[ProcessFeeds] pick-flatlay failed for item: {e}")
+            logger.info("[ProcessFeeds] Flat-lay selection done")
+
         imported = 0
         skipped = 0
 

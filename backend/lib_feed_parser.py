@@ -137,10 +137,11 @@ def parse_yml_feed(xml_string: str) -> dict:
         if not pictures:
             skipped_img += 1
             continue
-        image_url = pictures[0].text or ""
-        if not image_url:
+        all_pictures = [p.text for p in pictures if p.text and p.text.strip()]
+        if not all_pictures:
             skipped_img += 1
             continue
+        image_url = all_pictures[0]
 
         name = offer.findtext("name") or offer.findtext("model") or ""
         if not name:
@@ -150,6 +151,7 @@ def parse_yml_feed(xml_string: str) -> dict:
             "item_name": name,
             "description": (offer.findtext("description") or "")[:500],
             "image_url": image_url,
+            "all_pictures": all_pictures,
             "url": offer.findtext("url") or "",
             "clothing_type": ct,
             "color": _extract_color(name),

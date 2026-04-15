@@ -434,7 +434,7 @@ async def main():
     parser.add_argument("--feed-file", help="Local path to YML feed XML file")
     parser.add_argument("--dry-run", action="store_true", help="Parse only, don't insert")
     parser.add_argument("--encode-embeddings", action="store_true", help="Generate CLIP embeddings after import")
-    parser.add_argument("--pick-flatlay", action="store_true", help="Use CLIP to select best flat-lay photo (slow)")
+    parser.add_argument("--no-pick-flatlay", action="store_true", help="Skip flat-lay photo selection (faster, but may import model photos)")
     parser.add_argument("--limit", type=int, default=0, help="Max items to import (0 = all)")
     args = parser.parse_args()
 
@@ -466,7 +466,7 @@ async def main():
     for ct, cnt in types.most_common(15):
         logger.info(f"  {cnt:>4}  {ct}")
 
-    if args.pick_flatlay:
+    if not args.no_pick_flatlay:
         await pick_flatlay_photos(items)
 
     await insert_items(items, dry_run=args.dry_run)

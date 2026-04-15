@@ -68,6 +68,53 @@ class EncodeTextRequest(BaseModel):
     text: str
 
 
+class PickFlatlayRequest(BaseModel):
+    urls: list[str]  # up to 4 photo URLs to evaluate
+
+
+# ---------------------------------------------------------------------------
+# /clip/pick-flatlay — choose best product photo (no model) from a URL list
+# ---------------------------------------------------------------------------
+
+@router.post('/pick-flatlay')
+async def pick_flatlay(request: Request, body: PickFlatlayRequest):
+    """Given a list of image URLs (from a YML feed), return the one most likely
+    to be a flat-lay / isolated product photo without a model or mannequin."""
+    import httpx
+    encoder, _ = _get_services(request)
+    from .classifier import CLIPClassifierService
+    classifier = CLIPClassifierService(encoder)
+
+    urls = body.urls[:4]  # evaluate at most 4 photos
+    if not urls:
+        raise HTTPException(status_code=400, detail='urls list is empty')
+    if len(urls) == 1:
+        return {'url': urls[0], 'has_person': None, 'checked': 1}
+
+    best_url = urls[0]
+    best_score = float('-inf')
+    results = []
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        for url in urls:
+            try:
+                r = await client.get(url)
+                r.raise_for_status()
+                img = Image.open(io.BytesIO(r.content)).convert('RGB')
+                emb = encoder.encode_image(img)
+                # Negative person_score = prefers flat-lay
+                score = -classifier._person_score(emb)
+                results.append({'url': url, 'score': score})
+                if score > best_score:
+                    best_score = score
+                    best_url = url
+            except Exception as e:
+                logger.debug(f'[pick-flatlay] skip {url}: {e}')
+
+    has_person = best_score < 0  # still model-heavy even after picking best
+    return {'url': best_url, 'has_person': has_person, 'checked': len(results)}
+
+
 # ---------------------------------------------------------------------------
 # /clip/classify — image → clothing type, color, styles, embedding
 # ---------------------------------------------------------------------------

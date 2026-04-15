@@ -56,18 +56,17 @@ interface OutfitCardProps {
   onDislikeItem?: (itemId: string) => void
 }
 
-const BRAND_STYLES: Record<string, { display: string; color: string }> = {
-  sela: { display: "SELA", color: "#00875A" },
-  lacoste: { display: "LACOSTE", color: "#005A34" },
-  gate31: { display: "GATE31", color: "#1A1A1A" },
-  loverepublic: { display: "LOVE REPUBLIC", color: "#1A1A1A" },
-  "love republic": { display: "LOVE REPUBLIC", color: "#1A1A1A" },
+const BRAND_LOGOS: Record<string, { display: string; logoUrl: string }> = {
+  sela: { display: "SELA", logoUrl: "/brands/sela.svg" },
+  lacoste: { display: "LACOSTE", logoUrl: "/brands/lacoste.svg" },
+  gate31: { display: "GATE31", logoUrl: "/brands/gate31.svg" },
+  loverepublic: { display: "LOVE REPUBLIC", logoUrl: "/brands/loverepublic.svg" },
+  "love republic": { display: "LOVE REPUBLIC", logoUrl: "/brands/loverepublic.svg" },
 }
 
-function getBrandDisplay(brand: string): { display: string; color: string } | null {
+function getBrandLogo(brand: string): { display: string; logoUrl: string } | null {
   const key = brand.toLowerCase().replace(/\s+/g, "")
-  // Try exact match first, then normalized
-  return BRAND_STYLES[brand.toLowerCase()] || BRAND_STYLES[key] || null
+  return BRAND_LOGOS[brand.toLowerCase()] || BRAND_LOGOS[key] || null
 }
 
 function getSourceBadge(source?: string): { label: string; className: string } | null {
@@ -275,14 +274,27 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
 
                     {/* Brand badge */}
                     {item.brand && item.brand.toLowerCase() !== "unknown" && (() => {
-                      const brandInfo = getBrandDisplay(item.brand!)
+                      const brandLogo = getBrandLogo(item.brand!)
                       return (
                         <div className="absolute bottom-2 left-2 bg-white/90 rounded px-1.5 py-0.5 flex items-center">
+                          {brandLogo ? (
+                            <img
+                              src={brandLogo.logoUrl}
+                              alt={brandLogo.display}
+                              style={{ height: "12px", width: "auto", maxWidth: "72px", objectFit: "contain" }}
+                              onError={(e) => {
+                                const el = e.currentTarget
+                                el.style.display = "none"
+                                const span = el.nextElementSibling as HTMLElement | null
+                                if (span) span.style.display = "inline"
+                              }}
+                            />
+                          ) : null}
                           <span
                             className="text-xs font-semibold tracking-wide"
-                            style={brandInfo ? { color: brandInfo.color } : { color: "#4B5563" }}
+                            style={{ color: "#4B5563", display: brandLogo ? "none" : "inline" }}
                           >
-                            {brandInfo ? brandInfo.display : item.brand}
+                            {item.brand}
                           </span>
                         </div>
                       )
