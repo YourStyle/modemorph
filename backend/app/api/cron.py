@@ -42,6 +42,33 @@ def _verify_cron_auth(request: Request):
 # CLIP + Gemini recommendation helpers
 # ---------------------------------------------------------------------------
 
+# Words in item names that signal female-only items (for male users)
+_FEMALE_KEYWORDS = {"женск", "для девочек", "для девушек", "юбка", "платье", "бюстгальтер", "лифчик", "колготки", "блузка"}
+_MALE_KEYWORDS = {"мужск", "для мальчиков"}
+
+
+def _is_partner_compatible(row: dict, gender: str | None, temp: int, disliked_ids: set) -> bool:
+    """Check if a partner item is compatible with user gender, weather, and not disliked."""
+    item_id = row["id"]
+    if item_id in disliked_ids:
+        return False
+    # Weather filter
+    if row.get("temp_min") is not None and temp < row["temp_min"]:
+        return False
+    if row.get("temp_max") is not None and temp > row["temp_max"]:
+        return False
+    # Explicit gender filter
+    item_gender = row.get("gender") or ""
+    if gender and item_gender and item_gender != gender and item_gender != "unisex":
+        return False
+    # Name-based gender filter (catch items with NULL gender but gendered names)
+    name_lower = (row.get("item_name") or "").lower()
+    if gender == "male" and any(kw in name_lower for kw in _FEMALE_KEYWORDS):
+        return False
+    if gender == "female" and any(kw in name_lower for kw in _MALE_KEYWORDS):
+        return False
+    return True
+
 async def _clip_recommend(user_id: str, k: int = 50) -> list:
     """Call CLIP service /clip/recommend for personalized partner items."""
     ai_url = settings.AI_SERVICE_URL
@@ -75,7 +102,11 @@ async def _gemini_organize(
         ct = i.get("clothing_type", "")
         color = i.get("color", "")
         style = i.get("style", "")
-        user_desc.append(f"[USER id={i['id']}] {name} ({ct}, {color}, стиль: {style})")
+        season = ""
+        tmin, tmax = i.get("temp_min"), i.get("temp_max")
+        if tmin is not None or tmax is not None:
+            season = f", сезон: {tmin or '?'}..{tmax or '?'}°C"
+        user_desc.append(f"[USER id={i['id']}] {name} ({ct}, {color}, стиль: {style}{season})")
 
     partner_desc = []
     for i in partner_items[:50]:
@@ -83,7 +114,11 @@ async def _gemini_organize(
         ct = i.get("clothing_type", "")
         color = i.get("color", "")
         brand = i.get("brand", "")
-        partner_desc.append(f"[PARTNER id={i['id']} brand={brand}] {name} ({ct}, {color})")
+        season = ""
+        tmin, tmax = i.get("temp_min"), i.get("temp_max")
+        if tmin is not None or tmax is not None:
+            season = f", сезон: {tmin or '?'}..{tmax or '?'}°C"
+        partner_desc.append(f"[PARTNER id={i['id']} brand={brand}] {name} ({ct}, {color}{season})")
 
     all_items = "\n".join(user_desc + partner_desc)
     temp = weather.get("temperature", 20)
@@ -146,7 +181,11 @@ async def _gemini_organize(
    - Аксессуар (сумка/шарф/ремень/шапка/очки) — по возможности
 2. ЗАПРЕЩЕНО: образ из 2-3 вещей. Если не можешь собрать 4+, пропусти образ.
 3. ЗАПРЕЩЕНО: 2 вещи одного типа (2 штанов, 2 куртки, 2 рубашки). Строго 1 вещь на слот.
-4. Учитывай погоду ({temp}°C, {desc}) — без пуховиков в жару, без шорт в мороз.
+4. СТРОГО учитывай погоду ({temp}°C, {desc}):
+   - При {temp}°C НЕ сочетай зимние вещи (пуховики, тёплые перчатки, шапки) с летними (шорты, майки)
+   - Все вещи в образе должны быть для ОДНОГО сезона/погоды
+   - Перчатки, тёплые шапки — только если < 5°C
+   - Шорты, майки — только если > 20°C
 5. Учитывай пол — не предлагай платья мужчинам.
 6. Название каждого образа: стильное, 3-5 слов.
 7. Используй ТОЛЬКО точные ID из списка вещей.
@@ -273,7 +312,7 @@ async def cron_generate_recommendations(
             # Get user wardrobe items
             user_items_result = await db.execute(text("""
                 SELECT id, item_name, clothing_type, color, style, material,
-                       image_url, user_id::text as user_id
+                       image_url, user_id::text as user_id, temp_min, temp_max
                 FROM wardrobe_user_items
                 WHERE user_id = :uid AND COALESCE(is_hidden, false) = false
                 AND image_url IS NOT NULL
@@ -317,7 +356,7 @@ async def cron_generate_recommendations(
             # Get partner items via CLIP (if chosen)
             # Small wardrobes get more partner items to build full outfits
             partner_items = []
-            clip_k = 80 if item_count < 6 else 50
+            clip_k = 100 if item_count < 6 else 80
             if use_clip:
                 clip_results = await _clip_recommend(user_id, k=clip_k)
                 if clip_results:
@@ -326,22 +365,46 @@ async def cron_generate_recommendations(
                         SELECT id, item_name, image_url, clothing_type, color, url,
                                notes, gender, temp_min, temp_max
                         FROM wardrobe_items WHERE id = ANY(:ids)
+                        AND COALESCE(is_hidden, false) = false
                     """), {"ids": partner_ids})
                     for r in partner_result.mappings().all():
                         row = dict(r)
-                        # Weather filter
-                        if row.get("temp_min") is not None and temp < row["temp_min"]:
-                            continue
-                        if row.get("temp_max") is not None and temp > row["temp_max"]:
-                            continue
-                        # Gender filter
-                        if gender and row.get("gender") and row["gender"] != gender:
-                            continue
-                        if row["id"] in disliked_ids:
+                        if not _is_partner_compatible(row, gender, temp, disliked_ids):
                             continue
                         brand = (row.get("notes") or "").split(":")[0] or None
                         row["brand"] = brand
                         partner_items.append(row)
+
+            # Fallback: if CLIP returned too few usable partners, query catalog directly
+            if len(partner_items) < 15:
+                gender_filter = ""
+                binds = {"temp": temp, "lim": 60 - len(partner_items)}
+                if gender == "male":
+                    gender_filter = "AND (gender IS NULL OR gender = '' OR gender = 'male' OR gender = 'unisex')"
+                elif gender == "female":
+                    gender_filter = "AND (gender IS NULL OR gender = '' OR gender = 'female' OR gender = 'unisex')"
+                existing_ids = {p["id"] for p in partner_items} | {i["id"] for i in user_items}
+                fallback_result = await db.execute(text(f"""
+                    SELECT id, item_name, image_url, clothing_type, color, url,
+                           notes, gender, temp_min, temp_max
+                    FROM wardrobe_items
+                    WHERE COALESCE(is_hidden, false) = false
+                    {gender_filter}
+                    AND (temp_min IS NULL OR temp_min <= :temp)
+                    AND (temp_max IS NULL OR temp_max >= :temp)
+                    AND image_url IS NOT NULL
+                    ORDER BY random()
+                    LIMIT :lim
+                """), binds)
+                for r in fallback_result.mappings().all():
+                    row = dict(r)
+                    if row["id"] in existing_ids or row["id"] in disliked_ids:
+                        continue
+                    if not _is_partner_compatible(row, gender, temp, disliked_ids):
+                        continue
+                    brand = (row.get("notes") or "").split(":")[0] or None
+                    row["brand"] = brand
+                    partner_items.append(row)
 
             if not user_items and not partner_items:
                 continue
@@ -784,6 +847,131 @@ async def analyze_styles(request: Request, db: AsyncSession = Depends(get_db)):
     await db.commit()
     logger.info(f"[analyze-styles] Classified {classified} items, updated {updated_users} user profiles")
     return {"items_classified": classified, "users_updated": updated_users}
+
+
+# ---------------------------------------------------------------------------
+# Gender classification for catalog items (name-based + CLIP zero-shot)
+# ---------------------------------------------------------------------------
+
+# Name patterns for rule-based gender detection
+_FEMALE_NAME_PATTERNS = [
+    "женск", "для женщин", "для девочек", "для девушек",
+    "юбка", "платье", "блузка", "бюстгальтер", "колготки",
+    "леггинсы для девочек", "велосипедки для девочек",
+    "women", "woman", "girl",
+]
+_MALE_NAME_PATTERNS = [
+    "мужск", "для мужчин", "для мальчиков",
+    "men's", "man's", "boy",
+    "джоггеры для мальчиков",
+]
+
+
+@router.post("/classify-gender")
+async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
+    """Classify gender for catalog items that have NULL/empty gender.
+    Uses name-based rules first, then CLIP zero-shot for remaining items."""
+    _verify_cron_auth(request)
+
+    # 1. Name-based classification (fast, no API calls)
+    result = await db.execute(text("""
+        SELECT id, item_name FROM wardrobe_items
+        WHERE (gender IS NULL OR gender = '') AND item_name IS NOT NULL
+    """))
+    items = result.all()
+    logger.info(f"[classify-gender] {len(items)} items without gender")
+
+    name_classified = 0
+    clip_candidates = []
+
+    for item in items:
+        name_lower = item.item_name.lower()
+        detected = None
+
+        for pattern in _FEMALE_NAME_PATTERNS:
+            if pattern in name_lower:
+                detected = "female"
+                break
+        if not detected:
+            for pattern in _MALE_NAME_PATTERNS:
+                if pattern in name_lower:
+                    detected = "male"
+                    break
+
+        if detected:
+            await db.execute(
+                text("UPDATE wardrobe_items SET gender = :g WHERE id = :id"),
+                {"g": detected, "id": item.id},
+            )
+            name_classified += 1
+        else:
+            clip_candidates.append(item)
+
+    # 2. CLIP zero-shot classification for remaining items (batch, up to 300)
+    clip_classified = 0
+    clip_candidates = clip_candidates[:300]  # cap to avoid timeout
+
+    if clip_candidates:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            for item in clip_candidates:
+                try:
+                    # Get image URL
+                    img_result = await db.execute(
+                        text("SELECT image_url FROM wardrobe_items WHERE id = :id"),
+                        {"id": item.id},
+                    )
+                    img_row = img_result.first()
+                    if not img_row or not img_row[0]:
+                        continue
+
+                    # Download image
+                    img_resp = await client.get(img_row[0], timeout=10.0)
+                    if img_resp.status_code != 200:
+                        continue
+
+                    # CLIP classify with gender labels
+                    clip_resp = await client.post(
+                        f"{AI_SERVICE_URL}/clip/classify",
+                        files={"image": ("img.jpg", img_resp.content, "image/jpeg")},
+                        data={"labels": "мужская одежда,женская одежда,унисекс одежда,детская одежда"},
+                        timeout=15.0,
+                    )
+                    if clip_resp.status_code != 200:
+                        continue
+
+                    result_data = clip_resp.json()
+                    # The classify endpoint returns sorted tags
+                    tags = result_data.get("style_tags", []) or result_data.get("tags", [])
+                    if not tags:
+                        continue
+
+                    top_tag = tags[0].lower()
+                    if "мужск" in top_tag:
+                        gender_val = "male"
+                    elif "женск" in top_tag:
+                        gender_val = "female"
+                    elif "детск" in top_tag:
+                        gender_val = "unisex"
+                    else:
+                        gender_val = "unisex"
+
+                    await db.execute(
+                        text("UPDATE wardrobe_items SET gender = :g WHERE id = :id"),
+                        {"g": gender_val, "id": item.id},
+                    )
+                    clip_classified += 1
+                except Exception as e:
+                    logger.error(f"[classify-gender] Item {item.id}: {e}")
+                    continue
+
+    await db.commit()
+    logger.info(f"[classify-gender] name-based: {name_classified}, CLIP: {clip_classified}, remaining: {len(clip_candidates) - clip_classified}")
+    return {
+        "total_without_gender": len(items),
+        "name_classified": name_classified,
+        "clip_classified": clip_classified,
+        "remaining": len(items) - name_classified - clip_classified,
+    }
 
 
 # ---------------------------------------------------------------------------
