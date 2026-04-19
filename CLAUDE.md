@@ -176,6 +176,11 @@ Two AI systems work together:
 - `--pick-flatlay` uses CLIP to select product photos without models
 - `--encode-embeddings` generates FashionCLIP vectors for FAISS index
 
+**MANDATORY rule for XML/YML feed importers:**
+Any script or endpoint that parses a product feed (cron.py `process-feeds`, `import_catalog.py`, any future partner feed importer) MUST send every item through `POST /clip/pick-flatlay` — including single-picture offers. Read the `has_person` field from the response and auto-hide (`is_hidden=true`) flagged items so admin can review them.
+
+Do NOT filter with `len(all_pictures) > 1` — that was the bug that let LOVE REPUBLIC leak ~38% model-only photos into the catalog (audited 2026-04-19). The `/clip/pick-flatlay` endpoint returns `has_person` for single URLs too, so no exception is needed.
+
 ### Environment Variables
 
 Required:

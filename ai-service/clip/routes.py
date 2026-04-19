@@ -88,11 +88,10 @@ async def pick_flatlay(request: Request, body: PickFlatlayRequest):
     urls = body.urls[:4]  # evaluate at most 4 photos
     if not urls:
         raise HTTPException(status_code=400, detail='urls list is empty')
-    if len(urls) == 1:
-        return {'url': urls[0], 'has_person': None, 'checked': 1}
 
     best_url = urls[0]
     best_score = float('-inf')
+    best_person_score = 0.0
     results = []
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -102,17 +101,25 @@ async def pick_flatlay(request: Request, body: PickFlatlayRequest):
                 r.raise_for_status()
                 img = Image.open(io.BytesIO(r.content)).convert('RGB')
                 emb = encoder.encode_image(img)
-                # Negative person_score = prefers flat-lay
-                score = -classifier._person_score(emb)
+                person_score = classifier._person_score(emb)
+                # Lower person_score is better (flat-lay)
+                score = -person_score
                 results.append({'url': url, 'score': score})
                 if score > best_score:
                     best_score = score
                     best_url = url
+                    best_person_score = person_score
             except Exception as e:
                 logger.debug(f'[pick-flatlay] skip {url}: {e}')
 
-    has_person = best_score < 0  # still model-heavy even after picking best
-    return {'url': best_url, 'has_person': has_person, 'checked': len(results)}
+    from .classifier import PERSON_SCORE_THRESHOLD
+    has_person = best_person_score > PERSON_SCORE_THRESHOLD
+    return {
+        'url': best_url,
+        'has_person': has_person,
+        'person_score': best_person_score,
+        'checked': len(results),
+    }
 
 
 # ---------------------------------------------------------------------------

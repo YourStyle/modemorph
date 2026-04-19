@@ -36,10 +36,15 @@ const itemHasPrint = (val: any): boolean => {
 
 const GENDER_OPTIONS = ["male", "female", "unisex"] as const
 
+const PAGE_SIZE = 100
+
 export default function WardrobePage() {
     const [items, setItems] = useState<WardrobeItem[]>([])
     const [loading, setLoading] = useState(true)
+    const [loadingMore, setLoadingMore] = useState(false)
     const [error, setError] = useState<string | null>(null)
+    const [page, setPage] = useState(1)
+    const [total, setTotal] = useState(0)
 
     const [search, setSearch] = useState("")
     const [filterClothingType, setFilterClothingType] = useState<string>("")
@@ -83,19 +88,32 @@ export default function WardrobePage() {
 
     const fetchItems = useCallback(async (filters: {
         search: string
+        page?: number
+        append?: boolean
     }) => {
-        setLoading(true)
+        const pageNum = filters.page ?? 1
+        if (filters.append) {
+            setLoadingMore(true)
+        } else {
+            setLoading(true)
+        }
         setError(null)
         try {
             const params = new URLSearchParams()
             if (filters.search) params.append("search", filters.search)
+            params.append("page", String(pageNum))
+            params.append("page_size", String(PAGE_SIZE))
             const data = await api.get(`/api/wardrobe?${params.toString()}`)
-            setItems(data.items || [])
+            const incoming: WardrobeItem[] = data.items || []
+            setTotal(data.total ?? incoming.length)
+            setPage(data.page ?? pageNum)
+            setItems((prev) => (filters.append ? [...prev, ...incoming] : incoming))
         } catch (err) {
             setError(err instanceof Error ? err.message : "An error occurred")
             console.error(err)
         } finally {
             setLoading(false)
+            setLoadingMore(false)
         }
     }, [])
 
@@ -104,6 +122,10 @@ export default function WardrobePage() {
             void fetchItems({search: ""})
         }
     }, [fetchItems, authLoading])
+
+    const handleLoadMore = () => {
+        void fetchItems({search, page: page + 1, append: true})
+    }
 
     const handleRetry = () => {
         void fetchItems({search})
@@ -552,7 +574,7 @@ export default function WardrobePage() {
                                 <div className="sticky top-0 z-30 bg-white border-b border-gray-200 p-4">
                                     <div className="flex items-center justify-between">
                                         <h2 className="text-xl font-semibold text-gray-900">
-                                            Найдено: {items.length} {items.length === 1 ? "вещь" : items.length < 5 ? "вещи" : "вещей"}
+                                            Показано: {items.length} из {total}
                                         </h2>
                                         <div className="flex gap-2">
 
@@ -625,6 +647,26 @@ export default function WardrobePage() {
                                             ),
                                         )}
                                     </div>
+
+                                    {items.length < total && (
+                                        <div className="flex justify-center mt-8">
+                                            <Button
+                                                variant="outline"
+                                                onClick={handleLoadMore}
+                                                disabled={loadingMore}
+                                                className="min-w-[200px]"
+                                            >
+                                                {loadingMore ? (
+                                                    <>
+                                                        <Loader2 className="h-4 w-4 mr-2 animate-spin"/>
+                                                        Загрузка...
+                                                    </>
+                                                ) : (
+                                                    `Показать ещё (${total - items.length})`
+                                                )}
+                                            </Button>
+                                        </div>
+                                    )}
                                 </div>
                             </>
                         )}

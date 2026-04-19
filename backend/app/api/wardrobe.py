@@ -25,20 +25,30 @@ WUI_COLS = """id, user_id, item_name, size_type, material, style, has_print,
 @router.get("")
 async def get_wardrobe(
     search: str = Query(""),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=500),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Admins see the catalog (wardrobe_items), regular users see their items
+    # Admins see the catalog (wardrobe_items) with pagination, regular users see all their items
     if user.get("is_admin"):
-        sql = "SELECT * FROM wardrobe_items WHERE 1=1"
+        where = "WHERE 1=1"
         binds: dict = {}
         if search:
-            sql += " AND (item_name ILIKE :s OR clothing_type ILIKE :s OR color ILIKE :s)"
+            where += " AND (item_name ILIKE :s OR clothing_type ILIKE :s OR color ILIKE :s)"
             binds["s"] = f"%{search}%"
-        sql += " ORDER BY id DESC LIMIT 500"
-        result = await db.execute(text(sql), binds)
+
+        count_result = await db.execute(text(f"SELECT COUNT(*) FROM wardrobe_items {where}"), binds)
+        total = count_result.scalar() or 0
+
+        offset = (page - 1) * page_size
+        items_binds = {**binds, "limit": page_size, "offset": offset}
+        result = await db.execute(
+            text(f"SELECT * FROM wardrobe_items {where} ORDER BY id DESC LIMIT :limit OFFSET :offset"),
+            items_binds,
+        )
         items = [dict(r) for r in result.mappings().all()]
-        return {"items": items}
+        return {"items": items, "total": total, "page": page, "page_size": page_size}
 
     result = await db.execute(
         text(f"SELECT {WUI_COLS} FROM wardrobe_user_items WHERE user_id = :uid ORDER BY created_at DESC"),

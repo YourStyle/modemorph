@@ -325,27 +325,31 @@ async def insert_items(items: list[dict], dry_run: bool = False):
 
 
 async def pick_flatlay_photos(items: list[dict]):
-    """Use CLIP to pick the best flat-lay photo (without person) for each item."""
+    """Use CLIP to pick the best flat-lay photo (without person) for each item.
+
+    Runs on ALL items (including single-picture offers) so model-photos get flagged
+    via item['has_person']. Callers should honour the flag (e.g. auto-hide) — otherwise
+    feeds like Love Republic leak ~38% model-only photos into the catalog.
+    """
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from clip.encoder import CLIPEncoderService
+    from clip.classifier import CLIPClassifierService, PERSON_SCORE_THRESHOLD
     from PIL import Image
     import io
 
     logger.info("Loading FashionCLIP for flat-lay photo selection...")
     encoder = CLIPEncoderService()
-
-    # Pre-encode text queries
-    flatlay_emb = encoder.encode_text("a flat-lay photo of a clothing item on white background without person")
-    person_emb = encoder.encode_text("a person wearing clothes, fashion model")
+    classifier = CLIPClassifierService(encoder)
 
     updated = 0
-    multi_pic_items = [i for i in items if len(i.get("all_pictures", [])) > 1]
-    logger.info(f"Selecting best flat-lay from {len(multi_pic_items)} items with multiple photos...")
+    flagged = 0
+    all_items = [i for i in items if i.get("all_pictures")]
+    logger.info(f"Running pick-flatlay on {len(all_items)} items (including single-picture)...")
 
     async with httpx.AsyncClient(timeout=20.0) as client:
-        for idx, item in enumerate(multi_pic_items):
+        for idx, item in enumerate(all_items):
             best_url = item["image_url"]
-            best_score = -1.0
+            best_person_score = float("inf")
 
             for pic_url in item["all_pictures"][:4]:  # check up to 4 photos
                 try:
@@ -353,14 +357,9 @@ async def pick_flatlay_photos(items: list[dict]):
                     r.raise_for_status()
                     img = Image.open(io.BytesIO(r.content)).convert("RGB")
                     img_emb = encoder.encode_image(img)
-
-                    # Score: high similarity to flat-lay, low to person
-                    flatlay_score = float(img_emb @ flatlay_emb)
-                    person_score = float(img_emb @ person_emb)
-                    score = flatlay_score - person_score
-
-                    if score > best_score:
-                        best_score = score
+                    person_score = classifier._person_score(img_emb)
+                    if person_score < best_person_score:
+                        best_person_score = person_score
                         best_url = pic_url
                 except Exception:
                     continue
@@ -369,10 +368,15 @@ async def pick_flatlay_photos(items: list[dict]):
                 item["image_url"] = best_url
                 updated += 1
 
-            if (idx + 1) % 100 == 0:
-                logger.info(f"  Processed {idx + 1}/{len(multi_pic_items)}...")
+            if best_person_score != float("inf") and best_person_score > PERSON_SCORE_THRESHOLD:
+                item["has_person"] = True
+                item["is_hidden"] = True  # auto-hide model-photo items for admin review
+                flagged += 1
 
-    logger.info(f"Updated {updated} items to better flat-lay photos")
+            if (idx + 1) % 100 == 0:
+                logger.info(f"  Processed {idx + 1}/{len(all_items)}...")
+
+    logger.info(f"Updated {updated} items to better flat-lay; flagged {flagged} as has_person (auto-hidden)")
 
 
 async def encode_embeddings(batch_size: int = 50):

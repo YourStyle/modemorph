@@ -207,7 +207,7 @@ export function WardrobeItemCard({
         </CardContent>
       </Card>
 
-      <ItemDetailsModal item={item} isOpen={showDetails} onClose={() => setShowDetails(false)} onRefresh={onRefresh} />
+      <ItemDetailsModal item={item} isOpen={showDetails} onClose={() => setShowDetails(false)} onRefresh={onRefresh} isAdmin={isAdmin} />
       {!isAdmin && (
         <EditWardrobeItemSheet
           item={item}
