@@ -420,11 +420,14 @@ async def cron_generate_recommendations(
             if not user_items and not partner_items:
                 continue
 
-            # Build item lookup
+            # Build item lookup.
+            # Keys are tuples (source, id) because wardrobe_items and wardrobe_user_items
+            # have independent id sequences — a bare numeric id is ambiguous.
             all_items_map = {}
             for i in user_items:
-                all_items_map[i["id"]] = {
+                all_items_map[("user", i["id"])] = {
                     "id": i["id"],
+                    "item_source": "user",
                     "name": i["item_name"],
                     "image_url": i["image_url"],
                     "color": i.get("color", ""),
@@ -432,8 +435,9 @@ async def cron_generate_recommendations(
                     "user_id": i.get("user_id", ""),
                 }
             for i in partner_items:
-                all_items_map[i["id"]] = {
+                all_items_map[("catalog", i["id"])] = {
                     "id": i["id"],
+                    "item_source": "catalog",
                     "name": i["item_name"],
                     "image_url": i["image_url"],
                     "color": i.get("color", ""),
@@ -457,11 +461,20 @@ async def cron_generate_recommendations(
                     section_type = gs.get("section_type", "user_only")
                     if section_type not in VALID_TYPES:
                         section_type = "mix" if partner_items else "user_only"
+                    # Per-section source preference — resolves id collisions between user and catalog tables.
+                    preferred_source = "catalog" if section_type == "partner_only" else "user"
                     suggestions = []
                     for sug in gs.get("suggestions", []):
                         outfit_items = []
                         for iid in sug.get("item_ids", []):
-                            item_data = all_items_map.get(iid)
+                            try:
+                                iid = int(iid)
+                            except (ValueError, TypeError):
+                                continue
+                            item_data = (
+                                all_items_map.get((preferred_source, iid))
+                                or all_items_map.get(("catalog" if preferred_source == "user" else "user", iid))
+                            )
                             if item_data:
                                 outfit_items.append(item_data)
                         # Skip outfits with fewer than 3 items (incomplete)
@@ -578,23 +591,30 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
 
         logger.info(f"[ProcessFeeds] Feed {feed_id}: {len(parsed['items'])} items from {parsed['total_offers']} offers")
 
-        # Pick best flat-lay photo for items with multiple pictures
+        # Every XML/YML feed must go through /clip/pick-flatlay — including single-picture offers.
+        # Skipping single-pic items leaks model-photos into the catalog (Love Republic: ~38% model-only).
         ai_url = settings.AI_SERVICE_URL
-        multi_pic_items = [i for i in parsed["items"] if len(i.get("all_pictures", [])) > 1]
-        if ai_url and multi_pic_items:
-            logger.info(f"[ProcessFeeds] Picking flat-lay photos for {len(multi_pic_items)} items via CLIP...")
+        flaggable = [i for i in parsed["items"] if i.get("all_pictures")]
+        person_count = 0
+        if ai_url and flaggable:
+            logger.info(f"[ProcessFeeds] Running /clip/pick-flatlay on {len(flaggable)} items...")
             async with httpx.AsyncClient(timeout=20.0) as client:
-                for item in multi_pic_items:
+                for item in flaggable:
                     try:
                         resp = await client.post(
                             f"{ai_url}/clip/pick-flatlay",
                             json={"urls": item["all_pictures"][:4]},
                         )
                         if resp.status_code == 200:
-                            item["image_url"] = resp.json().get("url", item["image_url"])
+                            data = resp.json()
+                            if data.get("url"):
+                                item["image_url"] = data["url"]
+                            item["has_person"] = bool(data.get("has_person"))
+                            if item["has_person"]:
+                                person_count += 1
                     except Exception as e:
                         logger.debug(f"[ProcessFeeds] pick-flatlay failed for item: {e}")
-            logger.info("[ProcessFeeds] Flat-lay selection done")
+            logger.info(f"[ProcessFeeds] Flat-lay selection done ({person_count} items flagged as model-photo)")
 
         imported = 0
         skipped = 0
@@ -606,13 +626,15 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
                 skipped += 1
                 continue
 
+            # Model-photo items get auto-hidden — admin can review and un-hide if needed.
+            is_hidden = bool(item.get("has_person"))
             await db.execute(text("""
                 INSERT INTO wardrobe_items (item_name, description, image_url, url, clothing_type, color, gender, style, is_hidden, is_basic, notes, partner_id, feed_id, price)
-                VALUES (:name, :desc, :img, :url, :ct, :color, :gender, 'Casual', false, false, :notes, :pid, :fid, :price)
+                VALUES (:name, :desc, :img, :url, :ct, :color, :gender, 'Casual', :hidden, false, :notes, :pid, :fid, :price)
             """), {
                 "name": item["item_name"], "desc": item["description"], "img": item["image_url"],
                 "url": item["url"], "ct": item["clothing_type"], "color": item["color"],
-                "gender": item["gender"], "notes": notes, "pid": partner_id, "fid": feed_id,
+                "gender": item["gender"], "hidden": is_hidden, "notes": notes, "pid": partner_id, "fid": feed_id,
                 "price": item["price"],
             })
             imported += 1

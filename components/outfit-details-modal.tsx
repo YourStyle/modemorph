@@ -26,6 +26,12 @@ interface OutfitItem {
   is_basic?: boolean
   basic_item_id?: number | null
   user_id?: string | null
+  item_source?: "user" | "catalog"
+}
+
+function isUserItem(item: OutfitItem): boolean {
+  if (item.item_source) return item.item_source === "user"
+  return !!item.user_id
 }
 
 interface OutfitDetailsModalProps {
@@ -129,12 +135,12 @@ export function OutfitDetailsModal({
                         <span
                           className="text-xs px-2 py-1 rounded-md text-white font-medium"
                           style={
-                            item.user_id
+                            isUserItem(item)
                               ? { backgroundColor: '#292929' }
                               : { background: 'linear-gradient(to right, #EC9DE2, #89AEFF)' }
                           }
                         >
-                          {item.user_id ? "Ваше" : "Рекомендуем"}
+                          {isUserItem(item) ? "Ваше" : "Рекомендуем"}
                         </span>
                       </div>
                     </div>

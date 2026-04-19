@@ -28,8 +28,16 @@ interface OutfitItem {
   notes?: string
   is_basic?: boolean
   basic_item_id?: number | null
-  user_id?: string
+  user_id?: string | null
+  item_source?: "user" | "catalog"
   source?: "wardrobe_items" | "wardrobe_user_items"
+}
+
+// Canonical "is this the user's own wardrobe item?" check. Prefer explicit
+// item_source from the backend; fall back to user_id for legacy cache rows.
+function isUserItem(item: OutfitItem): boolean {
+  if (item.item_source) return item.item_source === "user"
+  return !!item.user_id
 }
 
 interface OutfitSuggestion {
@@ -237,7 +245,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                     </div>
 
                     {/* Item type indicator */}
-                    {!item.user_id ? (
+                    {!isUserItem(item) ? (
                       <div className="absolute top-2 right-2">
                         <span
                           className="inline-flex items-center text-white text-xs px-1.5 py-0.5 rounded-md font-medium"
@@ -458,12 +466,12 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                     <span
                       className="text-xs px-2 py-1 rounded-md text-white font-medium"
                       style={
-                        item.user_id
+                        isUserItem(item)
                           ? { backgroundColor: '#292929' }
                           : { background: 'linear-gradient(to right, #EC9DE2, #89AEFF)' }
                       }
                     >
-                      {item.user_id ? "Ваше" : "Рекомендуем"}
+                      {isUserItem(item) ? "Ваше" : "Рекомендуем"}
                     </span>
                     {item.brand && item.brand.toLowerCase() !== "unknown" && (
                       <span className="text-xs text-gray-500 font-medium">{item.brand}</span>

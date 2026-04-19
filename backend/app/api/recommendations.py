@@ -89,7 +89,7 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
     id_csv = ",".join(str(i) for i in all_ids)
 
     user_items = await db.execute(
-        text(f"SELECT id, image_url, item_name, color, shade, has_print, clothing_type, notes, user_id FROM wardrobe_user_items WHERE id IN ({id_csv}) AND user_id = :uid"),
+        text(f"SELECT id, image_url, item_name, color, shade, has_print, clothing_type, notes, user_id FROM wardrobe_user_items WHERE id IN ({id_csv}) AND user_id = :uid AND COALESCE(is_hidden, false) = false"),
         {"uid": user_id},
     )
     user_map = {r["id"]: dict(r) for r in user_items.mappings().all()}
@@ -104,15 +104,34 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
             enriched_items = []
             for item in sug.get("items", []):
                 item_id = int(item.get("id", 0)) if item.get("id") else 0
-                db_row = user_map.get(item_id) or catalog_map.get(item_id)
+                # Route by explicit item_source. Fallback to user_id for legacy cache entries
+                # written before item_source existed. Never fall through across namespaces —
+                # wardrobe_items and wardrobe_user_items have independent id sequences.
+                source = item.get("item_source")
+                if not source:
+                    source = "user" if item.get("user_id") else "catalog"
+                if source == "user":
+                    db_row = user_map.get(item_id)
+                else:
+                    db_row = catalog_map.get(item_id)
                 if db_row:
-                    item["image_url"] = db_row.get("image_url") or item.get("image_url")
+                    item["item_source"] = source
+                    # Sync user_id with provenance so the UI label is never misattributed,
+                    # even if the cache was written by a buggy older version.
+                    if source == "user":
+                        item["user_id"] = db_row.get("user_id") or item.get("user_id")
+                    else:
+                        item["user_id"] = None
+                    item["image_url"] = item.get("image_url") or db_row.get("image_url")
                     item["name"] = item.get("name") or db_row.get("item_name") or db_row.get("item_name_en", "")
                     item["color"] = item.get("color") or db_row.get("color")
                     item["shade"] = item.get("shade") or db_row.get("shade")
                     item["clothing_type"] = item.get("clothing_type") or db_row.get("clothing_type")
                     enriched_items.append(item)
-                elif item.get("image_url"):
+                elif source == "catalog" and item.get("image_url"):
+                    # Catalog item the feed has since removed — cached image still shows the right thing.
+                    item["item_source"] = "catalog"
+                    item["user_id"] = None
                     enriched_items.append(item)
             sug["items"] = enriched_items
         # Drop suggestions with no items
@@ -364,19 +383,22 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
     if usage.get("cost"):
         logger.info(f"[Recs POST] cost=${usage['cost']}, tokens={usage.get('total_tokens')}")
 
-    # Build item lookup for resolving IDs
+    # Build item lookup keyed by (source, id) — bare numeric id is ambiguous because
+    # wardrobe_items and wardrobe_user_items have independent id sequences.
     all_items_map = {}
     for i in wardrobe_items:
-        all_items_map[i["id"]] = {
-            "id": i["id"], "name": i.get("item_name", ""),
+        all_items_map[("user", i["id"])] = {
+            "id": i["id"], "item_source": "user",
+            "name": i.get("item_name", ""),
             "image_url": i.get("image_url"), "color": i.get("color", ""),
             "shade": i.get("shade", ""), "has_print": i.get("has_print", ""),
             "clothing_type": i.get("clothing_type", ""),
             "user_id": i.get("user_id", ""),
         }
     for i in partner_items:
-        all_items_map[i["id"]] = {
-            "id": i["id"], "name": i.get("item_name", ""),
+        all_items_map[("catalog", i["id"])] = {
+            "id": i["id"], "item_source": "catalog",
+            "name": i.get("item_name", ""),
             "image_url": i.get("image_url"), "color": i.get("color", ""),
             "clothing_type": i.get("clothing_type", ""),
             "url": i.get("url"), "brand": i.get("brand"),
@@ -389,6 +411,7 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
         section_type = gs.get("section_type", "user_only")
         if section_type not in VALID_TYPES:
             section_type = "user_only"
+        preferred_source = "catalog" if section_type == "partner_only" else "user"
         suggestions = []
         for sug in gs.get("suggestions", []):
             # Support both "item_ids" and "items" formats
@@ -401,7 +424,10 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                     iid = int(iid)
                 except (ValueError, TypeError):
                     continue
-                item_data = all_items_map.get(iid)
+                item_data = (
+                    all_items_map.get((preferred_source, iid))
+                    or all_items_map.get(("catalog" if preferred_source == "user" else "user", iid))
+                )
                 if item_data:
                     outfit_items.append(item_data)
             # Skip incomplete outfits (fewer than 3 items)
