@@ -130,7 +130,7 @@ async def update_profile_session(
         for field in allowed_fields:
             if field in body:
                 val = body[field]
-                if field in ("height", "weight", "shoe_size") and val:
+                if field in ("height", "weight") and val:
                     val = int(val)
                 updates[field] = val if val else None
 
@@ -186,7 +186,7 @@ async def update_profile_session(
             "weight": int(body["weight"]) if body.get("weight") else None,
             "top_size": body.get("top_size"),
             "bottom_size": body.get("bottom_size"),
-            "shoe_size": int(body["shoe_size"]) if body.get("shoe_size") else None,
+            "shoe_size": body.get("shoe_size") or None,
             "avatar_url": body.get("avatar_url"),
             "is_admin": False,
         }
