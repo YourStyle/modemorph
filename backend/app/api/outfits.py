@@ -237,8 +237,15 @@ async def delete_outfit(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owned = await db.execute(
+        text("SELECT 1 FROM outfits WHERE id = :oid AND user_id = :uid"),
+        {"oid": outfit_id, "uid": user["id"]},
+    )
+    if not owned.first():
+        raise HTTPException(status_code=404, detail="Outfit not found")
+
     await db.execute(text("DELETE FROM outfit_items WHERE outfit_id = :oid"), {"oid": outfit_id})
-    await db.execute(text("DELETE FROM outfits WHERE id = :oid"), {"oid": outfit_id})
+    await db.execute(text("DELETE FROM outfits WHERE id = :oid AND user_id = :uid"), {"oid": outfit_id, "uid": user["id"]})
     await db.commit()
     return {"success": True}
 
@@ -336,10 +343,10 @@ async def save_to_looks(
 
     result = await db.execute(
         text("""
-            INSERT INTO user_looks (user_id, title, items, created_at)
-            VALUES (:uid, :title, CAST(:items AS jsonb), NOW()) RETURNING *
+            INSERT INTO user_looks (user_id, name, items, created_at)
+            VALUES (:uid, :name, CAST(:items AS jsonb), NOW()) RETURNING *
         """),
-        {"uid": user["id"], "title": outfit_row[0], "items": json_lib.dumps(items)},
+        {"uid": user["id"], "name": outfit_row[0], "items": json_lib.dumps(items)},
     )
     await db.commit()
     return {"success": True, "look": dict(result.mappings().first())}
@@ -370,12 +377,12 @@ async def save_as_look(
 
     result = await db.execute(
         text("""
-            INSERT INTO user_looks (user_id, title, items, created_at)
-            VALUES (:uid, :title, CAST(:items AS jsonb), NOW()) RETURNING *
+            INSERT INTO user_looks (user_id, name, items, created_at)
+            VALUES (:uid, :name, CAST(:items AS jsonb), NOW()) RETURNING *
         """),
         {
             "uid": user["id"],
-            "title": look_name or (outfit_row[0] if outfit_row else "Образ"),
+            "name": look_name or (outfit_row[0] if outfit_row else "Образ"),
             "items": json_lib.dumps(items, ensure_ascii=False, default=str),
         },
     )

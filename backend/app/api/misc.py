@@ -161,7 +161,7 @@ async def spend_credits(request: Request, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=402, detail="Insufficient credits")
 
     await db.execute(
-        text("INSERT INTO credit_transactions (user_profile_id, amount, reason, description, created_at) VALUES (:pid, :amt, :reason, :desc, NOW())"),
+        text("INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at) VALUES (:pid, 'spend', :amt, :reason, :desc, NOW())"),
         {"pid": profile[0], "amt": -amount, "reason": reason, "desc": description},
     )
     await db.commit()

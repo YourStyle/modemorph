@@ -171,17 +171,17 @@ async def get_looks_sections(user: dict = Depends(get_current_user), db: AsyncSe
         return []
 
     section_ids = [s["id"] for s in sections]
-    id_csv = ",".join(str(i) for i in section_ids)
 
     # Get section_looks with nested user_looks
     sl_result = await db.execute(
-        text(f"""
+        text("""
             SELECT sl.section_id, sl.look_id, ul.*
             FROM section_looks sl
             JOIN user_looks ul ON ul.id = sl.look_id
-            WHERE sl.section_id IN ({id_csv})
+            WHERE sl.section_id = ANY(:ids)
             ORDER BY ul.created_at DESC
         """),
+        {"ids": section_ids},
     )
     sl_rows = sl_result.mappings().all()
 

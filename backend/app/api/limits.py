@@ -126,8 +126,8 @@ async def _use_feature(db: AsyncSession, profile_id, feature: str, count: int) -
     if credit_result.first():
         await db.execute(
             text("""
-                INSERT INTO credit_transactions (user_profile_id, amount, reason, description, created_at)
-                VALUES (:pid, :amt, 'feature_topup', :desc, NOW())
+                INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at)
+                VALUES (:pid, 'spend', :amt, 'feature_topup', :desc, NOW())
             """),
             {"pid": profile_id, "amt": -total_cost, "desc": f"Auto-topup for {feature} x{count}"},
         )

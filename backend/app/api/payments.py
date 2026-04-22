@@ -145,8 +145,8 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
         )
         await db.execute(
             text("""
-                INSERT INTO credit_transactions (user_profile_id, amount, reason, description, created_at)
-                VALUES (:pid, :amt, 'purchase', :desc, NOW())
+                INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at)
+                VALUES (:pid, 'credit', :amt, 'purchase', :desc, NOW())
             """),
             {"pid": profile_id, "amt": credits, "desc": f'Purchase: {pack_name}'},
         )

@@ -136,7 +136,7 @@ def _verify_miniapp_init_data(raw: str, bot_token: str) -> dict | None:
         return None
 
     auth_date = int(params.get("auth_date", "0"))
-    if auth_date > 0 and abs(time.time() - auth_date) > 3600:
+    if auth_date <= 0 or abs(time.time() - auth_date) > 3600:
         return None
 
     secret = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()

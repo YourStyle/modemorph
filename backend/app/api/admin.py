@@ -556,7 +556,7 @@ async def grant_credits(request: Request, user: dict = Depends(get_admin_user), 
 
     if credits and credits > 0:
         await db.execute(text("UPDATE user_credits SET credits_balance = credits_balance + :amt WHERE user_profile_id = :pid"), {"amt": credits, "pid": pid})
-        await db.execute(text("INSERT INTO credit_transactions (user_profile_id, amount, reason, description, created_at) VALUES (:pid, :amt, 'admin_grant', :desc, NOW())"),
+        await db.execute(text("INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at) VALUES (:pid, 'credit', :amt, 'admin_grant', :desc, NOW())"),
             {"pid": pid, "amt": credits, "desc": f"Admin granted {credits} credits"})
 
     if sub_duration in ("monthly", "yearly"):

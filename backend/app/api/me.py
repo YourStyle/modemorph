@@ -130,9 +130,12 @@ async def update_profile_session(
         for field in allowed_fields:
             if field in body:
                 val = body[field]
-                if field in ("height", "weight") and val:
-                    val = int(val)
-                updates[field] = val if val else None
+                if val not in (None, ""):
+                    if field == "height":
+                        val = int(val)
+                    elif field == "weight":
+                        val = float(val)
+                updates[field] = val if val not in (None, "") else None
 
         # If avatar_url changed, save previous avatar to user_avatars history
         if "avatar_url" in updates and updates["avatar_url"]:
@@ -183,7 +186,7 @@ async def update_profile_session(
             "full_name": body.get("full_name"),
             "gender": body.get("gender"),
             "height": int(body["height"]) if body.get("height") else None,
-            "weight": int(body["weight"]) if body.get("weight") else None,
+            "weight": float(body["weight"]) if body.get("weight") else None,
             "top_size": body.get("top_size"),
             "bottom_size": body.get("bottom_size"),
             "shoe_size": body.get("shoe_size") or None,
