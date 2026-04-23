@@ -26,6 +26,44 @@ router = APIRouter()
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+# Mirrors lib/recommendation-filters.ts — keep in sync with lib/clothing-types.ts.
+# One item per slot in an outfit; user items beat catalog items on the same slot.
+_SLOT_MAP = {
+    "blouse": "top", "lonsleeve": "top", "shirt": "top",
+    "t-shirt": "top", "tank-top": "top",
+    "cardigan": "layer", "hoodie": "layer", "hoddie": "layer",
+    "pullover": "layer", "suit-jacket": "layer", "sweatshirt": "layer",
+    "turtleneck": "layer", "vest": "layer",
+    "dress": "dress", "skirt": "dress",
+    "jeans": "bottom", "pants": "bottom", "shorts": "bottom", "sporty-pants": "bottom",
+    "classic": "set", "knitted-suit": "set", "tracksuit": "set",
+    "coat": "outerwear", "fur-coat": "outerwear", "fur-coat-dark-brown": "outerwear",
+    "parka": "outerwear", "puffer-jacket": "outerwear", "sheepskin-coat": "outerwear",
+}
+
+
+def _dedup_by_slot(items: list) -> list:
+    """Keep max 1 item per category slot. Prefer user items; items without a known
+    clothing_type pass through untouched (accessories, footwear, etc.)."""
+    slot_winner: dict = {}
+    passthrough: list = []
+    for item in items:
+        ctype = item.get("clothing_type") if isinstance(item, dict) else None
+        slot = _SLOT_MAP.get(ctype) if ctype else None
+        if not slot:
+            passthrough.append(item)
+            continue
+        existing = slot_winner.get(slot)
+        if existing is None:
+            slot_winner[slot] = item
+            continue
+        # First-wins, but user item upgrades a catalog winner.
+        existing_is_user = (existing.get("item_source") == "user") or bool(existing.get("user_id"))
+        current_is_user = (item.get("item_source") == "user") or bool(item.get("user_id"))
+        if current_is_user and not existing_is_user:
+            slot_winner[slot] = item
+    return list(slot_winner.values()) + passthrough
+
 
 def _safe_dict(row) -> dict:
     """Convert DB row to JSON-safe dict."""
@@ -133,9 +171,10 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                     item["item_source"] = "catalog"
                     item["user_id"] = None
                     enriched_items.append(item)
-            sug["items"] = enriched_items
-        # Drop suggestions with no items
-        section["suggestions"] = [s for s in section.get("suggestions", []) if s.get("items")]
+            # Clean up already-cached outfits with duplicate slots (pre-fix cache).
+            sug["items"] = _dedup_by_slot(enriched_items)
+        # Drop suggestions with too few items (post-dedup can drop below 3)
+        section["suggestions"] = [s for s in section.get("suggestions", []) if len(s.get("items") or []) >= 3]
 
     # Drop sections with no suggestions
     return [s for s in sections if s.get("suggestions")]
@@ -430,6 +469,9 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                 )
                 if item_data:
                     outfit_items.append(item_data)
+            # Gemini sometimes ignores the "1 per slot" rule (4 pants in one outfit etc.).
+            # Enforce it server-side so the client never sees duplicate slots.
+            outfit_items = _dedup_by_slot(outfit_items)
             # Skip incomplete outfits (fewer than 3 items)
             if len(outfit_items) >= 3:
                 items_hash = hashlib.md5(",".join(str(it["id"]) for it in outfit_items).encode()).hexdigest()[:8]
