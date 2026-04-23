@@ -969,45 +969,57 @@ export function TryOnSheet() {
 
             {/* Profile OK — show normal confirming */}
             {!profileLoading && !profileIncomplete && (
-              <div className="flex flex-col gap-5 pb-6">
-                {/* Description */}
-                <p className="text-sm text-[#101010]/70 leading-relaxed">
-                  Примерим этот образ на вас? Выберите фото или сделайте новое.
-                </p>
-
-                {/* Avatar picker */}
-                <AvatarPicker
-                  selectedUrl={session?.avatarUrl ?? null}
-                  onSelect={setSessionAvatarUrl}
-                />
-
-                {/* Info */}
-                <p className="text-xs text-[#101010]/50 leading-relaxed">
-                  Примерка займёт 30–60 секунд
-                </p>
-
-                {/* Outfit title + item cards (2-col grid) */}
-                {session?.suggestion?.title && (
-                  <p className="text-base font-semibold text-[#101010]">
-                    {session.suggestion.title}
+              <>
+                {/* Scrollable body — everything above the pinned CTA.
+                    Bottom padding reserves space so the last item row is
+                    never hidden behind the sticky footer. */}
+                <div className="flex flex-col gap-5 pb-28">
+                  {/* Description */}
+                  <p className="text-sm text-[#101010]/70 leading-relaxed">
+                    Примерим этот образ на вас? Выберите фото или сделайте новое.
                   </p>
-                )}
-                {items.length > 0 && (
-                  <div className="grid grid-cols-2 gap-3">
-                    {items.slice(0, 6).map((item: any, i: number) => (
-                      <ItemCard key={i} item={item} />
-                    ))}
-                  </div>
-                )}
 
-                {/* CTA */}
-                <GradientButton onClick={handleConfirm} disabled={isConfirming} className="mt-2">
-                  <span className="flex items-center justify-center gap-2">
-                    <Sparkles className="w-4 h-4" />
-                    {isConfirming ? "Запускаем…" : "Начать примерку"}
-                  </span>
-                </GradientButton>
-              </div>
+                  {/* Avatar picker */}
+                  <AvatarPicker
+                    selectedUrl={session?.avatarUrl ?? null}
+                    onSelect={setSessionAvatarUrl}
+                  />
+
+                  {/* Info */}
+                  <p className="text-xs text-[#101010]/50 leading-relaxed">
+                    Примерка займёт 30–60 секунд
+                  </p>
+
+                  {/* Outfit title + item cards (2-col grid) */}
+                  {session?.suggestion?.title && (
+                    <p className="text-base font-semibold text-[#101010]">
+                      {session.suggestion.title}
+                    </p>
+                  )}
+                  {items.length > 0 && (
+                    <div className="grid grid-cols-2 gap-3">
+                      {items.slice(0, 6).map((item: any, i: number) => (
+                        <ItemCard key={i} item={item} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Pinned CTA footer — stays glued to the bottom of the sheet
+                    while the body scrolls. Negative margins cancel the parent's
+                    px-6 / pb-6 so the footer is flush with the sheet edges; a
+                    top gradient fades the content scrolling underneath. */}
+                <div className="sticky bottom-0 -mx-6 -mb-6 px-6 pt-6 pb-5 bg-gradient-to-t from-background via-background to-background/0 pointer-events-none">
+                  <div className="pointer-events-auto">
+                    <GradientButton onClick={handleConfirm} disabled={isConfirming}>
+                      <span className="flex items-center justify-center gap-2">
+                        <Sparkles className="w-4 h-4" />
+                        {isConfirming ? "Запускаем…" : "Начать примерку"}
+                      </span>
+                    </GradientButton>
+                  </div>
+                </div>
+              </>
             )}
           </>
         )}
