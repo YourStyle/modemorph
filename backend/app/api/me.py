@@ -207,11 +207,11 @@ async def update_profile_session(
         if pid:
             await db.execute(
                 text("INSERT INTO limits (user_profile_id, wardrobe_items_anlyzed, ai_requests, ideas_viewed, outfits_saved, vton_used) VALUES (:pid, 3, 3, 10, 3, 1) ON CONFLICT DO NOTHING"),
-                {"pid": str(pid)},
+                {"pid": int(pid)},
             )
             await db.execute(
                 text("INSERT INTO user_credits (user_profile_id, credits_balance) VALUES (:pid, 0) ON CONFLICT DO NOTHING"),
-                {"pid": str(pid)},
+                {"pid": int(pid)},
             )
 
     await db.commit()

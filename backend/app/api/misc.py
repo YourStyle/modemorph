@@ -465,10 +465,11 @@ async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
                     "  Image 2 = DRAFT — a virtual try-on result. The clothing is correct, but the face may not match the reference.\n\n"
                     "Produce a CORRECTED version of Image 2 where:\n"
                     "- The face is replaced with the EXACT face from Image 1 — same bone structure, skin tone, skin texture, eyes, nose, mouth, eyebrows, facial hair, moles, freckles.\n"
-                    "- The EXACT hairstyle, hair color, and hair length from Image 1 are preserved.\n"
+                    "- The EXACT hairstyle, hair color, hair length, AND hair VOLUME (height on top) from Image 1 are preserved.\n"
+                    "- Preserve the head proportions from Image 1 — do NOT compress the face vertically, do NOT widen the jaw, do NOT shorten the neck. The distance from hairline to chin, and from eyes to chin, must match Image 1.\n"
                     "- ALL clothing, pose, lighting, background, and body proportions from Image 2 stay unchanged.\n"
                     "- Do NOT beautify, smooth, or alter any facial features. Do NOT change age or ethnicity.\n"
-                    "- Output one photorealistic image, portrait 3:4."
+                    "- Output one photorealistic image. Match the aspect ratio of Image 2 — do NOT crop, stretch, or change the frame."
                 )},
                 {"type": "image_url", "image_url": {"url": avatar_b64}},
                 {"type": "image_url", "image_url": {"url": generated_b64}},
@@ -477,7 +478,6 @@ async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
             model="google/gemini-3.1-flash-image-preview",
             temperature=0.15,
             modalities=["image", "text"],
-            image_config={"aspect_ratio": "3:4"},
         )
         return _extract_vton_image(result)
     except Exception:
@@ -544,27 +544,33 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     prompt = (
         "TASK: Virtual clothing try-on.\n\n"
         "IMAGE LAYOUT:\n"
-        "  [Image 1] = REFERENCE PERSON — the original photo. This is the identity you MUST preserve.\n"
+        "  [Image 1] = REFERENCE PERSON — the original photo. This is the identity AND framing you MUST preserve.\n"
         "  [Images 2..N] = clothing items to put on the person.\n"
         "  [Last image] = REFERENCE PERSON again (same photo repeated for reinforcement).\n\n"
         "RULE #1 — IDENTITY PRESERVATION (non-negotiable, highest priority):\n"
         "The generated person MUST be the EXACT same individual as in the reference photo.\n"
         "- COPY the face pixel-for-pixel from the reference: identical bone structure, jawline, cheekbones, nose, lips, eyes, eye color, eyebrows, skin tone, skin texture, freckles, moles, scars, dimples.\n"
-        "- COPY the exact hairstyle, hair color, hair texture, hair length.\n"
+        "- COPY the exact hairstyle, hair color, hair texture, hair length, and hair VOLUME (height on top of the head).\n"
         "- COPY the body type and proportions.\n"
         "- Do NOT beautify, smooth, de-age, or idealize. Do NOT change ethnicity or gender.\n"
         "- Preserve glasses, jewelry, watch, piercings, tattoos if visible in reference.\n"
         "- If you cannot preserve the face exactly, it is better to produce a slightly less perfect outfit than to change the face.\n\n"
-        "RULE #2 — CLOTHING:\n"
+        "RULE #2 — HEAD & BODY PROPORTIONS (critical):\n"
+        "- Do NOT compress the face vertically. Do NOT widen the jaw. Do NOT shorten the neck.\n"
+        "- The distance from hairline to chin, from eyes to chin, and from chin to shoulders MUST match the reference.\n"
+        "- The head size relative to the torso MUST match the reference photo — do NOT enlarge the head, do NOT shrink it.\n"
+        "- If the reference shows hair with volume/height on top, that volume MUST be preserved (do not buzz-cut or flatten the hair).\n\n"
+        "RULE #3 — CLOTHING:\n"
         f"{item_descs}\n"
         "- Dress the person in ALL items above. Show accurate colors, textures, patterns, logos.\n"
         "- Clothing should drape naturally on this specific body type.\n"
         "- IMPORTANT: Some clothing reference photos may show a model or mannequin wearing the item. "
         "Use ONLY the garment itself (its design, color, cut, fabric texture) — completely ignore any model or mannequin in those images.\n\n"
-        "RULE #3 — OUTPUT:\n"
-        "- Photorealistic, portrait 3:4, soft studio lighting, clean neutral background.\n"
-        "- Natural relaxed pose (standing or light turn).\n"
-        "- A viewer who knows this person should immediately recognize them."
+        "RULE #4 — OUTPUT FRAMING:\n"
+        "- MATCH the aspect ratio, framing, crop, and background of the REFERENCE photo. Do NOT force a different aspect ratio — do NOT stretch or squash the image to fit a new ratio.\n"
+        "- Keep the same lighting direction, color temperature, and background from the reference.\n"
+        "- Keep the same pose/angle from the reference.\n"
+        "- Photorealistic. A viewer who knows this person should immediately recognize them."
     )
 
     avatar_img = {"type": "image_url", "image_url": {"url": avatar_b64}}
@@ -579,7 +585,6 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
         model="google/gemini-3.1-flash-image-preview",
         temperature=0.2,
         modalities=["image", "text"],
-        image_config={"aspect_ratio": "3:4"},
     )
 
     image_data = _extract_vton_image(result)

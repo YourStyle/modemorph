@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react"
 import Image from "next/image"
-import { Sparkles, Share2, Bookmark, BookmarkCheck, AlertCircle, ChevronDown, Camera, Check } from "lucide-react"
+import { Sparkles, Share2, Bookmark, BookmarkCheck, ChevronDown, Camera, Check, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { CommonSheet } from "@/components/common-sheet"
@@ -58,28 +58,253 @@ const OutlineButton = ({
   </button>
 )
 
-/** Item card used in confirming state — shows image + name */
-const ItemCard = ({ item }: { item: any }) => {
+/**
+ * Big item card used in the confirming state — rendered inside a 2-col grid.
+ * Each card exposes a ref so the "gather" animation can compute per-item
+ * translate offsets toward the avatar center.
+ */
+const ItemCard = ({
+  item,
+  gatherStyle,
+}: {
+  item: any
+  gatherStyle?: React.CSSProperties
+}) => {
   const imageUrl = item?.image_url || item?.img_url || item?.finalImageUrl || null
   const name = item?.item_name || item?.name || ""
+  const color = item?.color as string | undefined
 
   return (
-    <div className="flex-shrink-0 w-[72px] flex flex-col items-center gap-1.5">
-      <div className="w-[72px] h-[72px] rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 flex items-center justify-center">
+    <div
+      className="flex flex-col gap-2 rounded-2xl bg-white border border-gray-100 p-2 shadow-[0_1px_4px_rgba(0,0,0,0.03)] will-change-transform"
+      style={gatherStyle}
+    >
+      <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
         {imageUrl ? (
-          <Image src={imageUrl} alt={name || "item"} width={72} height={72} className="object-cover w-full h-full" />
+          <Image src={imageUrl} alt={name || "item"} fill sizes="(max-width: 480px) 45vw, 200px" className="object-cover" />
         ) : (
-          <span className="text-2xl">👕</span>
+          <span className="text-4xl">👕</span>
         )}
       </div>
-      {name && (
-        <p className="text-[10px] text-[#101010]/50 text-center leading-tight line-clamp-2 w-full">
-          {name}
-        </p>
+      {(name || color) && (
+        <div className="flex flex-col gap-0.5 px-1 pb-1">
+          {name && (
+            <p className="text-[11px] font-medium text-[#101010] leading-tight line-clamp-2">
+              {name}
+            </p>
+          )}
+          {color && (
+            <p className="text-[10px] text-[#101010]/50 leading-tight capitalize">
+              {color}
+            </p>
+          )}
+        </div>
       )}
     </div>
   )
 }
+
+/**
+ * GatherStage — short animated transition played when the user taps
+ * "Начать примерку". Items fly from their grid positions into the avatar
+ * centered below, scale down, and fade out — creating a "собираем образ"
+ * feeling before the waiting game appears.
+ *
+ * Items are rendered as absolutely-positioned clones over a ghost grid
+ * (the ghost grid keeps layout height so the sheet doesn't jump). Each
+ * clone has a staggered CSS transition toward the avatar center.
+ */
+const GatherStage = ({
+  items,
+  avatarUrl,
+  onComplete,
+}: {
+  items: any[]
+  avatarUrl: string | null
+  onComplete: () => void
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const avatarRef = useRef<HTMLDivElement>(null)
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([])
+  const [deltas, setDeltas] = useState<{ dx: number; dy: number }[]>([])
+  const [started, setStarted] = useState(false)
+
+  // Compute per-item translation vectors from their grid cell to the avatar.
+  useLayoutEffect(() => {
+    if (!avatarRef.current) return
+    const avatarRect = avatarRef.current.getBoundingClientRect()
+    const avatarCx = avatarRect.left + avatarRect.width / 2
+    const avatarCy = avatarRect.top + avatarRect.height / 2
+
+    const d = itemRefs.current.map((el) => {
+      if (!el) return { dx: 0, dy: 0 }
+      const r = el.getBoundingClientRect()
+      return {
+        dx: avatarCx - (r.left + r.width / 2),
+        dy: avatarCy - (r.top + r.height / 2),
+      }
+    })
+    setDeltas(d)
+
+    // Trigger on the next frame so the initial position paints first.
+    requestAnimationFrame(() => requestAnimationFrame(() => setStarted(true)))
+  }, [items.length])
+
+  // Complete the stage after the longest item transition finishes.
+  useEffect(() => {
+    if (!started) return
+    const total = 900 + items.length * 80 + 300 // last stagger + fade
+    const t = setTimeout(onComplete, total)
+    return () => clearTimeout(t)
+  }, [started, items.length, onComplete])
+
+  const visibleItems = items.slice(0, 6)
+
+  return (
+    <div ref={containerRef} className="relative flex flex-col items-center gap-6 pb-6">
+      {/* Ghost grid — reserves layout space and provides the start positions */}
+      <div className="grid grid-cols-2 gap-3 w-full">
+        {visibleItems.map((item, i) => {
+          const delta = deltas[i] || { dx: 0, dy: 0 }
+          const delay = i * 80
+          const style: React.CSSProperties = started
+            ? {
+                transform: `translate(${delta.dx}px, ${delta.dy}px) scale(0.18) rotate(${(i % 2 === 0 ? -1 : 1) * 8}deg)`,
+                opacity: 0,
+                transition: `transform 900ms cubic-bezier(0.5, 0, 0.2, 1) ${delay}ms, opacity 700ms ease-in ${delay + 200}ms`,
+              }
+            : {
+                transition: `transform 900ms cubic-bezier(0.5, 0, 0.2, 1), opacity 700ms ease-in`,
+              }
+          return (
+            <div
+              key={i}
+              ref={(el) => { itemRefs.current[i] = el }}
+              className="will-change-transform"
+              style={style}
+            >
+              <ItemCard item={item} />
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Avatar — the gather target. Pulses softly as items arrive. */}
+      <div
+        ref={avatarRef}
+        className="relative w-28 h-28 rounded-full overflow-hidden ring-4 ring-white shadow-[0_12px_48px_rgba(137,174,255,0.45)]"
+        style={{
+          background: "linear-gradient(135deg, #EC9DE2 0%, #89AEFF 100%)",
+          animation: started ? "gatherPulse 900ms ease-out infinite" : undefined,
+        }}
+      >
+        {avatarUrl ? (
+          <Image src={avatarUrl} alt="avatar" fill sizes="112px" className="object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-3xl">✨</div>
+        )}
+      </div>
+
+      <p className="text-sm text-[#101010]/60 text-center">
+        Собираем образ…
+      </p>
+
+      {/* Scoped keyframes */}
+      <style>{`
+        @keyframes gatherPulse {
+          0%   { box-shadow: 0 12px 48px rgba(137,174,255,0.45), 0 0 0 0 rgba(236,157,226,0.55); }
+          70%  { box-shadow: 0 12px 48px rgba(137,174,255,0.45), 0 0 0 18px rgba(236,157,226,0.0); }
+          100% { box-shadow: 0 12px 48px rgba(137,174,255,0.45), 0 0 0 0 rgba(236,157,226,0.0); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
+/**
+ * RefundErrorCard — shown when VTON generation fails.
+ * Communicates that no credits were spent and invites the user to retry,
+ * using a soft gradient illustration with a shield + sparkle motif.
+ */
+const RefundErrorCard = ({
+  message,
+  onRetry,
+  onClose,
+}: {
+  message: string
+  onRetry: () => void
+  onClose: () => void
+}) => (
+  <div className="flex flex-col items-center gap-5 py-4 text-center">
+    {/* Illustration: soft gradient orb with shield + sparkles */}
+    <div className="relative w-32 h-32 flex items-center justify-center">
+      <div
+        className="absolute inset-0 rounded-full opacity-90"
+        style={{
+          background:
+            "radial-gradient(circle at 30% 30%, #FDE7F7 0%, #E8EFFF 55%, #DCE6FF 100%)",
+        }}
+      />
+      <div
+        className="absolute inset-4 rounded-full"
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(236,157,226,0.35), rgba(137,174,255,0.35))",
+          animation: "refundFloat 2.4s ease-in-out infinite",
+        }}
+      />
+      <div
+        className="relative w-16 h-16 rounded-full flex items-center justify-center shadow-[0_6px_20px_rgba(137,174,255,0.35)]"
+        style={{ background: "linear-gradient(135deg, #EC9DE2 0%, #89AEFF 100%)" }}
+      >
+        <ShieldCheck className="w-8 h-8 text-white" strokeWidth={2.2} />
+      </div>
+      {/* Sparkles */}
+      <Sparkles className="absolute top-1 right-4 w-4 h-4 text-[#EC9DE2]" />
+      <Sparkles className="absolute bottom-3 left-3 w-3 h-3 text-[#89AEFF]" />
+      <style>{`
+        @keyframes refundFloat {
+          0%, 100% { transform: scale(1); opacity: 0.9; }
+          50%      { transform: scale(1.08); opacity: 1; }
+        }
+      `}</style>
+    </div>
+
+    <div className="space-y-2 max-w-xs">
+      <p className="font-semibold text-[#101010]">Не получилось создать примерку</p>
+      <p className="text-sm text-[#101010]/60 leading-relaxed">{message}</p>
+      <div
+        className="inline-flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-full text-[11px] font-medium"
+        style={{
+          background: "linear-gradient(135deg, rgba(236,157,226,0.12), rgba(137,174,255,0.12))",
+          color: "#6E6EA3",
+        }}
+      >
+        <ShieldCheck className="w-3.5 h-3.5" />
+        Токены не списаны — мы вернули их вам
+      </div>
+    </div>
+
+    <div className="flex flex-col gap-3 w-full pt-1">
+      <button
+        onClick={onRetry}
+        className="w-full h-12 rounded-2xl text-white font-semibold text-sm transition-opacity hover:opacity-90"
+        style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+      >
+        <span className="flex items-center justify-center gap-2">
+          <Sparkles className="w-4 h-4" />
+          Попробовать снова
+        </span>
+      </button>
+      <button
+        onClick={onClose}
+        className="text-sm text-[#101010]/60 underline underline-offset-2"
+      >
+        Закрыть
+      </button>
+    </div>
+  </div>
+)
 
 /** Small item circle used in completed state */
 const ItemCircle = ({ item }: { item: any }) => {
@@ -583,11 +808,14 @@ export function TryOnSheet() {
 
   // Loading experience state
   const [showGame, setShowGame] = useState(false)
+  // "gathering" plays a ~1.8s animation before the game/progress appears
+  const [loadingPhase, setLoadingPhase] = useState<"gathering" | "ready">("gathering")
 
-  // Reset game state when loading starts
+  // Reset game/gathering state when loading starts
   useEffect(() => {
     if (sheetOpen && session?.status === "loading") {
       setShowGame(false)
+      setLoadingPhase("gathering")
     }
   }, [sheetOpen, session?.status])
 
@@ -758,14 +986,14 @@ export function TryOnSheet() {
                   Примерка займёт 30–60 секунд
                 </p>
 
-                {/* Outfit title + item cards */}
+                {/* Outfit title + item cards (2-col grid) */}
                 {session?.suggestion?.title && (
-                  <p className="text-sm font-semibold text-[#101010]">
+                  <p className="text-base font-semibold text-[#101010]">
                     {session.suggestion.title}
                   </p>
                 )}
                 {items.length > 0 && (
-                  <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none -mx-1 px-1">
+                  <div className="grid grid-cols-2 gap-3">
                     {items.slice(0, 6).map((item: any, i: number) => (
                       <ItemCard key={i} item={item} />
                     ))}
@@ -787,36 +1015,46 @@ export function TryOnSheet() {
         {/* ---- LOADING ---- */}
         {session?.status === "loading" && (
           <div className="flex flex-col gap-4 pb-6">
-            <div className="flex items-center gap-2 mb-1">
-              <span
-                className="text-base font-semibold"
-                style={{
-                  background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                }}
-              >
-                Создаём примерку…
-              </span>
-            </div>
+            {loadingPhase === "gathering" ? (
+              <GatherStage
+                items={items}
+                avatarUrl={session.avatarUrl}
+                onComplete={() => setLoadingPhase("ready")}
+              />
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  <span
+                    className="text-base font-semibold"
+                    style={{
+                      background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
+                      WebkitBackgroundClip: "text",
+                      WebkitTextFillColor: "transparent",
+                    }}
+                  >
+                    Создаём примерку…
+                  </span>
+                </div>
 
-            <LoadingExperience
-              showGame={showGame}
-              setShowGame={setShowGame}
-              progress={session.progress}
-            />
+                <LoadingExperience
+                  showGame={showGame}
+                  setShowGame={setShowGame}
+                  progress={session.progress}
+                />
 
-            <p className="text-xs text-center text-neutral-400 mt-1">
-              Можно свернуть и подождать в фоне
-            </p>
+                <p className="text-xs text-center text-neutral-400 mt-1">
+                  Можно свернуть и подождать в фоне
+                </p>
 
-            <button
-              onClick={handleMinimize}
-              className="w-full h-10 rounded-2xl border border-[#292929]/20 text-[#292929] text-sm font-medium flex items-center justify-center gap-1.5 bg-white"
-            >
-              <ChevronDown className="w-4 h-4" />
-              Свернуть
-            </button>
+                <button
+                  onClick={handleMinimize}
+                  className="w-full h-10 rounded-2xl border border-[#292929]/20 text-[#292929] text-sm font-medium flex items-center justify-center gap-1.5 bg-white"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                  Свернуть
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -893,28 +1131,16 @@ export function TryOnSheet() {
 
         {/* ---- ERROR ---- */}
         {session?.status === "error" && (
-          <div className="flex flex-col items-center gap-5 py-6 text-center">
-            <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center">
-              <AlertCircle className="w-8 h-8 text-orange-400" />
-            </div>
-            <div className="space-y-2">
-              <p className="font-semibold text-[#101010]">Не удалось создать примерку</p>
-              <p className="text-sm text-[#101010]/60 leading-relaxed">
-                {session.error ?? "Произошла ошибка. Ваши кредиты не списаны — попробуйте ещё раз."}
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 w-full">
-              <GradientButton onClick={() => clearSession()}>
-                Попробовать снова
-              </GradientButton>
-              <button
-                onClick={handleClose}
-                className="text-sm text-[#101010]/60 underline underline-offset-2"
-              >
-                Закрыть
-              </button>
-            </div>
-          </div>
+          <RefundErrorCard
+            message={
+              session.error
+                ? session.error.replace(/\s*Ваши?\s*кредиты\s*не\s*списаны.*$/i, "").trim() ||
+                  "Что-то пошло не так при создании образа."
+                : "Что-то пошло не так при создании образа."
+            }
+            onRetry={() => clearSession()}
+            onClose={handleClose}
+          />
         )}
       </CommonSheet>
 
