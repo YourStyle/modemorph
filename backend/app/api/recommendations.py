@@ -42,6 +42,206 @@ _SLOT_MAP = {
 }
 
 
+# Reverse mapping: slot name → clothing_types belonging to that slot.
+# Used for gap analysis queries (find catalog items for a missing slot).
+_SLOT_TO_TYPES: dict[str, list[str]] = {}
+for _ct, _slot in _SLOT_MAP.items():
+    _SLOT_TO_TYPES.setdefault(_slot, []).append(_ct)
+
+
+# Text prompts per slot for CLIP text-retrieval when filling a gap.
+_GAP_PROMPTS = {
+    "top": "stylish top t-shirt shirt blouse",
+    "layer": "cardigan sweater hoodie pullover",
+    "bottom": "pants jeans trousers skirt",
+    "outerwear": "coat jacket winter outerwear",
+    "dress": "dress",
+    "set": "matching set suit",
+}
+
+# Minimum count per slot before we consider it "complete".
+# Values are intentionally conservative — overreporting gaps is better UX
+# than hiding real gaps. Seasonality gate is applied separately.
+_MIN_ITEMS_PER_SLOT = {
+    "top": 4,
+    "bottom": 3,
+    "outerwear": 1,  # only matters in cold weather, see _detect_gaps
+    "dress": 0,      # optional — only flag for women
+    "layer": 2,
+    "set": 0,        # optional
+}
+
+
+def _detect_gaps(user_items: list, weather: dict, gender: str | None) -> list[str]:
+    """Return list of slot names where the user is under-equipped.
+    Contextualized by weather (outerwear only in cold) and gender
+    (dress gap only for women)."""
+    counts: dict[str, int] = {s: 0 for s in _MIN_ITEMS_PER_SLOT}
+    for item in user_items:
+        slot = _SLOT_MAP.get(item.get("clothing_type") or "")
+        if slot:
+            counts[slot] = counts.get(slot, 0) + 1
+
+    gaps = []
+    temp = weather.get("temperature", 15) if weather else 15
+    try:
+        temp = float(temp)
+    except (TypeError, ValueError):
+        temp = 15.0
+
+    for slot, minimum in _MIN_ITEMS_PER_SLOT.items():
+        if slot == "set":
+            continue  # never recommend sets as a gap — too specific
+        if slot == "outerwear":
+            # Only flag when the user is genuinely exposed to cold and owns nothing
+            if temp >= 15 or counts.get(slot, 0) >= 1:
+                continue
+            gaps.append(slot)
+            continue
+        if slot == "dress":
+            if gender != "female":
+                continue
+            if counts.get(slot, 0) >= 2:
+                continue
+            gaps.append(slot)
+            continue
+        if minimum == 0:
+            continue
+        if counts.get(slot, 0) < minimum:
+            gaps.append(slot)
+    return gaps
+
+
+async def _build_gap_section(
+    db: AsyncSession,
+    user_id: str,
+    gaps: list[str],
+    weather: dict,
+    gender: str | None,
+    disliked_ids: set,
+    ai_url: str | None,
+) -> dict | None:
+    """Build a 'wardrobe gaps' section: one suggestion per gap slot, each
+    holding up to 5 catalog items the user could buy. Uses CLIP text
+    retrieval so we don't burn a Gemini call on deterministic fill-the-slot
+    logic."""
+    if not gaps or not ai_url:
+        return None
+
+    temp = weather.get("temperature", 15) if weather else 15
+    suggestions = []
+    async with httpx.AsyncClient(timeout=20.0) as clip_client:
+        for slot in gaps:
+            prompt_base = _GAP_PROMPTS.get(slot, slot)
+            flavor = ""
+            try:
+                t = float(temp)
+                if t < 0:
+                    flavor = " winter warm"
+                elif t < 10:
+                    flavor = " cold autumn"
+                elif t < 20:
+                    flavor = " transitional"
+                else:
+                    flavor = " light summer"
+            except (TypeError, ValueError):
+                pass
+            gender_hint = ""
+            if gender == "female":
+                gender_hint = " women"
+            elif gender == "male":
+                gender_hint = " men"
+            query = f"{prompt_base}{flavor}{gender_hint}".strip()
+
+            try:
+                resp = await clip_client.post(
+                    f"{ai_url}/clip/search/text",
+                    json={"query_text": query, "k": 30},
+                )
+                if resp.status_code != 200:
+                    continue
+                hits = resp.json().get("results", [])
+            except Exception as e:
+                logger.warning(f"[Gap] CLIP search failed for slot={slot}: {e}")
+                continue
+
+            # Post-filter to actually-in-slot items — CLIP text retrieval
+            # can surface a coat for a "pants" query if captions overlap.
+            allowed_types = set(_SLOT_TO_TYPES.get(slot, []))
+            candidate_ids = []
+            for h in hits:
+                hid = h.get("id")
+                htype = (h.get("clothing_type") or "").lower()
+                if not hid or hid in disliked_ids:
+                    continue
+                if allowed_types and htype not in allowed_types:
+                    continue
+                candidate_ids.append(hid)
+                if len(candidate_ids) >= 5:
+                    break
+
+            if not candidate_ids:
+                continue
+
+            rows = await db.execute(
+                text("""
+                    SELECT id, item_name, image_url, clothing_type, color, url, notes,
+                           gender, temp_min, temp_max
+                    FROM wardrobe_items
+                    WHERE id = ANY(:ids) AND COALESCE(is_hidden, false) = false
+                """),
+                {"ids": candidate_ids},
+            )
+            items = []
+            for r in rows.mappings().all():
+                row = dict(r)
+                if row.get("temp_min") is not None and temp < row["temp_min"]:
+                    continue
+                if row.get("temp_max") is not None and temp > row["temp_max"]:
+                    continue
+                if gender and row.get("gender") and row["gender"] != gender:
+                    continue
+                brand = (row.get("notes") or "").split(":")[0] or None
+                items.append({
+                    "id": row["id"],
+                    "item_source": "catalog",
+                    "name": row.get("item_name", ""),
+                    "image_url": row.get("image_url"),
+                    "color": row.get("color"),
+                    "clothing_type": row.get("clothing_type"),
+                    "url": row.get("url"),
+                    "brand": brand,
+                    "user_id": None,
+                })
+
+            if len(items) >= 3:
+                slot_title_ru = {
+                    "top": "верх",
+                    "bottom": "низ",
+                    "outerwear": "верхнюю одежду",
+                    "dress": "платье",
+                    "layer": "свитер или кардиган",
+                }.get(slot, slot)
+                items_hash = hashlib.md5(
+                    ",".join(str(it["id"]) for it in items).encode()
+                ).hexdigest()[:8]
+                suggestions.append({
+                    "id": f"gap_{slot}_{items_hash}",
+                    "title": f"Добавь {slot_title_ru}",
+                    "items": items,
+                    "suggested_items_count": len(items),
+                    "gap_slot": slot,
+                })
+
+    if not suggestions:
+        return None
+    return {
+        "title": "Чего не хватает в гардеробе",
+        "source": "wardrobe_gap",  # marker so _enrich_sections skips slot-dedup
+        "suggestions": suggestions,
+    }
+
+
 def _dedup_by_slot(items: list) -> list:
     """Keep max 1 item per category slot. Prefer user items; items without a known
     clothing_type pass through untouched (accessories, footwear, etc.)."""
@@ -138,6 +338,9 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
     catalog_map = {r["id"]: dict(r) for r in catalog_items.mappings().all()}
 
     for section in sections:
+        # Gap sections list multiple catalog items of the SAME slot on purpose
+        # (e.g. 5 pants to pick from). Skipping slot-dedup keeps the list intact.
+        is_gap_section = section.get("source") == "wardrobe_gap"
         for sug in section.get("suggestions", []):
             enriched_items = []
             for item in sug.get("items", []):
@@ -171,8 +374,12 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                     item["item_source"] = "catalog"
                     item["user_id"] = None
                     enriched_items.append(item)
-            # Clean up already-cached outfits with duplicate slots (pre-fix cache).
-            sug["items"] = _dedup_by_slot(enriched_items)
+            if is_gap_section:
+                # Preserve all items in the slot — that's the whole point of the section.
+                sug["items"] = enriched_items
+            else:
+                # Clean up already-cached outfits with duplicate slots (pre-fix cache).
+                sug["items"] = _dedup_by_slot(enriched_items)
         # Drop suggestions with too few items (post-dedup can drop below 3)
         section["suggestions"] = [s for s in section.get("suggestions", []) if len(s.get("items") or []) >= 3]
 
@@ -487,6 +694,28 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                 "source": section_type,
                 "suggestions": suggestions,
             })
+
+    # Wardrobe gap analysis — surface missing slots so the user sees
+    # genuinely *new* categories, not variations of what they already own.
+    # Runs independently of Gemini and is cheap (CLIP text retrieval only).
+    try:
+        gaps = _detect_gaps(wardrobe_items, weather, gender)
+        if gaps:
+            logger.info(f"[Recs POST] Detected wardrobe gaps for user {user['id']}: {gaps}")
+            gap_section = await _build_gap_section(
+                db=db,
+                user_id=user["id"],
+                gaps=gaps,
+                weather=weather,
+                gender=gender,
+                disliked_ids=disliked_ids,
+                ai_url=ai_url,
+            )
+            if gap_section:
+                # Insert near the top — it's the most action-oriented section.
+                sections.insert(min(1, len(sections)), gap_section)
+    except Exception as e:
+        logger.warning(f"[Recs POST] Gap analysis failed: {e}")
 
     # Save to DB
     sections_json = json_lib.dumps(sections, ensure_ascii=False, default=str)

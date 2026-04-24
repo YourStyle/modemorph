@@ -124,24 +124,53 @@ class FAISSIndexService:
         self.meta.append({'id': item_id, **meta})
         self._save()
 
-    def search(self, query_emb: np.ndarray, k: int = 20) -> list:
+    def search(self, query_emb: np.ndarray, k: int = 20, apply_mmr: bool = True, mmr_diversity: float = 0.3) -> list:
+        """Similarity search with optional MMR diversity re-ranking.
+
+        Without MMR, raw nearest-neighbors are homogeneous — 50 black t-shirts
+        from a wardrobe full of black t-shirts. MMR penalizes candidates too
+        similar to already-picked ones, giving the user variety within style.
+        """
         if self.index is None or self.index.ntotal == 0:
             return []
         vec = query_emb.reshape(1, -1).astype(np.float32)
         norm = np.linalg.norm(vec)
         if norm > 0:
             vec = vec / norm
-        k = min(k, self.index.ntotal)
-        scores, indices = self.index.search(vec, k)
-        results = []
+
+        # Fetch 3x candidates when MMR is active, so re-ranking has room to work.
+        fetch_k = min(k * 3, self.index.ntotal) if apply_mmr else min(k, self.index.ntotal)
+        scores, indices = self.index.search(vec, fetch_k)
+
+        valid_indices = [(i, int(idx)) for i, (_, idx) in enumerate(zip(scores[0], indices[0]))
+                         if 0 <= idx < len(self.meta)]
+
+        candidate_vecs = None
+        if apply_mmr and valid_indices:
+            faiss_idxs = [fi for _, fi in valid_indices]
+            candidate_vecs = np.stack([self.index.reconstruct(fi) for fi in faiss_idxs])
+
+        candidates = []
+        vec_pos = 0
         for score, idx in zip(scores[0], indices[0]):
             if idx < 0 or idx >= len(self.meta):
                 continue
             meta = self.meta[idx]
             final_score = float(score) + _freshness_boost(meta.get('created_at', ''))
-            results.append({**meta, 'score': final_score})
-        results.sort(key=lambda x: x['score'], reverse=True)
-        return results
+            item = {**meta, 'score': final_score}
+            if apply_mmr:
+                item['_vec_idx'] = vec_pos
+            vec_pos += 1
+            candidates.append(item)
+
+        candidates.sort(key=lambda x: x['score'], reverse=True)
+
+        if apply_mmr and candidate_vecs is not None and len(candidates) > k:
+            candidates = self._mmr_rerank(candidates, candidate_vecs, k, diversity=mmr_diversity)
+
+        for c in candidates[:k]:
+            c.pop('_vec_idx', None)
+        return candidates[:k]
 
     def search_with_penalties(
         self,
@@ -185,12 +214,13 @@ class FAISSIndexService:
             if c_norm > 0:
                 c_vec = c_vec / c_norm
 
-        # Batch-reconstruct all candidate vectors at once (faster than per-item)
+        # Batch-reconstruct all candidate vectors at once — needed for both
+        # the penalty math and MMR diversity re-ranking.
         need_penalty = d_vec is not None or c_vec is not None
         candidate_vecs = None
         valid_indices = [(i, int(idx)) for i, (_, idx) in enumerate(zip(scores[0], indices[0]))
                          if 0 <= idx < len(self.meta)]
-        if need_penalty and valid_indices:
+        if valid_indices:
             faiss_idxs = [fi for _, fi in valid_indices]
             candidate_vecs = np.stack([self.index.reconstruct(fi) for fi in faiss_idxs])
 
@@ -228,8 +258,9 @@ class FAISSIndexService:
         # Sort by final score descending
         candidates.sort(key=lambda x: x['score'], reverse=True)
 
-        # MMR diversity re-ranking: ensure variety in top-k results
-        if need_penalty and candidate_vecs is not None and len(candidates) > k:
+        # MMR diversity re-ranking — apply unconditionally so a dislike-free
+        # user still gets varied results instead of 50 clones of their mean.
+        if candidate_vecs is not None and len(candidates) > k:
             candidates = self._mmr_rerank(candidates, candidate_vecs, k, diversity=0.3)
 
         # Clean up internal fields

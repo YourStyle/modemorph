@@ -77,6 +77,14 @@ class UserClusterService:
             return np.array(emb_list, dtype=np.float32)
         return None
 
+    def get_cluster_popular_items(self, cluster_id: int) -> list:
+        """Return list of {id, score} for items popular within the user's taste cluster.
+        Score is a time-decayed like count from outfit_items joined through user_likes."""
+        entry = self.data.get('cluster_popular_items', {}).get(str(cluster_id))
+        if not entry:
+            return []
+        return entry if isinstance(entry, list) else []
+
     async def build_clusters(self, db_pool, n_clusters: int = 8) -> dict:
         """Build user clusters from wardrobe embeddings + dislike data.
 
@@ -162,21 +170,68 @@ class UserClusterService:
             if mean is not None:
                 cluster_dislike_embeddings[str(cid)] = mean.tolist()
 
-        # 5. Persist
+        # 5. Aggregate LIKED items per cluster — "users like you also liked X".
+        #    Time-decayed: half-life ~30 days so stale hits don't dominate forever.
+        cluster_popular_items: dict[str, list] = {}
+        total_likes = 0
+        try:
+            async with db_pool.acquire() as conn:
+                like_rows = await conn.fetch("""
+                    SELECT ul.user_id,
+                           oi.wardrobe_item_id AS item_id,
+                           EXTRACT(EPOCH FROM (NOW() - ul.created_at)) / 86400.0 AS age_days
+                    FROM user_likes ul
+                    JOIN outfit_items oi ON oi.outfit_id = ul.outfit_id
+                    WHERE ul.created_at > NOW() - INTERVAL '180 days'
+                """)
+            total_likes = len(like_rows)
+
+            # item_id -> { cluster_id -> weighted_count }
+            per_cluster_scores: dict[int, dict[int, float]] = {}
+            import math as _math
+            HALFLIFE_DAYS = 30.0
+            for row in like_rows:
+                uid = str(row['user_id'])
+                cluster_id = user_assignments.get(uid)
+                if cluster_id is None:
+                    continue
+                item_id = row['item_id']
+                if item_id is None:
+                    continue
+                age = float(row['age_days'] or 0.0)
+                weight = _math.exp(-0.693 * age / HALFLIFE_DAYS)
+                bucket = per_cluster_scores.setdefault(cluster_id, {})
+                bucket[item_id] = bucket.get(item_id, 0.0) + weight
+
+            # Keep top-30 per cluster
+            TOP_N = 30
+            for cid, bucket in per_cluster_scores.items():
+                ranked = sorted(bucket.items(), key=lambda kv: kv[1], reverse=True)[:TOP_N]
+                cluster_popular_items[str(cid)] = [
+                    {"id": iid, "score": round(score, 4)} for iid, score in ranked
+                ]
+        except Exception as e:
+            logger.warning(f"[Clusters] Failed to aggregate likes: {e}")
+
+        # 6. Persist
         self.data = {
             "n_clusters": k,
             "user_assignments": user_assignments,
             "cluster_dislike_embeddings": cluster_dislike_embeddings,
+            "cluster_popular_items": cluster_popular_items,
         }
         self._save()
 
         logger.info(
             f"[Clusters] Built {k} clusters from {len(user_ids)} users, "
-            f"{len(cluster_dislike_embeddings)} clusters have dislike vectors"
+            f"{len(cluster_dislike_embeddings)} have dislike vectors, "
+            f"{len(cluster_popular_items)} have popular-item lists ({total_likes} likes)"
         )
         return {
             "users": len(user_ids),
             "clusters": k,
             "clusters_with_dislikes": len(cluster_dislike_embeddings),
+            "clusters_with_popular_items": len(cluster_popular_items),
             "total_dislikes": len(dislike_rows),
+            "total_likes": total_likes,
         }

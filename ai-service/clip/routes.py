@@ -279,6 +279,82 @@ async def recommend(request: Request, body: RecommendRequest):
     else:
         results = rec.recommend_for_user(embeddings, k=clamped_k)
 
+    # 5. Blend in cluster-popular items ("users like you also liked X").
+    #    This breaks the filter bubble: CLIP nearest-neighbors alone would
+    #    surface things the user already has; popular items bring novelty.
+    popular_slice = 0
+    if user_cluster is not None:
+        popular_items = cluster_service.get_cluster_popular_items(user_cluster)
+        if popular_items:
+            # Reserve ~20% of slots for popular items. Fetch DB metadata for them
+            # so they look identical to FAISS results downstream.
+            reserved = max(1, clamped_k // 5)
+            existing_ids = {r.get('id') for r in results}
+            popular_ids_needed = []
+            for pop in popular_items:
+                pid = pop.get('id')
+                if pid is None or pid in existing_ids or pid in exclude_ids:
+                    continue
+                popular_ids_needed.append(pid)
+                if len(popular_ids_needed) >= reserved:
+                    break
+
+            if popular_ids_needed:
+                try:
+                    async with pool.acquire() as conn:
+                        pop_meta_rows = await conn.fetch(
+                            "SELECT id, item_name, image_url, clothing_type, color, created_at "
+                            "FROM wardrobe_items WHERE id = ANY($1) "
+                            "AND COALESCE(is_hidden, false) = false",
+                            popular_ids_needed,
+                        )
+                    pop_meta = {r['id']: dict(r) for r in pop_meta_rows}
+                    popular_results = []
+                    for pop in popular_items:
+                        pid = pop.get('id')
+                        if pid not in pop_meta:
+                            continue
+                        m = pop_meta[pid]
+                        popular_results.append({
+                            'id': m['id'],
+                            'name': m.get('item_name'),
+                            'image_url': m.get('image_url'),
+                            'clothing_type': m.get('clothing_type'),
+                            'color': m.get('color'),
+                            'created_at': str(m.get('created_at', '')),
+                            # Score inherits from cluster popularity (normalized roughly
+                            # into [0, 1] so it doesn't dominate CLIP scores ~[0.5, 0.9]).
+                            'score': 0.7 + min(0.2, float(pop.get('score', 0.0)) / 20.0),
+                            'source': 'cluster_popular',
+                        })
+                        if len(popular_results) >= reserved:
+                            break
+
+                    # Interleave: every ~5th slot goes to popular, rest to CLIP.
+                    merged = []
+                    pop_iter = iter(popular_results)
+                    clip_iter = iter(results)
+                    step = max(1, clamped_k // max(1, len(popular_results)))
+                    for i in range(clamped_k):
+                        pick = None
+                        if i % step == 0 and i > 0:
+                            pick = next(pop_iter, None)
+                        if pick is None:
+                            pick = next(clip_iter, None)
+                        if pick is None:
+                            pick = next(pop_iter, None)
+                        if pick is None:
+                            break
+                        merged.append(pick)
+                    # Append any leftover popular items at the tail (rare but keeps
+                    # us from silently dropping collaborative signal).
+                    for leftover in pop_iter:
+                        merged.append(leftover)
+                    results = merged[:clamped_k]
+                    popular_slice = len(popular_results)
+                except Exception as e:
+                    logger.warning(f"[recommend] Failed to merge cluster popular items: {e}")
+
     # Log recommendations for feedback loop (async, non-blocking)
     import uuid
     rec_session_id = str(uuid.uuid4())[:12]
@@ -299,6 +375,7 @@ async def recommend(request: Request, body: RecommendRequest):
         'profile_size': len(embeddings),
         'dislikes_count': len(dislike_embeddings),
         'cluster_id': user_cluster,
+        'popular_slice': popular_slice,
         'rec_session_id': rec_session_id,
     }
 
