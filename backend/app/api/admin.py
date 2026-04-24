@@ -562,7 +562,7 @@ async def grant_credits(request: Request, user: dict = Depends(get_admin_user), 
 
     if sub_duration in ("monthly", "yearly"):
         duration = "1 month" if sub_duration == "monthly" else "1 year"
-        await db.execute(text("INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at) VALUES (:pid, :stype, 'active', NOW(), NOW() + :dur::interval)"),
+        await db.execute(text("INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at) VALUES (:pid, :stype, 'active', NOW(), NOW() + CAST(:dur AS interval))"),
             {"pid": pid, "stype": sub_duration, "dur": duration})
         await db.execute(text("UPDATE limits SET wardrobe_items_anlyzed=999, ai_requests=999, ideas_viewed=999, outfits_saved=999, vton_used=999 WHERE user_profile_id = :pid"), {"pid": pid})
 
@@ -661,7 +661,7 @@ async def gift_user(
             text("""
                 INSERT INTO user_subscriptions
                   (user_profile_id, subscription_type, status, start_date, expires_at)
-                VALUES (:pid, :stype, 'active', NOW(), NOW() + :dur::interval)
+                VALUES (:pid, :stype, 'active', NOW(), NOW() + CAST(:dur AS interval))
             """),
             {"pid": pid, "stype": sub_duration, "dur": duration_sql},
         )

@@ -120,7 +120,7 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
         await db.execute(
             text("""
                 INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at)
-                VALUES (:pid, :stype, 'active', NOW(), NOW() + :dur::interval)
+                VALUES (:pid, :stype, 'active', NOW(), NOW() + CAST(:dur AS interval))
             """),
             {"pid": profile_id, "stype": sub_type, "dur": duration},
         )
