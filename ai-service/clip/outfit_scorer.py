@@ -39,13 +39,20 @@ CHECKPOINT_FILE = CHECKPOINT_DIR / "checkpoint.pt"
 # Set to the actual checkpoint path inside the unzipped bundle. The upstream
 # zip contains several checkpoints; the one we want is the CLIP CP model.
 # If the unzipped layout changes upstream we'll need to adjust this glob.
+# Upstream ships checkpoints directly in the root of the zip with .pth
+# extensions and a typo — "compatibillity" with two l's. We match both the
+# typo and the correct spelling in case they fix it later, and we
+# explicitly prefer the CP (Compatibility Prediction) checkpoint since the
+# complementary-retrieval variant is fine-tuned further and scores
+# differently on compatibility tasks.
 CHECKPOINT_CANDIDATE_GLOBS = [
-    "**/outfit_clip_transformer/best.pt",
-    "**/outfit_clip_transformer/**/best.pt",
-    "**/compatibility*/outfit_clip_transformer*.pt",
-    "**/compatibility*/best.pt",
-    "**/*clip*compatibility*.pt",
-    "**/best.pt",  # last-resort fallback
+    "**/compatibillity*clip*best*.pth",  # current upstream filename (typo kept as-is)
+    "**/compatibility*clip*best*.pth",
+    "**/compatibillity*.pth",
+    "**/compatibility*.pth",
+    "**/*clip*compatibility*.pt*",
+    "**/outfit_clip_transformer*best*.pt*",
+    "**/best*.pt*",                       # last-resort fallback
 ]
 GDRIVE_CHECKPOINT_ID = "1mzNqGBmd8UjVJjKwVa5GdGYHKutZKSSi"
 
@@ -103,9 +110,13 @@ def _ensure_checkpoint() -> Optional[Path]:
             break
 
     if not found:
+        all_weights = (
+            list(CHECKPOINT_DIR.rglob("*.pth")) + list(CHECKPOINT_DIR.rglob("*.pt"))
+        )
         logger.error(
-            f"[OutfitTransformer] Could not locate .pt file in unzipped bundle. "
-            f"Contents: {list(CHECKPOINT_DIR.rglob('*.pt'))[:10]}"
+            f"[OutfitTransformer] Could not locate .pt/.pth file matching known "
+            f"patterns in unzipped bundle. Weight files found: "
+            f"{[str(p.relative_to(CHECKPOINT_DIR)) for p in all_weights[:10]]}"
         )
         return None
 
