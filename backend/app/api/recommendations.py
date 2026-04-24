@@ -242,6 +242,30 @@ async def _build_gap_section(
     }
 
 
+import re as _re
+
+_LATIN_PARENS_RE = _re.compile(r"\s*[(\[][^)\]]*[A-Za-z][^)\]]*[)\]]\s*")
+_LATIN_WORD_RE = _re.compile(r"\s*[-/]?\s*\b[A-Za-z][A-Za-z\- ]*\b\s*[-/]?\s*")
+
+
+def _clean_title(title: str) -> str:
+    """Strip Latin-letter parentheticals and bare English words from a title.
+
+    Gemini occasionally annotates Russian section titles with English
+    clarifications ("На каждый день (casual mix)", "Офис — smart casual") —
+    we don't want those on the client since the source badge already
+    communicates the semantics in Russian. This is a defensive post-processor
+    that runs server-side even if the prompt fails to constrain output.
+    """
+    if not title or not isinstance(title, str):
+        return title
+    cleaned = _LATIN_PARENS_RE.sub(" ", title)
+    cleaned = _LATIN_WORD_RE.sub(" ", cleaned)
+    # Collapse whitespace and trim stray punctuation left on the edges
+    cleaned = _re.sub(r"\s+", " ", cleaned).strip(" ,.-—–/·•|")
+    return cleaned or title  # never return empty — fall back to original
+
+
 def _dedup_by_slot(items: list) -> list:
     """Keep max 1 item per category slot. Prefer user items; items without a known
     clothing_type pass through untouched (accessories, footwear, etc.)."""
@@ -338,10 +362,16 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
     catalog_map = {r["id"]: dict(r) for r in catalog_items.mappings().all()}
 
     for section in sections:
+        # Clean titles on read too — pre-fix caches may still contain English
+        # appendages injected by Gemini before the prompt was tightened.
+        if section.get("title"):
+            section["title"] = _clean_title(section["title"])
         # Gap sections list multiple catalog items of the SAME slot on purpose
         # (e.g. 5 pants to pick from). Skipping slot-dedup keeps the list intact.
         is_gap_section = section.get("source") == "wardrobe_gap"
         for sug in section.get("suggestions", []):
+            if sug.get("title"):
+                sug["title"] = _clean_title(sug["title"])
             enriched_items = []
             for item in sug.get("items", []):
                 item_id = int(item.get("id", 0)) if item.get("id") else 0
@@ -567,12 +597,13 @@ MANDATORY RULES FOR EVERY OUTFIT:
 3. FORBIDDEN: 2 items of same type (no 2 pants, 2 jackets, 2 shirts). Strictly 1 per slot.
 4. Consider weather. No heavy coats in heat, no shorts in freezing cold.
 5. Consider gender — no dresses for men.
-6. Short stylish outfit names (3-5 words), in Russian.
-7. Use EXACT item IDs from provided lists.
-8. Try to use MAXIMUM items from the wardrobe, avoid repeating the same items across outfits.
+6. Short stylish outfit names (3-5 words), EXCLUSIVELY IN RUSSIAN. No English words, no Latin characters, no parenthetical English translations or style annotations like "(casual)", "(smart casual)", "mix", "total look". Plain Russian only.
+7. Section titles (the "title" field on each section) MUST also be plain Russian from the SECTION THEMES list above — do not append English clarifications, mode labels, or style tags.
+8. Use EXACT item IDs from provided lists.
+9. Try to use MAXIMUM items from the wardrobe, avoid repeating the same items across outfits.
 
 Response: JSON array, no markdown.
-[{{"title":"Section name","section_type":"user_only|mix|partner_only","suggestions":[{{"title":"Outfit name","item_ids":[id1,id2,id3,id4,id5]}}]}}]"""
+[{{"title":"Название раздела на русском","section_type":"user_only|mix|partner_only","suggestions":[{{"title":"Название образа на русском","item_ids":[id1,id2,id3,id4,id5]}}]}}]"""
 
     user_items_block = f"User wardrobe items [USER]:\n{wardrobe_json}"
     partner_items_block = f"\n\nPartner items [PARTNER]:\n{partner_json}" if partner_json else ""
@@ -684,13 +715,13 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                 items_hash = hashlib.md5(",".join(str(it["id"]) for it in outfit_items).encode()).hexdigest()[:8]
                 suggestions.append({
                     "id": f"{section_type}_{items_hash}",
-                    "title": sug.get("title", "Образ"),
+                    "title": _clean_title(sug.get("title", "Образ")),
                     "items": outfit_items,
                     "suggested_items_count": len(outfit_items),
                 })
         if suggestions:
             sections.append({
-                "title": gs.get("title", "Рекомендации"),
+                "title": _clean_title(gs.get("title", "Рекомендации")),
                 "source": section_type,
                 "suggestions": suggestions,
             })
