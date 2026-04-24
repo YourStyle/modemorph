@@ -657,11 +657,19 @@ async def gift_user(
     # Grant subscription + unlock limits
     if sub_duration in ("monthly", "yearly"):
         months = 1 if sub_duration == "monthly" else 12
+        # ON CONFLICT handles users who already have a subscription row —
+        # we extend from the later of (current expiry, now) so the gift stacks
+        # on top of an active subscription instead of overwriting it.
         await db.execute(
             text("""
                 INSERT INTO user_subscriptions
                   (user_profile_id, subscription_type, status, start_date, expires_at)
                 VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))
+                ON CONFLICT (user_profile_id) DO UPDATE
+                SET subscription_type = EXCLUDED.subscription_type,
+                    status = 'active',
+                    start_date = NOW(),
+                    expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(months => :months)
             """),
             {"pid": pid, "stype": sub_duration, "months": months},
         )
