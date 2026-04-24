@@ -13,6 +13,32 @@ from app.core.deps import get_current_user
 
 router = APIRouter()
 
+# Boolean columns on wardrobe_user_items — clients (and the detect-clothing AI
+# response) historically send these as free-form strings like "нет" / "есть" /
+# "yes" / "no" or even a print description. Coerce to bool at the boundary so
+# INSERT/UPDATE doesn't crash with asyncpg DataError.
+_BOOL_FIELDS = {"has_print", "has_details", "is_basic", "is_hidden"}
+_FALSY_STRINGS = {"", "no", "нет", "false", "0", "none", "null"}
+
+
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() not in _FALSY_STRINGS
+    return bool(value)
+
+
+def _normalize_fields(fields: dict) -> dict:
+    for k in list(fields.keys()):
+        if k in _BOOL_FIELDS:
+            fields[k] = _coerce_bool(fields[k])
+    return fields
+
 
 @router.get("")
 async def get_items(
@@ -66,6 +92,7 @@ async def create_item(
                "size_type", "basic_material_id", "is_basic", "shop_url",
                "item_name_en", "description_en", "temp_min", "temp_max"]
     fields = {k: body[k] for k in allowed if k in body and body[k] is not None}
+    fields = _normalize_fields(fields)
     fields["user_id"] = user["id"]
 
     cols = ", ".join(f'"{k}"' for k in fields)
@@ -102,6 +129,7 @@ async def update_item(item_id: int, request: Request, user: dict = Depends(get_c
                "is_basic", "shop_url", "item_name_en", "description_en",
                "temp_min", "temp_max"]
     updates = {k: body[k] for k in allowed if k in body}
+    updates = _normalize_fields(updates)
 
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.api.wardrobe_user_items import _coerce_bool, _normalize_fields
 
 router = APIRouter()
 
@@ -147,8 +148,8 @@ async def add_wardrobe_item(
             "shade": body.get("shade"),
             "material": body.get("material"),
             "style": body.get("style"),
-            "print": body.get("has_print"),
-            "details": body.get("has_details"),
+            "print": _coerce_bool(body.get("has_print")),
+            "details": _coerce_bool(body.get("has_details")),
             "notes": body.get("notes"),
             "image": body.get("image_url"),
             "ctype": body.get("clothing_type"),
@@ -192,6 +193,7 @@ async def update_wardrobe_item(
                "has_print", "has_details", "notes", "image_url", "is_hidden",
                "clothing_type", "basic_item_id", "gender", "url"]
     updates = {k: body[k] for k in allowed if k in body}
+    updates = _normalize_fields(updates)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
