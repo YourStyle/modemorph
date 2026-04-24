@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from clip.encoder import CLIPEncoderService
 from clip.index import FAISSIndexService
 from clip.profile import UserClusterService
+from clip.rec_gnn import LightGCNService
 from clip.routes import router as clip_router
 
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +32,12 @@ async def lifespan(app: FastAPI):
 
     app.state.cluster_service = UserClusterService()
     logger.info("User cluster service loaded")
+
+    app.state.lightgcn_service = LightGCNService()
+    if app.state.lightgcn_service.is_ready():
+        logger.info(f"LightGCN loaded: {app.state.lightgcn_service.meta}")
+    else:
+        logger.info("LightGCN not yet trained — waiting for first /clip/train-lightgcn call")
 
     # Connect to PostgreSQL
     dsn = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
@@ -91,9 +98,12 @@ app.include_router(clip_router, prefix="/clip")
 @app.get("/health")
 def health():
     fi = app.state.faiss_index if hasattr(app.state, "faiss_index") else None
+    gnn = app.state.lightgcn_service if hasattr(app.state, "lightgcn_service") else None
     return {
         "status": "ok",
         "index_size": fi.size if fi else 0,
         "index_type": fi.index_type if fi else "none",
         "clusters_loaded": bool(app.state.cluster_service.data) if hasattr(app.state, "cluster_service") else False,
+        "lightgcn_ready": gnn.is_ready() if gnn else False,
+        "lightgcn_meta": gnn.meta if gnn and gnn.is_ready() else None,
     }

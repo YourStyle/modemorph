@@ -24,6 +24,10 @@ def _get_clusters(request: Request):
     return request.app.state.cluster_service
 
 
+def _get_lightgcn(request: Request):
+    return request.app.state.lightgcn_service
+
+
 MAX_K = 100
 MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10MB
 ALLOWED_IMAGE_FORMATS = {'JPEG', 'PNG', 'WEBP', 'BMP'}
@@ -179,6 +183,7 @@ async def recommend(request: Request, body: RecommendRequest):
     encoder, faiss_index = _get_services(request)
     pool = _get_db(request)
     cluster_service = _get_clusters(request)
+    lightgcn = _get_lightgcn(request)
     from .recommender import CLIPRecommenderService
 
     # 1. Fetch user's wardrobe embeddings (preference signal)
@@ -355,6 +360,20 @@ async def recommend(request: Request, body: RecommendRequest):
                 except Exception as e:
                     logger.warning(f"[recommend] Failed to merge cluster popular items: {e}")
 
+    # 6. LightGCN re-ranking — if the user is in the trained model, blend the
+    #    GCN collaborative score with the CLIP retrieval score. Items the
+    #    model doesn't know keep their CLIP score. This is where the "proper
+    #    recommendation model beyond Gemini" promised in the thesis actually
+    #    kicks in: CLIP finds "things stylistically near the user"; LightGCN
+    #    promotes the ones users with similar behaviour actually liked.
+    gnn_applied = False
+    if lightgcn.has_user(body.user_id) and results:
+        try:
+            results = lightgcn.rerank(body.user_id, results, blend_weight=0.35)
+            gnn_applied = True
+        except Exception as e:
+            logger.warning(f"[recommend] LightGCN rerank failed: {e}")
+
     # Log recommendations for feedback loop (async, non-blocking)
     import uuid
     rec_session_id = str(uuid.uuid4())[:12]
@@ -376,6 +395,7 @@ async def recommend(request: Request, body: RecommendRequest):
         'dislikes_count': len(dislike_embeddings),
         'cluster_id': user_cluster,
         'popular_slice': popular_slice,
+        'gnn_applied': gnn_applied,
         'rec_session_id': rec_session_id,
     }
 
@@ -490,6 +510,27 @@ async def build_clusters(request: Request):
     pool = _get_db(request)
     cluster_service = _get_clusters(request)
     result = await cluster_service.build_clusters(pool)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# /clip/train-lightgcn — train the LightGCN collaborative recommender
+# ---------------------------------------------------------------------------
+
+@router.post('/train-lightgcn')
+async def train_lightgcn(request: Request):
+    """Train the LightGCN model from current user_likes + outfit_items data.
+    Meant to be called nightly by the cron container after /clip/clusters/build.
+
+    Runs on the main event loop because:
+      - asyncpg pool is tied to the loop that created it
+      - training is CPU-bound but torch tensor ops release the GIL, so
+        the worst-case blocking is the batch-sampling Python loop (ms)
+      - nightly window (3 AM UTC) makes brief pauses acceptable
+    """
+    pool = _get_db(request)
+    service = _get_lightgcn(request)
+    result = await service.train_from_db(pool)
     return result
 
 

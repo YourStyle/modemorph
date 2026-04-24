@@ -523,7 +523,10 @@ async def cron_generate_recommendations(
 
     logger.info(f"[Cron Recs] Done: {results}")
 
-    # After generating recommendations, rebuild user clusters
+    # After generating recommendations, rebuild user clusters + LightGCN.
+    # Order matters: clusters give us collaborative dislike/like signal that
+    # is independent of LightGCN; LightGCN is the heavier CF model. If either
+    # fails, the other still runs.
     ai_url = settings.AI_SERVICE_URL
     if ai_url and results["success"] > 0:
         try:
@@ -535,6 +538,18 @@ async def cron_generate_recommendations(
                     results["clusters"] = cluster_data
         except Exception as e:
             logger.warning(f"[Cron Recs] Cluster rebuild failed: {e}")
+
+        # Training budget is generous — LightGCN can take minutes on thousands
+        # of edges. If we have very little data the endpoint returns quickly.
+        try:
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                gnn_resp = await client.post(f"{ai_url}/clip/train-lightgcn")
+                if gnn_resp.status_code == 200:
+                    gnn_data = gnn_resp.json()
+                    logger.info(f"[Cron Recs] LightGCN train: {gnn_data}")
+                    results["lightgcn"] = gnn_data
+        except Exception as e:
+            logger.warning(f"[Cron Recs] LightGCN train failed: {e}")
 
     return results
 
@@ -556,6 +571,29 @@ async def cron_rebuild_clusters(request: Request):
             return {"error": f"CLIP service returned {resp.status_code}"}
     except Exception as e:
         logger.error(f"[Cron] Cluster rebuild failed: {e}")
+        return {"error": str(e)}
+
+
+@router.post("/train-lightgcn")
+async def cron_train_lightgcn(request: Request):
+    """Manually trigger LightGCN training. Usually runs nightly as part of
+    /api/cron/generate-recommendations, but exposed separately so we can
+    force a retrain after a surge of new likes without waiting for the
+    next recs batch."""
+    _verify_cron_auth(request)
+
+    ai_url = settings.AI_SERVICE_URL
+    if not ai_url:
+        return {"error": "AI_SERVICE_URL not configured"}
+
+    try:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            resp = await client.post(f"{ai_url}/clip/train-lightgcn")
+            if resp.status_code == 200:
+                return resp.json()
+            return {"error": f"CLIP service returned {resp.status_code}"}
+    except Exception as e:
+        logger.error(f"[Cron] LightGCN train failed: {e}")
         return {"error": str(e)}
 
 
