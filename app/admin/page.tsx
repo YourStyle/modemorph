@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Shirt, FolderIcon as Hanger, Plus, TrendingUp, Package, Palette, Zap } from "lucide-react"
+import { Shirt, FolderIcon as Hanger, Plus, TrendingUp, Package, Palette, Zap, Sparkles } from "lucide-react"
 import Link from "next/link"
 
 export default function AdminDashboard() {
@@ -87,6 +87,25 @@ export default function AdminDashboard() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-gray-500 mb-4">Цветовые сочетания и комбинации</p>
+                  <Button variant="outline" className="w-full rounded-xl" size="sm">
+                    Открыть
+                  </Button>
+                </CardContent>
+              </Link>
+            </Card>
+
+            <Card className="hover:shadow-lg transition-all duration-200 cursor-pointer group">
+              <Link href="/admin/outfit-scoring">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl group-hover:from-purple-100 group-hover:to-blue-100 transition-colors">
+                      <Sparkles className="h-5 w-5 text-purple-500" />
+                    </div>
+                    <CardTitle className="text-base">ML-оценка образов</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-gray-500 mb-4">OutfitTransformer · smoke-тест сочетаемости</p>
                   <Button variant="outline" className="w-full rounded-xl" size="sm">
                     Открыть
                   </Button>

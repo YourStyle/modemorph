@@ -1,14 +1,19 @@
 """Admin endpoints — complete set."""
 
 import json as json_lib
+import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_admin_user
 from app.services.telegram import send_bot_message
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -879,3 +884,89 @@ async def update_feature_cost(request: Request, user: dict = Depends(get_admin_u
     await db.execute(text(f"UPDATE feature_costs SET {', '.join(set_parts)}, updated_at = NOW() WHERE id = :id"), params)
     await db.commit()
     return {"success": True}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# OutfitTransformer — admin smoke test
+# ─────────────────────────────────────────────────────────────────────────
+
+@router.get("/outfit-scorer/search-items")
+async def outfit_scorer_search_items(
+    q: str = Query("", description="Substring match on item name"),
+    limit: int = Query(30, ge=1, le=100),
+    user: dict = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Autocomplete for the admin smoke-test UI: find items (catalog + user
+    uploads) whose name matches. Returns enough metadata to render a picker."""
+    like = f"%{q}%" if q else "%"
+    catalog = await db.execute(
+        text("""
+            SELECT id, item_name AS name, image_url, clothing_type, color,
+                   'catalog' AS source
+            FROM wardrobe_items
+            WHERE COALESCE(is_hidden, false) = false AND item_name ILIKE :like
+            ORDER BY id DESC
+            LIMIT :limit
+        """),
+        {"like": like, "limit": limit},
+    )
+    user_rows = await db.execute(
+        text("""
+            SELECT id, item_name AS name, image_url, clothing_type, color,
+                   'user' AS source
+            FROM wardrobe_user_items
+            WHERE COALESCE(is_hidden, false) = false AND item_name ILIKE :like
+            ORDER BY id DESC
+            LIMIT :limit
+        """),
+        {"like": like, "limit": limit},
+    )
+    return {
+        "catalog": [dict(r) for r in catalog.mappings().all()],
+        "user": [dict(r) for r in user_rows.mappings().all()],
+    }
+
+
+@router.post("/outfit-scorer/load")
+async def outfit_scorer_load(user: dict = Depends(get_admin_user)):
+    """Kick off the one-time checkpoint download + model load on the AI
+    service. Safe to call multiple times; reports current state."""
+    ai_url = settings.AI_SERVICE_URL
+    if not ai_url:
+        raise HTTPException(status_code=500, detail="AI_SERVICE_URL not configured")
+    # Extended timeout: first load downloads ~1.1 GB from Google Drive.
+    try:
+        async with httpx.AsyncClient(timeout=1800.0) as client:
+            resp = await client.post(f"{ai_url}/clip/outfit-load")
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError as e:
+        logger.error(f"[admin/outfit-load] AI call failed: {e}")
+        raise HTTPException(status_code=502, detail=f"AI service error: {e}")
+
+
+@router.post("/outfit-scorer/score")
+async def outfit_scorer_score(request: Request, user: dict = Depends(get_admin_user)):
+    """Score compatibility of an outfit by item IDs. Body: {item_ids: [int]}."""
+    body = await request.json()
+    item_ids = body.get("item_ids") or []
+    if not isinstance(item_ids, list) or len(item_ids) < 2:
+        raise HTTPException(status_code=400, detail="item_ids must be a list of >= 2 ids")
+
+    ai_url = settings.AI_SERVICE_URL
+    if not ai_url:
+        raise HTTPException(status_code=500, detail="AI_SERVICE_URL not configured")
+
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{ai_url}/clip/outfit-score",
+                json={"item_ids": [int(i) for i in item_ids]},
+            )
+            if resp.status_code >= 400:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return resp.json()
+    except httpx.HTTPError as e:
+        logger.error(f"[admin/outfit-score] AI call failed: {e}")
+        raise HTTPException(status_code=502, detail=f"AI service error: {e}")

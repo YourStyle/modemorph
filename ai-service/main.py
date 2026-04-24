@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from clip.encoder import CLIPEncoderService
 from clip.index import FAISSIndexService
+from clip.outfit_scorer import OutfitTransformerService
 from clip.profile import UserClusterService
 from clip.rec_gnn import LightGCNService
 from clip.routes import router as clip_router
@@ -38,6 +39,15 @@ async def lifespan(app: FastAPI):
         logger.info(f"LightGCN loaded: {app.state.lightgcn_service.meta}")
     else:
         logger.info("LightGCN not yet trained — waiting for first /clip/train-lightgcn call")
+
+    # OutfitTransformer is heavy (1.1 GB checkpoint download on first start),
+    # so load lazily on first request or via /clip/outfit-load admin endpoint.
+    # We still instantiate the service shell so routes can call into it.
+    app.state.outfit_scorer = OutfitTransformerService()
+    logger.info(
+        "OutfitTransformer service instantiated "
+        "(model load deferred until first /clip/outfit-* request)"
+    )
 
     # Connect to PostgreSQL
     dsn = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
@@ -106,4 +116,8 @@ def health():
         "clusters_loaded": bool(app.state.cluster_service.data) if hasattr(app.state, "cluster_service") else False,
         "lightgcn_ready": gnn.is_ready() if gnn else False,
         "lightgcn_meta": gnn.meta if gnn and gnn.is_ready() else None,
+        "outfit_scorer_ready": (
+            app.state.outfit_scorer.is_ready()
+            if hasattr(app.state, "outfit_scorer") else False
+        ),
     }

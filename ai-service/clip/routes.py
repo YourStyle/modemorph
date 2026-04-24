@@ -28,6 +28,10 @@ def _get_lightgcn(request: Request):
     return request.app.state.lightgcn_service
 
 
+def _get_outfit_scorer(request: Request):
+    return request.app.state.outfit_scorer
+
+
 MAX_K = 100
 MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10MB
 ALLOWED_IMAGE_FORMATS = {'JPEG', 'PNG', 'WEBP', 'BMP'}
@@ -516,6 +520,85 @@ async def build_clusters(request: Request):
 # ---------------------------------------------------------------------------
 # /clip/train-lightgcn — train the LightGCN collaborative recommender
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# /clip/outfit-load — trigger OutfitTransformer checkpoint download + load
+# ---------------------------------------------------------------------------
+
+class OutfitScoreRequest(BaseModel):
+    item_ids: list[int]  # catalog ids; script fetches image_url + metadata
+
+
+@router.post('/outfit-load')
+async def outfit_load(request: Request):
+    """Download the checkpoint if missing and load the model. Idempotent.
+    Returns meta about the loaded model."""
+    service = _get_outfit_scorer(request)
+    import asyncio
+    # Load runs synchronously inside torch — offload to thread so the event
+    # loop keeps serving other requests during the one-time 1.1 GB download.
+    ok = await asyncio.to_thread(service.load)
+    return {
+        "ready": service.is_ready(),
+        "loaded_at": service.loaded_at,
+        "device": str(service.device),
+        "error": service._load_error if not ok else None,
+    }
+
+
+@router.post('/outfit-score')
+async def outfit_score(request: Request, body: OutfitScoreRequest):
+    """Score the compatibility of an outfit given catalog item IDs.
+
+    Resolves image_url + item_name + clothing_type + color from the DB,
+    downloads images, runs OutfitTransformer, returns a score in [0, 1].
+    Both wardrobe_items (catalog) and wardrobe_user_items (user uploads)
+    are checked so admins can mix user and catalog items in a test set.
+    """
+    service = _get_outfit_scorer(request)
+    if not service.is_ready():
+        # Auto-load on first request — keeps the UX simple for admins.
+        import asyncio
+        ok = await asyncio.to_thread(service.load)
+        if not ok:
+            raise HTTPException(
+                status_code=503,
+                detail=f"OutfitTransformer failed to load: {service._load_error}",
+            )
+
+    ids = body.item_ids[:16]  # respect OT's max_length=16
+    if len(ids) < 2:
+        raise HTTPException(status_code=400, detail="Need at least 2 item_ids")
+
+    pool = _get_db(request)
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT id, item_name, image_url, clothing_type, color,
+                   'catalog' AS source
+            FROM wardrobe_items
+            WHERE id = ANY($1) AND COALESCE(is_hidden, false) = false
+            UNION ALL
+            SELECT id, item_name, image_url, clothing_type, color,
+                   'user' AS source
+            FROM wardrobe_user_items
+            WHERE id = ANY($1) AND COALESCE(is_hidden, false) = false
+        """, ids)
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No matching items in catalog or user wardrobe")
+
+    # Preserve caller's order where possible — id may collide between tables,
+    # in which case we keep both; the model doesn't care about duplicates.
+    items = [dict(r) for r in rows]
+    result = await service.score_outfit(items)
+    if result is None:
+        raise HTTPException(status_code=502, detail="OutfitTransformer inference failed")
+    return {
+        "requested_ids": ids,
+        "resolved_count": len(items),
+        **result,
+    }
+
 
 @router.post('/train-lightgcn')
 async def train_lightgcn(request: Request):
