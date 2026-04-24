@@ -18,21 +18,24 @@ interface StyleProfileCardProps {
   userItemsCount: number
 }
 
-// Clean, light pastel palette — Apple-like soft tones
+// Palette aligned with brand CTA gradient (linear-gradient(135deg, #EC9DE2, #89AEFF))
+// All tones sit on the pink → lavender → blue axis for visual cohesion with buttons.
 const STYLE_COLORS: Record<string, string> = {
-  casual: "#7EB8FF",
-  classic: "#A8B4FF",
-  minimalist: "#B8CFFF",
-  streetwear: "#FFB088",
-  formal: "#8BC6E8",
-  sport: "#7FD4A8",
-  romantic: "#F5A0D0",
-  bohemian: "#E8B87A",
-  vintage: "#C8A8E8",
-  preppy: "#88C8FF",
-  grunge: "#B0B0C8",
-  business: "#80B8E8",
+  casual: "#89AEFF",
+  classic: "#A8A3F0",
+  minimalist: "#C6D3F7",
+  streetwear: "#EC9DE2",
+  formal: "#8F93D8",
+  sport: "#7FC0F5",
+  romantic: "#F5B8E5",
+  bohemian: "#E0A8D0",
+  vintage: "#C5A3E3",
+  preppy: "#A8C4FF",
+  grunge: "#B5B5D8",
+  business: "#7A92D8",
 }
+
+const STYLE_COLOR_FALLBACK = "#B5B5D8"
 
 // Style advice — palettes based on real user wardrobe data + complementary accents
 const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: string[]; colorNames: string[] }> = {
@@ -97,7 +100,7 @@ function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
     const y2 = cy + r * Math.sin(endRad)
 
     const largeArc = angle > 180 ? 1 : 0
-    const color = STYLE_COLORS[item.style] || "#9ca3af"
+    const color = STYLE_COLORS[item.style] || STYLE_COLOR_FALLBACK
 
     // Single item = full circle
     if (data.length === 1) {
@@ -210,7 +213,7 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
                   >
                     <div
                       className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm"
-                      style={{ backgroundColor: STYLE_COLORS[item.style] || "#B0B0C8" }}
+                      style={{ backgroundColor: STYLE_COLORS[item.style] || STYLE_COLOR_FALLBACK }}
                     />
                     <span className="text-sm text-foreground/70 group-hover:text-foreground transition-colors">
                       {STYLE_LABELS[item.style] || item.style}
