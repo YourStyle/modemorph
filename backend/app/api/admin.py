@@ -561,9 +561,9 @@ async def grant_credits(request: Request, user: dict = Depends(get_admin_user), 
             {"pid": pid, "amt": credits, "desc": f"Admin granted {credits} credits"})
 
     if sub_duration in ("monthly", "yearly"):
-        duration = "1 month" if sub_duration == "monthly" else "1 year"
-        await db.execute(text("INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at) VALUES (:pid, :stype, 'active', NOW(), NOW() + CAST(:dur AS interval))"),
-            {"pid": pid, "stype": sub_duration, "dur": duration})
+        months = 1 if sub_duration == "monthly" else 12
+        await db.execute(text("INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at) VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))"),
+            {"pid": pid, "stype": sub_duration, "months": months})
         await db.execute(text("UPDATE limits SET wardrobe_items_anlyzed=999, ai_requests=999, ideas_viewed=999, outfits_saved=999, vton_used=999 WHERE user_profile_id = :pid"), {"pid": pid})
 
     await db.commit()
@@ -656,14 +656,14 @@ async def gift_user(
 
     # Grant subscription + unlock limits
     if sub_duration in ("monthly", "yearly"):
-        duration_sql = "1 month" if sub_duration == "monthly" else "1 year"
+        months = 1 if sub_duration == "monthly" else 12
         await db.execute(
             text("""
                 INSERT INTO user_subscriptions
                   (user_profile_id, subscription_type, status, start_date, expires_at)
-                VALUES (:pid, :stype, 'active', NOW(), NOW() + CAST(:dur AS interval))
+                VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))
             """),
-            {"pid": pid, "stype": sub_duration, "dur": duration_sql},
+            {"pid": pid, "stype": sub_duration, "months": months},
         )
         await db.execute(
             text("""

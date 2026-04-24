@@ -115,14 +115,14 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
 
     if action == "subscribe":
         sub_type = meta.get("type", "monthly")
-        duration = "1 month" if sub_type == "monthly" else "1 year"
+        months = 1 if sub_type == "monthly" else 12
 
         await db.execute(
             text("""
                 INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at)
-                VALUES (:pid, :stype, 'active', NOW(), NOW() + CAST(:dur AS interval))
+                VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))
             """),
-            {"pid": profile_id, "stype": sub_type, "dur": duration},
+            {"pid": profile_id, "stype": sub_type, "months": months},
         )
 
         # Reset limits to unlimited
