@@ -117,10 +117,17 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
         sub_type = meta.get("type", "monthly")
         months = 1 if sub_type == "monthly" else 12
 
+        # UNIQUE(user_profile_id): a plain INSERT would 500 on any renewal,
+        # stranding the payment in post_applied=false forever. Stack expiry
+        # on top of remaining time so paid users never lose what they bought.
         await db.execute(
             text("""
                 INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at)
                 VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))
+                ON CONFLICT (user_profile_id) DO UPDATE
+                SET subscription_type = EXCLUDED.subscription_type,
+                    status = 'active',
+                    expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(months => :months)
             """),
             {"pid": profile_id, "stype": sub_type, "months": months},
         )

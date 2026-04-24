@@ -567,7 +567,16 @@ async def grant_credits(request: Request, user: dict = Depends(get_admin_user), 
 
     if sub_duration in ("monthly", "yearly"):
         months = 1 if sub_duration == "monthly" else 12
-        await db.execute(text("INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at) VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))"),
+        # UNIQUE(user_profile_id) means a plain INSERT 500s on repeat grants.
+        # Stack instead of overwrite: a user with active time keeps it.
+        await db.execute(text("""
+            INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at)
+            VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))
+            ON CONFLICT (user_profile_id) DO UPDATE
+            SET subscription_type = EXCLUDED.subscription_type,
+                status = 'active',
+                expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(months => :months)
+        """),
             {"pid": pid, "stype": sub_duration, "months": months})
         await db.execute(text("UPDATE limits SET wardrobe_items_anlyzed=999, ai_requests=999, ideas_viewed=999, outfits_saved=999, vton_used=999 WHERE user_profile_id = :pid"), {"pid": pid})
 
@@ -615,9 +624,14 @@ async def gift_user(
     sub_duration = body.get("subscriptionDuration")  # "monthly" | "yearly" | None
 
     sheet = {**_DEFAULT_GIFT_SHEET, **(body.get("welcomeSheet") or {})}
-    bot_message = (body.get("botMessage") or _DEFAULT_BOT_MESSAGE).format(
-        credits=credits or "дополнительные",
-        duration_ru=_DURATION_RU.get(sub_duration, "подарочный период"),
+    # Replace known placeholders rather than .format() — admin-pasted text may
+    # legitimately contain stray `{` / `}` (emoji, HTML, JSON) that would crash
+    # str.format with ValueError/KeyError.
+    _template = body.get("botMessage") or _DEFAULT_BOT_MESSAGE
+    bot_message = (
+        _template
+        .replace("{credits}", str(credits if credits else "дополнительные"))
+        .replace("{duration_ru}", _DURATION_RU.get(sub_duration, "подарочный период"))
     )
 
     # Resolve profile + telegram_id
