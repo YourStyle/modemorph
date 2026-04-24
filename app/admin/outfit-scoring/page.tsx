@@ -5,7 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Search, X, Check, AlertTriangle, Zap, Image as ImageIcon } from "lucide-react"
+import {
+  Loader2, Search, X, Check, AlertTriangle, Zap, Image as ImageIcon,
+  Sparkles as SparklesIcon,
+} from "lucide-react"
 import { api } from "@/lib/api-client"
 import { toast } from "sonner"
 
@@ -15,7 +18,7 @@ type Item = {
   image_url: string | null
   clothing_type: string | null
   color: string | null
-  source: "catalog" | "user"
+  source?: "catalog" | "user"
 }
 
 type ScoreResult = {
@@ -27,8 +30,19 @@ type ScoreResult = {
   reason?: string
 }
 
-function scoreBand(score: number | null): { label: string; className: string } {
-  if (score === null) return { label: "—", className: "bg-gray-100 text-gray-600" }
+type Preset = {
+  outfit_id: number | null
+  title: string
+  occasion: string | null
+  kind: "real" | "synthetic"
+  items: Item[]
+  score?: number | null
+  scoring?: boolean
+  error?: string
+}
+
+function scoreBand(score: number | null | undefined): { label: string; className: string } {
+  if (score === null || score === undefined) return { label: "—", className: "bg-gray-100 text-gray-600" }
   if (score >= 0.8) return { label: "Отличная сочетаемость", className: "bg-green-100 text-green-800" }
   if (score >= 0.65) return { label: "Хорошая", className: "bg-emerald-100 text-emerald-800" }
   if (score >= 0.5) return { label: "Средняя", className: "bg-amber-100 text-amber-800" }
@@ -45,18 +59,38 @@ export default function OutfitScoringAdminPage() {
   const [scoring, setScoring] = useState(false)
   const [loadingModel, setLoadingModel] = useState(false)
   const [modelStatus, setModelStatus] = useState<{ ready: boolean; loaded_at?: string; device?: string; error?: string } | null>(null)
+  const [presets, setPresets] = useState<Preset[]>([])
+  const [loadingPresets, setLoadingPresets] = useState(true)
 
-  // Search as user types (debounced).
+  // Fetch items + presets on mount so the page is useful immediately.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const [items, presetsRes] = await Promise.all([
+          api.get<{ catalog: Item[]; user: Item[] }>(`/api/admin/outfit-scorer/search-items?limit=24`),
+          api.get<{ presets: Preset[] }>(`/api/admin/outfit-scorer/presets?count=5`),
+        ])
+        if (!cancelled) {
+          setSearchResults(items)
+          setPresets(presetsRes.presets || [])
+        }
+      } catch (e: any) {
+        if (!cancelled) toast.error(`Не удалось загрузить данные: ${e?.message || e}`)
+      } finally {
+        if (!cancelled) setLoadingPresets(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // Re-search on query change
   useEffect(() => {
     const t = setTimeout(async () => {
-      if (query.trim().length < 2) {
-        setSearchResults({ catalog: [], user: [] })
-        return
-      }
       setSearching(true)
       try {
         const res = await api.get<{ catalog: Item[]; user: Item[] }>(
-          `/api/admin/outfit-scorer/search-items?q=${encodeURIComponent(query)}&limit=20`,
+          `/api/admin/outfit-scorer/search-items?q=${encodeURIComponent(query)}&limit=24`,
         )
         setSearchResults(res)
       } catch (e: any) {
@@ -70,9 +104,9 @@ export default function OutfitScoringAdminPage() {
 
   const toggleItem = (item: Item) => {
     setSelected((prev) => {
-      const key = `${item.source}:${item.id}`
-      const exists = prev.find((p) => `${p.source}:${p.id}` === key)
-      if (exists) return prev.filter((p) => `${p.source}:${p.id}` !== key)
+      const key = `${item.source ?? "catalog"}:${item.id}`
+      const exists = prev.find((p) => `${p.source ?? "catalog"}:${p.id}` === key)
+      if (exists) return prev.filter((p) => `${p.source ?? "catalog"}:${p.id}` !== key)
       if (prev.length >= 16) {
         toast.error("Максимум 16 вещей — предел OutfitTransformer")
         return prev
@@ -86,8 +120,7 @@ export default function OutfitScoringAdminPage() {
     toast.info("Загрузка модели — первый запуск качает 1.1 ГБ с Google Drive, это долго.")
     try {
       const res = await api.post<{ ready: boolean; loaded_at?: string; device?: string; error?: string }>(
-        "/api/admin/outfit-scorer/load",
-        {},
+        "/api/admin/outfit-scorer/load", {},
       )
       setModelStatus(res)
       if (res.ready) toast.success(`Модель готова (${res.device})`)
@@ -118,41 +151,74 @@ export default function OutfitScoringAdminPage() {
     }
   }, [selected])
 
-  const renderItemCard = (item: Item, picked: boolean) => (
-    <button
-      key={`${item.source}:${item.id}`}
-      onClick={() => toggleItem(item)}
-      className={`relative flex flex-col gap-2 p-2 rounded-xl border-2 transition-all text-left ${
-        picked ? "border-purple-500 bg-purple-50" : "border-gray-200 hover:border-gray-400"
-      }`}
-    >
-      <div className="aspect-square w-full overflow-hidden rounded-lg bg-gray-100">
-        {item.image_url ? (
-          <img src={item.image_url} alt={item.name ?? ""} className="w-full h-full object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-gray-400">
-            <ImageIcon className="h-8 w-8" />
+  // Score a preset in-place without disturbing the user's current selection
+  const scorePreset = async (idx: number) => {
+    setPresets((prev) => prev.map((p, i) => (i === idx ? { ...p, scoring: true, error: undefined, score: null } : p)))
+    try {
+      const ids = presets[idx].items.map((it) => it.id)
+      const res = await api.post<ScoreResult>("/api/admin/outfit-scorer/score", { item_ids: ids })
+      setPresets((prev) => prev.map((p, i) => (i === idx ? { ...p, scoring: false, score: res.score } : p)))
+    } catch (e: any) {
+      setPresets((prev) => prev.map((p, i) =>
+        i === idx ? { ...p, scoring: false, error: e?.message || String(e) } : p,
+      ))
+    }
+  }
+
+  const loadPresetIntoSelection = (preset: Preset) => {
+    // Preserve source field if present — presets come without explicit source
+    // (all from catalog today) but we tag them so future user-item presets
+    // don't collide with catalog ids.
+    const items: Item[] = preset.items.map((it) => ({ ...it, source: it.source ?? "catalog" }))
+    setSelected(items.slice(0, 16))
+    setScoreResult(null)
+    toast.info(`Загрузили «${preset.title}» в собранный образ`)
+  }
+
+  const renderItemCard = (item: Item, picked: boolean, size: "sm" | "md" = "md") => {
+    const dim = size === "sm" ? "w-20 h-20" : "w-full aspect-square"
+    return (
+      <button
+        key={`${item.source ?? "catalog"}:${item.id}`}
+        onClick={() => toggleItem(item)}
+        className={`relative flex flex-col gap-2 p-2 rounded-xl border-2 transition-all text-left ${
+          picked ? "border-purple-500 bg-purple-50" : "border-gray-200 hover:border-gray-400"
+        }`}
+      >
+        <div className={`${dim} overflow-hidden rounded-lg bg-gray-100`}>
+          {item.image_url ? (
+            <img src={item.image_url} alt={item.name ?? ""} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center text-gray-400">
+              <ImageIcon className="h-8 w-8" />
+            </div>
+          )}
+        </div>
+        {size === "md" && (
+          <>
+            <div className="text-xs line-clamp-2">{item.name || "Без названия"}</div>
+            <div className="flex gap-1 flex-wrap">
+              {item.source && (
+                <Badge variant="outline" className="text-[10px] py-0">
+                  {item.source === "catalog" ? "каталог" : "юзер"}
+                </Badge>
+              )}
+              {item.clothing_type && (
+                <Badge variant="outline" className="text-[10px] py-0">
+                  {item.clothing_type}
+                </Badge>
+              )}
+            </div>
+          </>
+        )}
+        {picked && (
+          <div className="absolute top-1 right-1 bg-purple-600 text-white rounded-full p-1">
+            <Check className="h-3 w-3" />
           </div>
         )}
-      </div>
-      <div className="text-xs line-clamp-2">{item.name || "Без названия"}</div>
-      <div className="flex gap-1 flex-wrap">
-        <Badge variant="outline" className="text-[10px] py-0">
-          {item.source === "catalog" ? "каталог" : "юзер"}
-        </Badge>
-        {item.clothing_type && (
-          <Badge variant="outline" className="text-[10px] py-0">
-            {item.clothing_type}
-          </Badge>
-        )}
-      </div>
-      {picked && (
-        <div className="absolute top-1 right-1 bg-purple-600 text-white rounded-full p-1">
-          <Check className="h-3 w-3" />
-        </div>
-      )}
-    </button>
-  )
+      </button>
+    )
+  }
 
   const band = scoreBand(scoreResult?.score ?? null)
 
@@ -162,8 +228,7 @@ export default function OutfitScoringAdminPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">OutfitTransformer — тест сочетаемости</h1>
           <p className="text-gray-500 mt-1">
-            Собери образ из 2–16 предметов каталога или пользовательских вещей → модель оценит совместимость от 0 до 1.
-            Score ≥ 0.5 — это пороговое значение, ниже которого образ вероятно плохой.
+            Собери образ из 2–16 предметов или выбери готовый пресет → модель оценит совместимость от 0 до 1.
           </p>
         </div>
 
@@ -175,14 +240,14 @@ export default function OutfitScoringAdminPage() {
               Состояние модели
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center gap-3">
+          <CardContent className="flex items-center gap-3 flex-wrap">
             {modelStatus?.ready ? (
               <Badge className="bg-green-100 text-green-800 border-green-200">
                 Готова · {modelStatus.device} · {modelStatus.loaded_at}
               </Badge>
             ) : (
               <Badge variant="outline" className="text-gray-600">
-                Не загружена
+                Не загружена (загрузится при первом скоринге)
               </Badge>
             )}
             <Button size="sm" variant="outline" disabled={loadingModel} onClick={handleLoadModel}>
@@ -196,65 +261,12 @@ export default function OutfitScoringAdminPage() {
               )}
             </Button>
             <span className="text-xs text-gray-500">
-              Первая загрузка качает 1.1 ГБ чекпойнт, потом хранится в volume.
+              Чекпойнт 1.1 ГБ — качается один раз, потом хранится в volume.
             </span>
           </CardContent>
         </Card>
 
-        {/* Search */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Найти вещи</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Поиск по названию (минимум 2 символа)…"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="pl-9"
-              />
-              {searching && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
-              )}
-            </div>
-
-            {(searchResults.catalog.length > 0 || searchResults.user.length > 0) && (
-              <div className="space-y-4">
-                {searchResults.catalog.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">
-                      Каталог ({searchResults.catalog.length})
-                    </h3>
-                    <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                      {searchResults.catalog.map((item) =>
-                        renderItemCard(
-                          item,
-                          !!selected.find((s) => s.source === "catalog" && s.id === item.id),
-                        ),
-                      )}
-                    </div>
-                  </div>
-                )}
-                {searchResults.user.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">
-                      Гардероб юзеров ({searchResults.user.length})
-                    </h3>
-                    <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                      {searchResults.user.map((item) =>
-                        renderItemCard(item, !!selected.find((s) => s.source === "user" && s.id === item.id)),
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Selected outfit */}
+        {/* Selected outfit — moved ABOVE search so it's always visible */}
         <Card>
           <CardHeader className="pb-3 flex flex-row items-center justify-between">
             <CardTitle className="text-base">Собранный образ ({selected.length})</CardTitle>
@@ -267,7 +279,9 @@ export default function OutfitScoringAdminPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {selected.length === 0 ? (
-              <p className="text-sm text-gray-500">Выбери вещи через поиск выше.</p>
+              <p className="text-sm text-gray-500">
+                Пока пусто. Выбери вещи в гриде ниже или возьми готовый пресет.
+              </p>
             ) : (
               <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
                 {selected.map((item) => renderItemCard(item, true))}
@@ -291,13 +305,13 @@ export default function OutfitScoringAdminPage() {
           </CardContent>
         </Card>
 
-        {/* Result */}
+        {/* Current outfit result */}
         {scoreResult && (
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
                 <Check className="h-4 w-4 text-green-600" />
-                Результат
+                Результат последней оценки
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -334,6 +348,152 @@ export default function OutfitScoringAdminPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* Presets from real DB outfits */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <SparklesIcon className="h-4 w-4 text-purple-500" />
+              Готовые образы из базы
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingPresets ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Загружаем примеры…
+              </div>
+            ) : presets.length === 0 ? (
+              <p className="text-sm text-gray-500">В базе пока нет подходящих образов.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {presets.map((preset, idx) => {
+                  const b = scoreBand(preset.score)
+                  return (
+                    <div key={`preset-${idx}`} className="border rounded-xl p-3 space-y-2 bg-white">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-medium text-sm truncate">{preset.title}</div>
+                          <div className="text-[11px] text-gray-500 flex gap-2">
+                            <span>{preset.items.length} предметов</span>
+                            {preset.kind === "synthetic" && <span>· синтетика</span>}
+                            {preset.occasion && preset.kind === "real" && <span>· {preset.occasion}</span>}
+                          </div>
+                        </div>
+                        {preset.score !== null && preset.score !== undefined && (
+                          <Badge className={b.className}>{(preset.score * 100).toFixed(0)}%</Badge>
+                        )}
+                      </div>
+                      <div className="flex gap-1 flex-wrap">
+                        {preset.items.slice(0, 6).map((it) => (
+                          <div key={it.id} className="w-12 h-12 rounded bg-gray-100 overflow-hidden flex-shrink-0">
+                            {it.image_url ? (
+                              <img src={it.image_url} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                <ImageIcon className="h-4 w-4" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {preset.items.length > 6 && (
+                          <div className="w-12 h-12 rounded bg-gray-50 flex items-center justify-center text-[11px] text-gray-500">
+                            +{preset.items.length - 6}
+                          </div>
+                        )}
+                      </div>
+                      {preset.error && (
+                        <div className="text-[11px] text-red-600 flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" />
+                          {preset.error}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="flex-1"
+                          disabled={preset.scoring}
+                          onClick={() => scorePreset(idx)}
+                        >
+                          {preset.scoring ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : preset.score != null ? (
+                            "Переоценить"
+                          ) : (
+                            "Оценить"
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => loadPresetIntoSelection(preset)}
+                        >
+                          Загрузить
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Search + picker */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Найти и добавить вещи</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Поиск по названию…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="pl-9"
+              />
+              {searching && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-gray-400" />
+              )}
+            </div>
+
+            {(searchResults.catalog.length > 0 || searchResults.user.length > 0) ? (
+              <div className="space-y-4">
+                {searchResults.catalog.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">
+                      Каталог ({searchResults.catalog.length})
+                    </h3>
+                    <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+                      {searchResults.catalog.map((item) =>
+                        renderItemCard(
+                          item,
+                          !!selected.find((s) => s.source === "catalog" && s.id === item.id),
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
+                {searchResults.user.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">
+                      Гардероб юзеров ({searchResults.user.length})
+                    </h3>
+                    <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+                      {searchResults.user.map((item) =>
+                        renderItemCard(item, !!selected.find((s) => s.source === "user" && s.id === item.id)),
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">Ничего не найдено. Попробуй другое название.</p>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

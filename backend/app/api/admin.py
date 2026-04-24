@@ -911,15 +911,18 @@ async def outfit_scorer_search_items(
     user: dict = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Autocomplete for the admin smoke-test UI: find items (catalog + user
-    uploads) whose name matches. Returns enough metadata to render a picker."""
+    """Picker items for the admin smoke-test UI — search by name, or browse
+    the latest items when q is empty. Items without image_url are excluded
+    because the thumbnails-grid becomes useless without them."""
     like = f"%{q}%" if q else "%"
     catalog = await db.execute(
         text("""
             SELECT id, item_name AS name, image_url, clothing_type, color,
                    'catalog' AS source
             FROM wardrobe_items
-            WHERE COALESCE(is_hidden, false) = false AND item_name ILIKE :like
+            WHERE COALESCE(is_hidden, false) = false
+              AND image_url IS NOT NULL
+              AND item_name ILIKE :like
             ORDER BY id DESC
             LIMIT :limit
         """),
@@ -930,7 +933,9 @@ async def outfit_scorer_search_items(
             SELECT id, item_name AS name, image_url, clothing_type, color,
                    'user' AS source
             FROM wardrobe_user_items
-            WHERE COALESCE(is_hidden, false) = false AND item_name ILIKE :like
+            WHERE COALESCE(is_hidden, false) = false
+              AND image_url IS NOT NULL
+              AND item_name ILIKE :like
             ORDER BY id DESC
             LIMIT :limit
         """),
@@ -940,6 +945,102 @@ async def outfit_scorer_search_items(
         "catalog": [dict(r) for r in catalog.mappings().all()],
         "user": [dict(r) for r in user_rows.mappings().all()],
     }
+
+
+@router.get("/outfit-scorer/presets")
+async def outfit_scorer_presets(
+    count: int = Query(5, ge=1, le=12),
+    user: dict = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return ready-made outfits for one-click scoring in the admin UI.
+
+    Strategy:
+      1. Real user-composed outfits from the `outfits` table with >= 3
+         items that all have valid images.
+      2. If too few real outfits exist, synthesize slot-complete ones
+         (top + bottom + outerwear + optional accessory) from random
+         catalog items — ensures the page is useful on a fresh DB.
+    """
+    outfit_rows = await db.execute(
+        text("""
+            SELECT o.id AS outfit_id, o.name, o.occasion, o.user_id,
+                   COUNT(oi.wardrobe_item_id) AS item_count
+            FROM outfits o
+            JOIN outfit_items oi ON oi.outfit_id = o.id
+            JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
+            WHERE wi.image_url IS NOT NULL
+              AND COALESCE(wi.is_hidden, false) = false
+            GROUP BY o.id
+            HAVING COUNT(oi.wardrobe_item_id) >= 3
+            ORDER BY o.created_at DESC
+            LIMIT :count
+        """),
+        {"count": count},
+    )
+    outfits = [dict(r) for r in outfit_rows.mappings().all()]
+
+    presets = []
+    for o in outfits:
+        item_rows = await db.execute(
+            text("""
+                SELECT wi.id, wi.item_name AS name, wi.image_url,
+                       wi.clothing_type, wi.color
+                FROM outfit_items oi
+                JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
+                WHERE oi.outfit_id = :oid AND wi.image_url IS NOT NULL
+                ORDER BY oi.position NULLS LAST, oi.id
+                LIMIT 16
+            """),
+            {"oid": o["outfit_id"]},
+        )
+        items = [dict(r) for r in item_rows.mappings().all()]
+        if len(items) < 2:
+            continue
+        presets.append({
+            "outfit_id": o["outfit_id"],
+            "title": o.get("name") or f"Образ #{o['outfit_id']}",
+            "occasion": o.get("occasion"),
+            "kind": "real",
+            "items": items,
+        })
+
+    # Synthesize slot-complete outfits if we don't have enough real ones
+    if len(presets) < 3:
+        slot_groups = [
+            (["t-shirt", "shirt", "blouse", "hoodie", "sweatshirt"], "верх"),
+            (["jeans", "pants", "skirt"], "низ"),
+            (["coat", "suit-jacket", "cardigan", "puffer-jacket"], "верхняя одежда"),
+        ]
+        slot_sql = text("""
+            SELECT id, item_name AS name, image_url, clothing_type, color
+            FROM wardrobe_items
+            WHERE image_url IS NOT NULL
+              AND COALESCE(is_hidden, false) = false
+              AND clothing_type = ANY(:types)
+            ORDER BY RANDOM()
+            LIMIT 1
+        """)
+        for synth_i in range(max(0, 3 - len(presets))):
+            synth_items = []
+            for types, _slot_name in slot_groups:
+                row = await db.execute(slot_sql, {"types": types})
+                picked = row.mappings().first()
+                if picked:
+                    synth_items.append(dict(picked))
+            # dedupe by id in case of collisions across RANDOM() calls
+            seen = set()
+            deduped = [it for it in synth_items if not (it["id"] in seen or seen.add(it["id"]))]
+            if len(deduped) >= 3:
+                presets.append({
+                    "outfit_id": None,
+                    "title": f"Синтетический #{synth_i + 1}",
+                    "occasion": "slot-complete",
+                    "kind": "synthetic",
+                    "items": deduped,
+                })
+
+    return {"presets": presets}
 
 
 @router.post("/outfit-scorer/load")
