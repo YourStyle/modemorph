@@ -2,6 +2,7 @@
 
 import json as json_lib
 import logging
+from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -907,43 +908,107 @@ async def update_feature_cost(request: Request, user: dict = Depends(get_admin_u
 @router.get("/outfit-scorer/search-items")
 async def outfit_scorer_search_items(
     q: str = Query("", description="Substring match on item name"),
-    limit: int = Query(30, ge=1, le=100),
+    limit: int = Query(60, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    clothing_types: Optional[List[str]] = Query(None, description="Filter by clothing_type list"),
+    sources: Optional[List[str]] = Query(None, description="Subset of ['catalog','user']"),
     user: dict = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Picker items for the admin smoke-test UI — search by name, or browse
-    the latest items when q is empty. Items without image_url are excluded
-    because the thumbnails-grid becomes useless without them."""
+    """Picker items for the admin smoke-test UI.
+
+    Supports:
+      * name substring via q (empty → latest items)
+      * clothing_type whitelist via repeated ?clothing_types=pants&clothing_types=jeans
+      * sources whitelist via repeated ?sources=catalog (skip the other table)
+      * LIMIT/OFFSET pagination — returned `has_more_*` flags tell the UI
+        whether to show a "Показать ещё" button per source.
+
+    Items without image_url are filtered out because a visual picker
+    without thumbnails is useless.
+    """
     like = f"%{q}%" if q else "%"
-    catalog = await db.execute(
-        text("""
+    want_catalog = not sources or "catalog" in sources
+    want_user = not sources or "user" in sources
+
+    # We fetch `limit + 1` rows so we know whether another page exists
+    # without needing a second COUNT(*) query (which would double the cost
+    # on every keystroke). If we get back limit+1 rows, trim to limit and
+    # flag has_more.
+    probe_limit = limit + 1
+
+    def _type_clause(param_name: str) -> str:
+        return f"AND clothing_type = ANY(:{param_name})" if clothing_types else ""
+
+    catalog_rows: list = []
+    has_more_catalog = False
+    if want_catalog:
+        params = {"like": like, "limit": probe_limit, "offset": offset}
+        if clothing_types:
+            params["ctypes"] = list(clothing_types)
+        q_sql = f"""
             SELECT id, item_name AS name, image_url, clothing_type, color,
                    'catalog' AS source
             FROM wardrobe_items
             WHERE COALESCE(is_hidden, false) = false
               AND image_url IS NOT NULL
               AND item_name ILIKE :like
+              {_type_clause('ctypes')}
             ORDER BY id DESC
-            LIMIT :limit
-        """),
-        {"like": like, "limit": limit},
-    )
-    user_rows = await db.execute(
-        text("""
+            LIMIT :limit OFFSET :offset
+        """
+        rows = await db.execute(text(q_sql), params)
+        catalog_rows = [dict(r) for r in rows.mappings().all()]
+        if len(catalog_rows) > limit:
+            has_more_catalog = True
+            catalog_rows = catalog_rows[:limit]
+
+    user_rows: list = []
+    has_more_user = False
+    if want_user:
+        params = {"like": like, "limit": probe_limit, "offset": offset}
+        if clothing_types:
+            params["ctypes"] = list(clothing_types)
+        q_sql = f"""
             SELECT id, item_name AS name, image_url, clothing_type, color,
                    'user' AS source
             FROM wardrobe_user_items
             WHERE COALESCE(is_hidden, false) = false
               AND image_url IS NOT NULL
               AND item_name ILIKE :like
+              {_type_clause('ctypes')}
             ORDER BY id DESC
-            LIMIT :limit
-        """),
-        {"like": like, "limit": limit},
-    )
+            LIMIT :limit OFFSET :offset
+        """
+        rows = await db.execute(text(q_sql), params)
+        user_rows = [dict(r) for r in rows.mappings().all()]
+        if len(user_rows) > limit:
+            has_more_user = True
+            user_rows = user_rows[:limit]
+
+    # Also surface the set of clothing_types currently available in the catalog
+    # so the UI can render type-filter chips without guessing. Cheap because
+    # `clothing_type` is low-cardinality.
+    type_rows = await db.execute(text("""
+        SELECT clothing_type, COUNT(*) AS n
+        FROM wardrobe_items
+        WHERE COALESCE(is_hidden, false) = false
+          AND image_url IS NOT NULL
+          AND clothing_type IS NOT NULL
+          AND clothing_type <> ''
+        GROUP BY clothing_type
+        ORDER BY n DESC
+    """))
+    type_counts = [{"clothing_type": r["clothing_type"], "n": r["n"]} for r in type_rows.mappings().all()]
+
     return {
-        "catalog": [dict(r) for r in catalog.mappings().all()],
-        "user": [dict(r) for r in user_rows.mappings().all()],
+        "catalog": catalog_rows,
+        "user": user_rows,
+        "has_more_catalog": has_more_catalog,
+        "has_more_user": has_more_user,
+        "offset": offset,
+        "limit": limit,
+        "type_counts": type_counts,
     }
 
 

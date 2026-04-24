@@ -50,10 +50,18 @@ function scoreBand(score: number | null | undefined): { label: string; className
   return { label: "Плохая сочетаемость", className: "bg-red-100 text-red-800" }
 }
 
+const PAGE_SIZE = 60
+
 export default function OutfitScoringAdminPage() {
   const [query, setQuery] = useState("")
-  const [searchResults, setSearchResults] = useState<{ catalog: Item[]; user: Item[] }>({ catalog: [], user: [] })
+  const [typeFilter, setTypeFilter] = useState<string[]>([])
+  const [typeCounts, setTypeCounts] = useState<{ clothing_type: string; n: number }[]>([])
+  const [catalogItems, setCatalogItems] = useState<Item[]>([])
+  const [userItems, setUserItems] = useState<Item[]>([])
+  const [hasMoreCatalog, setHasMoreCatalog] = useState(false)
+  const [hasMoreUser, setHasMoreUser] = useState(false)
   const [searching, setSearching] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [selected, setSelected] = useState<Item[]>([])
   const [scoreResult, setScoreResult] = useState<ScoreResult | null>(null)
   const [scoring, setScoring] = useState(false)
@@ -62,21 +70,31 @@ export default function OutfitScoringAdminPage() {
   const [presets, setPresets] = useState<Preset[]>([])
   const [loadingPresets, setLoadingPresets] = useState(true)
 
-  // Fetch items + presets on mount so the page is useful immediately.
+  // Build a common URL for search-items requests so pagination and filters
+  // stay in sync between the initial fetch, debounced search, and "show more".
+  const buildItemsUrl = useCallback(
+    (opts: { q: string; types: string[]; offset: number; limit: number }) => {
+      const params = new URLSearchParams()
+      if (opts.q) params.set("q", opts.q)
+      params.set("limit", String(opts.limit))
+      params.set("offset", String(opts.offset))
+      for (const t of opts.types) params.append("clothing_types", t)
+      return `/api/admin/outfit-scorer/search-items?${params.toString()}`
+    },
+    [],
+  )
+
+  // Fetch presets once on mount — independent of search state.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
-        const [items, presetsRes] = await Promise.all([
-          api.get<{ catalog: Item[]; user: Item[] }>(`/api/admin/outfit-scorer/search-items?limit=24`),
-          api.get<{ presets: Preset[] }>(`/api/admin/outfit-scorer/presets?count=5`),
-        ])
-        if (!cancelled) {
-          setSearchResults(items)
-          setPresets(presetsRes.presets || [])
-        }
+        const presetsRes = await api.get<{ presets: Preset[] }>(
+          `/api/admin/outfit-scorer/presets?count=5`,
+        )
+        if (!cancelled) setPresets(presetsRes.presets || [])
       } catch (e: any) {
-        if (!cancelled) toast.error(`Не удалось загрузить данные: ${e?.message || e}`)
+        if (!cancelled) toast.error(`Пресеты не загрузились: ${e?.message || e}`)
       } finally {
         if (!cancelled) setLoadingPresets(false)
       }
@@ -84,15 +102,22 @@ export default function OutfitScoringAdminPage() {
     return () => { cancelled = true }
   }, [])
 
-  // Re-search on query change
+  // Fresh search whenever query / filter changes (debounced). Always resets
+  // pagination back to offset=0 and replaces accumulated items.
   useEffect(() => {
     const t = setTimeout(async () => {
       setSearching(true)
       try {
-        const res = await api.get<{ catalog: Item[]; user: Item[] }>(
-          `/api/admin/outfit-scorer/search-items?q=${encodeURIComponent(query)}&limit=24`,
-        )
-        setSearchResults(res)
+        const res = await api.get<{
+          catalog: Item[]; user: Item[];
+          has_more_catalog: boolean; has_more_user: boolean;
+          type_counts: { clothing_type: string; n: number }[];
+        }>(buildItemsUrl({ q: query, types: typeFilter, offset: 0, limit: PAGE_SIZE }))
+        setCatalogItems(res.catalog)
+        setUserItems(res.user)
+        setHasMoreCatalog(res.has_more_catalog)
+        setHasMoreUser(res.has_more_user)
+        if (res.type_counts?.length) setTypeCounts(res.type_counts)
       } catch (e: any) {
         toast.error(`Поиск не удался: ${e?.message || e}`)
       } finally {
@@ -100,7 +125,33 @@ export default function OutfitScoringAdminPage() {
       }
     }, 300)
     return () => clearTimeout(t)
-  }, [query])
+  }, [query, typeFilter, buildItemsUrl])
+
+  const loadMore = async (source: "catalog" | "user") => {
+    setLoadingMore(true)
+    try {
+      const currentLen = source === "catalog" ? catalogItems.length : userItems.length
+      const res = await api.get<{ catalog: Item[]; user: Item[]; has_more_catalog: boolean; has_more_user: boolean }>(
+        buildItemsUrl({ q: query, types: typeFilter, offset: currentLen, limit: PAGE_SIZE })
+          + `&sources=${source}`,
+      )
+      if (source === "catalog") {
+        setCatalogItems((prev) => [...prev, ...res.catalog])
+        setHasMoreCatalog(res.has_more_catalog)
+      } else {
+        setUserItems((prev) => [...prev, ...res.user])
+        setHasMoreUser(res.has_more_user)
+      }
+    } catch (e: any) {
+      toast.error(`Не удалось подгрузить: ${e?.message || e}`)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const toggleType = (t: string) => {
+    setTypeFilter((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]))
+  }
 
   const toggleItem = (item: Item) => {
     setSelected((prev) => {
@@ -440,7 +491,7 @@ export default function OutfitScoringAdminPage() {
           </CardContent>
         </Card>
 
-        {/* Search + picker */}
+        {/* Search + filters + picker */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">Найти и добавить вещи</CardTitle>
@@ -459,38 +510,101 @@ export default function OutfitScoringAdminPage() {
               )}
             </div>
 
-            {(searchResults.catalog.length > 0 || searchResults.user.length > 0) ? (
+            {/* Type filter chips — multi-select. Shows all clothing_types
+                present in the catalog sorted by frequency. Click to toggle. */}
+            {typeCounts.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-gray-500">Фильтр по типу</div>
+                  {typeFilter.length > 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 text-xs"
+                      onClick={() => setTypeFilter([])}
+                    >
+                      Сбросить ({typeFilter.length})
+                    </Button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {typeCounts.slice(0, 30).map((tc) => {
+                    const active = typeFilter.includes(tc.clothing_type)
+                    return (
+                      <button
+                        key={tc.clothing_type}
+                        onClick={() => toggleType(tc.clothing_type)}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-all ${
+                          active
+                            ? "bg-purple-500 text-white border-purple-500"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-gray-400"
+                        }`}
+                      >
+                        {tc.clothing_type}
+                        <span className={`ml-1 ${active ? "text-purple-100" : "text-gray-400"}`}>
+                          {tc.n}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {catalogItems.length > 0 || userItems.length > 0 ? (
               <div className="space-y-4">
-                {searchResults.catalog.length > 0 && (
+                {catalogItems.length > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-gray-700 mb-2">
-                      Каталог ({searchResults.catalog.length})
+                      Каталог ({catalogItems.length}{hasMoreCatalog ? "+" : ""})
                     </h3>
-                    <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                      {searchResults.catalog.map((item) =>
+                    <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2">
+                      {catalogItems.map((item) =>
                         renderItemCard(
                           item,
                           !!selected.find((s) => s.source === "catalog" && s.id === item.id),
                         ),
                       )}
                     </div>
+                    {hasMoreCatalog && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 w-full"
+                        disabled={loadingMore}
+                        onClick={() => loadMore("catalog")}
+                      >
+                        {loadingMore ? <Loader2 className="h-3 w-3 animate-spin" /> : `Показать ещё ${PAGE_SIZE}`}
+                      </Button>
+                    )}
                   </div>
                 )}
-                {searchResults.user.length > 0 && (
+                {userItems.length > 0 && (
                   <div>
                     <h3 className="text-sm font-medium text-gray-700 mb-2">
-                      Гардероб юзеров ({searchResults.user.length})
+                      Гардероб юзеров ({userItems.length}{hasMoreUser ? "+" : ""})
                     </h3>
-                    <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
-                      {searchResults.user.map((item) =>
+                    <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2">
+                      {userItems.map((item) =>
                         renderItemCard(item, !!selected.find((s) => s.source === "user" && s.id === item.id)),
                       )}
                     </div>
+                    {hasMoreUser && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-3 w-full"
+                        disabled={loadingMore}
+                        onClick={() => loadMore("user")}
+                      >
+                        {loadingMore ? <Loader2 className="h-3 w-3 animate-spin" /> : `Показать ещё ${PAGE_SIZE}`}
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>
             ) : (
-              <p className="text-sm text-gray-500">Ничего не найдено. Попробуй другое название.</p>
+              <p className="text-sm text-gray-500">Ничего не найдено под этот запрос и фильтры.</p>
             )}
           </CardContent>
         </Card>
