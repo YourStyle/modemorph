@@ -8,6 +8,7 @@ import { BottomNavigation } from "@/components/bottom-navigation"
 import { BackgroundTasksWidget } from "@/components/background-tasks-widget"
 import { AddToClosetSheet } from "@/components/add-to-closet-sheet"
 import { TryOnSheet } from "@/components/try-on-sheet"
+import { WelcomeGiftGate } from "@/components/welcome-gift-gate"
 import { useAddToCloset } from "@/contexts/add-to-closet-context"
 import { cn } from "@/lib/utils"
 
@@ -54,6 +55,7 @@ export default function AppClientLayout({
       <BottomNavigation />
       <BackgroundTasksWidget />
       <TryOnSheet />
+      <WelcomeGiftGate />
 
       <AddToClosetSheet
         isOpen={isOpen}

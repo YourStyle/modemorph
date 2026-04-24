@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { toast } from "@/hooks/use-toast"
@@ -67,6 +68,23 @@ export default function AdminUsersPage() {
   const [grantCredits, setGrantCredits] = useState("")
   const [grantSubscription, setGrantSubscription] = useState("")
   const [subscriptionDuration, setSubscriptionDuration] = useState("")
+
+  // "🎁 Подарок" template state
+  const [giftUser, setGiftUser] = useState<User | null>(null)
+  const [giftCredits, setGiftCredits] = useState("50")
+  const [giftDuration, setGiftDuration] = useState<"monthly" | "yearly" | "">("monthly")
+  const [giftBotMessage, setGiftBotMessage] = useState(
+    "✨ <b>Вам выдана подписка!</b>\n\nМы начислили <b>{credits}</b> кредитов и активировали подписку на <b>{duration_ru}</b>.\n\nЗаходите в приложение — все лимиты сняты."
+  )
+  const [giftSheetTitle, setGiftSheetTitle] = useState("Вам подарок ✨")
+  const [giftSheetBody, setGiftSheetBody] = useState(
+    "Мы подарили вам подписку и кредиты, чтобы вы могли попробовать всё без ограничений."
+  )
+  const [giftSheetBullets, setGiftSheetBullets] = useState(
+    "Оцифровка гардероба по фото\nПодбор образов AI-стилистом\nВиртуальная примерка"
+  )
+  const [giftCtaText, setGiftCtaText] = useState("Круто, спасибо!")
+  const [giftSending, setGiftSending] = useState(false)
 
   useEffect(() => {
     fetchUsers()
@@ -193,6 +211,46 @@ export default function AdminUsersPage() {
         description: "Не удалось начислить кредиты/подписку",
         variant: "destructive",
       })
+    }
+  }
+
+  const handleSendGift = async () => {
+    if (!giftUser) return
+    setGiftSending(true)
+    try {
+      const bullets = giftSheetBullets
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
+      const resp = await api.post("/api/admin/gift", {
+        userId: giftUser.user_id,
+        credits: giftCredits ? Number.parseInt(giftCredits) : 0,
+        subscriptionDuration: giftDuration || null,
+        botMessage: giftBotMessage,
+        welcomeSheet: {
+          title: giftSheetTitle,
+          body: giftSheetBody,
+          bullets,
+          cta_text: giftCtaText,
+        },
+      })
+      toast({
+        title: resp?.bot_sent ? "Подарок отправлен" : "Подарок выдан",
+        description: resp?.bot_sent
+          ? "Подписка, кредиты и уведомление в Telegram отправлены."
+          : `Подписка и кредиты начислены, но Telegram-уведомление не ушло: ${resp?.bot_error || "unknown"}`,
+        variant: resp?.bot_sent ? "default" : "destructive",
+      })
+      setGiftUser(null)
+      fetchUsers()
+    } catch (error) {
+      toast({
+        title: "Ошибка",
+        description: error instanceof Error ? error.message : "Не удалось выдать подарок",
+        variant: "destructive",
+      })
+    } finally {
+      setGiftSending(false)
     }
   }
 
@@ -541,6 +599,15 @@ export default function AdminUsersPage() {
                           </div>
                         </DialogContent>
                       </Dialog>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => setGiftUser(user)}
+                        disabled={user.is_admin}
+                        title="Подарок: подписка + кредиты + уведомление в боте + welcome-шторка"
+                      >
+                        🎁
+                      </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -550,6 +617,97 @@ export default function AdminUsersPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!giftUser} onOpenChange={(o) => !o && setGiftUser(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>🎁 Подарок {giftUser?.full_name || ""}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="gift-credits">Кредиты</Label>
+                <Input
+                  id="gift-credits"
+                  type="number"
+                  value={giftCredits}
+                  onChange={(e) => setGiftCredits(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="gift-duration">Подписка</Label>
+                <Select value={giftDuration} onValueChange={(v) => setGiftDuration(v as any)}>
+                  <SelectTrigger id="gift-duration">
+                    <SelectValue placeholder="Без подписки" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monthly">1 месяц</SelectItem>
+                    <SelectItem value="yearly">1 год</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="gift-bot-msg">Сообщение в Telegram (HTML)</Label>
+              <Textarea
+                id="gift-bot-msg"
+                rows={4}
+                value={giftBotMessage}
+                onChange={(e) => setGiftBotMessage(e.target.value)}
+                placeholder="{credits} и {duration_ru} подставятся автоматом"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Плейсхолдеры: <code>{"{credits}"}</code>, <code>{"{duration_ru}"}</code>
+              </p>
+            </div>
+
+            <div className="border-t pt-3">
+              <p className="text-sm font-medium mb-2">Welcome-шторка в приложении</p>
+              <div className="space-y-2">
+                <div>
+                  <Label htmlFor="gift-title">Заголовок</Label>
+                  <Input
+                    id="gift-title"
+                    value={giftSheetTitle}
+                    onChange={(e) => setGiftSheetTitle(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="gift-body">Подзаголовок</Label>
+                  <Textarea
+                    id="gift-body"
+                    rows={2}
+                    value={giftSheetBody}
+                    onChange={(e) => setGiftSheetBody(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="gift-bullets">Буллеты (по одному на строку)</Label>
+                  <Textarea
+                    id="gift-bullets"
+                    rows={4}
+                    value={giftSheetBullets}
+                    onChange={(e) => setGiftSheetBullets(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="gift-cta">Текст кнопки</Label>
+                  <Input
+                    id="gift-cta"
+                    value={giftCtaText}
+                    onChange={(e) => setGiftCtaText(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Button onClick={handleSendGift} className="w-full" disabled={giftSending}>
+              {giftSending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Отправить подарок"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

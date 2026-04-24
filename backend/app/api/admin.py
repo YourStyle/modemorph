@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_admin_user
+from app.services.telegram import send_bot_message
 
 router = APIRouter()
 
@@ -567,6 +568,143 @@ async def grant_credits(request: Request, user: dict = Depends(get_admin_user), 
 
     await db.commit()
     return {"success": True}
+
+
+# ── Gift template ──────────────────────────────────────────────────────
+# One-shot: grants credits + subscription, sends Telegram notification,
+# and flags user_profiles.pending_gift so the app shows a welcome sheet on
+# next entry. Frontend calls this from the admin "🎁 Подарок" dialog.
+
+_DEFAULT_GIFT_SHEET = {
+    "title": "Вам подарок ✨",
+    "body": "Мы подарили вам подписку и кредиты, чтобы вы могли попробовать всё без ограничений.",
+    "bullets": [
+        "Оцифровка гардероба по фото",
+        "Подбор образов AI-стилистом",
+        "Виртуальная примерка",
+    ],
+    "cta_text": "Круто, спасибо!",
+}
+
+_DEFAULT_BOT_MESSAGE = (
+    "✨ <b>Вам выдана подписка!</b>\n\n"
+    "Мы начислили <b>{credits}</b> кредитов и активировали подписку на <b>{duration_ru}</b>.\n\n"
+    "Заходите в приложение — все лимиты сняты."
+)
+
+_DURATION_RU = {"monthly": "1 месяц", "yearly": "1 год"}
+
+
+@router.post("/gift")
+async def gift_user(
+    request: Request,
+    user: dict = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    target_user_id = body.get("userId")
+    if not target_user_id:
+        raise HTTPException(status_code=400, detail="userId required")
+
+    credits = int(body.get("credits") or 0)
+    sub_duration = body.get("subscriptionDuration")  # "monthly" | "yearly" | None
+
+    sheet = {**_DEFAULT_GIFT_SHEET, **(body.get("welcomeSheet") or {})}
+    bot_message = (body.get("botMessage") or _DEFAULT_BOT_MESSAGE).format(
+        credits=credits or "дополнительные",
+        duration_ru=_DURATION_RU.get(sub_duration, "подарочный период"),
+    )
+
+    # Resolve profile + telegram_id
+    row = await db.execute(
+        text("""
+            SELECT up.id AS profile_id,
+                   u.raw_user_meta_data->>'telegram_id' AS telegram_id
+            FROM user_profiles up
+            JOIN users u ON u.id = up.user_id
+            WHERE up.user_id = :uid
+        """),
+        {"uid": target_user_id},
+    )
+    found = row.mappings().first()
+    if not found:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    pid = found["profile_id"]
+    telegram_id = found["telegram_id"]
+
+    # Grant credits
+    if credits > 0:
+        await db.execute(
+            text("""
+                INSERT INTO user_credits (user_profile_id, credits_balance)
+                VALUES (:pid, :amt)
+                ON CONFLICT (user_profile_id) DO UPDATE
+                SET credits_balance = user_credits.credits_balance + EXCLUDED.credits_balance,
+                    updated_at = NOW()
+            """),
+            {"pid": pid, "amt": credits},
+        )
+        await db.execute(
+            text("""
+                INSERT INTO credit_transactions
+                  (user_profile_id, transaction_type, amount, reason, description, created_at)
+                VALUES (:pid, 'credit', :amt, 'admin_gift', :desc, NOW())
+            """),
+            {"pid": pid, "amt": credits, "desc": f"Admin gift: {credits} credits"},
+        )
+
+    # Grant subscription + unlock limits
+    if sub_duration in ("monthly", "yearly"):
+        duration_sql = "1 month" if sub_duration == "monthly" else "1 year"
+        await db.execute(
+            text("""
+                INSERT INTO user_subscriptions
+                  (user_profile_id, subscription_type, status, start_date, expires_at)
+                VALUES (:pid, :stype, 'active', NOW(), NOW() + :dur::interval)
+            """),
+            {"pid": pid, "stype": sub_duration, "dur": duration_sql},
+        )
+        await db.execute(
+            text("""
+                INSERT INTO limits (user_profile_id, wardrobe_items_anlyzed, ai_requests, ideas_viewed, outfits_saved, vton_used)
+                VALUES (:pid, 999, 999, 999, 999, 999)
+                ON CONFLICT (user_profile_id) DO UPDATE
+                SET wardrobe_items_anlyzed = 999, ai_requests = 999,
+                    ideas_viewed = 999, outfits_saved = 999, vton_used = 999,
+                    updated_at = NOW()
+            """),
+            {"pid": pid},
+        )
+
+    # Flag pending welcome sheet
+    pending = {
+        "subscription_type": sub_duration,
+        "credits": credits,
+        "sheet": sheet,
+        "granted_at": None,  # populated by NOW() below
+    }
+    await db.execute(
+        text("""
+            UPDATE user_profiles
+            SET pending_gift = jsonb_set(CAST(:payload AS jsonb), '{granted_at}', to_jsonb(NOW()::text)),
+                updated_at = NOW()
+            WHERE id = :pid
+        """),
+        {"pid": pid, "payload": json_lib.dumps(pending)},
+    )
+
+    await db.commit()
+
+    # Send Telegram notification (best-effort — failure must not roll back grant)
+    bot_result = await send_bot_message(telegram_id, bot_message)
+
+    return {
+        "success": True,
+        "bot_sent": bool(bot_result.get("ok")),
+        "bot_error": None if bot_result.get("ok") else bot_result.get("error") or "telegram_failed",
+        "telegram_id": telegram_id,
+    }
 
 
 @router.post("/reset-onboarding")

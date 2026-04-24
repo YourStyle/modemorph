@@ -218,6 +218,20 @@ async def update_profile_session(
     return {"success": True}
 
 
+@router.post("/dismiss-gift")
+async def dismiss_gift(
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear pending_gift after the welcome sheet is acknowledged by the user."""
+    await db.execute(
+        text("UPDATE user_profiles SET pending_gift = NULL, updated_at = NOW() WHERE user_id = :uid"),
+        {"uid": user["id"]},
+    )
+    await db.commit()
+    return {"success": True}
+
+
 @router.get("/avatars")
 async def get_avatars(
     user: dict = Depends(get_current_user),
