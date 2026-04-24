@@ -687,7 +687,7 @@ async def gift_user(
     await db.execute(
         text("""
             UPDATE user_profiles
-            SET pending_gift = jsonb_set(CAST(:payload AS jsonb), '{granted_at}', to_jsonb(NOW()::text)),
+            SET pending_gift = jsonb_set(CAST(:payload AS jsonb), '{granted_at}', to_jsonb(CAST(NOW() AS text))),
                 updated_at = NOW()
             WHERE id = :pid
         """),
