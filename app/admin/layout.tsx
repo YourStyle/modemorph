@@ -22,6 +22,7 @@ import {
   Send,
   Bell,
   Building2,
+  Brain,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -83,6 +84,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/admin/outfits", label: "Образы", icon: Palette },
       { href: "/admin/wardrobe/basics", label: "Базовые вещи", icon: Layers },
       { href: "/admin/combinations", label: "Комбинации", icon: Sparkles },
+    ]},
+    { group: "ML / Рекомендации", items: [
+      { href: "/admin/outfit-scoring", label: "Оценка сочетаемости", icon: Brain },
     ]},
     { group: "Настройки", items: [
       { href: "/admin/feature-costs", label: "Тарификация", icon: DollarSign },
