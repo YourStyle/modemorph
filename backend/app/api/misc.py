@@ -452,6 +452,19 @@ def _extract_vton_image(result: dict) -> str | None:
     return None
 
 
+def _data_uri_md5(uri: str | None) -> str | None:
+    """MD5 of decoded image bytes from a base64 data URI. None if not a data URI."""
+    if not uri:
+        return None
+    m = re.match(r"data:image/\w+;base64,(.+)", uri)
+    if not m:
+        return None
+    try:
+        return hashlib.md5(base64.b64decode(m.group(1))).hexdigest()
+    except Exception:
+        return None
+
+
 async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
     """Send original avatar + generated result, ask model to correct the face
     so it matches the reference photo exactly. Purely visual — no text description."""
@@ -473,7 +486,6 @@ async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
                 )},
                 {"type": "image_url", "image_url": {"url": avatar_b64}},
                 {"type": "image_url", "image_url": {"url": generated_b64}},
-                {"type": "image_url", "image_url": {"url": avatar_b64}},  # reminder
             ]}],
             model="google/gemini-3.1-flash-image-preview",
             temperature=0.15,
@@ -591,9 +603,24 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     if not image_data:
         raise HTTPException(status_code=502, detail="Model returned no image")
 
+    avatar_hash = _data_uri_md5(avatar_b64)
+    pass1_hash = _data_uri_md5(image_data)
+
+    # Pass 1 echo guard: Gemini sometimes just returns one of the input images.
+    # If it echoed the avatar, Pass 2 can't recover — surface as retryable error.
+    if avatar_hash and pass1_hash and avatar_hash == pass1_hash:
+        print(f"[vton] Pass 1 echoed avatar (md5={pass1_hash}) — failing try-on")
+        raise HTTPException(status_code=502, detail="Try-on model returned the original photo, please retry")
+
     # ── Pass 2: Face refinement ──
     refined = await _vton_refine_face(avatar_b64, image_data)
-    if refined:
+    refined_hash = _data_uri_md5(refined)
+    print(f"[vton] hashes: avatar={avatar_hash} pass1={pass1_hash} refined={refined_hash}")
+
+    if refined and refined_hash and refined_hash == avatar_hash:
+        # Pass 2 echoed the avatar — discard and keep Pass 1 result
+        print("[vton] Pass 2 echoed avatar — keeping Pass 1 result")
+    elif refined:
         image_data = refined
 
     # Upload to S3 if base64
