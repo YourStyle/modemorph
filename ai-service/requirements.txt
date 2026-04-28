@@ -13,3 +13,8 @@ numpy>=1.26.0
 # gdown: fetches OutfitTransformer pre-trained checkpoint from Google Drive
 # on first container start. 1.1 GB one-time download, cached in a docker volume.
 gdown>=5.2.0
+# rembg: background removal for /clip/remove-bg. Uses ONNX runtime; default
+# isnet-general-use model (~170MB) is fetched on first call and cached in
+# the rembg_data volume mounted at /data/rembg (U2NET_HOME).
+rembg>=2.0.50,<2.1.0
+onnxruntime>=1.17.0

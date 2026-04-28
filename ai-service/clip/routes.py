@@ -1,6 +1,9 @@
+import asyncio
+import base64
 import io
 import json
 import logging
+import threading
 import numpy as np
 from fastapi import APIRouter, File, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -127,6 +130,133 @@ async def pick_flatlay(request: Request, body: PickFlatlayRequest):
         'has_person': has_person,
         'person_score': best_person_score,
         'checked': len(results),
+    }
+
+
+# ---------------------------------------------------------------------------
+# /clip/remove-bg — strip background, composite onto white
+# ---------------------------------------------------------------------------
+#
+# Why this exists: iOS / Telegram share flows occasionally JPEG-encode PNGs
+# that had alpha channels, leaving the formerly-transparent regions filled
+# with framebuffer noise (the diagonal-blue-stripe artifact reported by
+# users). Sending those bytes straight into Gemini for flat-lay generation
+# poisons the output color. Running rembg first isolates the garment / person
+# subject and lets us paint a clean white background, so the downstream
+# image-gen model has nothing weird to inherit.
+
+_REMBG_LOCK = threading.Lock()
+_REMBG_SESSION = None
+_REMBG_MODEL = 'isnet-general-use'  # better edges than u2net for fashion items
+_REMBG_MAX_BYTES = 12 * 1024 * 1024
+
+
+def _get_rembg_session():
+    """Lazy-init singleton — model load is ~170MB and takes a few seconds the
+    first time. Hold a process-wide lock so concurrent first-callers don't
+    each spin up their own session."""
+    global _REMBG_SESSION
+    if _REMBG_SESSION is not None:
+        return _REMBG_SESSION
+    with _REMBG_LOCK:
+        if _REMBG_SESSION is None:
+            from rembg import new_session
+            logger.info(f'[remove-bg] loading rembg session ({_REMBG_MODEL})...')
+            _REMBG_SESSION = new_session(_REMBG_MODEL)
+            logger.info('[remove-bg] rembg session ready')
+    return _REMBG_SESSION
+
+
+def _composite_on_white(rgba: Image.Image) -> Image.Image:
+    """RGBA cut-out → RGB on white. Uses alpha as the paste mask so semi-
+    transparent edges (hair, fabric fringe) blend smoothly instead of
+    showing a hard cut."""
+    if rgba.mode != 'RGBA':
+        return rgba.convert('RGB')
+    white = Image.new('RGB', rgba.size, (255, 255, 255))
+    white.paste(rgba, mask=rgba.split()[3])
+    return white
+
+
+def _run_rembg_sync(img: Image.Image) -> Image.Image:
+    """rembg.remove is blocking (CPU-bound onnx inference). Caller should run
+    this via asyncio.to_thread to avoid stalling the event loop."""
+    from rembg import remove
+    return remove(img, session=_get_rembg_session())
+
+
+class RemoveBgRequest(BaseModel):
+    image_url: Optional[str] = None
+    # 'white' for downstream image-gen pipelines; 'transparent' if the caller
+    # wants the raw RGBA cut-out (e.g. for client-side compositing).
+    background: str = 'white'
+
+
+@router.post('/remove-bg')
+async def remove_bg(
+    request: Request,
+    image: Optional[UploadFile] = File(None),
+):
+    """Remove the background from an image and return a base64 PNG/JPEG.
+
+    Accepts either a multipart `image` upload or a JSON body with
+    `image_url`. Returns `{ image_base64, width, height }`.
+    """
+    import httpx
+
+    background = 'white'
+    if image is not None:
+        data = await image.read()
+    else:
+        try:
+            body = await request.json()
+        except Exception:
+            raise HTTPException(status_code=400, detail='Provide image file or JSON body')
+        url = body.get('image_url') if isinstance(body, dict) else None
+        background = (body.get('background') if isinstance(body, dict) else None) or 'white'
+        if not url:
+            raise HTTPException(status_code=400, detail='Provide image file or image_url')
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            try:
+                resp = await client.get(url)
+                resp.raise_for_status()
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f'Failed to fetch image_url: {e}')
+            data = resp.content
+
+    if len(data) > _REMBG_MAX_BYTES:
+        raise HTTPException(status_code=400, detail=f'Image too large ({len(data)} bytes)')
+
+    try:
+        # Force RGBA so we always feed rembg a sane mode (some HEIC→JPEG
+        # exports come through as 'P' or 'CMYK' which onnx chokes on).
+        src = Image.open(io.BytesIO(data)).convert('RGBA')
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'Invalid image: {e}')
+
+    try:
+        cutout = await asyncio.to_thread(_run_rembg_sync, src)
+    except Exception as e:
+        logger.exception('[remove-bg] inference failed')
+        raise HTTPException(status_code=502, detail=f'rembg failed: {e}')
+
+    if background == 'transparent':
+        out = cutout if cutout.mode == 'RGBA' else cutout.convert('RGBA')
+        fmt, mime = 'PNG', 'image/png'
+    else:
+        out = _composite_on_white(cutout)
+        fmt, mime = 'JPEG', 'image/jpeg'
+
+    buf = io.BytesIO()
+    save_kwargs = {'quality': 92, 'optimize': True} if fmt == 'JPEG' else {'optimize': True}
+    out.save(buf, format=fmt, **save_kwargs)
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    return {
+        'image_base64': f'data:{mime};base64,{b64}',
+        'width': out.width,
+        'height': out.height,
+        'model': _REMBG_MODEL,
+        'background': background,
     }
 
 

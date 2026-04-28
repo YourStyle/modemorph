@@ -1,6 +1,7 @@
 """Miscellaneous endpoints: check-limits, usage/log, spend-credits, pricing, user-subscription, user-likes, detect-clothing, ai-assistant, vton, clip/search."""
 
 import base64
+import io
 import json as json_lib
 import re
 import time
@@ -9,6 +10,7 @@ from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
+from PIL import Image
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -247,6 +249,30 @@ async def _upload_base64_to_s3(data_uri: str, folder: str = "detected") -> str:
         return data_uri
 
 
+async def _remove_bg_via_ai_service(img_bytes: bytes, content_type: str) -> str | None:
+    """Strip background via the ai-service /clip/remove-bg endpoint.
+
+    Used to clean up uploads before Gemini sees them — kills artifacts like the
+    iOS/Telegram alpha-leak blue stripes that otherwise bleed into the generated
+    flat-lay's color. Returns a base64 data URI on success, None on failure
+    (caller should fall back to the original bytes)."""
+    ai_service = settings.AI_SERVICE_URL or "http://modemorph-ai:8000"
+    filename = "upload.jpg" if "jpeg" in content_type else "upload"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"{ai_service}/clip/remove-bg",
+                files={"image": (filename, img_bytes, content_type)},
+            )
+            if resp.status_code != 200:
+                print(f"[detect-clothing] remove-bg returned {resp.status_code}: {resp.text[:200]}")
+                return None
+            return resp.json().get("image_base64")
+    except Exception as e:
+        print(f"[detect-clothing] remove-bg error: {e}")
+        return None
+
+
 @router.post("/detect-clothing")
 async def detect_clothing(
     image: UploadFile = File(None),
@@ -256,11 +282,10 @@ async def detect_clothing(
     """Detect clothing from uploaded image + generate flat-lay product photos."""
     import asyncio
 
-    # --- Read image as base64 ---
+    # --- Read raw bytes ---
     if image:
-        content = await image.read()
+        raw_bytes = await image.read()
         ct = image.content_type or "image/jpeg"
-        img_b64 = f"data:{ct};base64,{base64.b64encode(content).decode()}"
     else:
         body = await request.json()
         image_url = body.get("image_url")
@@ -268,8 +293,17 @@ async def detect_clothing(
             raise HTTPException(status_code=400, detail="No image provided")
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.get(image_url)
+            raw_bytes = resp.content
             ct = resp.headers.get("content-type", "image/jpeg")
-            img_b64 = f"data:{ct};base64,{base64.b64encode(resp.content).decode()}"
+
+    img_b64 = f"data:{ct};base64,{base64.b64encode(raw_bytes).decode()}"
+
+    # Strip background before calling the image-gen model. The original bytes
+    # are kept for the detection prompt (so Gemini can still read the full
+    # context, e.g. distinguish jacket-over-shirt) but flat-lay generation
+    # uses the cleaned version where backgrounds and alpha-leak artifacts
+    # cannot poison the output color.
+    clean_b64 = await _remove_bg_via_ai_service(raw_bytes, ct) or img_b64
 
     # --- Step 1: Detect clothing items ---
     detection_prompt = """Analyze this photo and detect ALL clothing items and accessories the person is wearing.
@@ -310,7 +344,7 @@ Return ONLY a valid JSON array. No markdown."""
             img_result = await _openrouter_chat(
                 messages=[{"role": "user", "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": img_b64}},
+                    {"type": "image_url", "image_url": {"url": clean_b64}},
                 ]}],
                 model="google/gemini-3.1-flash-image-preview",
                 temperature=0.8,
@@ -438,7 +472,18 @@ Always respond with JSON array. Use Russian for all text."""
     )
 
     content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-    return _parse_ai_json(content)
+    parsed = _parse_ai_json(content)
+    if not parsed:
+        # Log raw model output so we can see what's coming back when the user gets
+        # an empty response (JSON parse silently returns []).
+        prompt_preview = (prompt or "")[:120]
+        content_preview = (content or "")[:1000]
+        print(
+            f"[ai-assistant] empty parsed response | user={user.get('id')} "
+            f"prompt={prompt_preview!r} wardrobe_items={len(wardrobe)} "
+            f"catalog_items={len(catalog_items)} raw_content={content_preview!r}"
+        )
+    return parsed
 
 
 # ── /api/vton helpers ──
@@ -463,6 +508,40 @@ def _data_uri_md5(uri: str | None) -> str | None:
         return hashlib.md5(base64.b64decode(m.group(1))).hexdigest()
     except Exception:
         return None
+
+
+def _data_uri_phash(uri: str | None) -> str | None:
+    """64-bit dHash of a data URI. Robust to re-encoding (Gemini echoes get re-encoded
+    by the image-gen pipeline, so md5 misses them but pixels survive). Returns 64-char
+    bit string or None on failure."""
+    if not uri:
+        return None
+    m = re.match(r"data:image/\w+;base64,(.+)", uri)
+    if not m:
+        return None
+    try:
+        img = Image.open(io.BytesIO(base64.b64decode(m.group(1)))).convert("L").resize(
+            (9, 8), Image.LANCZOS
+        )
+        px = list(img.getdata())
+        bits = []
+        for row in range(8):
+            for col in range(8):
+                bits.append("1" if px[row * 9 + col] > px[row * 9 + col + 1] else "0")
+        return "".join(bits)
+    except Exception:
+        return None
+
+
+def _phash_hamming(a: str | None, b: str | None) -> int | None:
+    if not a or not b or len(a) != len(b):
+        return None
+    return sum(c1 != c2 for c1, c2 in zip(a, b))
+
+
+# Hamming distance below this counts as "same image" — generous to allow for JPEG
+# re-encoding noise but tight enough that distinct portraits don't collide.
+_VTON_ECHO_HAMMING_THRESHOLD = 6
 
 
 async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
@@ -558,7 +637,7 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
         "IMAGE LAYOUT:\n"
         "  [Image 1] = REFERENCE PERSON — the original photo. This is the identity AND framing you MUST preserve.\n"
         "  [Images 2..N] = clothing items to put on the person.\n"
-        "  [Last image] = REFERENCE PERSON again (same photo repeated for reinforcement).\n\n"
+        "OUTPUT: a NEW photorealistic image — the reference person dressed in the clothing items. NEVER output the reference photo unchanged. NEVER output any of the clothing photos as-is. The result must be a synthesized image that combines them.\n\n"
         "RULE #1 — IDENTITY PRESERVATION (non-negotiable, highest priority):\n"
         "The generated person MUST be the EXACT same individual as in the reference photo.\n"
         "- COPY the face pixel-for-pixel from the reference: identical bone structure, jawline, cheekbones, nose, lips, eyes, eye color, eyebrows, skin tone, skin texture, freckles, moles, scars, dimples.\n"
@@ -587,37 +666,73 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
 
     avatar_img = {"type": "image_url", "image_url": {"url": avatar_b64}}
 
-    result = await _openrouter_chat(
-        messages=[{"role": "user", "content": [
-            {"type": "text", "text": prompt},
-            avatar_img,           # Reference: beginning (primacy)
-            *image_contents,      # Clothing items
-            avatar_img,           # Reference: end (recency) — double anchor
-        ]}],
-        model="google/gemini-3.1-flash-image-preview",
-        temperature=0.2,
-        modalities=["image", "text"],
-    )
+    async def _run_pass1() -> str | None:
+        result = await _openrouter_chat(
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": prompt},
+                avatar_img,           # Reference: beginning (primacy)
+                *image_contents,      # Clothing items — last image so model focuses on garments
+            ]}],
+            model="google/gemini-3.1-flash-image-preview",
+            temperature=0.2,
+            modalities=["image", "text"],
+        )
+        return _extract_vton_image(result)
 
-    image_data = _extract_vton_image(result)
+    avatar_phash = _data_uri_phash(avatar_b64)
+
+    # Pass 1 with one retry on echo. md5 catches exact pass-through; pHash catches
+    # re-encoded echoes (Gemini's image-gen pipeline re-encodes its outputs, so the
+    # bytes differ even when pixels are identical to the input avatar).
+    image_data = await _run_pass1()
     if not image_data:
         raise HTTPException(status_code=502, detail="Model returned no image")
 
     avatar_hash = _data_uri_md5(avatar_b64)
     pass1_hash = _data_uri_md5(image_data)
+    pass1_phash = _data_uri_phash(image_data)
+    pass1_dist = _phash_hamming(avatar_phash, pass1_phash)
+    pass1_echo = (
+        (avatar_hash and pass1_hash and avatar_hash == pass1_hash)
+        or (pass1_dist is not None and pass1_dist <= _VTON_ECHO_HAMMING_THRESHOLD)
+    )
 
-    # Pass 1 echo guard: Gemini sometimes just returns one of the input images.
-    # If it echoed the avatar, Pass 2 can't recover — surface as retryable error.
-    if avatar_hash and pass1_hash and avatar_hash == pass1_hash:
-        print(f"[vton] Pass 1 echoed avatar (md5={pass1_hash}) — failing try-on")
-        raise HTTPException(status_code=502, detail="Try-on model returned the original photo, please retry")
+    if pass1_echo:
+        print(f"[vton] Pass 1 echoed avatar (md5={pass1_hash}, phash_dist={pass1_dist}) — retrying once")
+        retry = await _run_pass1()
+        if retry:
+            retry_phash = _data_uri_phash(retry)
+            retry_dist = _phash_hamming(avatar_phash, retry_phash)
+            retry_md5 = _data_uri_md5(retry)
+            still_echo = (
+                (avatar_hash and retry_md5 and avatar_hash == retry_md5)
+                or (retry_dist is not None and retry_dist <= _VTON_ECHO_HAMMING_THRESHOLD)
+            )
+            if still_echo:
+                print(f"[vton] Pass 1 retry also echoed (phash_dist={retry_dist}) — failing")
+                raise HTTPException(status_code=502, detail="Try-on model returned the original photo, please retry")
+            image_data = retry
+            pass1_hash = retry_md5
+            pass1_phash = retry_phash
+            pass1_dist = retry_dist
+        else:
+            raise HTTPException(status_code=502, detail="Try-on model returned the original photo, please retry")
 
     # ── Pass 2: Face refinement ──
     refined = await _vton_refine_face(avatar_b64, image_data)
     refined_hash = _data_uri_md5(refined)
-    print(f"[vton] hashes: avatar={avatar_hash} pass1={pass1_hash} refined={refined_hash}")
+    refined_phash = _data_uri_phash(refined)
+    refined_dist = _phash_hamming(avatar_phash, refined_phash)
+    print(
+        f"[vton] hashes: avatar={avatar_hash} pass1={pass1_hash} (dist={pass1_dist}) "
+        f"refined={refined_hash} (dist={refined_dist})"
+    )
 
-    if refined and refined_hash and refined_hash == avatar_hash:
+    refined_echo = refined and (
+        (refined_hash and avatar_hash and refined_hash == avatar_hash)
+        or (refined_dist is not None and refined_dist <= _VTON_ECHO_HAMMING_THRESHOLD)
+    )
+    if refined_echo:
         # Pass 2 echoed the avatar — discard and keep Pass 1 result
         print("[vton] Pass 2 echoed avatar — keeping Pass 1 result")
     elif refined:

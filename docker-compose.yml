@@ -160,6 +160,7 @@ services:
       - faiss_data:/data/faiss_index
       - lightgcn_data:/data/lightgcn
       - outfit_transformer_data:/data/outfit_transformer
+      - rembg_data:/data/rembg
     restart: unless-stopped
     healthcheck:
       test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health")']
@@ -190,3 +191,5 @@ volumes:
     name: modemorph_lightgcn_data
   outfit_transformer_data:
     name: modemorph_outfit_transformer_data
+  rembg_data:
+    name: modemorph_rembg_data
