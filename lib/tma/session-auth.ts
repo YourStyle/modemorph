@@ -137,11 +137,15 @@ export class TMASessionAuth {
 
       const data = await response.json()
 
+      if (!data?.session?.access_token || !data?.session?.refresh_token) {
+        throw new Error('Refresh response missing session tokens')
+      }
+
       this.saveSession({
-        access_token: data.access_token,
-        refresh_token: data.refresh_token,
-        user_id: data.user_id,
-        expires_at: parseSupabaseExpiry(data.expires_at),
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+        user_id: data.user_id ?? data.user?.id,
+        expires_at: parseSupabaseExpiry(data.session.expires_at),
       })
     } catch (error) {
       console.error('[SessionAuth] Failed to refresh token:', error)

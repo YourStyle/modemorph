@@ -121,7 +121,7 @@ async def update_profile_session(
     allowed_fields = [
         "full_name", "gender", "height", "weight",
         "top_size", "bottom_size", "shoe_size",
-        "avatar_url", "onboarding_complete",
+        "avatar_url", "onboarding_complete", "referral",
     ]
 
     if profile:
@@ -191,6 +191,8 @@ async def update_profile_session(
             "bottom_size": body.get("bottom_size"),
             "shoe_size": body.get("shoe_size") or None,
             "avatar_url": body.get("avatar_url"),
+            "referral": body.get("referral") or None,
+            "onboarding_complete": bool(body.get("onboarding_complete")) if "onboarding_complete" in body else False,
             "is_admin": False,
         }
 

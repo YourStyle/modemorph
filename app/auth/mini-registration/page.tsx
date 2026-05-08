@@ -30,7 +30,7 @@ export default function MiniRegistrationPage() {
     referral: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   useEffect(() => {
     checkOnboardingStatus()
@@ -71,7 +71,6 @@ export default function MiniRegistrationPage() {
     setIsSubmitting(true)
 
     try {
-      // Save profile data and mark onboarding as complete in one request
       await api.post("/api/me/profile-session", {
         gender: formData.gender || null,
         height: formData.height || null,
@@ -79,12 +78,19 @@ export default function MiniRegistrationPage() {
         top_size: formData.top_size || null,
         bottom_size: formData.bottom_size || null,
         shoe_size: formData.shoe_size || null,
+        referral: formData.referral || null,
         onboarding_complete: true,
       })
 
       router.replace("/app")
-    } catch {
-      setSubmitError("Не удалось сохранить профиль. Попробуйте ещё раз.")
+    } catch (e) {
+      console.error("[onboarding] profile save failed", e)
+      const detail = e instanceof Error ? e.message : ""
+      setSubmitError(
+        detail
+          ? `Не удалось сохранить профиль: ${detail}. Попробуйте ещё раз.`
+          : "Не удалось сохранить профиль. Попробуйте ещё раз.",
+      )
       setIsSubmitting(false)
     }
   }
