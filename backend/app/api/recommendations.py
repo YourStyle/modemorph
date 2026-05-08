@@ -120,6 +120,7 @@ async def _build_gap_section(
     gender: str | None,
     disliked_ids: set,
     ai_url: str | None,
+    rec_session_id: str | None = None,
 ) -> dict | None:
     """Build a 'wardrobe gaps' section: one suggestion per gap slot, each
     holding up to 5 catalog items the user could buy. Uses CLIP text
@@ -212,6 +213,7 @@ async def _build_gap_section(
                     "url": row.get("url"),
                     "brand": brand,
                     "user_id": None,
+                    "rec_session_id": rec_session_id,
                 })
 
             if len(items) >= 3:
@@ -238,6 +240,7 @@ async def _build_gap_section(
     return {
         "title": "Чего не хватает в гардеробе",
         "source": "wardrobe_gap",  # marker so _enrich_sections skips slot-dedup
+        "rec_session_id": rec_session_id,
         "suggestions": suggestions,
     }
 
@@ -512,8 +515,12 @@ async def generate_recommendations(
     if disliked_ids:
         wardrobe_items = [i for i in wardrobe_items if i["id"] not in disliked_ids]
 
-    # Get partner items via CLIP
+    # Get partner items via CLIP. Capture rec_session_id so client-side
+    # impressions / clicks can be attributed back to this retrieval session.
     partner_items = []
+    rec_session_id: str | None = None
+    item_score_map: dict[int, float] = {}
+    item_position_map: dict[int, int] = {}
     ai_url = settings.AI_SERVICE_URL
     if ai_url:
         try:
@@ -523,8 +530,15 @@ async def generate_recommendations(
                     json={"user_id": user["id"], "k": 50},
                 )
                 if clip_resp.status_code == 200:
-                    clip_results = clip_resp.json().get("results", [])
+                    clip_payload = clip_resp.json()
+                    clip_results = clip_payload.get("results", [])
+                    rec_session_id = clip_payload.get("rec_session_id")
                     if clip_results:
+                        for pos, r in enumerate(clip_results):
+                            rid = r.get("id")
+                            if rid is not None:
+                                item_score_map[rid] = float(r.get("score", 0.0) or 0.0)
+                                item_position_map[rid] = pos
                         partner_ids = [r["id"] for r in clip_results]
                         # Filter out disliked items
                         if disliked_ids:
@@ -549,6 +563,12 @@ async def generate_recommendations(
                                 partner_items.append(row)
         except Exception as e:
             logger.warning(f"[Recs POST] CLIP unavailable: {e}")
+
+    # Fallback session id when CLIP is unavailable — events still flow but with
+    # source='direct' on the recommendation_logs side.
+    if not rec_session_id:
+        import uuid as _uuid
+        rec_session_id = _uuid.uuid4().hex[:12]
 
     # Build prompt
     wardrobe_json = json_lib.dumps([{
@@ -679,6 +699,12 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
             "image_url": i.get("image_url"), "color": i.get("color", ""),
             "clothing_type": i.get("clothing_type", ""),
             "url": i.get("url"), "brand": i.get("brand"),
+            # Carry the retrieval session forward so the frontend can post
+            # impression / click events with the same identifier the CLIP
+            # service used when it inserted the action=NULL baseline row.
+            "rec_session_id": rec_session_id,
+            "rec_position": item_position_map.get(i["id"]),
+            "rec_score": item_score_map.get(i["id"]),
         }
 
     VALID_TYPES = {"user_only", "mix", "partner_only"}
@@ -723,6 +749,7 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
             sections.append({
                 "title": _clean_title(gs.get("title", "Рекомендации")),
                 "source": section_type,
+                "rec_session_id": rec_session_id,
                 "suggestions": suggestions,
             })
 
@@ -741,6 +768,7 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                 gender=gender,
                 disliked_ids=disliked_ids,
                 ai_url=ai_url,
+                rec_session_id=rec_session_id,
             )
             if gap_section:
                 # Insert near the top — it's the most action-oriented section.

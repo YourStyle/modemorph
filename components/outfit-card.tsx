@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,7 @@ import { ItemDetailsModal } from "./item-details-modal"
 import { CommonSheet } from "./common-sheet"
 import { useTryOn } from "@/contexts/try-on-context"
 import { api } from "@/lib/api-client"
+import { useImpressionTracker, useRecTracking } from "@/hooks/use-rec-tracking"
 
 interface OutfitItem {
   id: string
@@ -50,6 +51,10 @@ interface OutfitSuggestion {
 interface OutfitCardProps {
   suggestion: OutfitSuggestion
   sectionSource?: "user_only" | "mix" | "partner_only" | "clip" | "ai"
+  /** Retrieval session id from /clip/recommend, plumbed through
+   *  recommendations.py. Used to attribute every client-side event
+   *  back to the same row CLIP wrote at generation time. */
+  recSessionId?: string | null
   onSaveOutfit?: (suggestion: OutfitSuggestion) => void
   userLooks?: any[]
   onTryOnClick?: (payload: {
@@ -94,7 +99,7 @@ function getSourceBadge(source?: string): { label: string; className: string } |
   }
 }
 
-export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess, onDislikeItem }: OutfitCardProps) {
+export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess, onDislikeItem }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showOutfitDetails, setShowOutfitDetails] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
@@ -109,24 +114,44 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
     }
   })
   const { startTryOn, session } = useTryOn()
+  const { sendEvent } = useRecTracking()
+
+  // Compute unconditionally so hook order stays stable when suggestion is null.
+  const items = ((suggestion?.items || []) as OutfitItem[]).filter(
+    (item) => item.image_url && item.image_url.trim().length > 0,
+  )
+
+  // Catalog items are the only ones tracked in recommendation_logs — user
+  // wardrobe items live in a separate ID namespace.
+  const catalogTrackingItems = useMemo(
+    () =>
+      items
+        .filter((item) => !isUserItem(item))
+        .map((item, idx) => ({ id: item.id, position: idx })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items.map((i) => i.id).join(",")],
+  )
+
+  const impressionRef = useImpressionTracker({
+    rec_session_id: recSessionId,
+    catalogItems: catalogTrackingItems,
+  })
+
+  if (!suggestion) return null
 
   const sendFeedback = (action: "like" | "dislike") => {
     if (feedback) return
     setFeedback(action)
     try { localStorage.setItem(feedbackKey, action) } catch { /* ignore */ }
     toast.success(action === "like" ? "Спасибо! Учтём в подборках" : "Спасибо за обратную связь")
-    api.post("/api/usage/log", {
-      feature: "ai_requests",
-      action: "click",
-      meta: { suggestion_id: suggestion.id, source: sectionSource ?? null, feedback: action },
-    }).catch(() => {})
+    if (recSessionId && suggestion.id) {
+      sendEvent({
+        rec_session_id: recSessionId,
+        event: action === "like" ? "like_outfit" : "dislike_outfit",
+        suggestion_id: suggestion.id,
+      })
+    }
   }
-
-  if (!suggestion) return null
-
-  const items = (suggestion.items || []).filter(
-    (item) => item.image_url && item.image_url.trim().length > 0,
-  )
   const title = suggestion.title || "Без названия"
   const suggestedItemsCount = suggestion.suggested_items_count || 0
 
@@ -146,6 +171,20 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
     setSaving(true)
     try {
       if (onSaveOutfit) await onSaveOutfit(suggestion)
+      // One save event per catalog item in the outfit — matches the granularity
+      // of impression/click rows so save-rate joins cleanly on item_id.
+      if (recSessionId) {
+        for (const item of items) {
+          if (isUserItem(item)) continue
+          sendEvent({
+            rec_session_id: recSessionId,
+            event: "save",
+            item_id: item.id,
+            item_source: "catalog",
+            suggestion_id: suggestion.id,
+          })
+        }
+      }
     } catch (error) {
       console.error("Error saving outfit:", error)
     } finally {
@@ -161,15 +200,71 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
       () => onTryOnClick?.({ requestId: reqId, suggestion, items }),
       () => onTryOnSuccess?.({ requestId: reqId, suggestion }),
     )
+    if (recSessionId) {
+      // Try-on operates on the whole outfit; emit a single event per catalog item
+      // it composed so per-item conversion rate stays computable.
+      for (const item of items) {
+        if (isUserItem(item)) continue
+        sendEvent({
+          rec_session_id: recSessionId,
+          event: "try_on",
+          item_id: item.id,
+          item_source: "catalog",
+          suggestion_id: suggestion.id,
+        })
+      }
+    }
   }
 
   const vtonLoading = session?.status === "loading" && session?.suggestion?.id === suggestion.id
 
   const handleImageError = (itemId: string) => setImageErrors((prev) => ({ ...prev, [itemId]: true }))
-  const handleItemClick = (item: OutfitItem) => setSelectedItem(item)
+  const handleItemClick = (item: OutfitItem) => {
+    setSelectedItem(item)
+    // Only catalog items are tracked — wardrobe items don't live in
+    // recommendation_logs, and "click on my own t-shirt" isn't a CTR signal.
+    if (recSessionId && !isUserItem(item)) {
+      const position = catalogTrackingItems.findIndex((i) => i.id === item.id)
+      sendEvent({
+        rec_session_id: recSessionId,
+        event: "click",
+        item_id: item.id,
+        item_source: "catalog",
+        position: position >= 0 ? position : undefined,
+        suggestion_id: suggestion.id,
+      })
+    }
+  }
+
+  const handleAffiliateClick = (item: OutfitItem) => {
+    if (!recSessionId || isUserItem(item)) return
+    const position = catalogTrackingItems.findIndex((i) => i.id === item.id)
+    sendEvent({
+      rec_session_id: recSessionId,
+      event: "affiliate_click",
+      item_id: item.id,
+      item_source: "catalog",
+      position: position >= 0 ? position : undefined,
+      suggestion_id: suggestion.id,
+    })
+  }
+
+  const handleDislikeItemClick = (item: OutfitItem) => {
+    onDislikeItem?.(item.id)
+    if (recSessionId) {
+      sendEvent({
+        rec_session_id: recSessionId,
+        event: "dislike_item",
+        item_id: item.id,
+        item_source: isUserItem(item) ? "user" : "catalog",
+        suggestion_id: suggestion.id,
+      })
+    }
+  }
 
   return (
     <>
+      <div ref={impressionRef}>
       <Card className="bg-white border-0 overflow-hidden w-[calc(100vw-2rem)] max-w-96 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.08)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.06),0_12px_32px_rgba(0,0,0,0.1)] transition-all duration-300">
         <CardContent className="p-6">
           {/* Source badge */}
@@ -273,7 +368,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                       aria-label="Не рекомендовать"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onDislikeItem?.(item.id)
+                        handleDislikeItemClick(item)
                       }}
                       className="absolute bottom-2 right-2 p-1.5 rounded-full bg-white/80 hover:bg-red-50 text-gray-400 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all duration-200 z-10"
                     >
@@ -391,6 +486,7 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
           </div>
         </CardContent>
       </Card>
+      </div>
 
       {/* Item Details Modal */}
       {selectedItem && (
@@ -482,7 +578,10 @@ export function OutfitCard({ suggestion, sectionSource, onSaveOutfit, userLooks 
                       href={item.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleAffiliateClick(item)
+                      }}
                       className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full transition-colors"
                     >
                       <ExternalLink className="w-3 h-3" />

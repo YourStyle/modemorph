@@ -42,6 +42,7 @@ interface LookSection {
   suggestions: OutfitSuggestion[]
   source?: "user_only" | "mix" | "partner_only" | "clip" | "ai"
   source_label?: string
+  rec_session_id?: string | null
 }
 
 
@@ -563,6 +564,7 @@ export default function HomePage() {
                                           <OutfitCard
                                               suggestion={suggestion}
                                               sectionSource={section.source}
+                                              recSessionId={section.rec_session_id}
                                               onTryOnClick={handleTryOnClick}
                                               onTryOnSuccess={handleTryOnSuccess}
                                               onSaveOutfit={handleSaveOutfit}
