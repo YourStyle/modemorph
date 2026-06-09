@@ -8,12 +8,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { UserProfileSheet } from "./user-profile-sheet"
 import { api } from "@/lib/api-client"
 import { getUserCoords } from "@/lib/tma/geo"
+import { CityPickerSheet } from "@/components/city-picker-sheet"
 
 interface WeatherData {
   temperature: number
   description: string
   location: string
   icon: string
+  country?: string
 }
 
 interface UserProfile {
@@ -34,6 +36,8 @@ export function TopNavigation() {
   const [weekdayShort, setWeekdayShort] = useState("")
 
   const [isTmaMobile, setIsTmaMobile] = useState(false)
+  const [cityPickerOpen, setCityPickerOpen] = useState(false)
+  const [showCityHint, setShowCityHint] = useState(false)
 
   useEffect(() => {
     updateDateTime()
@@ -199,6 +203,32 @@ export function TopNavigation() {
     }
   }
 
+  const handleCityPicked = (w: any) => {
+    setWeather({
+      temperature: w.temperature,
+      description: w.description,
+      location: w.location,
+      icon: w.icon || "🌤️",
+      country: w.country || "",
+    })
+    setShowCityHint(false)
+    try { localStorage.setItem("cityHintSeen", "1") } catch {}
+  }
+
+  const dismissCityHint = () => {
+    setShowCityHint(false)
+    try { localStorage.setItem("cityHintSeen", "1") } catch {}
+  }
+
+  // Show the "which city/country?" hint once, after weather first resolves.
+  useEffect(() => {
+    if (weather && !weatherLoading) {
+      try {
+        if (!localStorage.getItem("cityHintSeen")) setShowCityHint(true)
+      } catch {}
+    }
+  }, [weather, weatherLoading])
+
   const handleSignOut = async () => {
     try {
       await api.post("/api/auth/signout")
@@ -230,12 +260,17 @@ export function TopNavigation() {
                 {weekdayShort}
               </span>
 
-              {/* Компактная погода: без времени, маленький текст */}
+              {/* Компактная погода: тап → выбор города */}
               {weather && !weatherLoading && (
-                <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap">
+                <button
+                  type="button"
+                  onClick={() => setCityPickerOpen(true)}
+                  className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap"
+                  title="Выбрать город"
+                >
                   <span>{weather.icon}</span>
                   <span>{weather.temperature}°C</span>
-                </span>
+                </button>
               )}
 
               {/* Аватар профиля */}
@@ -260,11 +295,33 @@ export function TopNavigation() {
           </div>
         </div>
 
+        {showCityHint && weather && (
+          <div className="px-4 py-2 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2">
+            <span>
+              📍 Погода: {weather.location}
+              {weather.country ? `, ${weather.country}` : ""}. Не ваш город?
+            </span>
+            <span className="flex items-center gap-3 shrink-0">
+              <button onClick={() => { setCityPickerOpen(true); dismissCityHint() }} className="font-semibold underline">
+                Выбрать
+              </button>
+              <button onClick={dismissCityHint} aria-label="Закрыть" className="opacity-60">✕</button>
+            </span>
+          </div>
+        )}
+
         {/* ВАЖНО: унифицируем пропсы под isOpen/onClose */}
         <UserProfileSheet
           isOpen={isProfileSheetOpen}
           onClose={() => setIsProfileSheetOpen(false)}
           onSignOut={handleSignOut}
+        />
+        <CityPickerSheet
+          isOpen={cityPickerOpen}
+          onClose={() => setCityPickerOpen(false)}
+          onPicked={handleCityPicked}
+          currentCity={weather?.location}
+          currentCountry={weather?.country}
         />
       </>
     )
@@ -289,15 +346,20 @@ export function TopNavigation() {
             <div className="text-xs text-gray-500">{currentTime}</div>
           </div>
 
-          {/* Полная погода на десктопе */}
+          {/* Полная погода на десктопе — тап → выбор города */}
           {weather && !weatherLoading && (
-            <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-600">
+            <button
+              type="button"
+              onClick={() => setCityPickerOpen(true)}
+              className="hidden sm:flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-900"
+              title="Выбрать город"
+            >
               <MapPin className="h-4 w-4" />
               <span>{weather.location}</span>
               <span className="text-lg">{weather.icon}</span>
               <span className="font-medium">{weather.temperature}°C</span>
               <span className="capitalize">{weather.description}</span>
-            </div>
+            </button>
           )}
 
           {/* Загрузка погоды */}
@@ -349,6 +411,13 @@ export function TopNavigation() {
         isOpen={isProfileSheetOpen}
         onClose={() => setIsProfileSheetOpen(false)}
         onSignOut={handleSignOut}
+      />
+      <CityPickerSheet
+        isOpen={cityPickerOpen}
+        onClose={() => setCityPickerOpen(false)}
+        onPicked={handleCityPicked}
+        currentCity={weather?.location}
+        currentCountry={weather?.country}
       />
     </div>
   )

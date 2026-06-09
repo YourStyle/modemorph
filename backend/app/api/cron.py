@@ -724,7 +724,8 @@ async def cron_refresh_weather(request: Request, db: AsyncSession = Depends(get_
             await db.execute(text("""
                 UPDATE weather_cache SET
                     temperature = :temp, description = :desc, condition = :cond,
-                    humidity = :hum, wind_speed = :wind, city_name = :city, updated_at = NOW()
+                    humidity = :hum, wind_speed = :wind, city_name = :city,
+                    country = :country, updated_at = NOW()
                 WHERE user_id = :uid
             """), {
                 "uid": row["user_id"],
@@ -734,6 +735,7 @@ async def cron_refresh_weather(request: Request, db: AsyncSession = Depends(get_
                 "hum": data.get("main", {}).get("humidity", 0),
                 "wind": round(data.get("wind", {}).get("speed", 0)),
                 "city": data.get("name", ""),
+                "country": data.get("sys", {}).get("country", ""),
             })
             updated += 1
         except Exception as e:
