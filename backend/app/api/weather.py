@@ -1,7 +1,7 @@
 """Weather endpoints — compatible with frontend top-navigation + ai-assistant."""
 
 import httpx
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,18 +104,24 @@ async def get_cached_weather(
     db: AsyncSession = Depends(get_db),
 ):
     """Get cached weather — flat response matching frontend expectations."""
+    # Return the latest cached row regardless of age — the refresh-weather cron
+    # keeps it fresh (≤6h) using each user's stored lat/lon. The old "≤1 hour"
+    # filter made the endpoint return FALLBACK (20°/Москва) for ~5 of every 6
+    # hours, so users saw a fake 20° even though their real weather was cached.
+    # FALLBACK only when the user has NO cached location at all (brand-new user).
     result = await db.execute(
         text("""
             SELECT temperature, condition, description, humidity, wind_speed, city_name
             FROM weather_cache WHERE user_id = :uid
-            AND updated_at > NOW() - INTERVAL '1 hour'
             ORDER BY updated_at DESC LIMIT 1
         """),
         {"uid": user["id"]},
     )
     row = result.mappings().first()
     if not row:
-        return FALLBACK
+        # No cached location at all → 404 so the frontend proceeds to fetch
+        # fresh weather (via geolocation) instead of silently showing FALLBACK 20°.
+        raise HTTPException(status_code=404, detail="no cached weather")
 
     condition = row["condition"] or "Clear"
     return {
