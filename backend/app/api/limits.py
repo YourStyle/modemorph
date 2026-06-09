@@ -166,16 +166,8 @@ async def reconcile_limits(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    profile_id = await _get_profile_id(db, user["id"])
-    if await _is_subscriber(db, profile_id):
-        await db.execute(
-            text("""
-                UPDATE limits
-                SET wardrobe_items_anlyzed = 999, ai_requests = 999,
-                    ideas_viewed = 999, outfits_saved = 999, vton_used = 999
-                WHERE user_profile_id = :pid
-            """),
-            {"pid": profile_id},
-        )
-        await db.commit()
+    # No-op: unlimited-while-subscribed is handled live by _is_subscriber().
+    # We intentionally no longer write 999 into the limits table — that value was
+    # never restored on expiry, so churned subscribers kept unlimited access.
+    await _get_profile_id(db, user["id"])
     return {"success": True}

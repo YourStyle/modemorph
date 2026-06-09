@@ -190,16 +190,9 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
             {"pid": profile_id, "stype": sub_type, "months": months},
         )
 
-        # Reset limits to unlimited
-        await db.execute(
-            text("""
-                UPDATE limits
-                SET wardrobe_items_anlyzed = 999, ai_requests = 999,
-                    ideas_viewed = 999, outfits_saved = 999, vton_used = 999
-                WHERE user_profile_id = :pid
-            """),
-            {"pid": profile_id},
-        )
+        # NOTE: we deliberately do NOT write limits=999 here. Unlimited-while-active
+        # is handled live by _is_subscriber() (limits.py). Materializing 999 into the
+        # table meant it was never restored on expiry → churned users kept unlimited.
 
     elif action == "buy_credits":
         # credits/packName come from the server-resolved meta (set in create_payment
