@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.weather_rules import TEMP_RANGES, temp_ok
+from app.services.catalog_filters import gender_ok, is_kids_name
 
 logger = logging.getLogger(__name__)
 
@@ -56,17 +57,8 @@ def _is_partner_compatible(row: dict, gender: str | None, temp: int, disliked_id
     # Weather filter (infers warmth from type/name when temp_min/max is NULL)
     if not temp_ok(row, temp):
         return False
-    # Explicit gender filter
-    item_gender = row.get("gender") or ""
-    if gender and item_gender and item_gender != gender and item_gender != "unisex":
-        return False
-    # Name-based gender filter (catch items with NULL gender but gendered names)
-    name_lower = (row.get("item_name") or "").lower()
-    if gender == "male" and any(kw in name_lower for kw in _FEMALE_KEYWORDS):
-        return False
-    if gender == "female" and any(kw in name_lower for kw in _MALE_KEYWORDS):
-        return False
-    return True
+    # Gender match + kids exclusion + NULL-gender name rescue (shared helper).
+    return gender_ok(row, gender)
 
 async def _clip_recommend(user_id: str, k: int = 50) -> list:
     """Call CLIP service /clip/recommend for personalized partner items."""
@@ -370,9 +362,10 @@ async def cron_generate_recommendations(
                     partner_ids = [r["id"] for r in clip_results]
                     partner_result = await db.execute(text("""
                         SELECT id, item_name, image_url, clothing_type, color, url,
-                               notes, gender, temp_min, temp_max
+                               notes, gender, temp_min, temp_max, is_kids
                         FROM wardrobe_items WHERE id = ANY(:ids)
                         AND COALESCE(is_hidden, false) = false
+                        AND COALESCE(is_kids, false) = false
                     """), {"ids": partner_ids})
                     for r in partner_result.mappings().all():
                         row = dict(r)
@@ -393,9 +386,10 @@ async def cron_generate_recommendations(
                 existing_ids = {p["id"] for p in partner_items} | {i["id"] for i in user_items}
                 fallback_result = await db.execute(text(f"""
                     SELECT id, item_name, image_url, clothing_type, color, url,
-                           notes, gender, temp_min, temp_max
+                           notes, gender, temp_min, temp_max, is_kids
                     FROM wardrobe_items
                     WHERE COALESCE(is_hidden, false) = false
+                    AND COALESCE(is_kids, false) = false
                     {gender_filter}
                     AND (temp_min IS NULL OR temp_min <= :temp)
                     AND (temp_max IS NULL OR temp_max >= :temp)
@@ -967,9 +961,19 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
     logger.info(f"[classify-gender] {len(items)} items without gender")
 
     name_classified = 0
+    kids_flagged = 0
     clip_candidates = []
 
     for item in items:
+        # Kids are not our audience — flag + hide, skip gender entirely.
+        if is_kids_name(item.item_name):
+            await db.execute(
+                text("UPDATE wardrobe_items SET is_kids = true, is_hidden = true WHERE id = :id"),
+                {"id": item.id},
+            )
+            kids_flagged += 1
+            continue
+
         name_lower = item.item_name.lower()
         detected = None
 
@@ -1031,12 +1035,18 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
                         continue
 
                     top_tag = tags[0].lower()
+                    if "детск" in top_tag:
+                        # Kids — remove from feeds rather than mislabel as unisex.
+                        await db.execute(
+                            text("UPDATE wardrobe_items SET is_kids = true, is_hidden = true WHERE id = :id"),
+                            {"id": item.id},
+                        )
+                        kids_flagged += 1
+                        continue
                     if "мужск" in top_tag:
                         gender_val = "male"
                     elif "женск" in top_tag:
                         gender_val = "female"
-                    elif "детск" in top_tag:
-                        gender_val = "unisex"
                     else:
                         gender_val = "unisex"
 

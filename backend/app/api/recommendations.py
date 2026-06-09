@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.services.weather_rules import temp_ok
+from app.services.catalog_filters import gender_ok
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +200,7 @@ async def _build_gap_section(
                 row = dict(r)
                 if not temp_ok(row, temp):
                     continue
-                if gender and row.get("gender") and row["gender"] != gender:
+                if not gender_ok(row, gender):
                     continue
                 brand = (row.get("notes") or "").split(":")[0] or None
                 items.append({
@@ -359,7 +360,11 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
     user_map = {r["id"]: dict(r) for r in user_items.mappings().all()}
 
     catalog_items = await db.execute(
-        text(f"SELECT id, image_url, item_name, item_name_en, clothing_type, color, shade, has_print FROM wardrobe_items WHERE id IN ({id_csv})"),
+        text(
+            f"SELECT id, image_url, item_name, item_name_en, clothing_type, color, shade, has_print "
+            f"FROM wardrobe_items WHERE id IN ({id_csv}) "
+            f"AND COALESCE(is_hidden, false) = false AND COALESCE(is_kids, false) = false"
+        ),
     )
     catalog_map = {r["id"]: dict(r) for r in catalog_items.mappings().all()}
 
@@ -401,11 +406,8 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                     item["shade"] = item.get("shade") or db_row.get("shade")
                     item["clothing_type"] = item.get("clothing_type") or db_row.get("clothing_type")
                     enriched_items.append(item)
-                elif source == "catalog" and item.get("image_url"):
-                    # Catalog item the feed has since removed — cached image still shows the right thing.
-                    item["item_source"] = "catalog"
-                    item["user_id"] = None
-                    enriched_items.append(item)
+                # If the catalog row is gone/hidden/kids (db_row is None), DROP it —
+                # don't re-show a stale cached item that's since been filtered out.
             if is_gap_section:
                 # Preserve all items in the slot — that's the whole point of the section.
                 sug["items"] = enriched_items
@@ -559,7 +561,7 @@ async def generate_recommendations(
                                 row = dict(r)
                                 if not temp_ok(row, temp):
                                     continue
-                                if gender and row.get("gender") and row["gender"] != gender:
+                                if not gender_ok(row, gender):
                                     continue
                                 brand = (row.get("notes") or "").split(":")[0] or None
                                 row["brand"] = brand

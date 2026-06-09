@@ -73,6 +73,8 @@ async def get_inspiration(
             FROM outfit_items oi
             JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
             WHERE oi.outfit_id = ANY(:ids)
+              AND COALESCE(wi.is_hidden, false) = false
+              AND COALESCE(wi.is_kids, false) = false
         """),
         {"ids": outfit_ids},
     )

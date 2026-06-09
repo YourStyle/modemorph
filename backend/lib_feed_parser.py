@@ -41,6 +41,14 @@ SKIP_CATEGORIES = {
 FEMALE_CATS = {"1", "1374"}
 MALE_CATS = {"2", "1443"}
 
+# Children's items are not our audience — skip at import (name + category chain).
+# Mirrors app/services/catalog_filters.KIDS_KEYWORDS.
+_KIDS_KEYWORDS = (
+    "детск", "для детей", "для мальчик", "для девоч", "ясельн", "малыш",
+    "школьн", "подростк", "детям", "новорожд", "kids", "baby", "junior",
+    "toddler", "infant",
+)
+
 COLORS_RU = {
     "черн": "Черный", "бел": "Белый", "сер": "Серый", "син": "Синий",
     "голуб": "Голубой", "красн": "Красный", "розов": "Розовый",
@@ -145,6 +153,12 @@ def parse_yml_feed(xml_string: str) -> dict:
 
         name = offer.findtext("name") or offer.findtext("model") or ""
         if not name:
+            continue
+
+        # Skip children's items (checks name + category chain).
+        hay = (name + " " + " ".join(chain)).lower()
+        if any(kw in hay for kw in _KIDS_KEYWORDS):
+            skipped_cat += 1
             continue
 
         items.append({
