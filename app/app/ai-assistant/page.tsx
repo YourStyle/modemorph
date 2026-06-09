@@ -16,6 +16,7 @@ import { useFeature } from "@/hooks/use-feature"
 import { api } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
 import { useAnalytics } from "@/hooks/use-analytics"
+import { getUserCoords } from "@/lib/tma/geo"
 
 interface Message {
   role: "user" | "assistant"
@@ -146,30 +147,8 @@ export default function AIAssistantPage() {
         // Continue to geolocation if cached weather fails
       }
 
-      // Геолокация через Promise с safety-таймаутом.
-      // В TMA WebView getCurrentPosition может молча не вызвать callback.
-      const coords = await new Promise<{ latitude: number; longitude: number }>((resolve) => {
-        const moscowCoords = { latitude: 55.7558, longitude: 37.6176 }
-        const timer = setTimeout(() => resolve(moscowCoords), 6000)
-
-        if (!navigator.geolocation) {
-          clearTimeout(timer)
-          resolve(moscowCoords)
-          return
-        }
-
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            clearTimeout(timer)
-            resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude })
-          },
-          () => {
-            clearTimeout(timer)
-            resolve(moscowCoords)
-          },
-          { timeout: 5000 },
-        )
-      })
+      // TMA-aware геолокация: Telegram LocationManager → браузер → Москва.
+      const coords = (await getUserCoords(8000)) || { latitude: 55.7558, longitude: 37.6176 }
 
       try {
         const weatherData = await api.get(`/api/weather?lat=${coords.latitude}&lon=${coords.longitude}`)

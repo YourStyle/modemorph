@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { UserProfileSheet } from "./user-profile-sheet"
 import { api } from "@/lib/api-client"
+import { getUserCoords } from "@/lib/tma/geo"
 
 interface WeatherData {
   temperature: number
@@ -166,35 +167,15 @@ export function TopNavigation() {
         // ignore cache errors — will try geolocation next
       }
 
-      // Геолокация через Promise с safety-таймаутом.
-      // В TMA WebView navigator.geolocation существует, но getCurrentPosition
-      // часто молча не вызывает ни один callback — без таймаута weatherLoading
-      // навсегда остаётся true и погода не рендерится.
-      const coords = await new Promise<{ latitude: number; longitude: number }>((resolve) => {
-        const fallback = { latitude: 55.7558, longitude: 37.6176 } // Москва
-        // Safety timeout: если ни один callback не вызван за 6 сек — используем Москву
-        const timer = setTimeout(() => resolve(fallback), 6000)
-
-        if (!navigator.geolocation) {
-          clearTimeout(timer)
-          resolve(fallback)
-          return
-        }
-
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            clearTimeout(timer)
-            resolve({ latitude: position.coords.latitude, longitude: position.coords.longitude })
-          },
-          () => {
-            clearTimeout(timer)
-            resolve(fallback) // Ошибка геолокации → Москва
-          },
-          { timeout: 5000, maximumAge: 300000 },
-        )
-      })
-
-      await fetchWeather(coords.latitude, coords.longitude)
+      // TMA-aware геолокация: сначала Telegram LocationManager (показывает
+      // настоящий запрос внутри Telegram), затем браузерная геолокация, иначе —
+      // Москва. Обычный navigator.geolocation в TMA-вебвью промпт не показывает.
+      const coords = await getUserCoords(8000)
+      if (coords) {
+        await fetchWeather(coords.latitude, coords.longitude)
+      } else {
+        await fetchWeather(55.7558, 37.6176) // Москва, если геопозиция недоступна
+      }
     } catch {
       setWeatherLoading(false)
       setWeather(FALLBACK_WEATHER)

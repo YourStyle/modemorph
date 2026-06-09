@@ -42,6 +42,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([])
   const [creditPacks, setCreditPacks] = useState<CreditPack[]>([])
   const [loading, setLoading] = useState(true)
+  const [currentSub, setCurrentSub] = useState<{ subscription_type: string; status: string; expires_at: string | null } | null>(null)
 
   // Swipe-to-dismiss states
   const [dragY, setDragY] = useState(0)
@@ -52,6 +53,9 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
   useEffect(() => {
     if (isOpen) {
       fetchPricing()
+      api.get("/api/user-subscription")
+        .then((d) => setCurrentSub(d?.subscription || null))
+        .catch(() => setCurrentSub(null))
     }
   }, [isOpen])
 
@@ -83,6 +87,13 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
   const subtitle = variant === "limitReached"
     ? "Открой безграничные возможности"
     : "Выбери подходящий план"
+
+  // Is the user already subscribed? (so we say "Продлить", not "Получить доступ")
+  const subActive = !!currentSub && currentSub.status === "active" &&
+    (!currentSub.expires_at || new Date(currentSub.expires_at) > new Date())
+  const subExpiresLabel = currentSub?.expires_at
+    ? new Date(currentSub.expires_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
+    : ""
 
   const handleGetAccess = async () => {
     if (currentView === "subscription") {
@@ -229,6 +240,12 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
                 </p>
               </div>
 
+              {subActive && (
+                <div className="flex-shrink-0 rounded-xl bg-emerald-50 text-emerald-800 text-sm px-3 py-2 text-center">
+                  ✓ Подписка активна{subExpiresLabel ? ` до ${subExpiresLabel}` : ""}. Покупка продлит её.
+                </div>
+              )}
+
               {/* Plan selection */}
               <div className="space-y-2 flex-shrink-0">
                 {loading ? (
@@ -294,7 +311,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
                     background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
                   }}
                 >
-                  {isProcessing ? "Обработка..." : "Получить доступ"}
+                  {isProcessing ? "Обработка..." : subActive ? "Продлить подписку" : "Получить доступ"}
                 </Button>
 
                 {/* View credit packs link */}
