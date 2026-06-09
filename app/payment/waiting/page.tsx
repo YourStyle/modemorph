@@ -1,31 +1,25 @@
 // app/payment/waiting/page.tsx
 "use client"
 import { useSearchParams, useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect } from "react"
 import { usePaymentStatus } from "@/hooks/use-payment-status"
 import { Loader2, XCircle, CheckCircle2 } from "lucide-react"
-import { api } from "@/lib/api-client"
 
 export default function WaitingPage() {
   const sp = useSearchParams()
   const router = useRouter()
-  const invId = sp.get("InvId") || undefined
-  const [paymentId, setPaymentId] = useState<string | undefined>(sp.get("paymentId") || undefined)
-  const status = usePaymentStatus(paymentId)
+  // Robokassa appends InvId to the SuccessURL configured in the merchant cabinet.
+  const invId = sp.get("InvId") || sp.get("invId") || undefined
+  const status = usePaymentStatus(invId)
 
   useEffect(() => {
-    if (!paymentId && invId) {
-      api.get(`/api/payments/by-inv?invId=${encodeURIComponent(invId)}`)
-        .then(d => setPaymentId(d.paymentId))
-        .catch(() => {})
+    if (status === "paid") {
+      const t = setTimeout(() => router.replace("/app"), 1200)
+      return () => clearTimeout(t)
     }
-  }, [invId, paymentId])
-
-  useEffect(() => {
-    if (status === "paid") router.replace("/app")
   }, [status, router])
 
-  if (!paymentId && !invId) return <div className="p-8">Некорректная ссылка ожидания оплаты.</div>
+  if (!invId) return <div className="p-8">Некорректная ссылка ожидания оплаты.</div>
 
   return (
     <div className="max-w-md mx-auto p-8 flex flex-col items-center text-center gap-3">

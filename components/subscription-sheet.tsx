@@ -60,7 +60,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
       setLoading(true)
       const data = await api.get("/api/pricing")
       setSubscriptionPlans(data.subscriptions || [])
-      setCreditPacks(data.creditPacks || [])
+      setCreditPacks(data.credit_packs || [])
     } catch (error) {
       console.error("Error fetching pricing:", error)
       toast({
@@ -122,7 +122,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
       await startRoboPayment(
         pack.price_rub,
         `Покупка ${pack.credits} кредитов`,
-        { action: "buy_credits", credits: pack.credits, packName: pack.name }
+        { action: "buy_credits", packId: pack.id }
       )
       onSuccess?.()
     } catch (error) {

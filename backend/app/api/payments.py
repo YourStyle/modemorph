@@ -1,10 +1,18 @@
 """
 Payments — Robokassa webhooks + subscription/credits management.
+
+Security model: the server is authoritative on BOTH the charged amount and the
+granted credits. create_payment resolves price/credits from the DB
+(subscription_pricing / credit_packs) by plan/pack id and stores them in
+payments.meta; the result webhook verifies the signature, checks the paid amount
+matches the recorded amount, and credits from that server-resolved meta. The
+client only chooses WHICH plan/pack — never how much it costs or grants.
 """
 
 import hashlib
 import json
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -19,9 +27,11 @@ router = APIRouter()
 
 
 class CreatePaymentRequest(BaseModel):
-    amount: float
-    description: str
-    meta: dict  # {action: "subscribe"|"buy_credits", type?, credits?, packName?}
+    # amount/description accepted for backwards-compat but IGNORED — the server
+    # derives the authoritative price from the DB.
+    amount: Optional[float] = None
+    description: Optional[str] = None
+    meta: dict  # {action:"subscribe", type} | {action:"buy_credits", packId}
 
 
 @router.post("/robokassa/create")
@@ -30,34 +40,76 @@ async def create_payment(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create payment record and return Robokassa URL."""
-    # Insert payment
+    """Resolve the authoritative price/credits from the DB, create a pending
+    payment, and return the Robokassa URL."""
+    meta_in = body.meta or {}
+    action = meta_in.get("action")
+
+    if action == "subscribe":
+        plan_type = meta_in.get("type", "monthly")
+        prow = (
+            await db.execute(
+                text("""
+                    SELECT price_rub, credits, display_name
+                    FROM subscription_pricing WHERE plan_type = :p AND is_active = true
+                """),
+                {"p": plan_type},
+            )
+        ).mappings().first()
+        if not prow:
+            raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_type}")
+        amount = int(prow["price_rub"])
+        meta = {
+            "action": "subscribe", "type": plan_type, "credits": int(prow["credits"]),
+            "price_rub": amount, "display_name": prow["display_name"],
+        }
+        description = f"Подписка {prow['display_name']}"
+
+    elif action == "buy_credits":
+        pack_id = meta_in.get("packId")
+        prow = (
+            await db.execute(
+                text("""
+                    SELECT id, name, credits, price_rub
+                    FROM credit_packs WHERE id = :id AND is_active = true
+                """),
+                {"id": pack_id},
+            )
+        ).mappings().first()
+        if not prow:
+            raise HTTPException(status_code=400, detail=f"Unknown credit pack: {pack_id}")
+        amount = int(prow["price_rub"])
+        meta = {
+            "action": "buy_credits", "packId": prow["id"], "credits": int(prow["credits"]),
+            "price_rub": amount, "packName": prow["name"],
+        }
+        description = f"Покупка {prow['credits']} кредитов"
+
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    # invoice_id is filled by the sequence default (migration 007_payments_invoice_id_sequence).
     result = await db.execute(
         text("""
-            INSERT INTO payments (user_id, amount, status, meta, created_at)
-            VALUES (:uid, :amount, 'pending', CAST(:meta AS jsonb), NOW())
-            RETURNING id, invoice_id
+            INSERT INTO payments (user_id, amount, status, description, meta, created_at)
+            VALUES (:uid, :amount, 'pending', :descr, CAST(:meta AS jsonb), NOW())
+            RETURNING invoice_id
         """),
-        {"uid": user["id"], "amount": body.amount, "meta": json.dumps(body.meta)},
+        {"uid": user["id"], "amount": amount, "descr": description, "meta": json.dumps(meta)},
     )
-    row = result.first()
+    invoice_id = result.scalar()
     await db.commit()
 
-    invoice_id = row.invoice_id or row.id
-
-    # Build Robokassa URL
-    from urllib.parse import quote
-
     signature = hashlib.md5(
-        f"{settings.ROBOKASSA_LOGIN}:{body.amount}:{invoice_id}:{settings.ROBOKASSA_PASS1}".encode()
+        f"{settings.ROBOKASSA_LOGIN}:{amount}:{invoice_id}:{settings.ROBOKASSA_PASS1}".encode()
     ).hexdigest()
 
     url = (
         f"https://auth.robokassa.ru/Merchant/Index.aspx"
         f"?MerchantLogin={settings.ROBOKASSA_LOGIN}"
-        f"&OutSum={body.amount}"
+        f"&OutSum={amount}"
         f"&InvId={invoice_id}"
-        f"&Description={quote(body.description)}"
+        f"&Description={quote(description)}"
         f"&SignatureValue={signature}"
         f"&IsTest=0"
     )
@@ -81,25 +133,31 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
     if sig.lower() != expected.lower():
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    # Atomic: find and claim payment in one step (prevents double-processing)
+    try:
+        inv = int(inv_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid InvId")
+
+    # Atomic claim: only if not yet paid AND the paid amount matches our record
+    # (defends against a tampered OutSum). Also the idempotency guard.
     result = await db.execute(
         text("""
             UPDATE payments SET status = 'paid'
-            WHERE invoice_id = :inv AND status != 'paid'
+            WHERE invoice_id = :inv AND status != 'paid' AND amount = CAST(:amt AS NUMERIC)
             RETURNING *
         """),
-        {"inv": int(inv_id)},
+        {"inv": inv, "amt": out_sum},
     )
     payment = result.mappings().first()
     if not payment:
-        # Already paid or not found — idempotent OK
-        return f"OK{inv_id}"
+        # Already paid, not found, or amount mismatch — idempotent OK
+        return f"OK{inv}"
 
     meta = payment["meta"] or {}
 
     # Already applied (extra safety)
     if meta.get("post_applied"):
-        return f"OK{inv_id}"
+        return f"OK{inv}"
 
     # Get user profile
     profile_result = await db.execute(
@@ -144,6 +202,8 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
         )
 
     elif action == "buy_credits":
+        # credits/packName come from the server-resolved meta (set in create_payment
+        # from credit_packs), NOT from the client — so the amount can't be forged.
         credits = meta.get("credits", 0)
         pack_name = meta.get("packName", "")
         await db.execute(
@@ -162,11 +222,30 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
     updated_meta = {**meta, "post_applied": True, "post_applied_at": "now()"}
     await db.execute(
         text("UPDATE payments SET meta = CAST(:meta AS jsonb) WHERE invoice_id = :inv"),
-        {"meta": json.dumps(updated_meta), "inv": int(inv_id)},
+        {"meta": json.dumps(updated_meta), "inv": inv},
     )
 
     await db.commit()
-    return f"OK{inv_id}"
+    return f"OK{inv}"
+
+
+@router.get("/by-inv")
+async def payment_by_inv(
+    invId: Optional[int] = None,
+    id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public payment-status lookup used by /payment/waiting. Returns only the
+    status (no amounts / user data), keyed by Robokassa InvId or payment UUID.
+    Public on purpose: after the Robokassa redirect the TMA session may not have
+    re-established, and the status alone is not sensitive."""
+    if invId is not None:
+        row = (await db.execute(text("SELECT status FROM payments WHERE invoice_id = :inv"), {"inv": invId})).first()
+    elif id:
+        row = (await db.execute(text("SELECT status FROM payments WHERE id = :id"), {"id": id})).first()
+    else:
+        raise HTTPException(status_code=400, detail="invId or id required")
+    return {"status": row[0] if row else "unknown"}
 
 
 @router.get("/subscription")
