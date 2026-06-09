@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.services.weather_rules import temp_ok
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +197,7 @@ async def _build_gap_section(
             items = []
             for r in rows.mappings().all():
                 row = dict(r)
-                if row.get("temp_min") is not None and temp < row["temp_min"]:
-                    continue
-                if row.get("temp_max") is not None and temp > row["temp_max"]:
+                if not temp_ok(row, temp):
                     continue
                 if gender and row.get("gender") and row["gender"] != gender:
                     continue
@@ -491,6 +490,12 @@ async def generate_recommendations(
         "temperature": 15, "description": "ясно", "city_name": "Москва",
     }
 
+    # Drop out-of-season user items (winter coat at +20°C) ALWAYS — partner items
+    # backfill the outfit. User items lack temp_min/max, so temp_ok() infers from
+    # clothing_type + name.
+    _temp = weather.get("temperature") or 15
+    wardrobe_items = [i for i in wardrobe_items if temp_ok(i, _temp)]
+
     # Get user's dominant style
     style_result = await db.execute(
         text("SELECT dominant_style FROM user_profiles WHERE user_id = :uid"),
@@ -552,9 +557,7 @@ async def generate_recommendations(
                             """), {"ids": partner_ids})
                             for r in partner_result.mappings().all():
                                 row = dict(r)
-                                if row.get("temp_min") is not None and temp < row["temp_min"]:
-                                    continue
-                                if row.get("temp_max") is not None and temp > row["temp_max"]:
+                                if not temp_ok(row, temp):
                                     continue
                                 if gender and row.get("gender") and row["gender"] != gender:
                                     continue

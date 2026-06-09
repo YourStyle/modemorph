@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.services.weather_rules import TEMP_RANGES, temp_ok
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +53,8 @@ def _is_partner_compatible(row: dict, gender: str | None, temp: int, disliked_id
     item_id = row["id"]
     if item_id in disliked_ids:
         return False
-    # Weather filter
-    if row.get("temp_min") is not None and temp < row["temp_min"]:
-        return False
-    if row.get("temp_max") is not None and temp > row["temp_max"]:
+    # Weather filter (infers warmth from type/name when temp_min/max is NULL)
+    if not temp_ok(row, temp):
         return False
     # Explicit gender filter
     item_gender = row.get("gender") or ""
@@ -357,12 +356,9 @@ async def cron_generate_recommendations(
             }
             temp = weather["temperature"] or 20
 
-            # Filter user items by weather (remove winter gloves at 11°C, shorts at 0°C)
-            user_items = [
-                i for i in user_items
-                if (i.get("temp_min") is None or i["temp_min"] <= temp)
-                and (i.get("temp_max") is None or i["temp_max"] >= temp)
-            ]
+            # Filter user items by weather (remove winter coats at +20°C, shorts at 0°C).
+            # temp_ok() also infers warmth from type/name when temp_min/max is NULL.
+            user_items = [i for i in user_items if temp_ok(i, temp)]
 
             # Get partner items via CLIP (if chosen)
             # Small wardrobes get more partner items to build full outfits
@@ -1067,17 +1063,7 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
 # Fill temp_min/temp_max for catalog items based on clothing_type
 # ---------------------------------------------------------------------------
 
-TEMP_RANGES: dict[str, tuple[int, int]] = {
-    # type: (min_temp, max_temp) in Celsius
-    "t-shirt": (18, 35), "tank-top": (22, 35), "shirt": (10, 30),
-    "blouse": (12, 30), "lonsleeve": (5, 22), "turtleneck": (0, 15),
-    "pullover": (0, 18), "cardigan": (5, 20), "hoodie": (5, 20),
-    "sweatshirt": (5, 22), "vest": (5, 20), "suit-jacket": (8, 25),
-    "coat": (-10, 15), "puffer-jacket": (-20, 10), "parka": (-25, 5),
-    "dress": (10, 30), "skirt": (12, 30), "pants": (-5, 30),
-    "jeans": (0, 28), "sporty-pants": (5, 25), "shorts": (20, 35),
-    "classic": (5, 28),
-}
+# TEMP_RANGES moved to app/services/weather_rules.py (shared with recommendations.py).
 
 
 @router.post("/fill-temp-ranges")
@@ -1087,14 +1073,15 @@ async def fill_temp_ranges(request: Request, db: AsyncSession = Depends(get_db))
 
     updated = 0
     for clothing_type, (tmin, tmax) in TEMP_RANGES.items():
-        result = await db.execute(
-            text("""
-                UPDATE wardrobe_items SET temp_min = :tmin, temp_max = :tmax
-                WHERE clothing_type = :ct AND (temp_min IS NULL OR temp_max IS NULL)
-            """),
-            {"ct": clothing_type, "tmin": tmin, "tmax": tmax},
-        )
-        updated += result.rowcount
+        for table in ("wardrobe_items", "wardrobe_user_items"):
+            result = await db.execute(
+                text(f"""
+                    UPDATE {table} SET temp_min = :tmin, temp_max = :tmax
+                    WHERE clothing_type = :ct AND (temp_min IS NULL OR temp_max IS NULL)
+                """),
+                {"ct": clothing_type, "tmin": tmin, "tmax": tmax},
+            )
+            updated += result.rowcount
 
     await db.commit()
     logger.info(f"[fill-temp-ranges] Updated {updated} items")
