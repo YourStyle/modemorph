@@ -182,6 +182,10 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
     churn_rate = round(churned / max(total_subs_ever, 1) * 100, 1)
 
     # ── Stickiness ──
+    # (dau/mau were referenced here before being defined -> NameError that 500'd
+    #  the entire /analytics endpoint.)
+    dau = await scalar("SELECT count(DISTINCT user_profile_id) FROM daily_user_activity WHERE activity_date = CURRENT_DATE")
+    mau = await scalar("SELECT count(DISTINCT user_profile_id) FROM daily_user_activity WHERE activity_date >= CURRENT_DATE - 30")
     stickiness = round(dau / max(mau, 1) * 100, 1) if mau else 0
     # Avg days active per user in last 30 days
     avg_days_active = await scalar("""
@@ -499,6 +503,94 @@ async def paying_users(user: dict = Depends(get_admin_user), db: AsyncSession = 
         })
 
     return {"paying_users": paying, "total": len(paying)}
+
+
+@router.get("/users/{user_id}/timeline")
+async def user_timeline(user_id: str, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Per-user behavior timeline: activation funnel (signup -> first wardrobe upload
+    -> first outfit -> paid) + every payment + subscription + active days + event
+    stream. Bridges the UUID (user_id) <-> BIGINT (profile_id) split."""
+    async def scalar(sql, binds=None):
+        try:
+            return (await db.execute(text(sql), binds or {})).scalar()
+        except Exception:
+            await db.rollback()
+            return None
+
+    prof = (await db.execute(text("""
+        SELECT up.id AS profile_id, up.created_at AS signup_at, up.onboarding_complete,
+               up.full_name, up.gender, up.dominant_style, u.email, u.raw_user_meta_data
+        FROM user_profiles up JOIN users u ON u.id = up.user_id
+        WHERE up.user_id = :uid
+    """), {"uid": user_id})).mappings().first()
+    if not prof:
+        raise HTTPException(status_code=404, detail="User not found")
+    pid = prof["profile_id"]
+
+    wardrobe_count = await scalar("SELECT count(*) FROM wardrobe_user_items WHERE user_id = :uid", {"uid": user_id}) or 0
+    first_item_at = await scalar("SELECT MIN(created_at) FROM wardrobe_user_items WHERE user_id = :uid", {"uid": user_id})
+    first_outfit_at = await scalar("SELECT MIN(created_at) FROM outfits WHERE user_id = :uid", {"uid": user_id})
+    first_look_at = await scalar("SELECT MIN(created_at) FROM user_looks WHERE user_id = :uid", {"uid": user_id})
+
+    pay_rows = (await db.execute(text("""
+        SELECT amount, status, meta, created_at FROM payments WHERE user_id = :uid ORDER BY created_at
+    """), {"uid": user_id})).mappings().all()
+    payments = [{
+        "amount": float(p["amount"]), "status": p["status"],
+        "action": (p["meta"] or {}).get("action"), "type": (p["meta"] or {}).get("type"),
+        "created_at": str(p["created_at"]),
+    } for p in pay_rows]
+    first_paid_at = next((p["created_at"] for p in payments if p["status"] == "paid"), None)
+
+    sub = (await db.execute(text("""
+        SELECT subscription_type, status, start_date, expires_at, credits_included
+        FROM user_subscriptions WHERE user_profile_id = :pid ORDER BY created_at DESC LIMIT 1
+    """), {"pid": pid})).mappings().first()
+    credits = await scalar("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid", {"pid": pid}) or 0
+
+    activity = (await db.execute(text("""
+        SELECT activity_date, activity_count FROM daily_user_activity
+        WHERE user_profile_id = :pid ORDER BY activity_date DESC LIMIT 60
+    """), {"pid": pid})).mappings().all()
+    events = (await db.execute(text("""
+        SELECT occurred_at, feature, action, count FROM usage_events
+        WHERE user_profile_id = :pid ORDER BY occurred_at DESC LIMIT 100
+    """), {"pid": pid})).mappings().all()
+
+    meta = prof["raw_user_meta_data"] or {}
+    if isinstance(meta, str):
+        try:
+            meta = json_lib.loads(meta)
+        except Exception:
+            meta = {}
+
+    return {
+        "user": {
+            "user_id": user_id, "profile_id": pid, "email": prof["email"] or "",
+            "full_name": prof["full_name"] or meta.get("full_name") or meta.get("telegram_first_name") or "",
+            "telegram_username": meta.get("telegram_username") or "",
+            "gender": prof["gender"], "dominant_style": prof["dominant_style"],
+            "onboarding_complete": prof["onboarding_complete"],
+        },
+        "funnel": {
+            "signup_at": str(prof["signup_at"]) if prof["signup_at"] else None,
+            "first_item_at": str(first_item_at) if first_item_at else None,
+            "wardrobe_count": wardrobe_count,
+            "first_outfit_at": str(first_outfit_at) if first_outfit_at else None,
+            "first_look_at": str(first_look_at) if first_look_at else None,
+            "first_paid_at": first_paid_at,
+        },
+        "subscription": ({
+            "subscription_type": sub["subscription_type"], "status": sub["status"],
+            "start_date": str(sub["start_date"]) if sub["start_date"] else None,
+            "expires_at": str(sub["expires_at"]) if sub["expires_at"] else None,
+            "credits_included": sub["credits_included"],
+        } if sub else None),
+        "credits": credits,
+        "payments": payments,
+        "activity": [{"date": str(a["activity_date"]), "count": a["activity_count"]} for a in activity],
+        "events": [{"at": str(e["occurred_at"]), "feature": e["feature"], "action": e["action"], "count": e["count"]} for e in events],
+    }
 
 
 @router.get("/metrics")

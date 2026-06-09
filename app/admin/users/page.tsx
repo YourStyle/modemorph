@@ -487,7 +487,13 @@ export default function AdminUsersPage() {
                   <TableRow key={user.user_id}>
                     <TableCell>
                       <div className="flex flex-col">
-                        <span className="font-medium">{user.full_name || "Пользователь"}</span>
+                        <a
+                          href={`/admin/users/${user.user_id}`}
+                          className="font-medium text-[#B97DC6] hover:underline"
+                          title="Открыть таймлайн пользователя"
+                        >
+                          {user.full_name || "Пользователь"}
+                        </a>
                         <span className="text-xs text-muted-foreground">{user.user_id.slice(0, 8)}...</span>
                       </div>
                     </TableCell>
