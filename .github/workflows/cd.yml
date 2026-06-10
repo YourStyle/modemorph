@@ -11,24 +11,74 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy over SSH
+  # 1) Build images on GitHub's runner (NOT on the prod box) and push to GHCR.
+  build-and-push:
+    name: Build images in CI
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - name: Deploy to server over SSH
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: ghcr.io/yourstyle/modemorph-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Build & push app
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/yourstyle/modemorph-app:latest
+          # NEXT_PUBLIC_* are inlined into the public client bundle, so this URL is not secret.
+          build-args: |
+            NEXT_PUBLIC_AI_API_URL=https://modemorph.up.railway.app/webhook
+            BACKEND_URL=http://backend:8080
+          cache-from: type=gha,scope=app
+          cache-to: type=gha,scope=app,mode=max
+
+  # 2) On the prod box: sync repo, login to GHCR, PULL the freshly-built images,
+  #    apply DB migrations, restart. No build happens on the server.
+  deploy:
+    name: Deploy (pull + restart)
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          command_timeout: 40m
+          envs: GHCR_TOKEN,GHCR_USER
+          command_timeout: 20m
           script_stop: true
           script: |
             set -e
             cd /home/tashernaut/apps/modemorph
             git fetch origin main
-            # Preserve server-local docker-compose edits (postgres localhost bind,
-            # pg_hba hardening, adminer) across the pull.
+            # Preserve server-local docker-compose edits (postgres hardening, adminer).
             if ! git diff --quiet -- docker-compose.yml; then
               git stash push -m ci-autostash -- docker-compose.yml
               STASHED=1
@@ -38,4 +88,5 @@ jobs:
             git merge --ff-only origin/main
             if [ "$STASHED" = "1" ]; then git stash pop; fi
             chmod +x scripts/deploy.sh scripts/migrate.sh
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             bash scripts/deploy.sh

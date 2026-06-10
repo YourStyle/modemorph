@@ -53,6 +53,7 @@ services:
   # FastAPI Backend — replaces Supabase + n8n logic
   # ──────────────────────────────────────────────
   backend:
+    image: ghcr.io/yourstyle/modemorph-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -93,6 +94,7 @@ services:
   # Next.js Frontend
   # ──────────────────────────────────────────────
   app:
+    image: ghcr.io/yourstyle/modemorph-app:latest
     build:
       context: .
       dockerfile: Dockerfile

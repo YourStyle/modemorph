@@ -11,8 +11,8 @@ cd "$(dirname "$0")/.."
 echo "== [1/4] DB migrations =="
 bash scripts/migrate.sh
 
-echo "== [2/4] build code services (backend + app) =="
-docker compose build backend app
+echo "== [2/4] pull pre-built images (built in CI, not on this box) =="
+docker compose pull backend app
 
 echo "== [3/4] restart code services =="
 docker compose up -d backend app
