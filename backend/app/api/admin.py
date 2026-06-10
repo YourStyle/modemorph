@@ -52,9 +52,22 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
     users_wardrobe_100 = sum(1 for r in wardrobe_counts if r["cnt"] >= 50)
 
     # ── Aha-moment ──
-    users_first_outfit = await scalar("SELECT count(DISTINCT user_id) FROM outfits")
+    # SINGLE SOURCE OF TRUTH: a real user "makes an outfit" by saving a look into
+    # user_looks (POST /api/user-looks). The `outfits` table is only written by
+    # admin/AI flows, which is why "first outfit" used to read ~0 while "saved"
+    # read 289 — they pointed at different tables. Both now read user_looks.
+    users_first_outfit = await scalar("SELECT count(DISTINCT user_id) FROM user_looks")
     users_first_tryon = await scalar("SELECT count(DISTINCT user_profile_id) FROM usage_events WHERE feature = 'vton_used' OR feature = 'first_tryon_opened'")
-    users_clicked_rec = await scalar("SELECT count(DISTINCT user_profile_id) FROM usage_events WHERE feature = 'recommendation_clicked'")
+    # Rec clicks live in recommendation_logs (written by /api/rec-event), NOT in
+    # usage_events. Reading the wrong table is why this used to be 0.
+    users_clicked_rec = await scalar("SELECT count(DISTINCT user_id) FROM recommendation_logs WHERE action = 'click'")
+
+    # ── Recommendation CTR (real, from recommendation_logs) ──
+    rec_impressions = await scalar("SELECT count(*) FROM recommendation_logs WHERE action = 'impression'")
+    rec_clicks = await scalar("SELECT count(*) FROM recommendation_logs WHERE action = 'click'")
+    rec_affiliate_clicks = await scalar("SELECT count(*) FROM recommendation_logs WHERE action = 'affiliate_click'")
+    rec_ctr = round(rec_clicks / max(rec_impressions, 1) * 100, 2)
+    rec_affiliate_ctr = round(rec_affiliate_clicks / max(rec_impressions, 1) * 100, 2)
 
     # ── Value delivery ──
     total_outfits_saved = await scalar("SELECT count(*) FROM user_looks")
@@ -107,31 +120,58 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
     conversion_rate = round(conversions_to_premium / max(paywall_shown, 1) * 100, 1)
 
     # ── Funnel ──
+    # "Первый образ" == first saved look (users_first_outfit). The old separate
+    # "Сохранили образ" stage read the same user_looks table after the fix, so
+    # it was a duplicate line; replaced with "2+ образов" (real engagement step).
     funnel = [
         {"stage": "Регистрация", "users": total_users},
         {"stage": "Первая вещь", "users": users_with_first_item},
         {"stage": "Онбординг завершён", "users": users_onboarding_complete},
         {"stage": "Первый образ", "users": users_first_outfit},
-        {"stage": "Сохранили образ", "users": users_saved_outfits},
+        {"stage": "2+ образов", "users": users_with_repeat},
         {"stage": "AI ассистент", "users": users_used_ai},
         {"stage": "Premium", "users": premium_users},
     ]
 
-    # ── Timeline (last 30 days from usage_events) ──
-    timeline_rows = await rows("""
-        SELECT DATE(occurred_at) as date,
-            count(*) FILTER (WHERE feature = 'first_item_added') as first_item_added,
-            count(*) FILTER (WHERE feature IN ('first_outfit_generated', 'outfit_saved')) as first_outfit_generated,
-            count(*) FILTER (WHERE feature = 'outfit_saved') as outfit_saved,
-            count(*) FILTER (WHERE feature IN ('ai_assistant_used', 'ai_requests')) as ai_assistant_used
-        FROM usage_events
-        WHERE occurred_at >= CURRENT_DATE - 30
-        GROUP BY DATE(occurred_at) ORDER BY date
+    # ── Timeline (last 30 days, from canonical tables — not dead event names) ──
+    # Each series reads the table where the action actually lands:
+    #   items_added    ← wardrobe_user_items (real photo analyses saved)
+    #   outfits_created← user_looks           (the single source of truth)
+    #   ai_requests    ← usage_events ai_requests (genuinely logged by useFeature)
+    def _merge_daily(*series_with_keys):
+        bucket: dict[str, dict] = {}
+        for rowset, key in series_with_keys:
+            for r in rowset:
+                d = str(r["date"])
+                bucket.setdefault(d, {})[key] = r["cnt"]
+        return bucket
+
+    items_daily = await rows("""
+        SELECT DATE(created_at) as date, count(*) as cnt FROM wardrobe_user_items
+        WHERE created_at >= CURRENT_DATE - 30 GROUP BY DATE(created_at)
     """)
-    timeline = [{"date": str(r["date"]), "first_item_added": r["first_item_added"],
-                 "first_outfit_generated": r["first_outfit_generated"],
-                 "outfit_saved": r["outfit_saved"], "ai_assistant_used": r["ai_assistant_used"]}
-                for r in timeline_rows]
+    looks_daily = await rows("""
+        SELECT DATE(created_at) as date, count(*) as cnt FROM user_looks
+        WHERE created_at >= CURRENT_DATE - 30 GROUP BY DATE(created_at)
+    """)
+    ai_daily = await rows("""
+        SELECT DATE(occurred_at) as date, count(*) as cnt FROM usage_events
+        WHERE occurred_at >= CURRENT_DATE - 30 AND feature IN ('ai_assistant_used', 'ai_requests')
+        GROUP BY DATE(occurred_at)
+    """)
+    merged = _merge_daily((items_daily, "items_added"), (looks_daily, "outfits_created"), (ai_daily, "ai_requests"))
+    timeline = [
+        {
+            "date": d,
+            # Legacy keys kept so the existing chart keeps rendering; values now
+            # come from real tables. outfits_created == outfit_saved (same action).
+            "first_item_added": v.get("items_added", 0),
+            "first_outfit_generated": v.get("outfits_created", 0),
+            "outfit_saved": v.get("outfits_created", 0),
+            "ai_assistant_used": v.get("ai_requests", 0),
+        }
+        for d, v in sorted(merged.items())
+    ]
 
     # ── Revenue ──
     # MRR: active monthly subs + yearly subs / 12
@@ -249,10 +289,12 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
 
     # ── Activation Analysis ──
     # For each key action, calculate D7 retention of users who did it vs. didn't
+    # "first_outfit" reads user_looks (the real save), not the admin-only
+    # `outfits` table. The old separate "first_look_saved" row pointed at the
+    # same user_looks table, so it was dropped as a duplicate.
     activation_actions = [
         ("first_item", "wardrobe_user_items", "user_id"),
-        ("first_outfit", "outfits", "user_id"),
-        ("first_look_saved", "user_looks", "user_id"),
+        ("first_outfit", "user_looks", "user_id"),
     ]
     activation = []
     for label, table, uid_col in activation_actions:
@@ -318,6 +360,19 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
         JOIN (SELECT user_id, MIN(created_at) as first_item_at FROM wardrobe_user_items GROUP BY user_id) wi
         ON wi.user_id = up.user_id
     """)
+    # Median time-to-first-outfit — the headline activation metric. Median, not
+    # mean, because a few users who return days later skew the average badly.
+    ttv_median_outfit = await scalar("""
+        SELECT COALESCE(
+            EXTRACT(EPOCH FROM PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ul.first_outfit_at - up.created_at)) / 3600.0, 0
+        )
+        FROM user_profiles up
+        JOIN (SELECT user_id, MIN(created_at) as first_outfit_at FROM user_looks GROUP BY user_id) ul
+        ON ul.user_id = up.user_id
+    """)
+    # How many users ever reached the first-outfit milestone (denominator for
+    # activation-rate framing in the UI).
+    users_reached_first_outfit = users_first_outfit
 
     # ── DAU/MAU for stickiness (reuse from /metrics if available) ──
     dau_val = await scalar("SELECT count(DISTINCT user_profile_id) FROM daily_user_activity WHERE activity_date = CURRENT_DATE")
@@ -335,6 +390,14 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
             "users_first_outfit": users_first_outfit,
             "users_first_tryon": users_first_tryon,
             "users_clicked_recommendation": users_clicked_rec,
+        },
+        "recommendations": {
+            "impressions": rec_impressions,
+            "clicks": rec_clicks,
+            "affiliate_clicks": rec_affiliate_clicks,
+            "ctr": rec_ctr,
+            "affiliate_ctr": rec_affiliate_ctr,
+            "users_clicked": users_clicked_rec,
         },
         "value": {
             "total_outfits_saved": total_outfits_saved,
@@ -387,6 +450,11 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
             "avg_to_first_item_hours": round(float(ttv_first_item), 1),
             "avg_to_first_outfit_hours": round(float(ttv_first_outfit), 1),
             "median_to_first_item_hours": round(float(ttv_median_item), 1),
+            # Headline activation lever the user asked for: how long until a user
+            # makes their first outfit, and what share ever get there.
+            "median_to_first_outfit_hours": round(float(ttv_median_outfit), 1),
+            "users_reached_first_outfit": users_reached_first_outfit,
+            "first_outfit_activation_rate": round(users_reached_first_outfit / max(total_users, 1) * 100, 1),
         },
     }
 
@@ -529,8 +597,15 @@ async def user_timeline(user_id: str, user: dict = Depends(get_admin_user), db: 
 
     wardrobe_count = await scalar("SELECT count(*) FROM wardrobe_user_items WHERE user_id = :uid", {"uid": user_id}) or 0
     first_item_at = await scalar("SELECT MIN(created_at) FROM wardrobe_user_items WHERE user_id = :uid", {"uid": user_id})
-    first_outfit_at = await scalar("SELECT MIN(created_at) FROM outfits WHERE user_id = :uid", {"uid": user_id})
-    first_look_at = await scalar("SELECT MIN(created_at) FROM user_looks WHERE user_id = :uid", {"uid": user_id})
+    # first_outfit == first saved look (same source of truth as the dashboard).
+    first_outfit_at = await scalar("SELECT MIN(created_at) FROM user_looks WHERE user_id = :uid", {"uid": user_id})
+    first_look_at = first_outfit_at
+    # When (if ever) this user was shown the paywall — lets us see "saw paywall
+    # but didn't pay" vs "paid" right on the card.
+    first_paywall_at = await scalar(
+        "SELECT MIN(occurred_at) FROM usage_events WHERE user_profile_id = :pid AND feature = 'paywall_shown'",
+        {"pid": pid},
+    )
 
     pay_rows = (await db.execute(text("""
         SELECT amount, status, meta, created_at FROM payments WHERE user_id = :uid ORDER BY created_at
@@ -578,6 +653,7 @@ async def user_timeline(user_id: str, user: dict = Depends(get_admin_user), db: 
             "wardrobe_count": wardrobe_count,
             "first_outfit_at": str(first_outfit_at) if first_outfit_at else None,
             "first_look_at": str(first_look_at) if first_look_at else None,
+            "first_paywall_at": str(first_paywall_at) if first_paywall_at else None,
             "first_paid_at": first_paid_at,
         },
         "subscription": ({

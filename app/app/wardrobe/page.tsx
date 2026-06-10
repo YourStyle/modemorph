@@ -570,6 +570,7 @@ export default function WardrobePage() {
 
       <SubscriptionSheet
         isOpen={paywallOpen}
+        source="limit:wardrobe"
         onClose={() => setPaywallOpen(false)}
         onSuccess={() => setPaywallOpen(false)}
       />

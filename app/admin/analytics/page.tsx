@@ -23,6 +23,14 @@ interface AnalyticsData {
     users_first_tryon: number
     users_clicked_recommendation: number
   }
+  recommendations: {
+    impressions: number
+    clicks: number
+    affiliate_clicks: number
+    ctr: number
+    affiliate_ctr: number
+    users_clicked: number
+  }
   value: {
     total_outfits_saved: number
     users_saved_outfits: number
@@ -102,6 +110,9 @@ interface AnalyticsData {
     avg_to_first_item_hours: number
     avg_to_first_outfit_hours: number
     median_to_first_item_hours: number
+    median_to_first_outfit_hours: number
+    users_reached_first_outfit: number
+    first_outfit_activation_rate: number
   }
 }
 
@@ -183,6 +194,13 @@ export default function AnalyticsPage() {
       ["Первая примерка", data.ahaMoment.users_first_tryon],
       ["Клики по рекомендациям", data.ahaMoment.users_clicked_recommendation],
       ["", ""],
+      ["=== РЕКОМЕНДАЦИИ ===", ""],
+      ["Показы", data.recommendations.impressions],
+      ["Клики", data.recommendations.clicks],
+      ["CTR", `${data.recommendations.ctr}%`],
+      ["Affiliate переходы", data.recommendations.affiliate_clicks],
+      ["Affiliate CTR", `${data.recommendations.affiliate_ctr}%`],
+      ["", ""],
       ["=== ДОСТАВКА ЦЕННОСТИ ===", ""],
       ["Всего образов сохранено", data.value.total_outfits_saved],
       ["Пользователей сохранявших образы", data.value.users_saved_outfits],
@@ -230,6 +248,9 @@ export default function AnalyticsPage() {
       ["Среднее до первой вещи", `${data.timeToValue.avg_to_first_item_hours} ч`],
       ["Медиана до первой вещи", `${data.timeToValue.median_to_first_item_hours} ч`],
       ["Среднее до первого образа", `${data.timeToValue.avg_to_first_outfit_hours} ч`],
+      ["Медиана до первого образа", `${data.timeToValue.median_to_first_outfit_hours} ч`],
+      ["Активация (дошли до образа)", `${data.timeToValue.first_outfit_activation_rate}%`],
+      ["Дошли до первого образа", data.timeToValue.users_reached_first_outfit],
     ]
     const ws1 = XLSX.utils.aoa_to_sheet(summaryData)
     XLSX.utils.book_append_sheet(wb, ws1, "Сводка")
@@ -410,6 +431,52 @@ export default function AnalyticsPage() {
             <CardContent>
               <div className="text-2xl font-bold">{data.ahaMoment.users_clicked_recommendation}</div>
               <p className="text-xs text-muted-foreground mt-1">Пользователей</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Recommendations CTR (real, from recommendation_logs) */}
+      <div>
+        <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+          <Target className="h-5 w-5 text-[#89AEFF]" />
+          Рекомендации (реальные клики)
+        </h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Показы</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.recommendations.impressions.toLocaleString("ru")}</div>
+              <p className="text-xs text-muted-foreground mt-1">Карточек в зоне видимости</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">CTR</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.recommendations.ctr}%</div>
+              <p className="text-xs text-muted-foreground mt-1">{data.recommendations.clicks.toLocaleString("ru")} кликов</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Affiliate CTR</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.recommendations.affiliate_ctr}%</div>
+              <p className="text-xs text-muted-foreground mt-1">{data.recommendations.affiliate_clicks.toLocaleString("ru")} переходов в магазин</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Кликавших</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.recommendations.users_clicked}</div>
+              <p className="text-xs text-muted-foreground mt-1">Уникальных пользователей</p>
             </CardContent>
           </Card>
         </div>
@@ -743,16 +810,40 @@ export default function AnalyticsPage() {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium">До первого образа</CardTitle>
+                <CardDescription className="text-xs">Главный рычаг активации</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  {data.timeToValue.avg_to_first_outfit_hours < 1
-                    ? `${Math.round(data.timeToValue.avg_to_first_outfit_hours * 60)} мин`
-                    : data.timeToValue.avg_to_first_outfit_hours < 24
-                      ? `${data.timeToValue.avg_to_first_outfit_hours} ч`
-                      : `${Math.round(data.timeToValue.avg_to_first_outfit_hours / 24)} дн`}
+                  {(() => {
+                    const h = data.timeToValue.median_to_first_outfit_hours
+                    return h < 1 ? `${Math.round(h * 60)} мин` : h < 24 ? `${h} ч` : `${Math.round(h / 24)} дн`
+                  })()}
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">Среднее время от регистрации</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Медиана от регистрации (среднее:{" "}
+                  {data.timeToValue.avg_to_first_outfit_hours < 24
+                    ? `${data.timeToValue.avg_to_first_outfit_hours} ч`
+                    : `${Math.round(data.timeToValue.avg_to_first_outfit_hours / 24)} дн`}
+                  )
+                </p>
+                <div className="mt-3 w-full bg-gray-100 rounded-full h-2">
+                  <div
+                    className="h-2 rounded-full transition-all"
+                    style={{
+                      width: `${Math.min(data.timeToValue.first_outfit_activation_rate, 100)}%`,
+                      backgroundColor:
+                        data.timeToValue.first_outfit_activation_rate >= 40
+                          ? "#10b981"
+                          : data.timeToValue.first_outfit_activation_rate >= 20
+                            ? "#f59e0b"
+                            : "#ef4444",
+                    }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Активация: {data.timeToValue.first_outfit_activation_rate}% дошли до образа (
+                  {data.timeToValue.users_reached_first_outfit})
+                </p>
               </CardContent>
             </Card>
           </div>

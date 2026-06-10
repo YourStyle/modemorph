@@ -284,6 +284,7 @@ export default function LooksPage() {
         {paywallOpen && (
           <SubscriptionSheet
             isOpen={paywallOpen}
+            source="limit:outfits_saved"
             onClose={() => setPaywallOpen(false)}
             onSuccess={() => setPaywallOpen(false)}
           />

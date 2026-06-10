@@ -18,6 +18,10 @@ interface SubscriptionSheetProps {
   onClose: () => void
   onSuccess?: () => void
   variant?: "limitReached" | "explore" // limitReached = "У тебя закончились лимиты", explore = "Открой для себя безлимитные возможности"
+  /** Where the paywall was triggered from (e.g. "limit:vton_used", "limit:outfits_saved").
+   *  Logged with the paywall_shown event so conversions can be attributed to the
+   *  feature that blocked the user. Optional — defaults to the variant. */
+  source?: string
 }
 
 interface SubscriptionPlan {
@@ -35,7 +39,7 @@ interface CreditPack {
   credits: number
 }
 
-export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limitReached" }: SubscriptionSheetProps) {
+export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limitReached", source }: SubscriptionSheetProps) {
   const [selectedPlan, setSelectedPlan] = useState<Plan>("yearly")
   const [currentView, setCurrentView] = useState<View>("subscription")
   const [isProcessing, setIsProcessing] = useState(false)
@@ -57,6 +61,29 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
         .then((d) => setCurrentSub(d?.subscription || null))
         .catch(() => setCurrentSub(null))
     }
+  }, [isOpen])
+
+  // ── paywall_shown instrumentation ──
+  // This sheet IS the paywall for every trigger in the app, so emitting here once
+  // per open covers all of them in a single place. Fire-and-forget; tracking must
+  // never block or break the paywall UX. The conversion funnel
+  // (paywall_shown → conversions_to_premium) is computed off this event server-side.
+  useEffect(() => {
+    if (!isOpen) return
+    void api
+      .post("/api/usage/log", {
+        feature: "paywall_shown",
+        action: "view",
+        count: 1,
+        meta: {
+          variant, // "limitReached" = real block, "explore" = upsell
+          source: source || variant,
+          pagePath: typeof window !== "undefined" ? window.location.pathname : undefined,
+        },
+      })
+      .catch(() => {})
+    // Intentionally keyed on isOpen only: one event per open transition.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen])
 
   const fetchPricing = async () => {

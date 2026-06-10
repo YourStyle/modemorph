@@ -1159,6 +1159,7 @@ export function TryOnSheet() {
       {/* Paywall */}
       <SubscriptionSheet
         isOpen={showPaywall}
+        source="limit:vton_used"
         onClose={() => setShowPaywall(false)}
         onSuccess={() => {
           setShowPaywall(false)

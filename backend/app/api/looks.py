@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.services.usage import record_usage_event
 
 router = APIRouter()
 
@@ -99,8 +100,25 @@ async def create_user_look(request: Request, user: dict = Depends(get_current_us
             "img": body.get("image_url"),
         },
     )
-    await db.commit()
     row = result.mappings().first()
+
+    # Record the canonical "outfit created" event in the SAME transaction as the
+    # user_looks row, so the event stream and the table can never disagree.
+    # (The dashboard still COUNTs from user_looks — this exists for the per-user
+    # timeline and time-series.) source distinguishes where the save came from.
+    await record_usage_event(
+        db,
+        user["id"],
+        feature="outfit_created",
+        action="create",
+        meta={
+            "lookId": row["id"] if row else None,
+            "itemsCount": len(items) if isinstance(items, list) else 0,
+            "source": body.get("source") or "looks",
+        },
+    )
+
+    await db.commit()
     return dict(row)
 
 

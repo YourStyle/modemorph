@@ -818,6 +818,7 @@ export default function InspirationPage(): ReactElement {
 
       <SubscriptionSheet
         isOpen={showPaywall}
+        source="limit:ideas_viewed"
         onClose={() => setShowPaywall(false)}
         onSuccess={() => {
           setShowPaywall(false)

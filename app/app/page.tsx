@@ -596,6 +596,7 @@ export default function HomePage() {
 
         <SubscriptionSheet
             isOpen={paywallOpen}
+            source="limit:home"
             onClose={() => setPaywallOpen(false)}
             onSuccess={() => setPaywallOpen(false)}
         />

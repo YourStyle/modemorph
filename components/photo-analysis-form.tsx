@@ -689,6 +689,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             {/* Subscription Sheet */}
             <SubscriptionSheet
                 isOpen={showPaywall}
+                source="limit:wardrobe_items_anlyzed"
                 onClose={() => setShowPaywall(false)}
                 onSuccess={() => {
                     setShowPaywall(false)
