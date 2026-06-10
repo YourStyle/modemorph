@@ -9,6 +9,7 @@ Cron-style endpoints — called by scheduler (e.g., system cron).
 import json as json_lib
 import logging
 import random
+import uuid
 import xml.etree.ElementTree as ET
 from datetime import date
 
@@ -60,11 +61,17 @@ def _is_partner_compatible(row: dict, gender: str | None, temp: int, disliked_id
     # Gender match + kids exclusion + NULL-gender name rescue (shared helper).
     return gender_ok(row, gender)
 
-async def _clip_recommend(user_id: str, k: int = 50) -> list:
-    """Call CLIP service /clip/recommend for personalized partner items."""
+async def _clip_recommend(user_id: str, k: int = 50) -> tuple[list, str | None]:
+    """Call CLIP service /clip/recommend for personalized partner items.
+
+    Returns (results, rec_session_id). The rec_session_id is the identifier the
+    CLIP service stamped on its served-baseline rows in recommendation_logs;
+    carrying it forward lets the frontend post impression/click events that join
+    back to those rows. Previously this was discarded, which is why the daily
+    feed emitted almost no client events (cards had no rec_session_id to send)."""
     ai_url = settings.AI_SERVICE_URL
     if not ai_url:
-        return []
+        return [], None
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(
@@ -72,10 +79,11 @@ async def _clip_recommend(user_id: str, k: int = 50) -> list:
                 json={"user_id": user_id, "k": k},
             )
             if resp.status_code == 200:
-                return resp.json().get("results", [])
+                payload = resp.json()
+                return payload.get("results", []), payload.get("rec_session_id")
     except Exception as e:
         logger.warning(f"[Cron] CLIP unavailable: {e}")
-    return []
+    return [], None
 
 
 async def _gemini_organize(
@@ -355,9 +363,10 @@ async def cron_generate_recommendations(
             # Get partner items via CLIP (if chosen)
             # Small wardrobes get more partner items to build full outfits
             partner_items = []
+            clip_rec_session_id = None
             clip_k = 100 if item_count < 6 else 80
             if use_clip:
-                clip_results = await _clip_recommend(user_id, k=clip_k)
+                clip_results, clip_rec_session_id = await _clip_recommend(user_id, k=clip_k)
                 if clip_results:
                     partner_ids = [r["id"] for r in clip_results]
                     partner_result = await db.execute(text("""
@@ -411,6 +420,13 @@ async def cron_generate_recommendations(
                 continue
 
             # Build item lookup.
+            # The identifier the frontend posts impression/click/save events with.
+            # Reuse CLIP's session id (so events join to its served-baseline rows);
+            # fall back to a fresh id when CLIP wasn't used, so the daily feed is
+            # ALWAYS trackable. Without this, cards rendered recSessionId=null and
+            # every event silently no-op'd — the cause of ~0 recommendation CTR.
+            rec_session_id = clip_rec_session_id or uuid.uuid4().hex[:12]
+
             # Keys are tuples (source, id) because wardrobe_items and wardrobe_user_items
             # have independent id sequences — a bare numeric id is ambiguous.
             all_items_map = {}
@@ -434,6 +450,7 @@ async def cron_generate_recommendations(
                     "clothing_type": i.get("clothing_type", ""),
                     "url": i.get("url"),
                     "brand": i.get("brand"),
+                    "rec_session_id": rec_session_id,
                 }
 
             # Ask Gemini to organize
@@ -479,6 +496,10 @@ async def cron_generate_recommendations(
                         sections.append({
                             "title": gs.get("title", "Рекомендации"),
                             "source": section_type,
+                            # Frontend reads this to fire impression/click/save
+                            # events (OutfitCard recSessionId prop). Missing here
+                            # was why the daily feed produced ~0 client events.
+                            "rec_session_id": rec_session_id,
                             "suggestions": suggestions,
                         })
 
@@ -486,14 +507,18 @@ async def cron_generate_recommendations(
                 results["failed"] += 1
                 continue
 
-            # Save
+            # Save. Tag the generator (clip+gemini vs gemini-only) so analytics
+            # can tell daily-cron rows apart from on-demand POST rows (source was
+            # NULL before, which made A/B-by-source impossible).
+            row_source = "clip+gemini" if (use_clip and partner_items) else "gemini"
             sections_json = json_lib.dumps(sections, ensure_ascii=False)
             await db.execute(text("""
-                INSERT INTO main_recommendations (user_id, run_date, look_sections)
-                VALUES (:uid, :d, CAST(:sections AS jsonb))
+                INSERT INTO main_recommendations (user_id, run_date, look_sections, source)
+                VALUES (:uid, :d, CAST(:sections AS jsonb), :src)
                 ON CONFLICT (user_id, run_date) DO UPDATE SET
-                    look_sections = CAST(:sections AS jsonb)
-            """), {"uid": user_id, "d": today, "sections": sections_json})
+                    look_sections = CAST(:sections AS jsonb),
+                    source = EXCLUDED.source
+            """), {"uid": user_id, "d": today, "sections": sections_json, "src": row_source})
             await db.commit()
 
             total_outfits = sum(len(s["suggestions"]) for s in sections)
