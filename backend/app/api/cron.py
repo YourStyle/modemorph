@@ -32,11 +32,19 @@ CLIP_PROBABILITY = 0.6
 
 
 def _verify_cron_auth(request: Request):
-    """Verify cron secret to prevent unauthorized triggering."""
+    """Verify cron secret to prevent unauthorized triggering.
+
+    Accepts the secret via EITHER `Authorization: Bearer <secret>` OR the
+    `X-Cron-Secret: <secret>` header. The cron container (docker/cron/entrypoint.sh)
+    sends X-Cron-Secret; this endpoint historically only checked Bearer, so every
+    cron job 401'd — weather never refreshed, recs/feeds never regenerated.
+    Accepting both un-breaks all jobs without rebuilding the cron image."""
     import hmac
     if settings.CRON_SECRET:
         auth = request.headers.get("Authorization", "")
-        token = auth.replace("Bearer ", "") if auth.startswith("Bearer ") else ""
+        bearer = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
+        x_secret = request.headers.get("X-Cron-Secret", "")
+        token = bearer or x_secret
         if not hmac.compare_digest(token, settings.CRON_SECRET):
             raise HTTPException(status_code=401, detail="Invalid cron secret")
 
@@ -205,6 +213,9 @@ JSON: [{{"title":"Название раздела","section_type":"user_only|mix
                     "model": "google/gemini-2.5-flash-lite",
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.85,
+                    # Cap max_tokens so a budget-limited OpenRouter key doesn't 402
+                    # on the uncapped ~65535 default. 16k covers the sections JSON.
+                    "max_tokens": 16384,
                 },
             )
             data = resp.json()

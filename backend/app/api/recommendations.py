@@ -655,6 +655,10 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                     {"role": "user", "content": user_message},
                 ],
                 "temperature": 0.8,
+                # Cap max_tokens — OpenRouter reserves the full amount for its
+                # credit check, and Gemini's uncapped default (~65535) 402s on a
+                # budget-limited key. 16k is ample for the sections JSON.
+                "max_tokens": 16384,
             },
         )
 

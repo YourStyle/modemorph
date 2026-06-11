@@ -55,27 +55,38 @@ async def get_weather(
     if not api_key:
         return FALLBACK
 
+    # Step 1: fetch from OpenWeather. Only a genuine fetch failure (network /
+    # bad key / non-200) is allowed to fall back to the placeholder.
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(
                 "https://api.openweathermap.org/data/2.5/weather",
                 params={"lat": lat, "lon": lon, "appid": api_key, "units": "metric", "lang": "ru"},
             )
-            data = resp.json()
+        data = resp.json()
+        if resp.status_code != 200 or "main" not in data:
+            print(f"[weather] OpenWeather {resp.status_code}: {str(data)[:160]}")
+            return FALLBACK
+    except Exception as e:
+        print(f"[weather] fetch error: {e}")
+        return FALLBACK
 
-        condition = data.get("weather", [{}])[0].get("main", "Clear")
-        result = {
-            "temperature": round(data.get("main", {}).get("temp", 0)),
-            "condition": condition,
-            "description": data.get("weather", [{}])[0].get("description", ""),
-            "humidity": data.get("main", {}).get("humidity", 0),
-            "wind_speed": round(data.get("wind", {}).get("speed", 0)),
-            "icon": _weather_icon(condition),
-            "location": data.get("name", "Москва"),
-            "country": data.get("sys", {}).get("country", ""),
-        }
+    condition = data.get("weather", [{}])[0].get("main", "Clear")
+    result = {
+        "temperature": round(data.get("main", {}).get("temp", 0)),
+        "condition": condition,
+        "description": data.get("weather", [{}])[0].get("description", ""),
+        "humidity": data.get("main", {}).get("humidity", 0),
+        "wind_speed": round(data.get("wind", {}).get("speed", 0)),
+        "icon": _weather_icon(condition),
+        "location": data.get("name", "Москва"),
+        "country": data.get("sys", {}).get("country", ""),
+    }
 
-        # Cache in DB
+    # Step 2: cache in DB — best-effort. A cache write failure must NOT make us
+    # return the fake 20° placeholder when OpenWeather already gave us the real
+    # temperature. (This was the bug: a transient DB/cache error → FALLBACK 20°.)
+    try:
         await db.execute(
             text("""
                 INSERT INTO weather_cache (user_id, latitude, longitude, temperature, description,
@@ -95,10 +106,11 @@ async def get_weather(
             },
         )
         await db.commit()
-        return result
     except Exception as e:
-        print(f"[weather] Error: {e}")
-        return FALLBACK
+        print(f"[weather] cache write failed (returning live data anyway): {e}")
+        await db.rollback()
+
+    return result
 
 
 @router.get("/weather/cached")

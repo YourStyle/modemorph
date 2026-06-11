@@ -26,12 +26,19 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 async def _openrouter_chat(messages: list, model: str = "google/gemini-2.5-flash-lite",
                            temperature: float = 0.7, modalities: list = None,
-                           image_config: dict = None) -> dict:
-    """Call OpenRouter API."""
+                           image_config: dict = None, max_tokens: int = 8192) -> dict:
+    """Call OpenRouter API.
+
+    max_tokens MUST be set: OpenRouter's credit check reserves the full requested
+    max_tokens up-front, and Gemini's default is ~65535. With a maxed/limited key
+    that 402s ("requested up to 65535 tokens, but can only afford N") even when
+    plenty of budget remains for a normal-sized response. Capping to a realistic
+    ceiling keeps every Gemini-backed feature (stylist, detection, chat) working
+    within the remaining budget."""
     if not settings.OPENROUTER_API_KEY:
         raise HTTPException(status_code=503, detail="OPENROUTER_API_KEY not configured")
 
-    payload = {"model": model, "messages": messages, "temperature": temperature}
+    payload = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
     if modalities:
         payload["modalities"] = modalities
     if image_config:
