@@ -172,13 +172,22 @@ def extract_color_from_name(name: str) -> str:
     return ""
 
 
-def parse_feed(feed_path: str) -> list[dict]:
-    """Parse YML feed and return list of items ready for DB insertion."""
+def parse_feed(feed_path: str, source_override=None) -> list[dict]:
+    """Parse YML feed and return list of items ready for DB insertion.
+
+    source_override pins the `source` name written into notes (the "Source:sku"
+    prefix used for dedup and the stale-item sync in cron.py). Pass it so it matches
+    the ADMITAD_FEEDS key in backend/app/api/cron.py: partner-reported <shop><name>
+    values are unreliable (marketing sentences, empty feeds default to "Unknown"),
+    so relying on them makes `sync-feeds` silently match zero rows.
+    """
     logger.info(f"Parsing feed: {feed_path}")
     tree = ET.parse(feed_path)
     root = tree.getroot()
     shop = root.find("shop")
-    shop_name = shop.findtext("name", "Unknown")
+    shop_name = source_override or shop.findtext("name", "Unknown")
+    if source_override:
+        logger.info(f"Source pinned to '{source_override}' (overriding <shop><name>)")
 
     # Build category lookup
     cat_map = {}
@@ -346,7 +355,7 @@ async def pick_flatlay_photos(items: list[dict]):
     all_items = [i for i in items if i.get("all_pictures")]
     logger.info(f"Running pick-flatlay on {len(all_items)} items (including single-picture)...")
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         for idx, item in enumerate(all_items):
             best_url = item["image_url"]
             best_person_score = float("inf")
@@ -405,7 +414,7 @@ async def encode_embeddings(batch_size: int = 50):
     encoded = 0
     failed = 0
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         for i, row in enumerate(rows):
             try:
                 r = await client.get(row["image_url"])
@@ -436,6 +445,7 @@ async def main():
     parser = argparse.ArgumentParser(description="Import Admitad YML feed into wardrobe_items")
     parser.add_argument("--feed-url", help="URL of the YML feed")
     parser.add_argument("--feed-file", help="Local path to YML feed XML file")
+    parser.add_argument("--source", help="Source name for the notes prefix; MUST match the ADMITAD_FEEDS key in backend cron.py so stale-item sync works. Defaults to the feed's <shop><name>.")
     parser.add_argument("--dry-run", action="store_true", help="Parse only, don't insert")
     parser.add_argument("--encode-embeddings", action="store_true", help="Generate CLIP embeddings after import")
     parser.add_argument("--no-pick-flatlay", action="store_true", help="Skip flat-lay photo selection (faster, but may import model photos)")
@@ -446,7 +456,7 @@ async def main():
 
     if args.feed_url and not args.feed_file:
         logger.info(f"Downloading feed from {args.feed_url[:80]}...")
-        async with httpx.AsyncClient(timeout=300.0) as client:
+        async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
             r = await client.get(args.feed_url)
             r.raise_for_status()
             feed_path = "/tmp/admitad_feed.xml"
@@ -457,7 +467,7 @@ async def main():
     if not feed_path:
         parser.error("Provide --feed-url or --feed-file")
 
-    items = parse_feed(feed_path)
+    items = parse_feed(feed_path, source_override=args.source)
 
     if args.limit > 0:
         items = items[:args.limit]

@@ -786,12 +786,29 @@ async def cron_refresh_weather(request: Request, db: AsyncSession = Depends(get_
 # Feed sync — refresh Admitad feeds, hide stale items, add new ones
 # ---------------------------------------------------------------------------
 
-# Registered feeds: source_name → feed URL
+# Registered feeds: source_name → {url, limit, import}.
+#
+# The dict KEY is the canonical source name. It is the notes-prefix for the
+# stale-item sync (`notes LIKE 'Key:%'`) AND the `source` the importer writes into
+# notes. All four clothing feeds happen to report a <shop><name> equal to their key,
+# so import_catalog.py needs no --source for them; the /import-feeds cron pins the
+# source explicitly via source_override, so it is correct regardless.
+#   - limit:  max NEW items imported per /import-feeds run (keeps a giant feed like
+#             ElytS from dominating the catalog and bounds per-run encode cost).
+#   - import: set False to track a feed for staleness sync but NOT import it yet.
+#
+# Account: dzerassa_katsanovaddede / webmaster 2942906
+# (migrated from anton_chukseev9c1e2 / 2883898 on 2026-06-15).
+_ADMITAD_BASE = "http://export.admitad.com/ru/webmaster/websites/2942906/products/export_adv_products/?user=dzerassa_katsanovaddede&code=sk83nsm45c&feed_id={feed_id}&format=xml"
 ADMITAD_FEEDS = {
-    "SELA": "http://export.admitad.com/ru/webmaster/websites/2883898/products/export_adv_products/?user=anton_chukseev9c1e2&code=4e79g72v7f&feed_id=24700&format=xml",
-    "Gate31": "http://export.admitad.com/ru/webmaster/websites/2883898/products/export_adv_products/?user=anton_chukseev9c1e2&code=4e79g72v7f&feed_id=18983&format=xml",
-    "Lacoste": "http://export.admitad.com/ru/webmaster/websites/2883898/products/export_adv_products/?user=anton_chukseev9c1e2&code=4e79g72v7f&feed_id=26532&format=xml",
-    "Love Republic": "http://export.admitad.com/ru/webmaster/websites/2883898/products/export_adv_products/?user=anton_chukseev9c1e2&code=4e79g72v7f&feed_id=14764&format=xml",
+    "SELA":       {"url": _ADMITAD_BASE.format(feed_id=24700), "limit": 5000},
+    "ElytS":      {"url": _ADMITAD_BASE.format(feed_id=24625), "limit": 5000},
+    "ЦУМ":        {"url": _ADMITAD_BASE.format(feed_id=26118), "limit": 5000},
+    "2moodstore": {"url": _ADMITAD_BASE.format(feed_id=25132), "limit": 5000},
+    # Эконика — footwear/accessories retailer. The recsys has no footwear outfit
+    # slot yet (Phase B: _SLOT_MAP + rec prompt + ai rebuild), so it is tracked for
+    # sync but NOT imported until shoe support lands.
+    "Эконика":    {"url": _ADMITAD_BASE.format(feed_id=16933), "limit": 5000, "import": False},
 }
 
 # Threshold: if more than this % of items missing from feed, hide them
@@ -819,7 +836,8 @@ async def sync_feeds(request: Request, db: AsyncSession = Depends(get_db)):
 
     results = {}
     async with httpx.AsyncClient(timeout=60.0) as client:
-        for source_name, feed_url in ADMITAD_FEEDS.items():
+        for source_name, cfg in ADMITAD_FEEDS.items():
+            feed_url = cfg["url"]
             try:
                 # 1. Download feed
                 resp = await client.get(feed_url)
@@ -868,11 +886,125 @@ async def sync_feeds(request: Request, db: AsyncSession = Depends(get_db)):
 
     await db.commit()
 
-    # 5. Trigger import_catalog.py for new items (via AI service)
-    # New items are added by the regular import_catalog.py script which skips duplicates
-    trigger_note = "Run import_catalog.py --encode-embeddings for each feed to add new items"
+    # 5. New items are normally added by the /import-feeds cron below. These manual
+    #    commands (run inside modemorph-ai) are the equivalent one-off bulk importer;
+    #    --source pins the notes prefix to the registered key.
+    import_commands = [
+        f'python scripts/import_catalog.py --feed-url "{cfg["url"]}" --source "{name}" --limit {cfg.get("limit", 0)} --encode-embeddings'
+        for name, cfg in ADMITAD_FEEDS.items()
+        if cfg.get("import", True)
+    ]
 
-    return {"feeds": results, "note": trigger_note}
+    return {
+        "feeds": results,
+        "note": "Items are imported by POST /api/cron/import-feeds. Commands below are the manual equivalent.",
+        "import_commands": import_commands,
+    }
+
+
+@router.post("/import-feeds")
+async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)):
+    """Import new items from the registered Admitad feeds.
+
+    Incremental and idempotent: only offers whose notes (`Source:sku`) are not
+    already in wardrobe_items get imported, capped at each feed's `limit` NEW items
+    per run. Every item goes through /clip/pick-flatlay (MANDATORY — even single
+    picture); model-photo items are auto-hidden. Rebuilds the CLIP index at the end
+    so the new rows are retrievable by the recommendation pipeline.
+    """
+    _verify_cron_auth(request)
+    from lib_feed_parser import parse_yml_feed
+
+    ai_url = settings.AI_SERVICE_URL
+    results = {}
+    total_imported = 0
+
+    for source_name, cfg in ADMITAD_FEEDS.items():
+        if not cfg.get("import", True):
+            results[source_name] = {"skipped": "import disabled"}
+            continue
+        limit = int(cfg.get("limit") or 0)
+        try:
+            # 1. Download + parse (pin source to the key; model-first SKU to match
+            #    the notes already in the DB).
+            async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
+                resp = await client.get(cfg["url"])
+                resp.raise_for_status()
+                parsed = parse_yml_feed(resp.text, source_override=source_name, sku_prefer_model=True)
+
+            # 2. Drop offers already in the DB; cap NEW imports at `limit`.
+            rows = await db.execute(
+                text("SELECT notes FROM wardrobe_items WHERE notes LIKE :p"),
+                {"p": f"{source_name}:%"},
+            )
+            existing = {r[0].split(":", 1)[1] for r in rows.all() if ":" in (r[0] or "")}
+            new_items = []
+            for item in parsed["items"]:
+                if not item.get("source_sku") or item["source_sku"] in existing:
+                    continue
+                new_items.append(item)
+                if limit and len(new_items) >= limit:
+                    break
+
+            # 3. pick-flatlay every new item; auto-hide model photos.
+            flagged = 0
+            if ai_url and new_items:
+                async with httpx.AsyncClient(timeout=20.0) as client:
+                    for item in new_items:
+                        pics = item.get("all_pictures") or []
+                        if not pics:
+                            continue
+                        try:
+                            r = await client.post(f"{ai_url}/clip/pick-flatlay", json={"urls": pics[:4]})
+                            if r.status_code == 200:
+                                d = r.json()
+                                if d.get("url"):
+                                    item["image_url"] = d["url"]
+                                if d.get("has_person"):
+                                    item["has_person"] = True
+                                    flagged += 1
+                        except Exception as e:
+                            logger.debug(f"[import-feeds] pick-flatlay failed: {e}")
+
+            # 4. Insert.
+            imported = 0
+            for item in new_items:
+                await db.execute(text("""
+                    INSERT INTO wardrobe_items
+                        (item_name, description, image_url, url, clothing_type, color,
+                         gender, style, is_hidden, is_basic, notes, source_sku, price)
+                    VALUES (:name, :desc, :img, :url, :ct, :color, :gender, 'Casual',
+                            :hidden, false, :notes, :sku, :price)
+                """), {
+                    "name": item["item_name"], "desc": item["description"],
+                    "img": item["image_url"], "url": item["url"],
+                    "ct": item["clothing_type"], "color": item["color"],
+                    "gender": item["gender"], "hidden": bool(item.get("has_person")),
+                    "notes": f"{source_name}:{item['source_sku']}",
+                    "sku": item["source_sku"], "price": item["price"],
+                })
+                imported += 1
+            await db.commit()
+            total_imported += imported
+            results[source_name] = {
+                "feed_items": len(parsed["items"]), "new": len(new_items),
+                "imported": imported, "flagged_person": flagged,
+            }
+            logger.info(f"[import-feeds] {source_name}: feed={len(parsed['items'])} imported={imported} flagged={flagged}")
+        except Exception as e:
+            await db.rollback()
+            results[source_name] = {"error": str(e)}
+            logger.error(f"[import-feeds] {source_name} failed: {e}")
+
+    # 5. Encode + rebuild FAISS so new rows are retrievable in recommendations.
+    if total_imported and ai_url:
+        try:
+            async with httpx.AsyncClient(timeout=1800.0) as client:
+                await client.post(f"{ai_url}/clip/build-index")
+        except Exception as e:
+            logger.warning(f"[import-feeds] build-index failed: {e}")
+
+    return {"imported": total_imported, "feeds": results}
 
 
 # ---------------------------------------------------------------------------

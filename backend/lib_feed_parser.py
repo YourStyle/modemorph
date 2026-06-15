@@ -81,14 +81,24 @@ def _extract_color(name: str) -> str:
     return ""
 
 
-def parse_yml_feed(xml_string: str) -> dict:
-    """Parse YML XML string. Returns {items, shopName, totalOffers, skippedCategories, skippedNoImage}."""
+def parse_yml_feed(xml_string: str, source_override: Optional[str] = None,
+                   sku_prefer_model: bool = False) -> dict:
+    """Parse YML XML string. Returns {items, shopName, totalOffers, skippedCategories, skippedNoImage}.
+
+    source_override pins the `source` written into notes (the "Source:sku" prefix used
+    for dedup and sync). Pass it for registered Admitad feeds so it matches the
+    ADMITAD_FEEDS key — partner <shop><name> values are unreliable.
+
+    sku_prefer_model selects the SKU exactly like import_catalog.py / sync-feeds
+    (`<model> or id`) instead of the default (`id or group_id`). The Admitad import
+    path MUST set this so dedup matches the model-based notes already in the DB.
+    """
     root = ET.fromstring(xml_string)
     shop = root.find("shop")
     if shop is None:
         raise ValueError("Неверный формат фида: не найден элемент shop")
 
-    shop_name = shop.findtext("name", "Unknown")
+    shop_name = source_override or shop.findtext("name", "Unknown")
 
     cat_map = {}
     cat_parents = {}
@@ -171,7 +181,11 @@ def parse_yml_feed(xml_string: str) -> dict:
             "color": _extract_color(name),
             "gender": detect_gender(cat_id),
             "source": shop_name,
-            "source_sku": offer.get("id") or offer.get("group_id") or "",
+            "source_sku": (
+                (offer.findtext("model") or offer.get("id") or offer.get("group_id") or "")
+                if sku_prefer_model
+                else (offer.get("id") or offer.get("group_id") or "")
+            ),
             "price": float(offer.findtext("price") or 0) or None,
         })
 

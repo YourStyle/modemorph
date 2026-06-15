@@ -12,6 +12,9 @@ call() {
 
 cat > /etc/crontabs/root << EOF
 # ── ModeMorph Cron Schedule (UTC) ─────────────────────────
+# Admitad feed import — 02:30 UTC daily (new catalog items + CLIP reindex)
+30 2 * * * $(call "import-feeds")
+
 # Partner feed processing — 03:00 UTC daily
 0 3 * * * $(call "process-feeds")
 
