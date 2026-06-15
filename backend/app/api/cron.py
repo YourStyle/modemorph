@@ -693,12 +693,13 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
             # Model-photo items get auto-hidden — admin can review and un-hide if needed.
             is_hidden = bool(item.get("has_person"))
             await db.execute(text("""
-                INSERT INTO wardrobe_items (item_name, description, image_url, url, clothing_type, color, gender, style, is_hidden, is_basic, notes, partner_id, feed_id, price)
-                VALUES (:name, :desc, :img, :url, :ct, :color, :gender, 'Casual', :hidden, false, :notes, :pid, :fid, :price)
+                INSERT INTO wardrobe_items (item_name, description, image_url, url, clothing_type, color, gender, style, is_hidden, is_basic, notes, source_sku, partner_id, feed_id, price)
+                VALUES (:name, :desc, :img, :url, :ct, :color, :gender, 'Casual', :hidden, false, :notes, :sku, :pid, :fid, :price)
             """), {
                 "name": item["item_name"], "desc": item["description"], "img": item["image_url"],
                 "url": item["url"], "ct": item["clothing_type"], "color": item["color"],
-                "gender": item["gender"], "hidden": is_hidden, "notes": notes, "pid": partner_id, "fid": feed_id,
+                "gender": item["gender"], "hidden": is_hidden, "notes": notes,
+                "sku": item["source_sku"], "pid": partner_id, "fid": feed_id,
                 "price": item["price"],
             })
             imported += 1

@@ -548,6 +548,213 @@ async def outfit_complements(request: Request, body: OutfitRequest):
 
 
 # ---------------------------------------------------------------------------
+# /clip/complement — partner widget: cart items → assembled outfits
+# ---------------------------------------------------------------------------
+
+# Mirror of backend _SLOT_MAP (recommendations.py). Kept in sync manually
+# because the CLIP service is a separate package and can't import backend code.
+_SLOT_MAP = {
+    "blouse": "top", "lonsleeve": "top", "shirt": "top",
+    "t-shirt": "top", "tank-top": "top",
+    "cardigan": "layer", "hoodie": "layer", "hoddie": "layer",
+    "pullover": "layer", "suit-jacket": "layer", "sweatshirt": "layer",
+    "turtleneck": "layer", "vest": "layer",
+    "dress": "dress", "skirt": "dress",
+    "jeans": "bottom", "pants": "bottom", "shorts": "bottom", "sporty-pants": "bottom",
+    "classic": "set", "knitted-suit": "set", "tracksuit": "set",
+    "coat": "outerwear", "fur-coat": "outerwear", "fur-coat-dark-brown": "outerwear",
+    "parka": "outerwear", "puffer-jacket": "outerwear", "sheepskin-coat": "outerwear",
+}
+_SLOT_TO_TYPES: dict[str, list[str]] = {}
+for _ct, _slot in _SLOT_MAP.items():
+    _SLOT_TO_TYPES.setdefault(_slot, []).append(_ct)
+
+# Core slots an outfit must cover, and optional extras we add for richness.
+_CORE_SLOTS = ["top", "bottom"]
+_EXTRA_SLOTS = ["layer", "outerwear"]
+
+
+class ComplementRequest(BaseModel):
+    partner_id: int
+    anchor_item_ids: list[int]      # cart items already matched to this partner's catalog
+    n_outfits: int = 3
+    candidates_per_slot: int = 6
+    score: bool = True              # rank with OutfitTransformer when available
+
+
+def _slot_of(clothing_type: str | None) -> str | None:
+    return _SLOT_MAP.get((clothing_type or "").lower())
+
+
+def _to_item(d: dict, is_anchor: bool) -> dict:
+    """Normalize an anchor row or a meta pick into the widget item shape."""
+    return {
+        "id": d.get("id"),
+        "name": d.get("item_name") or d.get("name"),
+        "image_url": d.get("image_url"),
+        "clothing_type": d.get("clothing_type"),
+        "color": d.get("color"),
+        "url": d.get("url"),
+        "source_sku": d.get("source_sku"),
+        "is_anchor": is_anchor,
+    }
+
+
+def _to_scorer_item(it: dict) -> dict:
+    return {
+        "id": it.get("id"),
+        "image_url": it.get("image_url"),
+        "item_name": it.get("name") or "",
+        "clothing_type": it.get("clothing_type"),
+        "color": it.get("color"),
+    }
+
+
+@router.post('/complement')
+async def complement_outfits(request: Request, body: ComplementRequest):
+    """Assemble complete outfits around cart anchor items, scoped to one partner.
+
+    Unlike /clip/outfit (nearest-neighbours of the anchor → more of the same
+    garment), this fills the *missing* slots: a shirt in the cart pulls bottoms,
+    a layer and outerwear from the SAME partner's catalog, then ranks the
+    assembled looks by OutfitTransformer compatibility.
+    """
+    _, faiss_index = _get_services(request)
+    pool = _get_db(request)
+    n_outfits = max(1, min(body.n_outfits, 6))
+    per_slot = max(2, min(body.candidates_per_slot, 12))
+
+    # 1. Resolve anchors — defensively scoped to this partner's catalog.
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT id, item_name, image_url, clothing_type, color, url,
+                   source_sku, embedding
+            FROM wardrobe_items
+            WHERE id = ANY($1) AND partner_id = $2
+              AND COALESCE(is_hidden, false) = false
+        """, body.anchor_item_ids, body.partner_id)
+
+    anchors = [dict(r) for r in rows]
+    if not anchors:
+        raise HTTPException(status_code=404, detail="No anchor items found in this partner's catalog")
+
+    # 2. Mean anchor embedding — the retrieval query for complementary slots.
+    anchor_vecs = []
+    for a in anchors:
+        emb = a.get("embedding")
+        if emb:
+            try:
+                anchor_vecs.append(np.array([float(x) for x in emb], dtype=np.float32))
+            except (TypeError, ValueError):
+                pass
+    if not anchor_vecs:
+        raise HTTPException(status_code=422, detail="Anchor items have no embeddings yet — rebuild the index")
+    mean_anchor = np.mean(np.stack(anchor_vecs), axis=0)
+
+    anchor_ids = {a["id"] for a in anchors}
+    present_slots = {_slot_of(a.get("clothing_type")) for a in anchors}
+    present_slots.discard(None)
+
+    # 3. Decide which slots to fill. A dress/set anchor already covers the body,
+    # so we only add extras; otherwise fill the missing core slots first.
+    body_covered = bool(present_slots & {"dress", "set"})
+    target_slots: list[str] = []
+    if not body_covered:
+        target_slots += [s for s in _CORE_SLOTS if s not in present_slots]
+    target_slots += [s for s in _EXTRA_SLOTS if s not in present_slots]
+    # If the cart already holds a full top+bottom, still offer one complementary
+    # layer/outerwear so the widget never renders empty.
+    if not target_slots:
+        target_slots = [s for s in _EXTRA_SLOTS]
+
+    # 4. Retrieve per-slot candidates from this partner only.
+    slot_candidates: dict[str, list[dict]] = {}
+    for slot in target_slots:
+        cands = faiss_index.search_filtered(
+            mean_anchor,
+            k=per_slot,
+            partner_id=body.partner_id,
+            clothing_types=_SLOT_TO_TYPES.get(slot, []),
+            exclude_ids=anchor_ids,
+        )
+        if cands:
+            slot_candidates[slot] = cands
+
+    if not slot_candidates:
+        return {"outfits": [], "reason": "no_complementary_items", "anchor_count": len(anchors)}
+
+    # 5. Assemble candidate outfits (generate-and-rank). Core slots are required
+    # when present; one extra slot is added per outfit for richness. Rotating the
+    # rank index across outfits yields variety before the scorer re-ranks.
+    fill_core = [s for s in _CORE_SLOTS if s in slot_candidates]
+    fill_extra = [s for s in _EXTRA_SLOTS if s in slot_candidates]
+    anchor_items = [_to_item(a, True) for a in anchors]
+
+    assembled: list[list[dict]] = []
+    seen: set = set()
+    budget = max(n_outfits, 3)
+    for i in range(budget * 2):
+        if len(assembled) >= budget:
+            break
+        picks: list[dict] = []
+        for slot in fill_core:
+            cands = slot_candidates[slot]
+            picks.append(_to_item(cands[i % len(cands)], False))
+        if fill_extra:
+            slot = fill_extra[i % len(fill_extra)]
+            cands = slot_candidates[slot]
+            picks.append(_to_item(cands[(i // max(1, len(fill_core))) % len(cands)], False))
+        if not picks:
+            continue
+        outfit = anchor_items + picks
+        key = frozenset(it["id"] for it in outfit)
+        if key in seen:
+            continue
+        seen.add(key)
+        assembled.append(outfit)
+
+    if not assembled:
+        return {"outfits": [], "reason": "could_not_assemble", "anchor_count": len(anchors)}
+
+    # 6. Rank. Prefer OutfitTransformer compatibility; fall back to the mean
+    # retrieval similarity of the picks so the widget always returns something.
+    scorer = _get_outfit_scorer(request)
+    scored: list[dict] = []
+    # Use OutfitTransformer only if already warm — never block a widget request
+    # on the one-time 1.1 GB checkpoint download. Kick off a background warm-load
+    # so subsequent requests get true compatibility scoring; this one falls back.
+    use_ot = bool(body.score and scorer.is_ready())
+    if body.score and not scorer.is_ready():
+        try:
+            asyncio.create_task(asyncio.to_thread(scorer.load))
+        except RuntimeError:
+            pass
+
+    for outfit in assembled:
+        score = None
+        if use_ot:
+            try:
+                res = await scorer.score_outfit([_to_scorer_item(it) for it in outfit])
+                if res and res.get("score") is not None:
+                    score = float(res["score"])
+            except Exception as e:
+                logger.warning(f"[complement] scorer failed, falling back: {e}")
+        if score is None:
+            picks = [it for it in outfit if not it["is_anchor"]]
+            sims = [c.get("score", 0.0) for s in slot_candidates.values() for c in s
+                    if c.get("id") in {p["id"] for p in picks}]
+            score = float(np.mean(sims)) if sims else 0.0
+        scored.append({"score": round(score, 4), "items": outfit})
+
+    scored.sort(key=lambda o: o["score"], reverse=True)
+    return {
+        "outfits": scored[:n_outfits],
+        "anchor_count": len(anchors),
+        "scored_with": "outfit_transformer" if use_ot else "similarity_fallback",
+    }
+
+
+# ---------------------------------------------------------------------------
 # /clip/build-index — fetch wardrobe_items from DB, encode, build FAISS
 # ---------------------------------------------------------------------------
 
@@ -559,7 +766,8 @@ async def build_index(request: Request):
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at "
+            "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at, "
+            "partner_id, source_sku "
             "FROM wardrobe_items WHERE image_url IS NOT NULL"
         )
 

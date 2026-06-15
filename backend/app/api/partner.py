@@ -265,6 +265,134 @@ async def get_feed(feed_id: int, user: dict = Depends(get_current_user), db: Asy
     return {"feed": dict(feed._mapping), "items_in_db": items_count.scalar() or 0}
 
 
+# ── Widget Keys (publishable, domain-locked) ──
+
+def _validate_origins(origins: list[str]) -> list[str]:
+    """Normalize + validate origin allow-list entries (scheme://host[:port])."""
+    cleaned = []
+    for o in origins or []:
+        o = (o or "").strip().rstrip("/")
+        if not o:
+            continue
+        if not (o.startswith("https://") or o.startswith("http://")):
+            raise HTTPException(status_code=400, detail=f"Origin must start with http(s)://: {o}")
+        if "/" in o.split("://", 1)[1]:
+            raise HTTPException(status_code=400, detail=f"Origin must not contain a path: {o}")
+        cleaned.append(o)
+    return cleaned
+
+
+@router.get("/widget-keys")
+async def list_widget_keys(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    partner = await _require_approved_partner(user, db)
+    result = await db.execute(
+        text("""
+            SELECT id, name, key_prefix, allowed_origins, is_active,
+                   rate_limit_per_minute, theme, last_used_at, created_at, revoked_at
+            FROM partner_widget_keys WHERE partner_id = :pid ORDER BY created_at DESC
+        """),
+        {"pid": partner["id"]},
+    )
+    return {"keys": [dict(r._mapping) for r in result.all()]}
+
+
+class CreateWidgetKeyRequest(BaseModel):
+    name: str
+    allowed_origins: list[str] = []
+    theme: Optional[dict] = None
+
+
+@router.post("/widget-keys")
+async def create_widget_key(body: CreateWidgetKeyRequest, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.api.widget import generate_widget_key
+    import json as _json
+
+    partner = await _require_approved_partner(user, db)
+    if not body.name.strip():
+        raise HTTPException(status_code=400, detail="Название ключа обязательно")
+    origins = _validate_origins(body.allowed_origins)
+
+    count = await db.execute(
+        text("SELECT count(*) FROM partner_widget_keys WHERE partner_id = :pid AND is_active = true"),
+        {"pid": partner["id"]},
+    )
+    if count.scalar() >= 10:
+        raise HTTPException(status_code=400, detail="Максимум 10 активных виджет-ключей")
+
+    key, key_hash, prefix = generate_widget_key()
+    await db.execute(
+        text("""
+            INSERT INTO partner_widget_keys (partner_id, name, key_hash, key_prefix, allowed_origins, theme)
+            VALUES (:pid, :name, :hash, :prefix, :origins, CAST(:theme AS jsonb))
+        """),
+        {"pid": partner["id"], "name": body.name.strip(), "hash": key_hash, "prefix": prefix,
+         "origins": origins, "theme": _json.dumps(body.theme) if body.theme else None},
+    )
+    await db.commit()
+
+    result = await db.execute(
+        text("SELECT id, name, key_prefix, allowed_origins, created_at FROM partner_widget_keys WHERE key_hash = :hash"),
+        {"hash": key_hash},
+    )
+    rec = dict(result.first()._mapping)
+    rec["key"] = key  # plaintext — shown once
+    return {"key": rec}
+
+
+class UpdateWidgetKeyRequest(BaseModel):
+    name: Optional[str] = None
+    allowed_origins: Optional[list[str]] = None
+    rate_limit_per_minute: Optional[int] = None
+    is_active: Optional[bool] = None
+    theme: Optional[dict] = None
+
+
+@router.patch("/widget-keys/{key_id}")
+async def update_widget_key(key_id: int, body: UpdateWidgetKeyRequest, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    import json as _json
+    partner = await _require_approved_partner(user, db)
+
+    owns = await db.execute(
+        text("SELECT id FROM partner_widget_keys WHERE id = :kid AND partner_id = :pid"),
+        {"kid": key_id, "pid": partner["id"]},
+    )
+    if not owns.first():
+        raise HTTPException(status_code=404, detail="Widget key not found")
+
+    updates, binds = [], {"kid": key_id}
+    if body.name is not None:
+        updates.append("name = :name"); binds["name"] = body.name.strip()
+    if body.allowed_origins is not None:
+        updates.append("allowed_origins = :origins"); binds["origins"] = _validate_origins(body.allowed_origins)
+    if body.rate_limit_per_minute is not None:
+        if not (1 <= body.rate_limit_per_minute <= 1000):
+            raise HTTPException(status_code=400, detail="rate_limit_per_minute must be 1-1000")
+        updates.append("rate_limit_per_minute = :rl"); binds["rl"] = body.rate_limit_per_minute
+    if body.is_active is not None:
+        updates.append("is_active = :active"); binds["active"] = body.is_active
+    if body.theme is not None:
+        updates.append("theme = CAST(:theme AS jsonb)"); binds["theme"] = _json.dumps(body.theme)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    await db.execute(text(f"UPDATE partner_widget_keys SET {', '.join(updates)} WHERE id = :kid"), binds)
+    await db.commit()
+    return {"success": True}
+
+
+@router.delete("/widget-keys/{key_id}")
+async def revoke_widget_key(key_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    partner = await _require_approved_partner(user, db)
+    result = await db.execute(
+        text("UPDATE partner_widget_keys SET is_active = false, revoked_at = NOW() WHERE id = :kid AND partner_id = :pid RETURNING id"),
+        {"kid": key_id, "pid": partner["id"]},
+    )
+    if not result.first():
+        raise HTTPException(status_code=404, detail="Widget key not found")
+    await db.commit()
+    return {"success": True}
+
+
 # ── Usage Stats ──
 
 @router.get("/usage")

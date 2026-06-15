@@ -83,6 +83,11 @@ class FAISSIndexService:
                 'clothing_type': item.get('clothing_type'),
                 'color': item.get('color'),
                 'created_at': str(item.get('created_at', '')),
+                # Partner scoping for the embeddable widget: retrieval can be
+                # restricted to a single partner's catalog. source_sku lets the
+                # widget map a shopper's cart line back to a catalog row.
+                'partner_id': item.get('partner_id'),
+                'source_sku': item.get('source_sku'),
             })
         if not embeddings:
             return 0
@@ -171,6 +176,64 @@ class FAISSIndexService:
         for c in candidates[:k]:
             c.pop('_vec_idx', None)
         return candidates[:k]
+
+    def search_filtered(
+        self,
+        query_emb: np.ndarray,
+        k: int = 10,
+        partner_id: int | None = None,
+        clothing_types: set | list | None = None,
+        exclude_ids: set | None = None,
+    ) -> list:
+        """Exact similarity search restricted to a metadata-filtered subset.
+
+        Powers the partner widget: a SELA widget must only ever surface SELA
+        catalog rows, and outfit assembly needs candidates of a *specific* slot
+        (e.g. only bottoms to pair with a top in the cart). Because the filtered
+        subset (one partner, one slot) is tiny relative to the global index,
+        we reconstruct just those vectors and score them exactly — no reliance
+        on FAISS top-k recall, which would silently drop the partner's items if
+        the global neighborhood is dominated by other brands.
+        """
+        if self.index is None or self.index.ntotal == 0:
+            return []
+
+        vec = query_emb.reshape(-1).astype(np.float32)
+        norm = np.linalg.norm(vec)
+        if norm > 0:
+            vec = vec / norm
+
+        ct_set = {str(c).lower() for c in clothing_types} if clothing_types else None
+        excl = exclude_ids or set()
+
+        positions = []
+        for i, m in enumerate(self.meta):
+            if i >= self.index.ntotal:
+                break
+            if partner_id is not None and m.get('partner_id') != partner_id:
+                continue
+            if ct_set is not None and (m.get('clothing_type') or '').lower() not in ct_set:
+                continue
+            if m.get('id') in excl:
+                continue
+            positions.append(i)
+
+        if not positions:
+            return []
+
+        # Reconstructed vectors are already L2-normalized (build() normalizes
+        # before add), so a plain dot product is cosine similarity.
+        mat = np.stack([self.index.reconstruct(int(p)) for p in positions])
+        sims = (mat @ vec.reshape(-1, 1)).ravel()
+        order = np.argsort(-sims)[:k]
+
+        out = []
+        for oi in order:
+            p = positions[int(oi)]
+            m = self.meta[p]
+            score = float(sims[int(oi)]) + _freshness_boost(m.get('created_at', ''))
+            out.append({**m, 'score': score})
+        return out
 
     def search_with_penalties(
         self,

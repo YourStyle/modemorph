@@ -19,6 +19,7 @@ import {
   XCircle,
   ShieldCheck,
   Building2,
+  Code2,
 } from "lucide-react"
 import type { PartnerProfile } from "@/lib/partner-auth"
 
@@ -105,6 +106,7 @@ export default function PartnerLayout({ children }: { children: React.ReactNode 
   const navigationItems = [
     { href: "/partner", label: "Дашборд", icon: Home },
     { href: "/partner/tokens", label: "API токены", icon: Key },
+    { href: "/partner/widget", label: "Виджет", icon: Code2 },
     { href: "/partner/feeds", label: "XML фиды", icon: FileUp },
     { href: "/partner/stats", label: "Статистика", icon: BarChart3 },
   ]
