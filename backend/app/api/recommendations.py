@@ -21,6 +21,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.services.weather_rules import temp_ok
 from app.services.catalog_filters import gender_ok
+from app.services.capsule import capsule_style_guide
 
 logger = logging.getLogger(__name__)
 
@@ -466,6 +467,9 @@ async def generate_recommendations(
     profile_row = profile.first()
     gender = profile_row[0] if profile_row else None
 
+    # Curated capsule as style exemplars (cached per gender; "" if unavailable).
+    capsule_guide = await capsule_style_guide(db, gender)
+
     # Get wardrobe items
     wardrobe_result = await db.execute(
         text("""
@@ -600,6 +604,8 @@ async def generate_recommendations(
         mix_rules = """- "mix" sections: mix [USER] + [PARTNER] items. At least 1 [USER] item per outfit. Create 2-3 such sections.
 - "partner_only" section: outfits entirely from [PARTNER] items. Create 1 such section."""
 
+    capsule_block = f"\n{capsule_guide}\n" if capsule_guide else ""
+
     system_prompt = f"""You are a top fashion stylist AI. Generate MANY complete outfit recommendations.
 {style_hint}
 TASK: Create 5-7 themed sections, each with 3-4 outfits. Total 15-25 outfits.
@@ -610,7 +616,7 @@ SECTION THEMES (pick what fits weather/wardrobe):
 SECTION TYPES (section_type):
 - "user_only" — outfits ONLY from [USER] items. Create 2-3 such sections.
 {mix_rules}
-
+{capsule_block}
 MANDATORY RULES FOR EVERY OUTFIT:
 1. Each outfit = STRICTLY 4-6 items covering the FULL body:
    * Upper body (shirt/blouse/t-shirt/hoodie/sweater) — REQUIRED

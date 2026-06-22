@@ -22,6 +22,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.services.weather_rules import TEMP_RANGES, temp_ok
 from app.services.catalog_filters import gender_ok, is_kids_name
+from app.services.capsule import capsule_style_guide
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ async def _clip_recommend(user_id: str, k: int = 50) -> tuple[list, str | None]:
 
 async def _gemini_organize(
     user_items: list, partner_items: list, weather: dict, gender: str,
-    dominant_style: str = "", sections_count: int = 3,
+    dominant_style: str = "", sections_count: int = 3, capsule_guide: str = "",
 ) -> list | None:
     """Use OpenRouter Gemini to organize items into themed outfit sections."""
     api_key = settings.OPENROUTER_API_KEY
@@ -162,6 +163,8 @@ async def _gemini_organize(
         section_types_block = """ТИПЫ РАЗДЕЛОВ (section_type):
 - "user_only" — образы из вещей пользователя [USER]. Создай все разделы этого типа."""
 
+    capsule_block = f"\n{capsule_guide}\n" if capsule_guide else ""
+
     prompt = f"""Ты - топ-стилист. Составь МНОГО тематических разделов с образами.
 
 Погода: {temp}°C, {desc}
@@ -178,7 +181,7 @@ async def _gemini_organize(
 
 {section_types_block}
 {mix_rules}
-
+{capsule_block}
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ДЛЯ КАЖДОГО ОБРАЗА:
 1. Каждый образ = СТРОГО 4-6 вещей, покрывающих ВСЁ тело:
    - Верх (футболка/рубашка/блузка/свитер/худи) — ОБЯЗАТЕЛЬНО
@@ -464,10 +467,12 @@ async def cron_generate_recommendations(
                     "rec_session_id": rec_session_id,
                 }
 
-            # Ask Gemini to organize
+            # Ask Gemini to organize. Feed the curated capsule as style exemplars
+            # (cached per gender — cheap even inside this per-user loop).
             n_sections = min(7, max(3, len(user_items) // 3 + 1))
+            capsule_guide = await capsule_style_guide(db, gender)
             gemini_sections = await _gemini_organize(
-                user_items, partner_items, weather, gender, dominant_style, n_sections,
+                user_items, partner_items, weather, gender, dominant_style, n_sections, capsule_guide,
             )
 
             VALID_TYPES = {"user_only", "mix", "partner_only"}

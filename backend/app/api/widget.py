@@ -15,6 +15,7 @@ Security model — DISTINCT from the secret partner_api_tokens used by /api/v1/v
 """
 
 import hashlib
+import json
 import secrets
 import time
 import uuid
@@ -29,6 +30,7 @@ from starlette.responses import Response
 
 from app.core.config import settings
 from app.core.database import async_session, get_db
+from app.services.capsule import capsule_style_guide
 
 router = APIRouter()
 
@@ -100,6 +102,70 @@ async def authenticate_widget(request: Request, db: AsyncSession) -> dict:
     return record
 
 
+async def _polish_widget_outfits(outfits: list, gender: str | None, capsule_guide: str) -> list:
+    """Give each CLIP-assembled outfit a stylish Russian title and prune items that
+    break the look, guided by the curated capsule. Runs once per cache-miss (the
+    polished payload is then cached 30 min). Never raises — returns the input
+    unchanged on any failure. Only the item ids CLIP already chose may be kept;
+    the model can drop, never add."""
+    if not outfits or not settings.OPENROUTER_API_KEY:
+        return outfits
+
+    catalog = [
+        {"i": idx, "items": [
+            {"id": it["id"], "name": it.get("name", ""),
+             "type": it.get("clothing_type", ""), "color": it.get("color", "")}
+            for it in o.get("items", [])
+        ]}
+        for idx, o in enumerate(outfits)
+    ]
+    cap = f"\n{capsule_guide}\n" if capsule_guide else ""
+    prompt = (
+        "Ты — стилист. Ниже готовые образы из товаров одного магазина "
+        "(у каждого свой i и список вещей с id).\n"
+        f"Пол покупателя: {gender or 'не указан'}.{cap}\n"
+        "Для КАЖДОГО образа придумай стильное русское название (3-5 слов) и оставь "
+        "только сочетающиеся вещи (минимум 2, ТОЛЬКО из данных id — не добавляй новых).\n"
+        'Верни СТРОГО JSON-массив: [{"i":0,"title":"...","keep_ids":[id1,id2]}]\n'
+        f"Образы:\n{json.dumps(catalog, ensure_ascii=False)}\n"
+        "Только JSON, без markdown."
+    )
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Content-Type": "application/json",
+                         "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}"},
+                json={"model": "google/gemini-2.5-flash-lite",
+                      "messages": [{"role": "user", "content": prompt}],
+                      "temperature": 0.7, "max_tokens": 2048},
+            )
+        if resp.status_code != 200:
+            return outfits
+        content = resp.json()["choices"][0]["message"]["content"]
+        plan = json.loads(content.replace("```json", "").replace("```", "").strip())
+    except Exception:
+        return outfits
+
+    by_i = {p.get("i"): p for p in plan if isinstance(p, dict)}
+    result = []
+    for idx, o in enumerate(outfits):
+        p = by_i.get(idx)
+        if not p:
+            result.append(o)
+            continue
+        keep = set(p.get("keep_ids") or [])
+        items = [it for it in o.get("items", []) if it["id"] in keep] if keep else o.get("items", [])
+        if len(items) < 2:
+            items = o.get("items", [])  # never let the model gut the outfit below renderable size
+        out = {**o, "items": items}
+        title = (p.get("title") or "").strip()
+        if title:
+            out["title"] = title
+        result.append(out)
+    return result
+
+
 # ── Routes ──
 
 @router.get("/config")
@@ -120,6 +186,8 @@ class CartItem(BaseModel):
 class RecommendRequest(BaseModel):
     cart: list[CartItem] = []
     n_outfits: int = 3
+    gender: str | None = None   # optional shopper gender hint
+    temp: float | None = None    # optional shopper temperature for season filtering
 
 
 @router.post("/recommend")
@@ -146,16 +214,7 @@ async def widget_recommend(body: RecommendRequest, request: Request, db: AsyncSe
     if not skus:
         raise HTTPException(status_code=400, detail="cart must contain at least one item with a sku")
 
-    # 1. Match cart SKUs to this partner's catalog (the cart→catalog bridge).
-    matched = await db.execute(
-        text("""
-            SELECT id, source_sku FROM wardrobe_items
-            WHERE partner_id = :pid AND source_sku = ANY(:skus)
-              AND COALESCE(is_hidden, false) = false
-        """),
-        {"pid": partner_id, "skus": skus},
-    )
-    anchor_ids = [r[0] for r in matched.all()]
+    n_outfits = max(1, min(body.n_outfits, 5))
     session_id = uuid.uuid4().hex
 
     async def _log(event_type: str, item_id=None):
@@ -170,6 +229,35 @@ async def widget_recommend(body: RecommendRequest, request: Request, db: AsyncSe
         )
         await db.commit()
 
+    # Cache: memoize the assembled outfits by cart signature. A repeated cart view
+    # still logs an impression (a render happened) but skips the expensive CLIP
+    # call. Bucket temp to the nearest 3°C so tiny weather jitter stays a hit.
+    temp_bucket = round(body.temp / 3) if body.temp is not None else None
+    cart_hash = hashlib.sha256(
+        f"{partner_id}|{','.join(sorted(skus))}|{n_outfits}|{body.gender}|{temp_bucket}".encode()
+    ).hexdigest()
+    hit = await db.execute(
+        text("SELECT payload FROM widget_reco_cache "
+             "WHERE cart_hash = :h AND created_at > NOW() - INTERVAL '30 minutes'"),
+        {"h": cart_hash},
+    )
+    cached = hit.first()
+    if cached:
+        await _log("impression")
+        payload = cached[0] if isinstance(cached[0], dict) else json.loads(cached[0])
+        return {**payload, "session_id": session_id, "cached": True}
+
+    # 1. Match cart SKUs to this partner's catalog (the cart→catalog bridge).
+    matched = await db.execute(
+        text("""
+            SELECT id, source_sku FROM wardrobe_items
+            WHERE partner_id = :pid AND source_sku = ANY(:skus)
+              AND COALESCE(is_hidden, false) = false
+        """),
+        {"pid": partner_id, "skus": skus},
+    )
+    anchor_ids = [r[0] for r in matched.all()]
+
     if not anchor_ids:
         await _log("impression")
         return {"session_id": session_id, "outfits": [], "reason": "no_cart_match"}
@@ -183,7 +271,7 @@ async def widget_recommend(body: RecommendRequest, request: Request, db: AsyncSe
             resp = await client.post(
                 f"{ai_url}/clip/complement",
                 json={"partner_id": partner_id, "anchor_item_ids": anchor_ids,
-                      "n_outfits": max(1, min(body.n_outfits, 5))},
+                      "n_outfits": n_outfits, "gender": body.gender, "temp": body.temp},
             )
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail="Outfit assembly failed")
@@ -227,12 +315,28 @@ async def widget_recommend(body: RecommendRequest, request: Request, db: AsyncSe
         if len(items) >= 2:
             outfits.append({"score": o.get("score"), "items": items})
 
+    # Capsule polish: title + coherence pass over the CLIP-assembled outfits.
+    # Cache-miss only — the polished payload is what we store below, so repeat
+    # cart views reuse it for free. Graceful: returns outfits unchanged on failure.
+    capsule_guide = await capsule_style_guide(db, body.gender)
+    outfits = await _polish_widget_outfits(outfits, body.gender, capsule_guide)
+
+    payload = {"partner": {"name": record["company_name"]}, "outfits": outfits}
+
+    # Store in cache (upsert) + opportunistically prune day-old rows.
+    await db.execute(
+        text("""
+            INSERT INTO widget_reco_cache (cart_hash, partner_id, payload)
+            VALUES (:h, :pid, CAST(:payload AS jsonb))
+            ON CONFLICT (cart_hash) DO UPDATE SET payload = EXCLUDED.payload, created_at = NOW()
+        """),
+        {"h": cart_hash, "pid": partner_id, "payload": json.dumps(payload)},
+    )
+    await db.execute(text("DELETE FROM widget_reco_cache WHERE created_at < NOW() - INTERVAL '1 day'"))
+    await db.commit()
+
     await _log("impression")
-    return {
-        "session_id": session_id,
-        "partner": {"name": record["company_name"]},
-        "outfits": outfits,
-    }
+    return {**payload, "session_id": session_id}
 
 
 class EventRequest(BaseModel):

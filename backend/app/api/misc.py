@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.services.capsule import capsule_style_guide
 
 router = APIRouter()
 
@@ -410,13 +411,17 @@ async def ai_assistant(request: Request, user: dict = Depends(get_current_user),
     )
     wardrobe = [dict(r) for r in items_result.mappings().all()]
 
-    # 2. Get user's dominant style
+    # 2. Get user's dominant style + gender
     style_result = await db.execute(
-        text("SELECT dominant_style FROM user_profiles WHERE user_id = :uid"),
+        text("SELECT dominant_style, gender FROM user_profiles WHERE user_id = :uid"),
         {"uid": user["id"]},
     )
     style_row = style_result.mappings().first()
     dominant_style = (style_row["dominant_style"] if style_row else "") or ""
+    gender = (style_row["gender"] if style_row else None)
+
+    # Curated capsule as style exemplars (cached per gender; "" if unavailable).
+    capsule_guide = await capsule_style_guide(db, gender)
 
     # 3. RAG: search catalog for relevant items via CLIP text search
     catalog_items = []
@@ -439,9 +444,11 @@ async def ai_assistant(request: Request, user: dict = Depends(get_current_user),
     except Exception:
         pass  # RAG is optional, don't block assistant
 
+    capsule_block = f"\n{capsule_guide}\n" if capsule_guide else ""
+
     system_prompt = f"""You are a fashion stylist AI assistant for ModeMorph. Help users with outfit recommendations, style advice, and wardrobe management.
 User's dominant style: {dominant_style or 'not determined yet'}
-
+{capsule_block}
 RULES:
 1. If NOT about fashion/clothing/style → respond: [{{"type": "trash"}}]
 2. If general fashion question → respond: [{{"content": "answer in Russian"}}]
