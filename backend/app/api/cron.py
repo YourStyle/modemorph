@@ -736,6 +736,102 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
         return {"error": error_msg}
 
 
+@router.post("/warm-widget-cache")
+async def cron_warm_widget_cache(request: Request, db: AsyncSession = Depends(get_db)):
+    """Pre-populate widget_reco_cache so first-time widget loads on a partner's
+    storefront hit a warm cache instead of paying the CLIP /complement + Gemini
+    polish round-trip live (that's what makes /widget/recommend slow on a cold
+    cart signature).
+
+    NOT auto-scheduled (see docker/cron/entrypoint.sh) — trigger manually:
+
+        curl -X POST $BACKEND/api/cron/warm-widget-cache \\
+             -H "X-Cron-Secret: $CRON_SECRET" -H "Content-Type: application/json" \\
+             -d '{"partner_id": 3, "limit": 200}'
+
+    Body (all optional): partner_id (int — omit for ALL approved partners),
+    limit (int, default 200 — max catalog items per partner, newest first).
+
+    For each visible, non-hidden catalog item with a source_sku, runs the same
+    single-SKU recommend flow as a shopper whose cart contains just that SKU
+    (n_outfits=3, gender/temp unset — matches a widget call with no hints) and
+    stores the result under app.api.widget.compute_cart_hash's key via
+    build_and_cache_recommendation — the SAME helpers /widget/recommend uses,
+    so warmed rows are guaranteed to be cache hits later, not orphaned rows
+    under a hash the live endpoint never computes.
+
+    Sequential by design (not concurrent): a single AsyncSession can't safely
+    serve overlapping queries/commits, and this is a background job with no
+    latency requirement — see CLAUDE.md "keep it cheap" note.
+    """
+    _verify_cron_auth(request)
+    from app.api.widget import compute_cart_hash, build_and_cache_recommendation
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    partner_id = body.get("partner_id")
+    limit = int(body.get("limit") or 200)
+    n_outfits = 3
+
+    if partner_id:
+        partner_rows = await db.execute(
+            text("SELECT id, company_name FROM partner_profiles WHERE id = :pid AND status = 'approved'"),
+            {"pid": partner_id},
+        )
+    else:
+        partner_rows = await db.execute(
+            text("SELECT id, company_name FROM partner_profiles WHERE status = 'approved'")
+        )
+    partners = partner_rows.mappings().all()
+
+    results = {}
+    for p in partners:
+        pid, company_name = p["id"], p["company_name"]
+        warmed = skipped = failed = 0
+
+        items_result = await db.execute(
+            text("""
+                SELECT id, source_sku FROM wardrobe_items
+                WHERE partner_id = :pid AND COALESCE(is_hidden, false) = false
+                  AND source_sku IS NOT NULL AND source_sku != ''
+                ORDER BY created_at DESC LIMIT :lim
+            """),
+            {"pid": pid, "lim": limit},
+        )
+        items = items_result.mappings().all()
+
+        for item in items:
+            cart_hash = compute_cart_hash(pid, [item["source_sku"]], n_outfits, None, None)
+            hit = await db.execute(
+                text("SELECT 1 FROM widget_reco_cache WHERE cart_hash = :h "
+                     "AND created_at > NOW() - INTERVAL '30 minutes'"),
+                {"h": cart_hash},
+            )
+            if hit.first():
+                skipped += 1
+                continue
+            try:
+                await build_and_cache_recommendation(
+                    db, pid, company_name, [item["id"]], cart_hash, n_outfits, None, None,
+                )
+                warmed += 1
+            except Exception as e:
+                failed += 1
+                logger.warning(f"[warm-widget-cache] partner={pid} item={item['id']}: {e}")
+                await db.rollback()
+
+        results[str(pid)] = {
+            "company": company_name, "catalog_size": len(items),
+            "warmed": warmed, "skipped": skipped, "failed": failed,
+        }
+        logger.info(f"[warm-widget-cache] partner={pid} ({company_name}): "
+                    f"warmed={warmed} skipped={skipped} failed={failed}")
+
+    return {"partners": results}
+
+
 @router.post("/refresh-weather")
 async def cron_refresh_weather(request: Request, db: AsyncSession = Depends(get_db)):
     _verify_cron_auth(request)

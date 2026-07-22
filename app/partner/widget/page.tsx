@@ -40,6 +40,15 @@ function snippet(key: string) {
         data-cart='[{"sku":"ТЕКУЩИЙ_SKU"}]'></script>`
 }
 
+function productSnippet(key: string) {
+  return `<div id="modemorph-widget"></div>
+<script src="${WIDGET_HOST}/widget.js"
+        data-key="${key}"
+        data-mount="#modemorph-widget"
+        data-mode="product"
+        data-sku="SKU_ТОВАРА"></script>`
+}
+
 export default function PartnerWidgetPage() {
   const { toast } = useToast()
   const [keys, setKeys] = useState<WidgetKey[]>([])
@@ -161,6 +170,29 @@ export default function PartnerWidgetPage() {
           <pre className="bg-gray-100 rounded-xl p-3 text-xs text-gray-700 overflow-x-auto whitespace-pre">
 {`window.ModeMorph.render({
   cart: [{ sku: "ABC123" }, { sku: "DEF456" }],
+  mount: "#modemorph-widget"
+})`}
+          </pre>
+
+          <p className="text-sm text-gray-600 pt-2">
+            А на карточке товара достаточно одного SKU — виджет покажет блок «С этим носят»:
+          </p>
+          <div className="relative">
+            <pre className="bg-gray-900 rounded-xl p-4 text-xs text-green-300 overflow-x-auto whitespace-pre">
+{productSnippet("ВАШ_КЛЮЧ")}
+            </pre>
+            <Button
+              size="sm" variant="ghost"
+              className="absolute top-2 right-2 text-gray-400 hover:text-white"
+              onClick={() => copy(productSnippet("ВАШ_КЛЮЧ"), "product-snippet-template")}
+            >
+              {copied === "product-snippet-template" ? <CheckCircle2 className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+          <pre className="bg-gray-100 rounded-xl p-3 text-xs text-gray-700 overflow-x-auto whitespace-pre">
+{`window.ModeMorph.render({
+  mode: "product",
+  sku: "ABC123",
   mount: "#modemorph-widget"
 })`}
           </pre>

@@ -1,14 +1,22 @@
 /*!
  * ModeMorph outfit-matching widget loader.
  *
- * Embed on a partner storefront:
+ * Cart mode — embed on a cart/checkout page:
  *   <script src="https://modemorph.ru/widget.js"
  *           data-key="mm_wk_..."
  *           data-mount="#modemorph-widget"
  *           data-cart='[{"sku":"ABC123"}]'></script>
  *
- * Or drive it dynamically (e.g. on cart change):
+ * Product-card mode — embed on a single product page with just its SKU:
+ *   <script src="https://modemorph.ru/widget.js"
+ *           data-key="mm_wk_..."
+ *           data-mount="#modemorph-widget"
+ *           data-mode="product"
+ *           data-sku="ABC123"></script>
+ *
+ * Or drive it dynamically (e.g. on cart change / SPA navigation):
  *   window.ModeMorph.render({ cart: [{ sku: "ABC123" }], mount: "#el" });
+ *   window.ModeMorph.render({ mode: "product", sku: "ABC123", mount: "#el" });
  *
  * The UI renders into a Shadow DOM (isolated from the host page's CSS) and calls
  * the ModeMorph API cross-origin with the publishable key. The key is locked to
@@ -36,7 +44,6 @@
 .mm-it.mm-anchor{outline:2px solid #111;outline-offset:-2px}\
 .mm-it .mm-tag{position:absolute;left:4px;top:4px;font-size:9px;background:rgba(17,17,17,.78);color:#fff;border-radius:6px;padding:1px 5px}\
 .mm-cta{margin:8px;padding:8px;border:0;border-radius:10px;background:#111;color:#fff;font-size:13px;font-weight:600;text-align:center;text-decoration:none;cursor:pointer}\
-.mm-empty,.mm-err{font-size:13px;color:#888;padding:10px 0}\
 .mm-skel{flex:0 0 auto;width:188px;height:280px;border-radius:14px;background:linear-gradient(90deg,#f2f2f2 25%,#e9e9e9 37%,#f2f2f2 63%);background-size:400% 100%;animation:mm-sh 1.3s ease infinite}\
 @keyframes mm-sh{0%{background-position:100% 0}100%{background-position:-100% 0}}\
 .mm-foot{font-size:10px;color:#bbb;margin-top:8px}\
@@ -97,17 +104,21 @@
     return a;
   }
 
-  function renderOutfits(root, key, data) {
+  function renderOutfits(root, host, key, data, mode) {
     clear(root);
-    var wrap = el("div", "mm-wrap");
-    var titlePrefix = data.partner && data.partner.name ? data.partner.name + " — " : "";
-    wrap.appendChild(el("h3", "mm-title", titlePrefix + "Образы с этой вещью"));
 
+    // Empty result: collapse quietly instead of showing an empty/error state
+    // to the shopper (common on product pages with a thin catalog overlap).
     if (!data.outfits || !data.outfits.length) {
-      wrap.appendChild(el("div", "mm-empty", "Пока не удалось собрать образ для этих товаров."));
-      root.appendChild(wrap);
+      host.style.display = "none";
       return;
     }
+    host.style.display = "";
+
+    var wrap = el("div", "mm-wrap");
+    var titlePrefix = data.partner && data.partner.name ? data.partner.name + " — " : "";
+    var title = mode === "product" ? "С этим носят" : titlePrefix + "Образы с этой вещью";
+    wrap.appendChild(el("h3", "mm-title", title));
 
     var row = el("div", "mm-row");
     data.outfits.forEach(function (outfit) {
@@ -159,7 +170,8 @@
       opts = opts || {};
       var key = opts.key || (current && current.getAttribute("data-key"));
       if (!key) return console.error("[ModeMorph] missing widget key");
-      var cart = opts.cart || [];
+      var mode = opts.mode === "product" ? "product" : "cart";
+      var cart = mode === "product" ? (opts.sku ? [{ sku: opts.sku }] : []) : (opts.cart || []);
       if (!cart.length) return;
 
       var host = resolveMount(opts.mount);
@@ -183,10 +195,10 @@
           if (!r.ok) throw new Error("HTTP " + r.status);
           return r.json();
         })
-        .then(function (data) { renderOutfits(root, key, data); })
+        .then(function (data) { renderOutfits(root, host, key, data, mode); })
         .catch(function (e) {
           clear(root);
-          root.appendChild(el("div", "mm-err", ""));
+          host.style.display = "none";
           console.error("[ModeMorph] widget error:", e);
         });
     },
@@ -196,15 +208,30 @@
 
   // Auto-init from the script tag's data attributes.
   if (current && current.getAttribute("data-key")) {
-    var autoCart = [];
-    try { autoCart = JSON.parse(current.getAttribute("data-cart") || "[]"); } catch (e) {}
-    if (autoCart.length) {
-      ModeMorph.render({
-        key: current.getAttribute("data-key"),
-        mount: current.getAttribute("data-mount"),
-        cart: autoCart,
-        nOutfits: parseInt(current.getAttribute("data-outfits"), 10) || 3,
-      });
+    var autoMode = current.getAttribute("data-mode") === "product" ? "product" : "cart";
+    var autoOutfits = parseInt(current.getAttribute("data-outfits"), 10) || 3;
+    if (autoMode === "product") {
+      var autoSku = current.getAttribute("data-sku");
+      if (autoSku) {
+        ModeMorph.render({
+          key: current.getAttribute("data-key"),
+          mount: current.getAttribute("data-mount"),
+          mode: "product",
+          sku: autoSku,
+          nOutfits: autoOutfits,
+        });
+      }
+    } else {
+      var autoCart = [];
+      try { autoCart = JSON.parse(current.getAttribute("data-cart") || "[]"); } catch (e) {}
+      if (autoCart.length) {
+        ModeMorph.render({
+          key: current.getAttribute("data-key"),
+          mount: current.getAttribute("data-mount"),
+          cart: autoCart,
+          nOutfits: autoOutfits,
+        });
+      }
     }
   }
 })();

@@ -166,6 +166,98 @@ async def _polish_widget_outfits(outfits: list, gender: str | None, capsule_guid
     return result
 
 
+def compute_cart_hash(partner_id: int, skus: list[str], n_outfits: int,
+                       gender: str | None, temp: float | None) -> str:
+    """Cache key for widget_reco_cache. Shared by the live /recommend endpoint
+    (cache read + write) and the warm-widget-cache cron job (cache write) — the
+    two MUST compute the identical hash or warmed rows are never hit."""
+    temp_bucket = round(temp / 3) if temp is not None else None
+    return hashlib.sha256(
+        f"{partner_id}|{','.join(sorted(skus))}|{n_outfits}|{gender}|{temp_bucket}".encode()
+    ).hexdigest()
+
+
+async def _assemble_outfits(db: AsyncSession, partner_id: int, anchor_ids: list[int],
+                             n_outfits: int, gender: str | None, temp: float | None) -> list[dict]:
+    """CLIP /clip/complement → hydrate canonical DB fields (name/image/affiliate url).
+    Raises HTTPException on AI-service failure."""
+    ai_url = settings.AI_SERVICE_URL
+    if not ai_url:
+        raise HTTPException(status_code=503, detail="AI service not configured")
+    try:
+        async with httpx.AsyncClient(timeout=40.0) as client:
+            resp = await client.post(
+                f"{ai_url}/clip/complement",
+                json={"partner_id": partner_id, "anchor_item_ids": anchor_ids,
+                      "n_outfits": n_outfits, "gender": gender, "temp": temp},
+            )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=502, detail="Outfit assembly failed")
+        clip_outfits = resp.json().get("outfits", [])
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="AI service unavailable")
+
+    all_ids = list({it["id"] for o in clip_outfits for it in o.get("items", []) if it.get("id")})
+    hydrate: dict[int, dict] = {}
+    if all_ids:
+        rows = await db.execute(
+            text("""
+                SELECT id, item_name, image_url, url, color, clothing_type, source_sku
+                FROM wardrobe_items WHERE id = ANY(:ids)
+            """),
+            {"ids": all_ids},
+        )
+        hydrate = {r._mapping["id"]: dict(r._mapping) for r in rows.all()}
+
+    outfits = []
+    for o in clip_outfits:
+        items = []
+        for it in o.get("items", []):
+            h = hydrate.get(it.get("id"))
+            if not h:
+                continue
+            items.append({
+                "id": h["id"],
+                "name": h["item_name"],
+                "image_url": h["image_url"],
+                "buy_url": h["url"],
+                "color": h["color"],
+                "clothing_type": h["clothing_type"],
+                "sku": h["source_sku"],
+                "is_anchor": bool(it.get("is_anchor")),
+            })
+        if len(items) >= 2:
+            outfits.append({"score": o.get("score"), "items": items})
+    return outfits
+
+
+async def build_and_cache_recommendation(
+    db: AsyncSession, partner_id: int, company_name: str, anchor_ids: list[int],
+    cart_hash: str, n_outfits: int, gender: str | None, temp: float | None = None,
+) -> dict:
+    """Assemble (CLIP) + polish (Gemini) + upsert into widget_reco_cache. Shared by
+    widget_recommend (cache-miss path, live traffic) and the warm-widget-cache cron
+    job (background pre-warming) — extracted here so both stay byte-for-byte in
+    sync instead of drifting via copy-paste. Does NOT prune stale cache rows or
+    log widget_events — callers that need that (widget_recommend) do it themselves."""
+    outfits = await _assemble_outfits(db, partner_id, anchor_ids, n_outfits, gender, temp)
+    capsule_guide = await capsule_style_guide(db, gender)
+    outfits = await _polish_widget_outfits(outfits, gender, capsule_guide)
+    payload = {"partner": {"name": company_name}, "outfits": outfits}
+    await db.execute(
+        text("""
+            INSERT INTO widget_reco_cache (cart_hash, partner_id, payload)
+            VALUES (:h, :pid, CAST(:payload AS jsonb))
+            ON CONFLICT (cart_hash) DO UPDATE SET payload = EXCLUDED.payload, created_at = NOW()
+        """),
+        {"h": cart_hash, "pid": partner_id, "payload": json.dumps(payload)},
+    )
+    await db.commit()
+    return payload
+
+
 # ── Routes ──
 
 @router.get("/config")
@@ -232,10 +324,7 @@ async def widget_recommend(body: RecommendRequest, request: Request, db: AsyncSe
     # Cache: memoize the assembled outfits by cart signature. A repeated cart view
     # still logs an impression (a render happened) but skips the expensive CLIP
     # call. Bucket temp to the nearest 3°C so tiny weather jitter stays a hit.
-    temp_bucket = round(body.temp / 3) if body.temp is not None else None
-    cart_hash = hashlib.sha256(
-        f"{partner_id}|{','.join(sorted(skus))}|{n_outfits}|{body.gender}|{temp_bucket}".encode()
-    ).hexdigest()
+    cart_hash = compute_cart_hash(partner_id, skus, n_outfits, body.gender, body.temp)
     hit = await db.execute(
         text("SELECT payload FROM widget_reco_cache "
              "WHERE cart_hash = :h AND created_at > NOW() - INTERVAL '30 minutes'"),
@@ -262,76 +351,16 @@ async def widget_recommend(body: RecommendRequest, request: Request, db: AsyncSe
         await _log("impression")
         return {"session_id": session_id, "outfits": [], "reason": "no_cart_match"}
 
-    # 2. Ask CLIP to assemble complementary outfits from this partner's catalog.
-    ai_url = settings.AI_SERVICE_URL
-    if not ai_url:
-        raise HTTPException(status_code=503, detail="AI service not configured")
-    try:
-        async with httpx.AsyncClient(timeout=40.0) as client:
-            resp = await client.post(
-                f"{ai_url}/clip/complement",
-                json={"partner_id": partner_id, "anchor_item_ids": anchor_ids,
-                      "n_outfits": n_outfits, "gender": body.gender, "temp": body.temp},
-            )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Outfit assembly failed")
-        clip_outfits = resp.json().get("outfits", [])
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=502, detail="AI service unavailable")
-
-    # 3. Hydrate canonical data + affiliate URLs from the DB (CLIP's FAISS meta
-    # has no affiliate url, and we don't trust client-supplied catalog data).
-    all_ids = list({it["id"] for o in clip_outfits for it in o.get("items", []) if it.get("id")})
-    hydrate: dict[int, dict] = {}
-    if all_ids:
-        rows = await db.execute(
-            text("""
-                SELECT id, item_name, image_url, url, color, clothing_type, source_sku
-                FROM wardrobe_items WHERE id = ANY(:ids)
-            """),
-            {"ids": all_ids},
-        )
-        hydrate = {r._mapping["id"]: dict(r._mapping) for r in rows.all()}
-
-    outfits = []
-    for o in clip_outfits:
-        items = []
-        for it in o.get("items", []):
-            h = hydrate.get(it.get("id"))
-            if not h:
-                continue
-            items.append({
-                "id": h["id"],
-                "name": h["item_name"],
-                "image_url": h["image_url"],
-                "buy_url": h["url"],
-                "color": h["color"],
-                "clothing_type": h["clothing_type"],
-                "sku": h["source_sku"],
-                "is_anchor": bool(it.get("is_anchor")),
-            })
-        if len(items) >= 2:
-            outfits.append({"score": o.get("score"), "items": items})
-
-    # Capsule polish: title + coherence pass over the CLIP-assembled outfits.
-    # Cache-miss only — the polished payload is what we store below, so repeat
-    # cart views reuse it for free. Graceful: returns outfits unchanged on failure.
-    capsule_guide = await capsule_style_guide(db, body.gender)
-    outfits = await _polish_widget_outfits(outfits, body.gender, capsule_guide)
-
-    payload = {"partner": {"name": record["company_name"]}, "outfits": outfits}
-
-    # Store in cache (upsert) + opportunistically prune day-old rows.
-    await db.execute(
-        text("""
-            INSERT INTO widget_reco_cache (cart_hash, partner_id, payload)
-            VALUES (:h, :pid, CAST(:payload AS jsonb))
-            ON CONFLICT (cart_hash) DO UPDATE SET payload = EXCLUDED.payload, created_at = NOW()
-        """),
-        {"h": cart_hash, "pid": partner_id, "payload": json.dumps(payload)},
+    # 2-4. Assemble via CLIP, polish via Gemini, upsert into widget_reco_cache —
+    # shared with the warm-widget-cache cron job (app/api/cron.py) so both paths
+    # produce byte-identical cache rows under byte-identical keys.
+    payload = await build_and_cache_recommendation(
+        db, partner_id, record["company_name"], anchor_ids, cart_hash,
+        n_outfits, body.gender, body.temp,
     )
+
+    # Opportunistically prune day-old rows (only the live endpoint does this —
+    # the cron warm job would otherwise repeat it on every single item).
     await db.execute(text("DELETE FROM widget_reco_cache WHERE created_at < NOW() - INTERVAL '1 day'"))
     await db.commit()
 
