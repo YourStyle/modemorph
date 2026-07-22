@@ -553,6 +553,10 @@ async def outfit_complements(request: Request, body: OutfitRequest):
 
 # Mirror of backend _SLOT_MAP (recommendations.py). Kept in sync manually
 # because the CLIP service is a separate package and can't import backend code.
+# Shoe types are the zero-shot classify vocabulary (see CLOTHING_TYPES in
+# classifier.py: "shoes", "boots", "sneakers", "sandals") — no importer feeds
+# them into the catalog yet, but wardrobe/manually-tagged items already use
+# these values so /clip/complement should treat them as a distinct slot.
 _SLOT_MAP = {
     "blouse": "top", "lonsleeve": "top", "shirt": "top",
     "t-shirt": "top", "tank-top": "top",
@@ -564,6 +568,7 @@ _SLOT_MAP = {
     "classic": "set", "knitted-suit": "set", "tracksuit": "set",
     "coat": "outerwear", "fur-coat": "outerwear", "fur-coat-dark-brown": "outerwear",
     "parka": "outerwear", "puffer-jacket": "outerwear", "sheepskin-coat": "outerwear",
+    "shoes": "shoes", "boots": "shoes", "sneakers": "shoes", "sandals": "shoes",
 }
 _SLOT_TO_TYPES: dict[str, list[str]] = {}
 for _ct, _slot in _SLOT_MAP.items():
@@ -572,6 +577,10 @@ for _ct, _slot in _SLOT_MAP.items():
 # Core slots an outfit must cover, and optional extras we add for richness.
 _CORE_SLOTS = ["top", "bottom"]
 _EXTRA_SLOTS = ["layer", "outerwear"]
+# Shoes are handled outside _EXTRA_SLOTS: unlike layer/outerwear (one picked
+# per outfit, rotating), we want a shoe pick in every assembled outfit
+# whenever the partner catalog has one.
+_SHOE_SLOT = "shoes"
 
 
 class ComplementRequest(BaseModel):
@@ -662,6 +671,9 @@ async def complement_outfits(request: Request, body: ComplementRequest):
     if not body_covered:
         target_slots += [s for s in _CORE_SLOTS if s not in present_slots]
     target_slots += [s for s in _EXTRA_SLOTS if s not in present_slots]
+    # Always try to fill shoes too, unless the cart's anchors already cover it.
+    if _SHOE_SLOT not in present_slots:
+        target_slots.append(_SHOE_SLOT)
     # If the cart already holds a full top+bottom, still offer one complementary
     # layer/outerwear so the widget never renders empty.
     if not target_slots:
@@ -688,6 +700,7 @@ async def complement_outfits(request: Request, body: ComplementRequest):
     # rank index across outfits yields variety before the scorer re-ranks.
     fill_core = [s for s in _CORE_SLOTS if s in slot_candidates]
     fill_extra = [s for s in _EXTRA_SLOTS if s in slot_candidates]
+    have_shoes = _SHOE_SLOT in slot_candidates
     anchor_items = [_to_item(a, True) for a in anchors]
 
     assembled: list[list[dict]] = []
@@ -699,6 +712,9 @@ async def complement_outfits(request: Request, body: ComplementRequest):
         picks: list[dict] = []
         for slot in fill_core:
             cands = slot_candidates[slot]
+            picks.append(_to_item(cands[i % len(cands)], False))
+        if have_shoes:
+            cands = slot_candidates[_SHOE_SLOT]
             picks.append(_to_item(cands[i % len(cands)], False))
         if fill_extra:
             slot = fill_extra[i % len(fill_extra)]
@@ -1012,3 +1028,11 @@ async def encode_text(request: Request, body: EncodeTextRequest):
     encoder, _ = _get_services(request)
     emb = encoder.encode_text(body.text)
     return {'embedding': emb.tolist(), 'dim': len(emb)}
+
+
+if __name__ == "__main__":
+    # Tiny sanity check: every shoe clothing_type must round-trip back to the
+    # "shoes" slot through _slot_of. Run with `python -m clip.routes`.
+    for _shoe_type in _SLOT_TO_TYPES["shoes"]:
+        assert _slot_of(_shoe_type) == "shoes", f"{_shoe_type!r} did not map back to 'shoes'"
+    print(f"OK: {_SLOT_TO_TYPES['shoes']} all round-trip through _slot_of() to 'shoes'")

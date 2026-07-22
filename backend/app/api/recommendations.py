@@ -42,6 +42,7 @@ _SLOT_MAP = {
     "classic": "set", "knitted-suit": "set", "tracksuit": "set",
     "coat": "outerwear", "fur-coat": "outerwear", "fur-coat-dark-brown": "outerwear",
     "parka": "outerwear", "puffer-jacket": "outerwear", "sheepskin-coat": "outerwear",
+    "shoes": "shoes", "boots": "shoes", "sneakers": "shoes", "sandals": "shoes",
 }
 
 

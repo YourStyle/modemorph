@@ -28,6 +28,13 @@ CATEGORY_MAP = {
     "комплекты": "classic", "спортивная одежда": "sporty-pants",
     "топы и боди": "tank-top", "кроп-топы": "tank-top", "боди": "tank-top",
     "комбинезоны": "dress",
+    # Обувь — mapped onto the 4 shoe clothing_types used by the "shoes" slot
+    # (see _SLOT_MAP in ai-service/clip/routes.py / backend/app/api/recommendations.py).
+    "обувь": "shoes", "туфли": "shoes", "лоферы": "shoes",
+    "сапоги": "boots", "ботинки": "boots",
+    "кроссовки": "sneakers", "кеды": "sneakers",
+    "сандалии": "sandals", "босоножки": "sandals",
+    "sneakers": "sneakers", "boots": "boots", "shoes": "shoes", "sandals": "sandals",
 }
 
 SKIP_CATEGORIES = {
