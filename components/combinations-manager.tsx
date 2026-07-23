@@ -307,6 +307,7 @@ export function CombinationsManager() {
       const payload = {
         name: formData.name,
         description: formData.description || null,
+        combination_type: formData.combination_type,
         elements,
       }
 

@@ -168,8 +168,8 @@ async def get_combinations(db: AsyncSession = Depends(get_db)):
 async def create_combination(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     result = await db.execute(
-        text("INSERT INTO combinations (name, description, style, gender) VALUES (:name, :desc, :style, :gender) RETURNING *"),
-        {"name": body.get("name", ""), "desc": body.get("description"), "style": body.get("style"), "gender": body.get("gender")},
+        text("INSERT INTO combinations (name, description, combination_type) VALUES (:name, :desc, :ctype) RETURNING *"),
+        {"name": body.get("name", ""), "desc": body.get("description"), "ctype": body.get("combination_type", "items")},
     )
     combo = dict(result.mappings().first())
     # Add elements
@@ -185,7 +185,7 @@ async def create_combination(request: Request, user: dict = Depends(get_current_
 @router.put("/combinations/{combo_id}")
 async def update_combination(combo_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
-    allowed = ["name", "description", "style", "gender"]
+    allowed = ["name", "description", "combination_type"]
     updates = {k: body[k] for k in allowed if k in body}
     if updates:
         set_clause = ", ".join(f"{k} = :{k}" for k in updates)
