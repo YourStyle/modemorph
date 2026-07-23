@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react"
 import Image from "next/image"
-import { Sparkles, Share2, Bookmark, BookmarkCheck, ChevronDown, Camera, Check, ShieldCheck } from "lucide-react"
+import { Sparkles, Download, Bookmark, BookmarkCheck, ChevronDown, Camera, Check, ShieldCheck } from "lucide-react"
 import { toast } from "sonner"
 
 import { CommonSheet } from "@/components/common-sheet"
+import { SaveImageSheet } from "@/components/save-image-sheet"
+import { renderSinglePhoto } from "@/lib/save-image"
 import { SubscriptionSheet } from "@/components/subscription-sheet"
 import FallingObjectsGame from "@/components/falling-objects-game"
 import { useTryOn } from "@/contexts/try-on-context"
@@ -741,42 +743,6 @@ const AvatarPicker = ({ selectedUrl, onSelect }: AvatarPickerProps) => {
 // Share helper
 // ---------------------------------------------------------------------------
 
-async function shareResult(resultUrl: string, title: string) {
-  try {
-    const response = await fetch(resultUrl)
-    const blob = await response.blob()
-    const file = new File([blob], "try-on.jpg", { type: blob.type })
-
-    if (
-      typeof navigator.share === "function" &&
-      typeof navigator.canShare === "function" &&
-      navigator.canShare({ files: [file] })
-    ) {
-      await navigator.share({ files: [file], title })
-      return
-    }
-
-    if (typeof navigator.share === "function") {
-      await navigator.share({ url: resultUrl, title })
-      return
-    }
-
-    // Fallback: download
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = "try-on.jpg"
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  } catch (err: any) {
-    if (err?.name !== "AbortError") {
-      throw err
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
@@ -794,7 +760,7 @@ export function TryOnSheet() {
 
   const [showPaywall, setShowPaywall] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [isSharing, setIsSharing] = useState(false)
+  const [saveOpen, setSaveOpen] = useState(false)
   const [isConfirming, setIsConfirming] = useState(false)
 
   // Profile completion state
@@ -822,7 +788,7 @@ export function TryOnSheet() {
   // Reset action states when session changes
   useEffect(() => {
     setIsSaving(false)
-    setIsSharing(false)
+    setSaveOpen(false)
     setIsConfirming(false)
     setProfileChecked(false)
     setProfileIncomplete(false)
@@ -902,17 +868,10 @@ export function TryOnSheet() {
     }
   }, [isSaving, session?.saved, saveTryOn])
 
-  const handleShare = useCallback(async () => {
-    if (!session?.resultUrl || isSharing) return
-    setIsSharing(true)
-    try {
-      await shareResult(session.resultUrl, session.suggestion?.title ?? "Моя примерка")
-    } catch {
-      toast.error("Не удалось поделиться")
-    } finally {
-      setIsSharing(false)
-    }
-  }, [session?.resultUrl, session?.suggestion?.title, isSharing])
+  const handleSavePhoto = useCallback(() => {
+    if (!session?.resultUrl) return
+    setSaveOpen(true)
+  }, [session?.resultUrl])
 
   const handleProfileSave = useCallback(async (data: ProfileFormData) => {
     setProfileSaving(true)
@@ -1120,10 +1079,10 @@ export function TryOnSheet() {
                 </GradientButton>
               )}
 
-              {/* Share button */}
-              <OutlineButton onClick={handleShare} disabled={isSharing}>
-                <Share2 className="w-4 h-4" />
-                {isSharing ? "Подготовка…" : "Поделиться"}
+              {/* Save-to-phone button */}
+              <OutlineButton onClick={handleSavePhoto}>
+                <Download className="w-4 h-4" />
+                Сохранить фото
               </OutlineButton>
             </div>
 
@@ -1166,6 +1125,14 @@ export function TryOnSheet() {
           toast.success("Лимиты обновлены! Попробуйте ещё раз.")
         }}
         variant="limitReached"
+      />
+
+      <SaveImageSheet
+        open={saveOpen}
+        onClose={() => setSaveOpen(false)}
+        render={() => renderSinglePhoto(session!.resultUrl!)}
+        fileName="modemorph-tryon.png"
+        title={session?.suggestion?.title ?? "Моя примерка"}
       />
     </>
   )

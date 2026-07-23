@@ -3,7 +3,9 @@
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Plus, ExternalLink, Trash2, Search, Sparkles } from "lucide-react"
+import { Plus, Download, Trash2, Search, Sparkles } from "lucide-react"
+import { SaveImageSheet } from "@/components/save-image-sheet"
+import { renderSinglePhoto, renderLookGrid } from "@/lib/save-image"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
 import { CreateLookSheet } from "@/components/create-look-sheet"
 import { AddOutfitsToCollectionSheet } from "@/components/add-outfits-to-collection-sheet"
@@ -52,6 +54,9 @@ export default function LooksPage() {
   const [isAddCollectionOpen, setIsAddCollectionOpen] = useState(false)
   const [isCreateLookOpen, setIsCreateLookOpen] = useState(false)
   const [paywallOpen, setPaywallOpen] = useState(false)
+  const [saveTarget, setSaveTarget] = useState<
+    null | { render: () => Promise<Blob>; fileName: string; title?: string }
+  >(null)
   const [addOutfitsSheet, setAddOutfitsSheet] = useState<{
     isOpen: boolean
     sectionId: number
@@ -263,8 +268,26 @@ export default function LooksPage() {
         </div>
 
         <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-          <Button variant="ghost" size="sm" className="p-1 h-auto">
-            <ExternalLink className="w-4 h-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="p-1 h-auto bg-white/80 rounded-full"
+            onClick={(e) => {
+              e.stopPropagation()
+              const urls = (look.expandedItems || []).map((it) => it.image_url || "").filter(Boolean)
+              if (urls.length === 0) {
+                toast.error("Нет изображений для сохранения")
+                return
+              }
+              setSaveTarget({
+                render: () => renderLookGrid(urls, look.name),
+                fileName: `modemorph-look-${look.id}.png`,
+                title: look.name,
+              })
+            }}
+            aria-label="Сохранить образ"
+          >
+            <Download className="w-4 h-4" />
           </Button>
           {showDelete && (
             <Button
@@ -346,10 +369,6 @@ export default function LooksPage() {
                 </Button>
               </div>
             )}
-
-            <Button variant="ghost" size="sm" className="p-2">
-              <ExternalLink className="w-4 h-4" />
-            </Button>
           </div>
         </div>
 
@@ -526,8 +545,26 @@ export default function LooksPage() {
                     </p>
                   </div>
 
-                  {/* Delete button */}
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {/* Save + delete buttons */}
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                    {look.image_url && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="p-1 h-auto bg-white/80 rounded-full"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSaveTarget({
+                            render: () => renderSinglePhoto(look.image_url!),
+                            fileName: `modemorph-tryon-${look.id}.png`,
+                            title: look.name,
+                          })
+                        }}
+                        aria-label="Сохранить фото"
+                      >
+                        <Download className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -588,6 +625,17 @@ export default function LooksPage() {
         sectionName={filterModal.sectionName}
         looks={filterModal.looks}
       />
+
+      {saveTarget && (
+        <SaveImageSheet
+          key={saveTarget.fileName}
+          open
+          onClose={() => setSaveTarget(null)}
+          render={saveTarget.render}
+          fileName={saveTarget.fileName}
+          title={saveTarget.title}
+        />
+      )}
     </div>
   )
 }
