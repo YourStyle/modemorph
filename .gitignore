@@ -39,3 +39,12 @@ sex.sh
 
 # backend data exports (contains user passwords and PII)
 backend/data_export/
+
+# OS
+.DS_Store
+
+# python
+__pycache__/
+
+# local Claude Code settings/worktrees
+.claude/
