@@ -107,9 +107,14 @@ export default function ModernLoginForm() {
             />
           </div>
           <div className="space-y-2">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Пароль
-            </label>
+            <div className="flex items-center justify-between">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Пароль
+              </label>
+              <Link href="/auth/reset" className="text-xs text-gray-500 hover:text-gray-800 hover:underline">
+                Забыли пароль?
+              </Link>
+            </div>
             <Input
               id="password"
               name="password"

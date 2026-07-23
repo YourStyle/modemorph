@@ -7,7 +7,9 @@ import hmac
 import json
 from uuid import uuid4
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -232,6 +234,141 @@ async def telegram_login_widget_session(request: Request, body: WidgetLoginReque
         raise HTTPException(status_code=401, detail="Invalid Telegram widget data")
 
     return await _telegram_login_flow(tg_data, db)
+
+
+# ── Yandex ID OAuth Login ──
+
+YANDEX_OAUTH_AUTHORIZE_URL = "https://oauth.yandex.ru/authorize"
+YANDEX_OAUTH_TOKEN_URL = "https://oauth.yandex.ru/token"
+YANDEX_USERINFO_URL = "https://login.yandex.ru/info"
+
+
+@router.get("/yandex/start")
+@limiter.limit("20/minute")
+async def yandex_oauth_start(request: Request):
+    """Redirect to Yandex ID's OAuth consent screen. 501 if the feature isn't configured (env unset)."""
+    if not settings.YANDEX_OAUTH_CLIENT_ID:
+        raise HTTPException(status_code=501, detail="Yandex login is not configured")
+
+    redirect_uri = f"{settings.FRONTEND_URL.rstrip('/')}/auth/yandex/callback"
+    params = httpx.QueryParams({
+        "response_type": "code",
+        "client_id": settings.YANDEX_OAUTH_CLIENT_ID,
+        "redirect_uri": redirect_uri,
+        "scope": "login:email login:info login:default_phone",
+    })
+    return RedirectResponse(url=f"{YANDEX_OAUTH_AUTHORIZE_URL}?{params}", status_code=302)
+
+
+async def _yandex_login_flow(yandex_user: dict, db: AsyncSession) -> dict:
+    """Shared login/register flow for Yandex ID users — mirrors _telegram_login_flow.
+
+    Like Telegram, we key the row on a synthetic email (`<id>@yandex.local`) rather
+    than the real address Yandex returns, so lookups are deterministic and don't
+    collide with an unrelated email/password account that happens to share the
+    same real email. The real email (if Yandex grants it) is kept in metadata.
+    """
+    yandex_id = str(yandex_user.get("id", ""))
+    if not yandex_id:
+        raise HTTPException(status_code=400, detail="No user in Yandex data")
+
+    email = f"{yandex_id}@yandex.local"
+    full_name = " ".join(
+        filter(None, [yandex_user.get("first_name"), yandex_user.get("last_name")])
+    ) or yandex_user.get("login", "User")
+
+    default_phone = yandex_user.get("default_phone")
+    phone_number = default_phone.get("number") if isinstance(default_phone, dict) else None
+
+    metadata = {
+        "provider": "yandex",
+        "yandex_id": yandex_id,
+        "yandex_login": yandex_user.get("login"),
+        "yandex_email": yandex_user.get("default_email"),
+        "yandex_first_name": yandex_user.get("first_name"),
+        "yandex_last_name": yandex_user.get("last_name"),
+        "yandex_default_phone": phone_number,
+        "full_name": full_name,
+    }
+
+    result = await db.execute(
+        text("SELECT id FROM users WHERE email = :email"),
+        {"email": email},
+    )
+    user = result.first()
+
+    if user:
+        user_id = str(user.id)
+        await db.execute(
+            text("UPDATE users SET raw_user_meta_data = CAST(:meta AS jsonb) WHERE id = :uid"),
+            {"meta": json.dumps(metadata), "uid": user_id},
+        )
+        await db.commit()
+    else:
+        user_id = str(uuid4())
+        # Random password — this synthetic account is never logged into via
+        # email/password, only ever reached through the Yandex OAuth flow.
+        random_password = uuid4().hex + uuid4().hex
+        hashed = hash_password(random_password)
+        await db.execute(
+            text("INSERT INTO users (id, email, encrypted_password, raw_user_meta_data, created_at) VALUES (:id, :email, :pw, CAST(:meta AS jsonb), NOW())"),
+            {"id": user_id, "email": email, "pw": hashed, "meta": json.dumps(metadata)},
+        )
+        await db.commit()
+
+    prof = await db.execute(
+        text("SELECT id, is_admin FROM user_profiles WHERE user_id = :uid"),
+        {"uid": user_id},
+    )
+    p = prof.first()
+    return _make_session_response(user_id, email, p.is_admin if p else False, metadata)
+
+
+class YandexSessionRequest(BaseModel):
+    code: str
+
+
+@router.post("/yandex/session")
+@limiter.limit("10/minute")
+async def yandex_oauth_session(request: Request, body: YandexSessionRequest, db: AsyncSession = Depends(get_db)):
+    if not settings.YANDEX_OAUTH_CLIENT_ID or not settings.YANDEX_OAUTH_CLIENT_SECRET:
+        raise HTTPException(status_code=501, detail="Yandex login is not configured")
+
+    code = body.code.strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="No code")
+
+    redirect_uri = f"{settings.FRONTEND_URL.rstrip('/')}/auth/yandex/callback"
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        token_resp = await client.post(
+            YANDEX_OAUTH_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": settings.YANDEX_OAUTH_CLIENT_ID,
+                "client_secret": settings.YANDEX_OAUTH_CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Failed to exchange Yandex authorization code")
+        token_data = token_resp.json()
+        access_token = token_data.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Yandex token response missing access_token")
+
+        info_resp = await client.get(
+            YANDEX_USERINFO_URL,
+            params={"format": "json"},
+            headers={"Authorization": f"OAuth {access_token}"},
+        )
+        if info_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="Failed to fetch Yandex user info")
+        yandex_user = info_resp.json()
+
+    return await _yandex_login_flow(yandex_user, db)
 
 
 # ── Refresh Token ──

@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_PEPPER: str = ""
 
+    # Yandex ID OAuth (login) — distinct from YANDEX_ACCESS_KEY_ID/YANDEX_SECRET_ACCESS_KEY below (those are S3, do not reuse)
+    YANDEX_OAUTH_CLIENT_ID: str = ""
+    YANDEX_OAUTH_CLIENT_SECRET: str = ""
+
+    # Public frontend origin — used to build OAuth redirect_uri callbacks
+    FRONTEND_URL: str = "https://modemorph.ru"
+
     # External services
     OPENROUTER_API_KEY: str = ""
     N8N_BASE_URL: str = ""
