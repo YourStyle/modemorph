@@ -393,6 +393,55 @@ async def revoke_widget_key(key_id: int, user: dict = Depends(get_current_user),
     return {"success": True}
 
 
+@router.get("/widget-stats")
+async def widget_stats(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Conversion funnel for the partner's widget: impression → outfit_view →
+    item_click → add_to_cart, with CTR / conversion and a 30-day daily series."""
+    partner = await _require_approved_partner(user, db)
+    pid = partner["id"]
+
+    totals_res = await db.execute(
+        text("""
+            SELECT event_type, count(*) AS c FROM widget_events
+            WHERE partner_id = :pid AND created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY event_type
+        """),
+        {"pid": pid},
+    )
+    counts = {r._mapping["event_type"]: r._mapping["c"] for r in totals_res.all()}
+    impressions = counts.get("impression", 0)
+    clicks = counts.get("item_click", 0)
+    adds = counts.get("add_to_cart", 0)
+
+    daily_res = await db.execute(
+        text("""
+            SELECT to_char(created_at, 'YYYY-MM-DD') AS d, event_type, count(*) AS c
+            FROM widget_events
+            WHERE partner_id = :pid AND created_at >= NOW() - INTERVAL '30 days'
+            GROUP BY d, event_type ORDER BY d
+        """),
+        {"pid": pid},
+    )
+    daily: dict[str, dict] = {}
+    for r in daily_res.all():
+        m = r._mapping
+        row = daily.setdefault(m["d"], {"date": m["d"], "impression": 0, "outfit_view": 0,
+                                        "item_click": 0, "add_to_cart": 0})
+        row[m["event_type"]] = m["c"]
+
+    return {
+        "totals": {
+            "impressions": impressions,
+            "outfit_views": counts.get("outfit_view", 0),
+            "clicks": clicks,
+            "add_to_cart": adds,
+        },
+        "ctr": round(clicks / impressions * 100, 1) if impressions else 0.0,
+        "conversion": round(adds / impressions * 100, 1) if impressions else 0.0,
+        "daily": sorted(daily.values(), key=lambda x: x["date"]),
+    }
+
+
 # ── Usage Stats ──
 
 @router.get("/usage")
@@ -539,6 +588,26 @@ async def admin_update_partner(partner_id: int, body: PartnerStatusUpdate, user:
 
     result = await db.execute(text("SELECT * FROM partner_profiles WHERE id = :pid"), {"pid": partner_id})
     return {"success": True, "partner": dict(result.first()._mapping)}
+
+
+@admin_router.get("/widget-keys")
+async def admin_list_widget_keys(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Cross-partner overview of every widget key with its event volume and
+    conversion count — oversight for the embeddable-widget program."""
+    result = await db.execute(text("""
+        SELECT k.id, k.partner_id, p.company_name, k.name, k.key_prefix,
+               k.allowed_origins, k.is_active, k.rate_limit_per_minute,
+               k.last_used_at, k.created_at, k.revoked_at,
+               (SELECT count(*) FROM widget_events e WHERE e.widget_key_id = k.id) AS events_total,
+               (SELECT count(*) FROM widget_events e
+                  WHERE e.widget_key_id = k.id AND e.event_type = 'impression') AS impressions,
+               (SELECT count(*) FROM widget_events e
+                  WHERE e.widget_key_id = k.id AND e.event_type = 'add_to_cart') AS conversions
+        FROM partner_widget_keys k
+        JOIN partner_profiles p ON p.id = k.partner_id
+        ORDER BY k.created_at DESC
+    """))
+    return {"keys": [dict(r._mapping) for r in result.all()]}
 
 
 # ══════════════════════════════════════════════════════════════════════

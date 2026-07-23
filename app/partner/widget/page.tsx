@@ -29,6 +29,13 @@ interface WidgetKey {
   revoked_at: string | null
 }
 
+interface WidgetStats {
+  totals: { impressions: number; outfit_views: number; clicks: number; add_to_cart: number }
+  ctr: number
+  conversion: number
+  daily: { date: string; impression: number; outfit_view: number; item_click: number; add_to_cart: number }[]
+}
+
 const WIDGET_HOST =
   typeof window !== "undefined" ? window.location.origin : "https://modemorph.ru"
 
@@ -60,6 +67,7 @@ export default function PartnerWidgetPage() {
   const [creating, setCreating] = useState(false)
   const [revoking, setRevoking] = useState<number | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [stats, setStats] = useState<WidgetStats | null>(null)
 
   const load = async () => {
     try {
@@ -72,7 +80,15 @@ export default function PartnerWidgetPage() {
     }
   }
 
-  useEffect(() => { load() }, [])
+  const loadStats = async () => {
+    try {
+      setStats(await api.get<WidgetStats>("/api/partner/widget-stats"))
+    } catch {
+      /* stats are non-critical — fail silently */
+    }
+  }
+
+  useEffect(() => { load(); loadStats() }, [])
 
   const parsedOrigins = useMemo(
     () => origins.split(/[\n,]/).map((o) => o.trim()).filter(Boolean),
@@ -141,6 +157,32 @@ export default function PartnerWidgetPage() {
           Создать ключ
         </Button>
       </div>
+
+      {/* Conversion funnel */}
+      {stats && stats.totals.impressions > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Конверсия виджета (30 дней)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              {[
+                { label: "Показы", value: stats.totals.impressions },
+                { label: "Просмотры образов", value: stats.totals.outfit_views },
+                { label: "Клики", value: stats.totals.clicks },
+                { label: "В корзину", value: stats.totals.add_to_cart },
+                { label: "CTR", value: `${stats.ctr}%` },
+                { label: "Конверсия", value: `${stats.conversion}%` },
+              ].map((m) => (
+                <div key={m.label} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+                  <div className="text-2xl font-bold text-gray-900 tabular-nums">{m.value}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{m.label}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* How it works / embed snippet */}
       <Card>

@@ -23,6 +23,7 @@ import {
   Bell,
   Building2,
   Brain,
+  Code2,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -78,6 +79,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/admin/users", label: "Пользователи", icon: UserCheck },
       { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
       { href: "/admin/partners", label: "Партнёры", icon: Building2 },
+      { href: "/admin/widget-keys", label: "Виджет-ключи", icon: Code2 },
     ]},
     { group: "Каталог", items: [
       { href: "/admin/wardrobe", label: "Гардероб", icon: Package },
