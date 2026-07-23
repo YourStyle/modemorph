@@ -105,7 +105,7 @@ async def pick_flatlay(request: Request, body: PickFlatlayRequest):
     best_person_score = 0.0
     results = []
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         for url in urls:
             try:
                 r = await client.get(url)
@@ -216,7 +216,7 @@ async def remove_bg(
         background = (body.get('background') if isinstance(body, dict) else None) or 'white'
         if not url:
             raise HTTPException(status_code=400, detail='Provide image file or image_url')
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             try:
                 resp = await client.get(url)
                 resp.raise_for_status()
@@ -589,6 +589,8 @@ class ComplementRequest(BaseModel):
     n_outfits: int = 3
     candidates_per_slot: int = 6
     score: bool = True              # rank with OutfitTransformer when available
+    gender: str | None = None       # override; otherwise inferred from anchors
+    temp: float | None = None        # shopper temperature for season filtering
 
 
 def _slot_of(clothing_type: str | None) -> str | None:
@@ -637,7 +639,7 @@ async def complement_outfits(request: Request, body: ComplementRequest):
     async with pool.acquire() as conn:
         rows = await conn.fetch("""
             SELECT id, item_name, image_url, clothing_type, color, url,
-                   source_sku, embedding
+                   source_sku, embedding, gender
             FROM wardrobe_items
             WHERE id = ANY($1) AND partner_id = $2
               AND COALESCE(is_hidden, false) = false
@@ -646,6 +648,11 @@ async def complement_outfits(request: Request, body: ComplementRequest):
     anchors = [dict(r) for r in rows]
     if not anchors:
         raise HTTPException(status_code=404, detail="No anchor items found in this partner's catalog")
+
+    # Gender of the look: explicit override, else the dominant non-null gender of
+    # the cart items. Used to keep complementary items gender-appropriate.
+    anchor_genders = [a.get("gender") for a in anchors if a.get("gender")]
+    gender = body.gender or (max(set(anchor_genders), key=anchor_genders.count) if anchor_genders else None)
 
     # 2. Mean anchor embedding — the retrieval query for complementary slots.
     anchor_vecs = []
@@ -688,6 +695,8 @@ async def complement_outfits(request: Request, body: ComplementRequest):
             partner_id=body.partner_id,
             clothing_types=_SLOT_TO_TYPES.get(slot, []),
             exclude_ids=anchor_ids,
+            gender=gender,
+            temp=body.temp,
         )
         if cands:
             slot_candidates[slot] = cands
@@ -783,7 +792,7 @@ async def build_index(request: Request):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at, "
-            "partner_id, source_sku "
+            "partner_id, source_sku, gender, temp_min, temp_max "
             "FROM wardrobe_items WHERE image_url IS NOT NULL"
         )
 
@@ -813,7 +822,7 @@ async def build_index(request: Request):
         batch_images = []
         batch_items = []
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             for item in needs_encoding:
                 try:
                     r = await client.get(item["image_url"])

@@ -39,10 +39,39 @@ def _freshness_boost(created_at_str: str) -> float:
         return 0.0
 
 
+def _gender_match(item_gender, want) -> bool:
+    """Keep items whose gender is unknown/neutral or matches the requested one.
+    A men's shirt in the cart should never pull women's trousers."""
+    if not item_gender or not want:
+        return True
+    ig = str(item_gender).lower()
+    if ig in ('neutral', 'unisex', 'нейтральный', ''):
+        return True
+    return ig == str(want).lower()
+
+
+def _temp_match(tmin, tmax, temp) -> bool:
+    """Keep items whose season range (±3°C tolerance) covers the shopper's
+    temperature. NULL bounds mean all-season → never excluded."""
+    if tmin is None and tmax is None:
+        return True
+    try:
+        t = float(temp)
+        lo = float(tmin) if tmin is not None else -100.0
+        hi = float(tmax) if tmax is not None else 100.0
+    except (TypeError, ValueError):
+        return True
+    return (lo - 3.0) <= t <= (hi + 3.0)
+
+
 class FAISSIndexService:
     def __init__(self):
         self.index: Optional[faiss.Index] = None
         self.meta: list = []
+        # Per-partner sub-index: partner_id → [meta positions]. Lets the widget
+        # scan only one partner's slice instead of the whole catalog (O(slice)
+        # vs O(N)) — the "sub-index per partner" without separate FAISS indices.
+        self.partner_positions: dict = {}
         self._load_if_exists()
 
     def _load_if_exists(self):
@@ -53,6 +82,16 @@ class FAISSIndexService:
                 self.index.nprobe = IVF_NPROBE
             with open(META_FILE, 'r') as f:
                 self.meta = json.load(f)
+            self._rebuild_partner_positions()
+
+    def _rebuild_partner_positions(self):
+        """Build the partner_id → positions map from current meta."""
+        pp: dict = {}
+        for i, m in enumerate(self.meta):
+            pid = m.get('partner_id')
+            if pid is not None:
+                pp.setdefault(pid, []).append(i)
+        self.partner_positions = pp
 
     @property
     def index_type(self) -> str:
@@ -88,8 +127,15 @@ class FAISSIndexService:
                 # widget map a shopper's cart line back to a catalog row.
                 'partner_id': item.get('partner_id'),
                 'source_sku': item.get('source_sku'),
+                # Gender + season bounds power the widget's complementary-item
+                # filter (don't pair men's shirt with women's skirt, no winter
+                # coat at +25°C).
+                'gender': item.get('gender'),
+                'temp_min': item.get('temp_min'),
+                'temp_max': item.get('temp_max'),
             })
         if not embeddings:
+            self.partner_positions = {}
             return 0
         matrix = np.stack(embeddings)
         n = len(embeddings)
@@ -109,6 +155,7 @@ class FAISSIndexService:
             self.index.add(matrix)
             logger.info(f"[FAISS] Built IndexFlatIP: {n} vectors")
 
+        self._rebuild_partner_positions()
         self._save()
         return n
 
@@ -184,6 +231,8 @@ class FAISSIndexService:
         partner_id: int | None = None,
         clothing_types: set | list | None = None,
         exclude_ids: set | None = None,
+        gender: str | None = None,
+        temp=None,
     ) -> list:
         """Exact similarity search restricted to a metadata-filtered subset.
 
@@ -194,6 +243,10 @@ class FAISSIndexService:
         we reconstruct just those vectors and score them exactly — no reliance
         on FAISS top-k recall, which would silently drop the partner's items if
         the global neighborhood is dominated by other brands.
+
+        When partner_id is given we scan only that partner's precomputed slice
+        (partner_positions) instead of the whole catalog. gender/temp narrow the
+        candidates to season- and gender-appropriate items.
         """
         if self.index is None or self.index.ntotal == 0:
             return []
@@ -206,15 +259,24 @@ class FAISSIndexService:
         ct_set = {str(c).lower() for c in clothing_types} if clothing_types else None
         excl = exclude_ids or set()
 
+        # Sub-index: iterate only the partner's slice when scoped.
+        if partner_id is not None:
+            candidate_idx = self.partner_positions.get(partner_id, [])
+        else:
+            candidate_idx = range(len(self.meta))
+
         positions = []
-        for i, m in enumerate(self.meta):
+        for i in candidate_idx:
             if i >= self.index.ntotal:
-                break
-            if partner_id is not None and m.get('partner_id') != partner_id:
                 continue
+            m = self.meta[i]
             if ct_set is not None and (m.get('clothing_type') or '').lower() not in ct_set:
                 continue
             if m.get('id') in excl:
+                continue
+            if gender and not _gender_match(m.get('gender'), gender):
+                continue
+            if temp is not None and not _temp_match(m.get('temp_min'), m.get('temp_max'), temp):
                 continue
             positions.append(i)
 
