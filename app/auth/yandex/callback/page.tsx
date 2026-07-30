@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { Loader2 } from "lucide-react"
@@ -8,7 +8,18 @@ import { sessionAuth } from "@/lib/tma/session-auth"
 import { parseSupabaseExpiry } from "@/lib/auth-utils"
 import { useAuth } from "@/contexts/auth-context"
 
-export default function YandexCallbackPage() {
+function YandexCallbackLoading() {
+  return (
+    <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-600" />
+        <p className="text-gray-600">Входим через Яндекс...</p>
+      </div>
+    </div>
+  )
+}
+
+function YandexCallbackInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { reloadSession } = useAuth()
@@ -80,12 +91,13 @@ export default function YandexCallbackPage() {
     )
   }
 
+  return <YandexCallbackLoading />
+}
+
+export default function YandexCallbackPage() {
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center">
-      <div className="text-center space-y-4">
-        <Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-600" />
-        <p className="text-gray-600">Входим через Яндекс...</p>
-      </div>
-    </div>
+    <Suspense fallback={<YandexCallbackLoading />}>
+      <YandexCallbackInner />
+    </Suspense>
   )
 }
