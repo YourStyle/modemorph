@@ -78,15 +78,13 @@ jobs:
             set -e
             cd /home/tashernaut/apps/modemorph
             git fetch origin main
-            # Preserve server-local docker-compose edits (postgres hardening, adminer).
-            if ! git diff --quiet -- docker-compose.yml; then
-              git stash push -m ci-autostash -- docker-compose.yml
-              STASHED=1
-            else
-              STASHED=0
-            fi
+            # docker-compose.yml is fully tracked now (postgres hardening, adminer
+            # and the ai-service memory cap all live in git), so the repo is the
+            # source of truth — no stash dance. The old if/else broke the deploy
+            # the first time the file was actually clean: script_stop runs these
+            # lines one at a time and choked on the multi-line conditional.
+            git checkout -- docker-compose.yml
             git merge --ff-only origin/main
-            if [ "$STASHED" = "1" ]; then git stash pop; fi
             chmod +x scripts/deploy.sh scripts/migrate.sh
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             bash scripts/deploy.sh
