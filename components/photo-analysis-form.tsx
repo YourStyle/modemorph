@@ -434,6 +434,9 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
 
             const itemData = {
                 item_name: item.item_name,
+                // AI отдаёт тип вещи в clothing_item; без этой строки в БД падает
+                // DEFAULT 'верхняя' и сборка образов по слотам работает вслепую
+                clothing_type: item.clothing_item,
                 material: item.material,
                 color: item.color,
                 style: item.style,

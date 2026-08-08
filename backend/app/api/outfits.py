@@ -48,7 +48,7 @@ async def get_inspiration(
     Returns { outfits: FeedOutfit[], nextCursor: null }
     """
     # Fetch outfits
-    sql = "SELECT id, name, description, preview_image_url, created_at, gender FROM outfits WHERE 1=1"
+    sql = "SELECT id, name, description, preview_image_url, created_at, gender, occasion, season FROM outfits WHERE 1=1"
     binds = {}
     if gender:
         sql += " AND (gender = :g OR gender = 'unisex' OR gender IS NULL)"
@@ -125,7 +125,9 @@ async def get_inspiration(
             "title": o["name"] or "",
             "description": o["description"] or "",
             "items": outfit_items,
-            "tags": [],
+            # Повод/сезон — колонки в outfits есть, но у всех образов пустые.
+            # Отдаём как есть: заполнится источником образов, а не здесь.
+            "tags": [t for t in (o["occasion"], o["season"]) if t],
             "likes": likes_by_outfit.get(oid, 0),
             "isLiked": oid in liked_by_me,
             "preview_image_url": o["preview_image_url"],

@@ -330,8 +330,8 @@ async def insert_items(items: list[dict], dry_run: bool = False):
                 """INSERT INTO wardrobe_items
                    (item_name, item_name_en, description, description_en,
                     image_url, url, clothing_type, color, shade, material, style,
-                    gender, has_print, has_details, is_hidden, is_basic, notes)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)""",
+                    gender, has_print, has_details, is_hidden, is_basic, notes, price)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)""",
                 item["item_name"], item["item_name_en"],
                 item["description"], item["description_en"],
                 item["image_url"], item["url"],
@@ -341,6 +341,7 @@ async def insert_items(items: list[dict], dry_run: bool = False):
                 item["has_print"], item["has_details"],
                 item["is_hidden"], item["is_basic"],
                 f"{item['source']}:{item['source_sku']}",  # store in notes for dedup
+                item["price"],  # парсился из фида и терялся — виджету нечего было показать
             )
             inserted += 1
 

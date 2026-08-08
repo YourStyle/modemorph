@@ -136,6 +136,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
 
       const itemData = {
         item_name: item.item_name,
+        clothing_type: item.clothing_item,
         material: item.material,
         color: item.color,
         style: item.style,
