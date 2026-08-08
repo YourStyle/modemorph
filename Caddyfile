@@ -2,6 +2,13 @@
 {$DOMAIN} {
 	encode zstd gzip
 
+	# Access-log с длительностью запроса. Без него p95 нечем мерить:
+	# жалоба «загрузка гардероба идёт пять минут» до сих пор была только на слух.
+	log {
+		output stdout
+		format json
+	}
+
 	# Агрессивное кеширование для статики Next
 	@static path /_next/static/* /favicon.ico /robots.txt /sitemap.xml /images/* *.svg *.png *.jpg *.webp *.ico *.woff2
 	handle @static {

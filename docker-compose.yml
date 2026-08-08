@@ -11,7 +11,7 @@ services:
       POSTGRES_USER: modemorph
       POSTGRES_PASSWORD: ${POSTGRES_LOCAL_PASSWORD:-modemorph}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/migrations/000_users_table.sql:/docker-entrypoint-initdb.d/000_users_table.sql:ro
@@ -19,6 +19,7 @@ services:
       - ./backend/migrations/002_seed_data.sql:/docker-entrypoint-initdb.d/002_seed_data.sql:ro
       - ./backend/migrations/004_item_dislikes.sql:/docker-entrypoint-initdb.d/004_item_dislikes.sql:ro
       - ./backend/migrations/005_recommendation_logs.sql:/docker-entrypoint-initdb.d/005_recommendation_logs.sql:ro
+      - ./backend/migrations/999_harden_pg_hba.sh:/docker-entrypoint-initdb.d/999_harden_pg_hba.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U modemorph -d modemorph"]
       interval: 10s
@@ -76,7 +77,7 @@ services:
       ROBOKASSA_PASS2: ${ROBOKASSA_PASS2}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,7 +109,7 @@ services:
       NODE_ENV: production
       BACKEND_URL: http://backend:8080
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -178,13 +179,17 @@ services:
     environment:
       - DATABASE_URL=postgresql://modemorph:${POSTGRES_LOCAL_PASSWORD:-modemorph}@postgres:5432/modemorph
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - faiss_data:/data/faiss_index
       - lightgcn_data:/data/lightgcn
       - outfit_transformer_data:/data/outfit_transformer
       - rembg_data:/data/rembg
     restart: unless-stopped
+    # потолок 4Гб: 07.08.2026 bulk-загрузка каталожных картинок ввела машину в трэшинг
+    # (7659 запросов к CDN за 20 минут, ядро 5 минут писало Under memory pressure и умолкло).
+    # С лимитом cgroup убивает контейнер, а не машину; restart его поднимает. В покое ~1ГБ.
+    mem_limit: 4g
     healthcheck:
       test: ['CMD', 'python', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8000/health")']
       interval: 30s
