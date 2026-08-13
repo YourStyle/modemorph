@@ -84,11 +84,17 @@ async function sampleMissing(tableName, nameCol) {
     SELECT id, ${nameCol} as name, clothing_type, color, material, style, gender
     FROM ${tableName}
     WHERE clothing_type IS NULL
-       OR clothing_type NOT IN ('blouse','lonsleeve','shirt','t-shirt','tank-top',
-         'cardigan','hoodie','hoddie','pullover','suit-jacket','sweatshirt','turtleneck','vest',
-         'dress','skirt','jeans','pants','sporty-pants',
+       -- Canonical vocabulary: backend/clothing_taxonomy.py SLOT_MAP, plus the
+       -- legacy spellings still stored in prod (TYPE_ALIASES) so the audit does
+       -- not report 346 'lonsleeve' rows as broken while they still resolve.
+       OR clothing_type NOT IN ('blouse','longsleeve','shirt','t-shirt','tank-top',
+         'cardigan','hoodie','pullover','suit-jacket','sweatshirt','turtleneck','vest',
+         'dress','skirt','jumpsuit','jeans','pants','shorts','sporty-pants',
          'classic','knitted-suit','tracksuit',
-         'coat','fur-coat','fur-coat-dark-brown','parka','puffer-jacket','sheepskin-coat')
+         'jacket','coat','fur-coat','parka','puffer-jacket','sheepskin-coat',
+         'shoes','boots','sneakers','sandals',
+         'lonsleeve','hoddie','fur-coat-dark-brown',
+         'windbreaker','bomber','bomber-jacket','denim-jacket','romper','overall','overalls')
     LIMIT 20
   `)
   console.table(samples)

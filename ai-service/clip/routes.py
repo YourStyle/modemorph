@@ -551,28 +551,22 @@ async def outfit_complements(request: Request, body: OutfitRequest):
 # /clip/complement — partner widget: cart items → assembled outfits
 # ---------------------------------------------------------------------------
 
-# Mirror of backend _SLOT_MAP (recommendations.py). Kept in sync manually
-# because the CLIP service is a separate package and can't import backend code.
-# Shoe types are the zero-shot classify vocabulary (see CLOTHING_TYPES in
-# classifier.py: "shoes", "boots", "sneakers", "sandals") — no importer feeds
-# them into the catalog yet, but wardrobe/manually-tagged items already use
-# these values so /clip/complement should treat them as a distinct slot.
-_SLOT_MAP = {
-    "blouse": "top", "lonsleeve": "top", "shirt": "top",
-    "t-shirt": "top", "tank-top": "top",
-    "cardigan": "layer", "hoodie": "layer", "hoddie": "layer",
-    "pullover": "layer", "suit-jacket": "layer", "sweatshirt": "layer",
-    "turtleneck": "layer", "vest": "layer",
-    "dress": "dress", "skirt": "dress",
-    "jeans": "bottom", "pants": "bottom", "shorts": "bottom", "sporty-pants": "bottom",
-    "classic": "set", "knitted-suit": "set", "tracksuit": "set",
-    "coat": "outerwear", "fur-coat": "outerwear", "fur-coat-dark-brown": "outerwear",
-    "parka": "outerwear", "puffer-jacket": "outerwear", "sheepskin-coat": "outerwear",
-    "shoes": "shoes", "boots": "shoes", "sneakers": "shoes", "sandals": "shoes",
-}
-_SLOT_TO_TYPES: dict[str, list[str]] = {}
-for _ct, _slot in _SLOT_MAP.items():
-    _SLOT_TO_TYPES.setdefault(_slot, []).append(_ct)
+# Vocabulary + slots: clip/clothing_taxonomy.py (byte-identical copy of
+# backend/clothing_taxonomy.py — the two Docker build contexts can't import each
+# other; ai-service/clip/test_clothing_taxonomy.py fails if they diverge).
+# Shoe types are also the zero-shot classify vocabulary (CLOTHING_TYPES in
+# classifier.py) — wardrobe/manually-tagged items already use them, so
+# /clip/complement treats them as a distinct slot.
+import os as _os  # noqa: E402
+import sys as _sys  # noqa: E402
+
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+from clothing_taxonomy import (  # noqa: E402
+    SLOT_MAP as _SLOT_MAP,
+    SLOT_TO_DB_TYPES as _SLOT_TO_DB_TYPES,
+    SLOT_TO_TYPES as _SLOT_TO_TYPES,
+    normalize_clothing_type,
+)
 
 # Core slots an outfit must cover, and optional extras we add for richness.
 _CORE_SLOTS = ["top", "bottom"]
@@ -594,7 +588,7 @@ class ComplementRequest(BaseModel):
 
 
 def _slot_of(clothing_type: str | None) -> str | None:
-    return _SLOT_MAP.get((clothing_type or "").lower())
+    return _SLOT_MAP.get(normalize_clothing_type(clothing_type) or "")
 
 
 def _to_item(d: dict, is_anchor: bool) -> dict:
@@ -693,7 +687,7 @@ async def complement_outfits(request: Request, body: ComplementRequest):
             mean_anchor,
             k=per_slot,
             partner_id=body.partner_id,
-            clothing_types=_SLOT_TO_TYPES.get(slot, []),
+            clothing_types=_SLOT_TO_DB_TYPES.get(slot, []),
             exclude_ids=anchor_ids,
             gender=gender,
             temp=body.temp,
@@ -793,10 +787,7 @@ async def build_index(request: Request):
         rows = await conn.fetch(
             "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at, "
             "partner_id, source_sku, gender, temp_min, temp_max "
-            "FROM wardrobe_items WHERE image_url IS NOT NULL "
-            # /clip/search and /clip/search/text return raw FAISS neighbours with
-            # no post-filter, so hidden items must never enter the index at all.
-            "AND COALESCE(is_hidden, false) = false"
+            "FROM wardrobe_items WHERE image_url IS NOT NULL"
         )
 
     items = [dict(r) for r in rows]

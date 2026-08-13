@@ -1243,7 +1243,7 @@ async def outfit_scorer_presets(
         slot_groups = [
             (["t-shirt", "shirt", "blouse", "hoodie", "sweatshirt"], "верх"),
             (["jeans", "pants", "skirt"], "низ"),
-            (["coat", "suit-jacket", "cardigan", "puffer-jacket"], "верхняя одежда"),
+            (["jacket", "coat", "suit-jacket", "cardigan", "puffer-jacket"], "верхняя одежда"),
         ]
         slot_sql = text("""
             SELECT id, item_name AS name, image_url, clothing_type, color

@@ -8,16 +8,27 @@ the DB columns are NULL, so untagged items are still filtered correctly with no
 data backfill required. Shared by cron.py and recommendations.py (was duplicated).
 """
 
-# clothing_type -> (min_temp, max_temp) in °C
+from clothing_taxonomy import normalize_clothing_type
+
+# clothing_type -> (min_temp, max_temp) in °C. Keys are canonical slugs; legacy
+# spellings stored in prod ('lonsleeve', 'hoddie') are resolved by
+# normalize_clothing_type() in infer_temp_range() below.
 TEMP_RANGES: dict[str, tuple[int, int]] = {
     "t-shirt": (18, 35), "tank-top": (22, 35), "shirt": (10, 30),
-    "blouse": (12, 30), "lonsleeve": (5, 22), "turtleneck": (0, 15),
+    "blouse": (12, 30), "longsleeve": (5, 22), "turtleneck": (0, 15),
     "pullover": (0, 18), "cardigan": (5, 20), "hoodie": (5, 20),
     "sweatshirt": (5, 22), "vest": (5, 20), "suit-jacket": (8, 25),
     "coat": (-10, 15), "puffer-jacket": (-20, 10), "parka": (-25, 5),
-    "dress": (10, 30), "skirt": (12, 30), "pants": (-5, 30),
+    # A plain jacket (джинсовка / кожанка / ветровка / бомбер) is the light end
+    # of outerwear. Before the 'jacket' slug existed these rows were stored as
+    # puffer-jacket (1116 of them) or coat (613) and inherited (-20,10)/(-10,15),
+    # i.e. they were hidden at +15 °C and offered at −20 °C.
+    "jacket": (0, 20),
+    "fur-coat": (-30, 0), "sheepskin-coat": (-25, 5),
+    "dress": (10, 30), "skirt": (12, 30), "jumpsuit": (10, 30),
+    "pants": (-5, 30),
     "jeans": (0, 28), "sporty-pants": (5, 25), "shorts": (20, 35),
-    "classic": (5, 28),
+    "classic": (5, 28), "knitted-suit": (0, 20), "tracksuit": (5, 25),
 }
 
 # Heavy winter outerwear — exclude in warm weather even when untagged.
@@ -38,7 +49,7 @@ _SUMMER_MIN_TEMP = 10
 
 def infer_temp_range(clothing_type, name):
     """Best-effort (min, max) for an item; (None, None) if we can't tell."""
-    ct = (clothing_type or "").strip().lower()
+    ct = normalize_clothing_type(clothing_type)
     if ct in TEMP_RANGES:
         return TEMP_RANGES[ct]
     n = (name or "").lower()

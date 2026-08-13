@@ -28,6 +28,13 @@ const NAME_TO_TYPE = [
   ["пуховик",         "puffer-jacket"],
   ["парка",           "parka"],
   ["пальто",          "coat"],
+  ["тренч",           "coat"],
+  ["плащ",            "coat"],
+  ["ветровка",        "jacket"],
+  ["анорак",          "jacket"],
+  ["косуха",          "jacket"],
+  ["джинсовка",       "jacket"],
+  ["куртка",          "jacket"],
 
   // Warm upper
   ["водолазка",       "turtleneck"],
@@ -44,13 +51,13 @@ const NAME_TO_TYPE = [
   ["жакет",           "suit-jacket"],
   ["жилет",           "vest"],
   ["жилетка",         "vest"],
-  ["бомбер",          "hoodie"],
+  ["бомбер",          "jacket"],
 
   // Light upper
   ["рубашка",         "shirt"],
   ["блузка",          "blouse"],
   ["блуза",           "blouse"],
-  ["лонгслив",        "lonsleeve"],
+  ["лонгслив",        "longsleeve"],
   ["поло",            "shirt"],
   ["футболка",        "t-shirt"],
   ["футблока",        "t-shirt"],
@@ -65,12 +72,12 @@ const NAME_TO_TYPE = [
   ["сарафан",         "dress"],
   ["платье",          "dress"],
   ["юбка",            "skirt"],
-  ["комбинезон",      "dress"],
+  ["комбинезон",      "jumpsuit"],
   ["кюлоты",          "skirt"],
   ["комбинация",      "dress"],
 
   // Pants
-  ["шорты",           "sporty-pants"],
+  ["шорты",           "shorts"],
   ["джинсы",          "jeans"],
   ["брюки",           "pants"],
   ["штаны",           "pants"],
@@ -95,8 +102,12 @@ const NAME_TO_TYPE = [
   ["fur_coat",        "fur-coat"],
   ["parka",           "parka"],
   ["coat",            "coat"],
+  ["jumpsuit",        "jumpsuit"],
   ["suit-jacket",     "suit-jacket"],
   ["suit_jacket",     "suit-jacket"],
+  // bare "jacket" LAST: matching is substring-based, so it would otherwise
+  // swallow "suit-jacket"/"puffer-jacket".
+  ["jacket",          "jacket"],
   ["sporty-pants",    "sporty-pants"],
   ["sporty_pants",    "sporty-pants"],
   ["sweatpants",      "sporty-pants"],
@@ -106,8 +117,8 @@ const NAME_TO_TYPE = [
   ["pullover",        "pullover"],
   ["sweatshirt",      "sweatshirt"],
   ["vest",            "vest"],
-  ["lonsleeve",       "lonsleeve"],
-  ["longsleeve",      "lonsleeve"],
+  ["lonsleeve",       "longsleeve"],
+  ["longsleeve",      "longsleeve"],
   ["t-shirt",         "t-shirt"],
   ["t_shirt",         "t-shirt"],
   ["tank-top",        "tank-top"],

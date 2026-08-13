@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.services.capsule import capsule_style_guide
+from clothing_taxonomy import resolve_clothing_type
 
 router = APIRouter()
 
@@ -316,7 +317,13 @@ async def detect_clothing(
     # --- Step 1: Detect clothing items ---
     detection_prompt = """Analyze this photo and detect ALL clothing items and accessories the person is wearing.
 For each item return a JSON object with these fields:
-- clothing_item: item type in English (e.g. t-shirt, jeans, sneakers)
+- clothing_item: item type in English, ONE of: t-shirt, shirt, blouse, longsleeve,
+  tank-top, pullover, cardigan, hoodie, sweatshirt, turtleneck, vest, suit-jacket,
+  dress, skirt, jumpsuit, pants, jeans, shorts, sporty-pants, jacket, coat, parka,
+  puffer-jacket, fur-coat, sheepskin-coat, shoes, boots, sneakers, sandals.
+  Use "jacket" for any ordinary jacket (denim/leather/bomber/windbreaker),
+  "puffer-jacket" only for a down puffer, "coat" only for a long coat/trench.
+  For a bag, hat, scarf, belt or jewellery answer with the plain English noun.
 - part: one of 'upper', 'lower', 'dress', 'footwear', 'accessories'
 - description: brief description in Russian
 - description_en: detailed description in English including color, material, texture, pattern. This will be used to generate a product image.
@@ -380,6 +387,14 @@ Return ONLY a valid JSON array. No markdown."""
             "basic_item_id": None,
             "need_gen": False,
             "clothing_item": item.get("clothing_item", ""),
+            # Gemini answers `clothing_item` in free English ("bomber jacket",
+            # "polo shirt"), and three save paths used to write that string
+            # straight into wardrobe_user_items.clothing_type. Resolve it to a
+            # canonical slug here, once, so all callers get the same answer;
+            # None when neither the English phrase nor the Russian item name
+            # names a garment we have a slot for.
+            "clothing_type": resolve_clothing_type(
+                item.get("clothing_item"), item.get("item_name")),
             "description": item.get("description", ""),
             "item_name": item.get("item_name", ""),
             "material": item.get("material", ""),
@@ -856,7 +871,12 @@ async def style_check(
         "score": score,
         "item_style": item_primary_style,
         "item_color": classification.get("color", ""),
-        "item_type": classification.get("clothing_type", ""),
+        # Canonical slug (components/style-check-sheet.tsx looks it up in
+        # CLOTHING_TYPE_LABELS); non_garment is the bag/hat/scarf answer, which
+        # has no slug and is shown as-is.
+        "item_type": classification.get("clothing_type")
+        or classification.get("non_garment")
+        or "",
         "user_style": dominant_style,
         "style_match": style_match,
         "similar_items": len(similar),

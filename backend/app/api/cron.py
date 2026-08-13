@@ -21,7 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.weather_rules import TEMP_RANGES, temp_ok
-from app.services.catalog_filters import gender_ok, is_kids_name
+from app.services.catalog_filters import gender_ok
+from kids_detect import is_kids_item
 from app.services.capsule import capsule_style_guide
 
 logger = logging.getLogger(__name__)
@@ -108,25 +109,36 @@ async def _gemini_organize(
     for i in user_items[:50]:
         name = i.get("item_name", "?")
         ct = i.get("clothing_type", "")
-        color = i.get("color", "")
+        color = i.get("shade") or i.get("color", "")
         style = i.get("style", "")
+        material = (i.get("material") or "").strip()
+        material_part = f", состав: {material}" if material else ""
         season = ""
         tmin, tmax = i.get("temp_min"), i.get("temp_max")
         if tmin is not None or tmax is not None:
             season = f", сезон: {tmin or '?'}..{tmax or '?'}°C"
-        user_desc.append(f"[USER id={i['id']}] {name} ({ct}, {color}, стиль: {style}{season})")
+        user_desc.append(
+            f"[USER id={i['id']}] {name} ({ct}, {color}, стиль: {style}{material_part}{season})"
+        )
 
     partner_desc = []
     for i in partner_items[:50]:
         name = i.get("item_name") or i.get("name", "?")
         ct = i.get("clothing_type", "")
-        color = i.get("color", "")
+        # The merchant's exact colour when there is one: `color` is the hue
+        # family, so on its own it turns "Бирюзовый" into "Голубой" and "Фуксия"
+        # into "Розовый" before the model ever sees the item.
+        color = i.get("shade") or i.get("color", "")
         brand = i.get("brand", "")
+        material = (i.get("material") or "").strip()
+        material_part = f", состав: {material}" if material else ""
         season = ""
         tmin, tmax = i.get("temp_min"), i.get("temp_max")
         if tmin is not None or tmax is not None:
             season = f", сезон: {tmin or '?'}..{tmax or '?'}°C"
-        partner_desc.append(f"[PARTNER id={i['id']} brand={brand}] {name} ({ct}, {color}{season})")
+        partner_desc.append(
+            f"[PARTNER id={i['id']} brand={brand}] {name} ({ct}, {color}{material_part}{season})"
+        )
 
     all_items = "\n".join(user_desc + partner_desc)
     temp = weather.get("temperature", 20)
@@ -324,7 +336,7 @@ async def cron_generate_recommendations(
         try:
             # Get user wardrobe items
             user_items_result = await db.execute(text("""
-                SELECT id, item_name, clothing_type, color, style, material,
+                SELECT id, item_name, clothing_type, color, shade, style, material,
                        image_url, user_id::text as user_id, temp_min, temp_max
                 FROM wardrobe_user_items
                 WHERE user_id = :uid AND COALESCE(is_hidden, false) = false
@@ -383,9 +395,12 @@ async def cron_generate_recommendations(
                 clip_results, clip_rec_session_id = await _clip_recommend(user_id, k=clip_k)
                 if clip_results:
                     partner_ids = [r["id"] for r in clip_results]
+                    # shade + material are what the feed backfill fills on these
+                    # rows; not selecting them is what made the nightly prompt see
+                    # only the hue family and no composition at all.
                     partner_result = await db.execute(text("""
-                        SELECT id, item_name, image_url, clothing_type, color, url,
-                               notes, gender, temp_min, temp_max, is_kids
+                        SELECT id, item_name, image_url, clothing_type, color, shade,
+                               material, url, notes, gender, temp_min, temp_max, is_kids
                         FROM wardrobe_items WHERE id = ANY(:ids)
                         AND COALESCE(is_hidden, false) = false
                         AND COALESCE(is_kids, false) = false
@@ -408,8 +423,8 @@ async def cron_generate_recommendations(
                     gender_filter = "AND (gender IS NULL OR gender = '' OR gender = 'female' OR gender = 'unisex')"
                 existing_ids = {p["id"] for p in partner_items} | {i["id"] for i in user_items}
                 fallback_result = await db.execute(text(f"""
-                    SELECT id, item_name, image_url, clothing_type, color, url,
-                           notes, gender, temp_min, temp_max, is_kids
+                    SELECT id, item_name, image_url, clothing_type, color, shade,
+                           material, url, notes, gender, temp_min, temp_max, is_kids
                     FROM wardrobe_items
                     WHERE COALESCE(is_hidden, false) = false
                     AND COALESCE(is_kids, false) = false
@@ -461,6 +476,8 @@ async def cron_generate_recommendations(
                     "name": i["item_name"],
                     "image_url": i["image_url"],
                     "color": i.get("color", ""),
+                    "shade": i.get("shade", ""),
+                    "material": i.get("material", ""),
                     "clothing_type": i.get("clothing_type", ""),
                     "url": i.get("url"),
                     "brand": i.get("brand"),
@@ -658,7 +675,13 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
         from lib_feed_parser import parse_yml_feed
         parsed = parse_yml_feed(xml_string)
 
-        logger.info(f"[ProcessFeeds] Feed {feed_id}: {len(parsed['items'])} items from {parsed['total_offers']} offers")
+        # parse_yml_feed returns 'totalOffers'. This line used to read
+        # parsed['total_offers'] and raised KeyError on every feed, so the except
+        # below marked it 'failed' immediately after a successful parse.
+        logger.info(
+            f"[ProcessFeeds] Feed {feed_id}: {len(parsed['items'])} items from "
+            f"{parsed['totalOffers']} offers, {parsed['skippedKids']} kids skipped"
+        )
 
         # Every XML/YML feed must go through /clip/pick-flatlay — including single-picture offers.
         # Skipping single-pic items leaks model-photos into the catalog (Love Republic: ~38% model-only).
@@ -697,12 +720,20 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
 
             # Model-photo items get auto-hidden — admin can review and un-hide if needed.
             is_hidden = bool(item.get("has_person"))
+            # `style` is deliberately absent from the column list (it used to be
+            # the literal 'Casual'): no feed and no merchant page publishes a
+            # style, so writing one here is fake markup. Measured 2026-08-13 —
+            # test/gauntlet/ours/type-style/proposal/PROPOSAL.md.
+            # shade + material come from the offer's <param>s (feed_params). They
+            # used to be left NULL here while import_catalog.py wrote them, so the
+            # same offer got different markup depending on which path imported it.
             await db.execute(text("""
-                INSERT INTO wardrobe_items (item_name, description, image_url, url, clothing_type, color, gender, style, is_hidden, is_basic, notes, source_sku, partner_id, feed_id, price)
-                VALUES (:name, :desc, :img, :url, :ct, :color, :gender, 'Casual', :hidden, false, :notes, :sku, :pid, :fid, :price)
+                INSERT INTO wardrobe_items (item_name, description, image_url, url, clothing_type, color, shade, material, gender, is_hidden, is_basic, notes, source_sku, partner_id, feed_id, price)
+                VALUES (:name, :desc, :img, :url, :ct, :color, :shade, :material, :gender, :hidden, false, :notes, :sku, :pid, :fid, :price)
             """), {
                 "name": item["item_name"], "desc": item["description"], "img": item["image_url"],
                 "url": item["url"], "ct": item["clothing_type"], "color": item["color"],
+                "shade": item["shade"], "material": item["material"],
                 "gender": item["gender"], "hidden": is_hidden, "notes": notes,
                 "sku": item["source_sku"], "pid": partner_id, "fid": feed_id,
                 "price": item["price"],
@@ -1073,13 +1104,14 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
                 await db.execute(text("""
                     INSERT INTO wardrobe_items
                         (item_name, description, image_url, url, clothing_type, color,
-                         gender, style, is_hidden, is_basic, notes, source_sku, price)
-                    VALUES (:name, :desc, :img, :url, :ct, :color, :gender, 'Casual',
+                         shade, material, gender, is_hidden, is_basic, notes, source_sku, price)
+                    VALUES (:name, :desc, :img, :url, :ct, :color, :shade, :material, :gender,
                             :hidden, false, :notes, :sku, :price)
                 """), {
                     "name": item["item_name"], "desc": item["description"],
                     "img": item["image_url"], "url": item["url"],
                     "ct": item["clothing_type"], "color": item["color"],
+                    "shade": item["shade"], "material": item["material"],
                     "gender": item["gender"], "hidden": bool(item.get("has_person")),
                     "notes": f"{source_name}:{item['source_sku']}",
                     "sku": item["source_sku"], "price": item["price"],
@@ -1090,6 +1122,7 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
             results[source_name] = {
                 "feed_items": len(parsed["items"]), "new": len(new_items),
                 "imported": imported, "flagged_person": flagged,
+                "skipped_kids": parsed["skippedKids"],
             }
             logger.info(f"[import-feeds] {source_name}: feed={len(parsed['items'])} imported={imported} flagged={flagged}")
         except Exception as e:
@@ -1225,8 +1258,12 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
     _verify_cron_auth(request)
 
     # 1. Name-based classification (fast, no API calls)
+    # url + description are selected for the kids check below, not for gender:
+    # the affiliate url carries the merchant's kids section (SELA prints
+    # /eshop/kids/ and /eshop/baby/ in it) and SELA descriptions print
+    # "на ребенке представлен размер 140" on children's cards.
     result = await db.execute(text("""
-        SELECT id, item_name FROM wardrobe_items
+        SELECT id, item_name, url, description FROM wardrobe_items
         WHERE (gender IS NULL OR gender = '') AND item_name IS NOT NULL
     """))
     items = result.all()
@@ -1238,7 +1275,11 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
 
     for item in items:
         # Kids are not our audience — flag + hide, skip gender entirely.
-        if is_kids_name(item.item_name):
+        # is_kids_item() reads name + url + description; the name alone found
+        # 15 of 53 children's items on a page-labelled gold set, all four
+        # signals found 53 (test/gauntlet/ours/kids-purge/r2/SUMMARY.json).
+        if is_kids_item({"item_name": item.item_name, "url": item.url,
+                         "description": item.description}):
             await db.execute(
                 text("UPDATE wardrobe_items SET is_kids = true, is_hidden = true WHERE id = :id"),
                 {"id": item.id},

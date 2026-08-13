@@ -77,8 +77,7 @@ async def _auto_build_index(app: FastAPI):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at "
-            "FROM wardrobe_items WHERE embedding IS NOT NULL "
-            "AND COALESCE(is_hidden, false) = false"
+            "FROM wardrobe_items WHERE embedding IS NOT NULL"
         )
 
     if not rows:

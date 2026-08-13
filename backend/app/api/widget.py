@@ -113,8 +113,12 @@ async def _polish_widget_outfits(outfits: list, gender: str | None, capsule_guid
 
     catalog = [
         {"i": idx, "items": [
+            # shade first: `color` is the hue family, so alone it tells the model
+            # "Голубой" for a turquoise jacket and "Розовый" for fuchsia.
             {"id": it["id"], "name": it.get("name", ""),
-             "type": it.get("clothing_type", ""), "color": it.get("color", "")}
+             "type": it.get("clothing_type", ""),
+             "color": it.get("shade") or it.get("color", ""),
+             "material": it.get("material", "")}
             for it in o.get("items", [])
         ]}
         for idx, o in enumerate(outfits)
@@ -204,7 +208,8 @@ async def _assemble_outfits(db: AsyncSession, partner_id: int, anchor_ids: list[
     if all_ids:
         rows = await db.execute(
             text("""
-                SELECT id, item_name, image_url, url, color, clothing_type, source_sku
+                SELECT id, item_name, image_url, url, color, shade, material,
+                       clothing_type, source_sku
                 FROM wardrobe_items WHERE id = ANY(:ids)
             """),
             {"ids": all_ids},
@@ -224,6 +229,8 @@ async def _assemble_outfits(db: AsyncSession, partner_id: int, anchor_ids: list[
                 "image_url": h["image_url"],
                 "buy_url": h["url"],
                 "color": h["color"],
+                "shade": h["shade"],
+                "material": h["material"],
                 "clothing_type": h["clothing_type"],
                 "sku": h["source_sku"],
                 "is_anchor": bool(it.get("is_anchor")),

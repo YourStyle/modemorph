@@ -29,28 +29,16 @@ router = APIRouter()
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-# Mirrors lib/recommendation-filters.ts — keep in sync with lib/clothing-types.ts.
 # One item per slot in an outfit; user items beat catalog items on the same slot.
-_SLOT_MAP = {
-    "blouse": "top", "lonsleeve": "top", "shirt": "top",
-    "t-shirt": "top", "tank-top": "top",
-    "cardigan": "layer", "hoodie": "layer", "hoddie": "layer",
-    "pullover": "layer", "suit-jacket": "layer", "sweatshirt": "layer",
-    "turtleneck": "layer", "vest": "layer",
-    "dress": "dress", "skirt": "dress",
-    "jeans": "bottom", "pants": "bottom", "shorts": "bottom", "sporty-pants": "bottom",
-    "classic": "set", "knitted-suit": "set", "tracksuit": "set",
-    "coat": "outerwear", "fur-coat": "outerwear", "fur-coat-dark-brown": "outerwear",
-    "parka": "outerwear", "puffer-jacket": "outerwear", "sheepskin-coat": "outerwear",
-    "shoes": "shoes", "boots": "shoes", "sneakers": "shoes", "sandals": "shoes",
-}
-
-
-# Reverse mapping: slot name → clothing_types belonging to that slot.
-# Used for gap analysis queries (find catalog items for a missing slot).
-_SLOT_TO_TYPES: dict[str, list[str]] = {}
-for _ct, _slot in _SLOT_MAP.items():
-    _SLOT_TO_TYPES.setdefault(_slot, []).append(_ct)
+# Vocabulary lives in backend/clothing_taxonomy.py (mirrored for the CLIP service
+# at ai-service/clip/clothing_taxonomy.py, and for the frontend in
+# lib/clothing-types.ts). It resolves the legacy spellings still in prod
+# ('lonsleeve', 'hoddie', 'fur-coat-dark-brown') onto the canonical slugs.
+from clothing_taxonomy import (  # noqa: E402
+    SLOT_MAP as _SLOT_MAP,
+    SLOT_TO_DB_TYPES as _SLOT_TO_DB_TYPES,
+    normalize_clothing_type,
+)
 
 
 # Text prompts per slot for CLIP text-retrieval when filling a gap.
@@ -82,7 +70,7 @@ def _detect_gaps(user_items: list, weather: dict, gender: str | None) -> list[st
     (dress gap only for women)."""
     counts: dict[str, int] = {s: 0 for s in _MIN_ITEMS_PER_SLOT}
     for item in user_items:
-        slot = _SLOT_MAP.get(item.get("clothing_type") or "")
+        slot = _SLOT_MAP.get(normalize_clothing_type(item.get("clothing_type")) or "")
         if slot:
             counts[slot] = counts.get(slot, 0) + 1
 
@@ -172,7 +160,7 @@ async def _build_gap_section(
 
             # Post-filter to actually-in-slot items — CLIP text retrieval
             # can surface a coat for a "pants" query if captions overlap.
-            allowed_types = set(_SLOT_TO_TYPES.get(slot, []))
+            allowed_types = set(_SLOT_TO_DB_TYPES.get(slot, []))
             candidate_ids = []
             for h in hits:
                 hid = h.get("id")
@@ -278,7 +266,7 @@ def _dedup_by_slot(items: list) -> list:
     passthrough: list = []
     for item in items:
         ctype = item.get("clothing_type") if isinstance(item, dict) else None
-        slot = _SLOT_MAP.get(ctype) if ctype else None
+        slot = _SLOT_MAP.get(normalize_clothing_type(ctype) or "") if ctype else None
         if not slot:
             passthrough.append(item)
             continue
@@ -557,9 +545,13 @@ async def generate_recommendations(
                             partner_ids = [pid for pid in partner_ids if pid not in disliked_ids]
                         if partner_ids:
                             temp = weather.get("temperature", 15)
+                            # `material` is selected for the same reason `shade`
+                            # is: the feed backfill fills both on the catalogue
+                            # rows, and both are dropped further down if they are
+                            # not selected here.
                             partner_result = await db.execute(text("""
-                                SELECT id, item_name, image_url, clothing_type, color, shade, url,
-                                       notes, gender, temp_min, temp_max
+                                SELECT id, item_name, image_url, clothing_type, color, shade,
+                                       material, url, notes, gender, temp_min, temp_max
                                 FROM wardrobe_items WHERE id = ANY(:ids) AND COALESCE(is_hidden, false) = false
                             """), {"ids": partner_ids})
                             for r in partner_result.mappings().all():
@@ -590,8 +582,13 @@ async def generate_recommendations(
 
     partner_json = ""
     if partner_items:
+        # Same shape as wardrobe_json: shade and material must reach the model.
+        # Without them a catalogue item arrives as its hue family only — the
+        # merchant's "Бирюзовый" becomes "Голубой" and "Фуксия" becomes "Розовый",
+        # and the composition (the thing that decides warmth) is not sent at all.
         partner_json = json_lib.dumps([{
             "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
+            "shade": i.get("shade"), "material": i.get("material"),
             "type": i.get("clothing_type"), "image_url": i.get("image_url"),
             "url": i.get("url"), "brand": i.get("brand"),
         } for i in partner_items[:50]], ensure_ascii=False)
@@ -713,6 +710,10 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
             "id": i["id"], "item_source": "catalog",
             "name": i.get("item_name", ""),
             "image_url": i.get("image_url"), "color": i.get("color", ""),
+            # shade/material are what the merchant actually printed on the product
+            # page; the user item branch above already ships shade, and the card
+            # renders the precise colour when it has one.
+            "shade": i.get("shade", ""), "material": i.get("material", ""),
             "clothing_type": i.get("clothing_type", ""),
             "url": i.get("url"), "brand": i.get("brand"),
             # Carry the retrieval session forward so the frontend can post

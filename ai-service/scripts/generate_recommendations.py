@@ -22,10 +22,11 @@ CLIP_URL = "http://127.0.0.1:8000"
 OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
 TYPE_GROUPS = {
-    "top": ["t-shirt", "shirt", "blouse", "lonsleeve", "tank-top", "pullover", "cardigan", "hoodie", "sweatshirt", "turtleneck"],
+    # both spellings: prod still stores 346 rows as "lonsleeve" (typo)
+    "top": ["t-shirt", "shirt", "blouse", "longsleeve", "lonsleeve", "tank-top", "pullover", "cardigan", "hoodie", "sweatshirt", "turtleneck"],
     "bottom": ["jeans", "pants", "sporty-pants", "skirt"],
-    "outer": ["coat", "puffer-jacket", "parka", "sheepskin-coat", "vest"],
-    "dress": ["dress"],
+    "outer": ["jacket", "coat", "puffer-jacket", "parka", "sheepskin-coat", "fur-coat", "vest"],
+    "dress": ["dress", "jumpsuit"],
     "suit": ["suit-jacket", "classic"],
 }
 

@@ -27,6 +27,13 @@ from typing import Optional
 import asyncpg
 import httpx
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from feed_params import (  # noqa: E402
+    build_category_index,
+    category_chain,
+    markup_from_offer,
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
@@ -41,18 +48,17 @@ DATABASE_URL = os.environ.get(
 
 CATEGORY_MAP = {
     # Верхняя одежда
-    "верхняя одежда": "coat",
-    "базовые куртки": "puffer-jacket",
-    "куртки": "puffer-jacket",
+    "базовые куртки": "jacket",
+    "куртки": "jacket",
     "пальто и полупальто": "coat",
     "пальто": "coat",
     "тренчи и плащи": "coat",
-    "бомберы": "coat",
-    "ветровки": "coat",
+    "бомберы": "jacket",
+    "ветровки": "jacket",
     "дубленки и шубы": "sheepskin-coat",
-    "джинсовые куртки": "coat",
+    "джинсовые куртки": "jacket",
     "жилеты": "vest",
-    "кожа и замша": "coat",
+    "кожа и замша": "jacket",
     # Джемперы / кардиганы
     "джемперы и кардиганы": "pullover",
     "джемперы и свитеры": "pullover",
@@ -61,7 +67,7 @@ CATEGORY_MAP = {
     "поло": "t-shirt",
     # Футболки
     "футболки и лонгсливы": "t-shirt",
-    "лонгсливы": "lonsleeve",
+    "лонгсливы": "longsleeve",  # was "lonsleeve" — typo, see clothing_taxonomy.py
     "культовые": "t-shirt",
     "базовые": "t-shirt",
     "принт и вышивка": "t-shirt",
@@ -111,7 +117,7 @@ CATEGORY_MAP = {
     "кроп-топы": "tank-top",
     "боди": "tank-top",
     # Комбинезоны
-    "комбинезоны": "dress",
+    "комбинезоны": "jumpsuit",
     # Обувь — mapped onto the 4 shoe clothing_types used by the "shoes" slot
     # (see _SLOT_MAP in ai-service/clip/routes.py / backend/app/api/recommendations.py).
     "обувь": "shoes",
@@ -141,9 +147,9 @@ SKIP_CATEGORIES = {
     "аксессуары для сна",
 }
 
-# Gender detection from category hierarchy
-FEMALE_CATS = {"1", "1374"}  # Женщины, Девушки
-MALE_CATS = {"2", "1443"}  # Мужчины
+# Gender now comes from feed_params.resolve_gender (category tree, param Пол as
+# fallback). The two hardcoded root-category-id sets that used to live here only
+# ever matched SELA's numbering, which is why gender was NULL on every ЦУМ row.
 
 
 def map_clothing_type(category_name: str, parent_name: str = "") -> Optional[str]:
@@ -214,6 +220,9 @@ def parse_feed(feed_path: str, source_override=None) -> list[dict]:
         if parent_id:
             cat_parents[cid] = parent_id
 
+    # Same tree, whitespace-stripped — feed_params matches category names exactly.
+    cat_names, cat_parent_ids = build_category_index(shop)
+
     def get_category_chain(cid: str) -> list[str]:
         chain = []
         visited = set()
@@ -262,17 +271,23 @@ def parse_feed(feed_path: str, source_override=None) -> list[dict]:
             continue
         image_url = pictures[0]  # default to first; pick_flatlay() refines later
 
-        # Detect gender from category chain
-        gender = None
-        root_cid = cid
-        while cat_parents.get(root_cid):
-            root_cid = cat_parents[root_cid]
-        if root_cid in FEMALE_CATS:
-            gender = "female"
-        elif root_cid in MALE_CATS:
-            gender = "male"
-
-        color = extract_color_from_name(name)
+        # Real markup off the offer: <param name="Пол"/"Цвет"/"Материал"> plus the
+        # feed's own category tree. See ai-service/scripts/feed_params.py for why the
+        # tree beats param Пол and why colour is split into color + shade.
+        # Before this, gender came from two hardcoded root category ids (which only
+        # ever matched SELA), colour from a substring of the product name and material
+        # was the literal "". Measured against 45 ЦУМ product pages
+        # (test/gauntlet/ours/feed-backfill/accuracy_backfill_vs_truth_cum45.json):
+        # colour 0/45 -> 31/31 of the offers present in the feed, material 0 -> 31/31,
+        # gender 6/45 -> 31/31.
+        markup = markup_from_offer(offer, cat_names, cat_parent_ids)
+        gender = markup["gender"]
+        color, shade, material = markup["color"], markup["shade"], markup["material"]
+        if not color:
+            # last resort for feeds that carry no colour at all: the product name.
+            # Kept because it costs nothing, but it is weak — on the ЦУМ sample it
+            # produced an answer for 0 of 45 items.
+            color = extract_color_from_name(name)
 
         items.append({
             "item_name": name,
@@ -284,13 +299,28 @@ def parse_feed(feed_path: str, source_override=None) -> list[dict]:
             "url": url,  # affiliate URL
             "clothing_type": clothing_type,
             "color": color,
-            "shade": "",
-            "material": "",
-            "style": "Casual",
+            "shade": shade,
+            "material": material,
+            # style stays NULL on purpose. It used to be the literal "Casual" on
+            # every insert, which is how 22193/22418 prod rows ended up claiming
+            # a style nobody looked at (measured 2026-08-13). No merchant ships
+            # one: 0/45 archived ЦУМ product pages carry a "Стиль" field and
+            # none of the three YML feeds has a style <param>. The only real
+            # producer is the CLIP zero-shot classifier (clip/classifier.py
+            # STYLES) — see test/gauntlet/ours/type-style/proposal/PROPOSAL.md.
+            "style": None,
             "gender": gender,
+            "is_kids": markup["is_kids"],
             "has_print": False,
             "has_details": False,
-            "is_hidden": False,
+            # A children's item used to be inserted with is_hidden = False: the
+            # row was correctly flagged and still shown, because the only job
+            # that hides kids (cron classify-gender) looks at rows with an empty
+            # gender, and a kids row always gets one from the category tree. The
+            # 1567 kids rows in prod are hidden only because migration 010 hid
+            # them in bulk; anything imported after it would have leaked.
+            # Kids are hidden, never deleted.
+            "is_hidden": bool(markup["is_kids"]),
             "is_basic": False,
             "source": shop_name,
             "source_sku": model or offer.get("id", ""),
@@ -305,8 +335,16 @@ async def insert_items(items: list[dict], dry_run: bool = False):
     """Insert items into wardrobe_items table."""
     if dry_run:
         logger.info(f"[DRY RUN] Would insert {len(items)} items")
+        total = len(items) or 1
+        for field in ("color", "shade", "material", "gender"):
+            filled = sum(1 for i in items if i.get(field))
+            logger.info(f"  {field:>9} filled on {filled}/{len(items)} ({100 * filled // total}%)")
+        logger.info(f"  {'is_kids':>9} true on {sum(1 for i in items if i.get('is_kids'))}/{len(items)}")
         for item in items[:5]:
-            logger.info(f"  {item['clothing_type']:>15}  {item['item_name'][:60]}")
+            logger.info(
+                f"  {item['clothing_type']:>15}  {item['item_name'][:44]:<44} "
+                f"{item['color']}/{item['shade'] or '-'}  {item['gender']}  {item['material'][:34]}"
+            )
         return
 
     dsn = DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
@@ -330,14 +368,15 @@ async def insert_items(items: list[dict], dry_run: bool = False):
                 """INSERT INTO wardrobe_items
                    (item_name, item_name_en, description, description_en,
                     image_url, url, clothing_type, color, shade, material, style,
-                    gender, has_print, has_details, is_hidden, is_basic, notes, price)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)""",
+                    gender, is_kids, has_print, has_details, is_hidden, is_basic, notes, price)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)""",
                 item["item_name"], item["item_name_en"],
                 item["description"], item["description_en"],
                 item["image_url"], item["url"],
                 item["clothing_type"], item["color"], item["shade"],
                 item["material"], item["style"],
                 item["gender"],
+                item["is_kids"],  # from the feed's category root, not a keyword guess
                 item["has_print"], item["has_details"],
                 item["is_hidden"], item["is_basic"],
                 f"{item['source']}:{item['source_sku']}",  # store in notes for dedup
