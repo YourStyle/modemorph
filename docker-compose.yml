@@ -76,6 +76,22 @@ services:
       ROBOKASSA_PASS1: ${ROBOKASSA_PASS1}
       ROBOKASSA_PASS2: ${ROBOKASSA_PASS2}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
+      # OpenRouter отвечает 403 "Access denied by security policy" на IP этого
+      # сервера — Cloudflare режет диапазон дата-центра (с домашнего российского
+      # IP тот же ключ работает, так что дело не в стране и не в ключе).
+      # Из-за этого с ~06.07.2026 не работали примерка, ассистент, анализ фото
+      # и генерация рекомендаций. Вызовы Gemini уходят через локальный туннель
+      # hysteria (http-листенер на шлюзе docker-сети, наружу не торчит).
+      #
+      # Задан ТОЛЬКО https: внутренние вызовы (modemorph-ai, postgres) идут по
+      # http и потому не проксируются вовсе, независимо от NO_PROXY.
+      # Обе формы регистра — часть библиотек читает только одну.
+      HTTPS_PROXY: http://172.18.0.1:1081
+      https_proxy: http://172.18.0.1:1081
+      # Всё российское и внутреннее — мимо туннеля: S3 с картинками, погода,
+      # Telegram, Robokassa, Yandex OAuth. Гонять их через Швейцарию незачем.
+      NO_PROXY: localhost,127.0.0.1,postgres,backend,app,modemorph-ai,.yandexcloud.net,.yandex.ru,.telegram.org,.robokassa.ru,api.openweathermap.org
+      no_proxy: localhost,127.0.0.1,postgres,backend,app,modemorph-ai,.yandexcloud.net,.yandex.ru,.telegram.org,.robokassa.ru,api.openweathermap.org
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:
