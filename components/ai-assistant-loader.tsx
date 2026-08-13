@@ -7,35 +7,29 @@ interface AIAssistantLoaderProps {
   className?: string
 }
 
+/**
+ * Small orbiting-dot spinner used both as the AI tab's signature icon
+ * (bottom-navigation.tsx, always mounted on every screen, size=28) and as
+ * a loading indicator during AI work. Token-only, transform-only motion —
+ * the spin comes from Tailwind's built-in `animate-spin`, which is already
+ * subject to the global prefers-reduced-motion override in app/globals.css.
+ *
+ * The dot is ink, not signal: this component is mounted on every screen of
+ * the app via the bottom nav, so a signal-colored dot would silently spend
+ * the app's one-accent-per-screen budget everywhere, all the time.
+ */
 export function AIAssistantLoader({ size = 32, className }: AIAssistantLoaderProps) {
+  const dot = Math.max(4, Math.round(size * 0.22))
+
   return (
-    <div className={cn("relative", className)} style={{ width: size, height: size }}>
-      <div
-        className="absolute inset-0 rounded-full"
-        style={{
-          background:
-            "linear-gradient(165deg, rgba(255,255,255,1) 0%, rgb(220, 220, 220) 40%, rgb(170, 170, 170) 98%, rgb(10, 10, 10) 100%)",
-        }}
-      >
-        <div
-          className="absolute inset-0 rounded-full animate-spin"
-          style={{
-            boxShadow: `
-              0 -${size * 0.067}px ${size * 0.133}px ${size * 0.133}px #ffffff40 inset,
-              0 -${size * 0.033}px ${size * 0.1}px ${size * 0.067}px #ffffff50 inset,
-              0 -${size * 0.013}px ${size * 0.033}px #ffffff80 inset,
-              0 -${size * 0.02}px ${size * 0.013}px #ffffffBB inset,
-              0 ${size * 0.013}px 0px #ffffff,
-              0 ${size * 0.013}px ${size * 0.02}px #ffffff,
-              0 ${size * 0.033}px ${size * 0.033}px #ffffff90,
-              0 ${size * 0.067}px ${size * 0.1}px #ffffff60,
-              0 ${size * 0.067}px ${size * 0.133}px ${size * 0.133}px #ffffff40
-            `,
-            filter: "blur(2px)",
-            animationDuration: "2s",
-            animationTimingFunction: "linear",
-            animationIterationCount: "infinite",
-          }}
+    <div className={cn("relative shrink-0", className)} style={{ width: size, height: size }}>
+      {/* static track */}
+      <div className="absolute inset-0 rounded-full border-2 border-canvas-sunk" />
+      {/* orbiting dot — rotate only, composited */}
+      <div className="absolute inset-0 animate-spin" style={{ animationDuration: "1.4s" }}>
+        <span
+          className="absolute left-1/2 top-0 -translate-x-1/2 rounded-full bg-ink"
+          style={{ width: dot, height: dot, marginTop: -dot / 2 }}
         />
       </div>
     </div>

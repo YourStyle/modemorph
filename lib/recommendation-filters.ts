@@ -1,7 +1,7 @@
 // lib/recommendation-filters.ts
 // Isomorphic module — works on both server (API routes) and client (React)
 
-import { clothingCategories } from "./clothing-types"
+import { clothingCategories, CLOTHING_TYPE_ALIASES, normalizeClothingType } from "./clothing-types"
 
 // ─── Types ──────────────────────────────────────────────────────
 export interface FilterableItem {
@@ -46,9 +46,10 @@ const SLOT_MAP: Record<string, string> = {
   pants: "bottom",
   sets: "set",
   outerwear: "outerwear",
+  shoes: "shoes",
 }
 
-/** Map from individual clothing_type → slot name */
+/** Map from individual clothing_type → slot name (legacy spellings included) */
 const clothingTypeToSlot: Record<string, string> = {}
 for (const [categoryKey, category] of Object.entries(clothingCategories)) {
   const slot = SLOT_MAP[categoryKey]
@@ -56,6 +57,11 @@ for (const [categoryKey, category] of Object.entries(clothingCategories)) {
   for (const type of category.types) {
     clothingTypeToSlot[type] = slot
   }
+}
+// Значения из БД, которые ещё не переименованы (lonsleeve и т.п.).
+for (const [legacy, canonical] of Object.entries(CLOTHING_TYPE_ALIASES)) {
+  const slot = clothingTypeToSlot[canonical]
+  if (slot) clothingTypeToSlot[legacy] = slot
 }
 
 // ─── Item-level filters ─────────────────────────────────────────
@@ -95,9 +101,8 @@ export function deduplicateByCategorySlot(
   const noSlotItems: FilterableItem[] = []
 
   for (const item of items) {
-    const slot = item.clothing_type
-      ? clothingTypeToSlot[item.clothing_type]
-      : undefined
+    const canonical = normalizeClothingType(item.clothing_type)
+    const slot = canonical ? clothingTypeToSlot[canonical] : undefined
 
     if (!slot) {
       noSlotItems.push(item)

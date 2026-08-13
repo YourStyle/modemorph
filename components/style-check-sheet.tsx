@@ -2,8 +2,7 @@
 
 import { useState, useRef } from "react"
 import { CommonSheet } from "./common-sheet"
-import { Button } from "./ui/button"
-import { Upload, Loader2, CheckCircle2, Sparkles, TrendingUp } from "lucide-react"
+import { Upload, Loader2, Sparkles } from "lucide-react"
 import { api } from "@/lib/api-client"
 import { STYLE_LABELS, CLOTHING_TYPE_LABELS } from "@/lib/labels"
 
@@ -60,16 +59,8 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
     setResult(null)
   }
 
-  const scoreColor = result
-    ? result.score >= 80 ? "text-emerald-600" : result.score >= 60 ? "text-blue-600" : result.score >= 40 ? "text-amber-600" : "text-gray-500"
-    : ""
-
-  const scoreGradient = result
-    ? result.score >= 80 ? "from-emerald-400 to-emerald-600" : result.score >= 60 ? "from-blue-400 to-blue-600" : result.score >= 40 ? "from-amber-400 to-amber-600" : "from-gray-400 to-gray-500"
-    : ""
-
   return (
-    <CommonSheet isOpen={isOpen} onClose={onClose} title="Подойдёт ли вещь?" backgroundColor="white" swipeAction="close">
+    <CommonSheet isOpen={isOpen} onClose={onClose} title="Подойдёт ли вещь?" swipeAction="close">
       <div className="pb-6 space-y-5">
         {/* Upload area */}
         <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFileSelect} />
@@ -78,83 +69,76 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
           <>
             <div
               onClick={() => fileRef.current?.click()}
-              className="border-2 border-dashed border-gray-200 rounded-2xl p-8 text-center cursor-pointer hover:border-blue-300 transition-colors"
+              className="border-2 border-dashed border-line rounded-2xl p-8 text-center cursor-pointer transition-colors hover:border-ink-3"
             >
               {preview ? (
                 <img src={preview} alt="Item" className="max-h-48 mx-auto rounded-xl object-contain" />
               ) : (
-                <div className="text-gray-400">
+                <div className="text-ink-3">
                   <Upload className="h-10 w-10 mx-auto mb-3" />
-                  <p className="text-sm font-medium">Загрузите фото вещи</p>
-                  <p className="text-xs text-gray-400 mt-1">Мы проверим, подходит ли она вашему стилю</p>
+                  <p className="text-body font-medium text-ink-2">Загрузите фото вещи</p>
+                  <p className="text-caption text-ink-3 mt-1">Мы проверим, подходит ли она вашему стилю</p>
                 </div>
               )}
             </div>
 
-            <Button
+            <button
               onClick={handleCheck}
               disabled={!photo || loading}
-              className="w-full h-11 rounded-2xl text-white border-0"
-              style={{ background: loading ? "#9ca3af" : "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+              className="w-full h-11 rounded-full bg-signal text-body font-semibold text-signal-ink transition-transform duration-press active:scale-[0.98] disabled:bg-canvas-sunk disabled:text-ink-3"
             >
               {loading ? (
-                <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Анализируем...</>
+                <span className="inline-flex items-center"><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Анализируем...</span>
               ) : (
-                <><Sparkles className="h-4 w-4 mr-2" /> Проверить совместимость</>
+                <span className="inline-flex items-center"><Sparkles className="h-4 w-4 mr-2" /> Проверить совместимость</span>
               )}
-            </Button>
+            </button>
           </>
         ) : (
           <>
-            {/* Score circle */}
+            {/* Score circle — единственный акцент (--signal), без градиента и без палитры "светофор" */}
             <div className="flex flex-col items-center">
               <div className="relative w-28 h-28 mb-3">
                 <svg className="w-28 h-28 -rotate-90" viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="50" fill="none" stroke="#f3f4f6" strokeWidth="10" />
+                  <circle cx="60" cy="60" r="50" fill="none" stroke="hsl(var(--canvas-sunk))" strokeWidth="10" />
                   <circle
                     cx="60" cy="60" r="50" fill="none"
-                    stroke="url(#score-grad)" strokeWidth="10"
+                    stroke="hsl(var(--signal))" strokeWidth="10"
                     strokeLinecap="round"
                     strokeDasharray={`${(result.score / 100) * 314} 314`}
                   />
-                  <defs>
-                    <linearGradient id="score-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#EC9DE2" />
-                      <stop offset="100%" stopColor="#89AEFF" />
-                    </linearGradient>
-                  </defs>
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className={`text-2xl font-bold ${scoreColor}`}>{result.score}%</span>
+                  <span className="text-h2 text-ink">{result.score}%</span>
                 </div>
               </div>
-              <p className="text-base font-semibold text-gray-900">{result.verdict}</p>
+              <p className="text-body font-semibold text-ink">{result.verdict}</p>
             </div>
 
             {/* Details */}
-            <div className="bg-gray-50 rounded-2xl p-4 space-y-3">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Тип вещи</span>
-                <span className="font-medium">{CLOTHING_TYPE_LABELS[result.item_type] || result.item_type}</span>
+            <div className="bg-canvas-sunk rounded-2xl p-4 space-y-3">
+              <div className="flex justify-between text-caption">
+                <span className="text-ink-2">Тип вещи</span>
+                <span className="font-medium text-ink">{CLOTHING_TYPE_LABELS[result.item_type] || result.item_type}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Стиль вещи</span>
-                <span className="font-medium">{STYLE_LABELS[result.item_style] || result.item_style}</span>
+              <div className="flex justify-between text-caption">
+                <span className="text-ink-2">Стиль вещи</span>
+                <span className="font-medium text-ink">{STYLE_LABELS[result.item_style] || result.item_style}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Ваш стиль</span>
-                <span className="font-medium">{STYLE_LABELS[result.user_style] || result.user_style}</span>
+              <div className="flex justify-between text-caption">
+                <span className="text-ink-2">Ваш стиль</span>
+                <span className="font-medium text-ink">{STYLE_LABELS[result.user_style] || result.user_style}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Совпадение стиля</span>
-                <span className={`font-medium ${result.style_match ? "text-emerald-600" : "text-amber-600"}`}>
+              <div className="flex justify-between text-caption">
+                <span className="text-ink-2">Совпадение стиля</span>
+                <span className="font-medium text-ink">
                   {result.style_match ? "Да" : "Новый стиль"}
                 </span>
               </div>
               {result.similar_items > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Похожих вещей</span>
-                  <span className="font-medium">{result.similar_items} в гардеробе</span>
+                <div className="flex justify-between text-caption">
+                  <span className="text-ink-2">Похожих вещей</span>
+                  <span className="font-medium text-ink">{result.similar_items} в гардеробе</span>
                 </div>
               )}
             </div>
@@ -166,13 +150,12 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
               </div>
             )}
 
-            <Button
+            <button
               onClick={reset}
-              variant="outline"
-              className="w-full h-11 rounded-2xl"
+              className="w-full h-11 rounded-full border border-line text-body font-medium text-ink transition-transform duration-press active:scale-[0.98]"
             >
               Проверить другую вещь
-            </Button>
+            </button>
           </>
         )}
       </div>

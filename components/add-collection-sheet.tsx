@@ -41,15 +41,15 @@ export function AddCollectionSheet({ isOpen, onClose, onAdd }: AddCollectionShee
   }
 
   return (
-    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Новая подборка" backgroundColor="dark">
-      <div className="space-y-6 pb-24">
+    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Новая подборка">
+      <div className="space-y-6 pb-28">
         <div>
-          <label className="block text-white font-medium text-sm mb-2">Название подборки</label>
+          <label className="block text-caption font-semibold text-ink-2 mb-2">Название подборки</label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Введите название подборки"
-            className="bg-white text-gray-900 border-gray-300"
+            autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter" && !loading) {
                 handleSubmit()
@@ -60,21 +60,12 @@ export function AddCollectionSheet({ isOpen, onClose, onAdd }: AddCollectionShee
       </div>
 
       {/* Fixed Buttons */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-gray-700 p-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-canvas border-t border-line p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="flex gap-3 max-w-md mx-auto">
-          <Button
-            variant="outline"
-            onClick={handleClose}
-            className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700 bg-transparent"
-            disabled={loading}
-          >
+          <Button variant="outline" onClick={handleClose} disabled={loading} className="flex-1">
             Отмена
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={!name.trim() || loading}
-            className="flex-1 bg-white hover:bg-gray-100 text-gray-900"
-          >
+          <Button onClick={handleSubmit} disabled={!name.trim() || loading} className="flex-1">
             {loading ? "Создание..." : "Создать"}
           </Button>
         </div>

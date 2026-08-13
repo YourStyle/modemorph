@@ -2,9 +2,9 @@
 
 import type React from "react"
 import { useRef, useEffect, useState } from "react"
-import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { RotateCcw, Undo2, Redo2, Crop, Eraser, Settings, X, Check } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface PhotoEditorProps {
   imageUrl: string
@@ -146,22 +146,30 @@ export function PhotoEditor({ imageUrl, onSave, onCancel }: PhotoEditorProps) {
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-900">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <Button variant="ghost" size="sm" onClick={onCancel} className="text-white">
-          <X className="h-4 w-4" />
-        </Button>
-        <Button variant="ghost" size="sm" onClick={handleSave} className="text-white">
-          <Check className="h-4 w-4" />
-        </Button>
+    <div className="h-full flex flex-col bg-ink">
+      {/* Header — floating glass control bar over the canvas, not a solid plate */}
+      <div className="flex items-center justify-between p-3 backdrop-blur-xl bg-black/30 border-b border-white/10">
+        <button
+          onClick={onCancel}
+          className="p-2.5 rounded-full text-white/80 transition-transform duration-press active:scale-90"
+          aria-label="Отменить"
+        >
+          <X className="h-5 w-5" strokeWidth={1.75} />
+        </button>
+        <button
+          onClick={handleSave}
+          className="p-2.5 rounded-full bg-signal text-signal-ink transition-transform duration-press active:scale-90"
+          aria-label="Сохранить"
+        >
+          <Check className="h-5 w-5" strokeWidth={1.75} />
+        </button>
       </div>
 
       {/* Canvas Area */}
       <div className="flex-1 flex items-center justify-center p-4 relative">
         <canvas
           ref={canvasRef}
-          className="max-w-full max-h-full border border-gray-600 cursor-crosshair"
+          className="max-w-full max-h-full rounded-[14px] border border-white/10 cursor-crosshair"
           style={{
             background:
               "url(\"data:image/svg+xml,%3csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3e%3cdefs%3e%3cpattern id='a' patternUnits='userSpaceOnUse' width='20' height='20'%3e%3crect fill='%23ffffff' width='10' height='10'/%3e%3crect fill='%23f0f0f0' x='10' y='10' width='10' height='10'/%3e%3c/pattern%3e%3c/defs%3e%3crect width='100%25' height='100%25' fill='url(%23a)'/%3e%3c/svg%3e\")",
@@ -175,24 +183,24 @@ export function PhotoEditor({ imageUrl, onSave, onCancel }: PhotoEditorProps) {
         {/* Brush Preview */}
         {isDrawing && (
           <div
-            className="absolute pointer-events-none border-2 border-pink-500 rounded-full"
+            className="absolute pointer-events-none border-2 border-signal rounded-full"
             style={{
               width: brushSize,
               height: brushSize,
-              backgroundColor: "rgba(236, 72, 153, 0.2)",
+              backgroundColor: "hsl(var(--signal) / 0.2)",
             }}
           />
         )}
       </div>
 
-      {/* Controls */}
-      <div className="p-4 border-t border-gray-700 space-y-4">
+      {/* Controls — floating glass panel, not a solid plate */}
+      <div className="p-4 backdrop-blur-xl bg-black/30 border-t border-white/10 space-y-4">
         {/* Sliders */}
         <div className="grid grid-cols-2 gap-6">
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-white text-sm">Смещение</span>
-              <span className="text-pink-400 text-sm">{offset}</span>
+              <span className="text-white/80 text-caption">Смещение</span>
+              <span className="text-white text-caption font-medium">{offset}</span>
             </div>
             <Slider
               value={[offset]}
@@ -204,8 +212,8 @@ export function PhotoEditor({ imageUrl, onSave, onCancel }: PhotoEditorProps) {
           </div>
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-white text-sm">Кисть</span>
-              <span className="text-pink-400 text-sm">{brushSize}</span>
+              <span className="text-white/80 text-caption">Кисть</span>
+              <span className="text-white text-caption font-medium">{brushSize}</span>
             </div>
             <Slider
               value={[brushSize]}
@@ -220,51 +228,60 @@ export function PhotoEditor({ imageUrl, onSave, onCancel }: PhotoEditorProps) {
 
         {/* Action Buttons */}
         <div className="flex items-center justify-between">
-          <Button variant="ghost" size="sm" onClick={removeBackground} className="text-white flex-col h-auto py-2">
-            <Crop className="h-5 w-5 mb-1" />
-            <span className="text-xs">Удалить фон</span>
-          </Button>
+          <button
+            onClick={removeBackground}
+            className="flex flex-col items-center gap-1 py-2 px-3 rounded-[14px] text-white/70 transition-transform duration-press active:scale-95"
+          >
+            <Crop className="h-5 w-5" strokeWidth={1.75} />
+            <span className="text-micro">Удалить фон</span>
+          </button>
 
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={undo} disabled={historyIndex <= 0} className="text-white">
-              <Undo2 className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
+          <div className="flex gap-1">
+            <button
+              onClick={undo}
+              disabled={historyIndex <= 0}
+              className="p-2.5 rounded-full text-white/70 transition-transform duration-press active:scale-90 disabled:opacity-30"
+              aria-label="Отменить действие"
+            >
+              <Undo2 className="h-4 w-4" strokeWidth={1.75} />
+            </button>
+            <button
               onClick={redo}
               disabled={historyIndex >= history.length - 1}
-              className="text-white"
+              className="p-2.5 rounded-full text-white/70 transition-transform duration-press active:scale-90 disabled:opacity-30"
+              aria-label="Повторить действие"
             >
-              <Redo2 className="h-4 w-4" />
-            </Button>
+              <Redo2 className="h-4 w-4" strokeWidth={1.75} />
+            </button>
           </div>
         </div>
 
         {/* Tool Selection */}
-        <div className="flex justify-center gap-4">
-          <Button
-            variant={tool === "erase" ? "default" : "ghost"}
-            size="sm"
+        <div className="flex justify-center gap-3">
+          <button
             onClick={() => setTool("erase")}
-            className="flex-col h-auto py-3 px-6"
+            className={cn(
+              "flex flex-col items-center gap-1 py-2.5 px-6 rounded-full transition-transform duration-press active:scale-95",
+              tool === "erase" ? "bg-signal text-signal-ink" : "text-white/70"
+            )}
           >
-            <Eraser className="h-6 w-6 mb-1" />
-            <span className="text-xs">Стереть</span>
-          </Button>
-          <Button
-            variant={tool === "restore" ? "default" : "ghost"}
-            size="sm"
+            <Eraser className="h-5 w-5" strokeWidth={1.75} />
+            <span className="text-micro">Стереть</span>
+          </button>
+          <button
             onClick={() => setTool("restore")}
-            className="flex-col h-auto py-3 px-6"
+            className={cn(
+              "flex flex-col items-center gap-1 py-2.5 px-6 rounded-full transition-transform duration-press active:scale-95",
+              tool === "restore" ? "bg-signal text-signal-ink" : "text-white/70"
+            )}
           >
-            <RotateCcw className="h-6 w-6 mb-1" />
-            <span className="text-xs">Восстановить</span>
-          </Button>
-          <Button variant="ghost" size="sm" className="flex-col h-auto py-3 px-6">
-            <Settings className="h-6 w-6 mb-1" />
-            <span className="text-xs">Настроить</span>
-          </Button>
+            <RotateCcw className="h-5 w-5" strokeWidth={1.75} />
+            <span className="text-micro">Восстановить</span>
+          </button>
+          <button className="flex flex-col items-center gap-1 py-2.5 px-6 rounded-full text-white/70 transition-transform duration-press active:scale-95">
+            <Settings className="h-5 w-5" strokeWidth={1.75} />
+            <span className="text-micro">Настроить</span>
+          </button>
         </div>
       </div>
     </div>

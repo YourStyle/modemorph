@@ -15,6 +15,8 @@ import { Switch } from "@/components/ui/switch"
 import { SubscriptionSheet } from "./subscription-sheet"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
+import { cn } from "@/lib/utils"
+import { ArrowRight } from "lucide-react"
 
 interface UserProfile {
   id: string
@@ -272,14 +274,14 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none pb-40 safe-bottom-padding">
           <div className="space-y-6">
             <Tabs defaultValue="about" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 bg-white">
-                <TabsTrigger value="about" className="text-gray-900">
+              <TabsList className="grid w-full grid-cols-3 bg-canvas-sunk rounded-full p-1">
+                <TabsTrigger value="about" className="text-ink rounded-full">
                   Обо мне
                 </TabsTrigger>
-                <TabsTrigger value="avatars" className="text-gray-600">
+                <TabsTrigger value="avatars" className="text-ink-2 rounded-full">
                   Аватары
                 </TabsTrigger>
-                <TabsTrigger value="notifications" className="text-gray-600">
+                <TabsTrigger value="notifications" className="text-ink-2 rounded-full">
                   Уведомления
                 </TabsTrigger>
               </TabsList>
@@ -287,62 +289,41 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
               <TabsContent value="about" className="space-y-6 mt-6">
                 {isLoading ? (
                   <div className="space-y-4">
-                    <div className="h-4 bg-gray-600 rounded animate-pulse" />
-                    <div className="h-10 bg-gray-600 rounded animate-pulse" />
-                    <div className="h-4 bg-gray-600 rounded animate-pulse" />
-                    <div className="h-10 bg-gray-600 rounded animate-pulse" />
+                    <div className="h-4 skeleton rounded" />
+                    <div className="h-10 skeleton rounded" />
+                    <div className="h-4 skeleton rounded" />
+                    <div className="h-10 skeleton rounded" />
                   </div>
                 ) : (
                   <>
                     {profile && !profile.is_admin && (
                       <div className="space-y-3">
-                        <h3 className="text-[#101010] font-medium text-sm">Ваш текущий план</h3>
+                        <h3 className="text-caption font-medium text-ink-2">Ваш текущий план</h3>
 
-                        {/* Plan Info Block with 16px border radius and no animation */}
-                        <div className="p-4 rounded-[16px] border-2 bg-white/50"
-                          style={{
-                            borderImageSource: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-                            borderImageSlice: 1
-                          }}
-                        >
+                        {/* Единственный акцент экрана — сигнальная кайма плана. Больше --signal
+                            в этом шите нигде нет. */}
+                        <div className="p-4 rounded-2xl border-2 border-signal bg-canvas-sunk">
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                             <div>
-                              <div className="text-[#101010] font-medium text-base mb-1">
+                              <div className="text-body font-semibold text-ink mb-1">
                                 {subscriptionData?.subscription?.status === "active" ? "Pro" : "Бесплатно"}
                               </div>
-                              <div className="text-[#101010]/70 text-sm">
+                              <div className="text-caption text-ink-2">
                                 {subscriptionData?.subscription?.status === "active"
                                   ? "40 кредитов каждый месяц"
                                   : "30 кредитов каждый месяц"}
                               </div>
-                              <div className="text-[#101010]/70 text-xs mt-2">
+                              <div className="text-micro text-ink-3 mt-2">
                                 {subscriptionData?.credits?.credits_balance || 0} кредитов доступно
                               </div>
                             </div>
 
                             <Button
                               onClick={() => setIsPaywallOpen(true)}
-                              className="w-full md:w-auto text-white border-0 px-6 py-3 rounded-[16px] font-medium text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-                              style={{
-                                background: "linear-gradient(to right, #EC9DE2, #89AEFF)"
-                              }}
+                              className="w-full md:w-auto bg-ink text-signal-ink border-0 px-6 py-3 rounded-full font-medium text-caption flex items-center justify-center gap-2 hover:bg-ink/90"
                             >
                               {subscriptionData?.subscription?.status === "active" ? "Управление" : "Оформить подписку"}
-                              <svg
-                                width="16"
-                                height="16"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                xmlns="http://www.w3.org/2000/svg"
-                              >
-                                <path
-                                  d="M5 12H19M19 12L12 5M19 12L12 19"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
+                              <ArrowRight className="w-4 h-4" strokeWidth={1.75} />
                             </Button>
                           </div>
                         </div>
@@ -350,78 +331,78 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     )}
 
                     <div className="space-y-2">
-                      <Label className="text-[#101010]">Email</Label>
-                      <Input value={profile?.email || ""} disabled className="bg-gray-200 border-gray-300 text-gray-600" />
+                      <Label className="text-ink">Email</Label>
+                      <Input value={profile?.email || ""} disabled className="bg-canvas-sunk border-line text-ink-2 rounded-xl" />
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-[#101010]">Имя</Label>
+                      <Label className="text-ink">Имя</Label>
                       <Input
                         value={formData.full_name}
                         onChange={(e) => handleInputChange("full_name", e.target.value)}
                         placeholder="Введите ваше имя"
-                        className="bg-white border-gray-300 text-gray-900"
+                        className="bg-canvas-sunk border-line text-ink rounded-xl"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-[#101010]">Пол</Label>
+                      <Label className="text-ink">Пол</Label>
                       <div className="flex gap-2">
-                        <Button
+                        <button
                           type="button"
-                          variant={formData.gender === "male" ? "default" : "outline"}
                           onClick={() => handleInputChange("gender", "male")}
-                          className={`flex-1 ${
+                          className={cn(
+                            "flex-1 h-10 rounded-full text-body font-medium transition-colors duration-press",
                             formData.gender === "male"
-                              ? "bg-blue-600 hover:bg-blue-700 text-white"
-                              : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
-                          }`}
+                              ? "bg-ink text-signal-ink"
+                              : "bg-canvas-sunk text-ink-2 hover:text-ink"
+                          )}
                         >
-                          👨 Мужской
-                        </Button>
-                        <Button
+                          Мужской
+                        </button>
+                        <button
                           type="button"
-                          variant={formData.gender === "female" ? "default" : "outline"}
                           onClick={() => handleInputChange("gender", "female")}
-                          className={`flex-1 ${
+                          className={cn(
+                            "flex-1 h-10 rounded-full text-body font-medium transition-colors duration-press",
                             formData.gender === "female"
-                              ? "bg-pink-600 hover:bg-pink-700 text-white"
-                              : "bg-transparent border-gray-500 text-gray-300 hover:bg-gray-700 hover:text-white"
-                          }`}
+                              ? "bg-ink text-signal-ink"
+                              : "bg-canvas-sunk text-ink-2 hover:text-ink"
+                          )}
                         >
-                          👩 Женский
-                        </Button>
+                          Женский
+                        </button>
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-[#101010]">Рост (см)</Label>
+                      <Label className="text-ink">Рост (см)</Label>
                       <Input
                         type="text"
                         inputMode="numeric"
                         value={formData.height}
                         onChange={(e) => handleNumberInput("height", e.target.value)}
                         placeholder="170"
-                        className="bg-white border-gray-300 text-gray-900"
+                        className="bg-canvas-sunk border-line text-ink rounded-xl"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-[#101010]">Вес (кг)</Label>
+                      <Label className="text-ink">Вес (кг)</Label>
                       <Input
                         type="text"
                         inputMode="numeric"
                         value={formData.weight}
                         onChange={(e) => handleNumberInput("weight", e.target.value)}
                         placeholder="70"
-                        className="bg-white border-gray-300 text-gray-900"
+                        className="bg-canvas-sunk border-line text-ink rounded-xl"
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-[#101010]">Размер верхней одежды</Label>
+                      <Label className="text-ink">Размер верхней одежды</Label>
                       <Select value={formData.top_size} onValueChange={(v) => handleInputChange("top_size", v)}>
-                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                        <SelectTrigger className="bg-canvas-sunk border-line text-ink rounded-xl">
                           <SelectValue placeholder="Выберите размер" />
                         </SelectTrigger>
                         <SelectContent>
@@ -435,9 +416,9 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-[#101010]">Размер нижней одежды</Label>
+                      <Label className="text-ink">Размер нижней одежды</Label>
                       <Select value={formData.bottom_size} onValueChange={(v) => handleInputChange("bottom_size", v)}>
-                        <SelectTrigger className="bg-white border-gray-300 text-gray-900">
+                        <SelectTrigger className="bg-canvas-sunk border-line text-ink rounded-xl">
                           <SelectValue placeholder="Выберите размер" />
                         </SelectTrigger>
                         <SelectContent>
@@ -451,14 +432,14 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
 
                     <div className="space-y-2">
-                      <Label className="text-[#101010]">Размер обуви</Label>
+                      <Label className="text-ink">Размер обуви</Label>
                       <Input
                         type="text"
                         inputMode="numeric"
                         value={formData.shoe_size}
                         onChange={(e) => handleNumberInput("shoe_size", e.target.value)}
                         placeholder="40"
-                        className="bg-white border-gray-300 text-gray-900"
+                        className="bg-canvas-sunk border-line text-ink rounded-xl"
                       />
                     </div>
 
@@ -468,7 +449,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                         <Button
                           onClick={handleSave}
                           disabled={isSaving}
-                          className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0"
+                          className="w-full bg-ink hover:bg-ink/90 text-signal-ink border-0 rounded-full"
                         >
                           {isSaving ? "Сохранение..." : "Сохранить изменения"}
                         </Button>
@@ -481,11 +462,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
               <TabsContent value="avatars" className="space-y-6 mt-6">
                 <div className="space-y-4">
                   <div>
-                    <Label className="text-[#101010] mb-3 block">Текущий аватар</Label>
+                    <Label className="text-ink mb-3 block">Текущий аватар</Label>
                     <div className="flex items-center space-x-4">
                       <Avatar className="h-16 w-16">
                         <AvatarImage src={profile?.avatar_url || "/placeholder-user.jpg"} />
-                        <AvatarFallback className="bg-gray-600 text-white">
+                        <AvatarFallback className="bg-canvas-sunk text-ink">
                           {profile?.full_name?.charAt(0) || profile?.email?.charAt(0) || "U"}
                         </AvatarFallback>
                       </Avatar>
@@ -499,7 +480,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                         />
                         <Button
                           variant="outline"
-                          className="bg-white text-gray-900 border-gray-300 hover:bg-gray-100"
+                          className="bg-canvas-sunk text-ink border-line hover:bg-line rounded-full"
                           onClick={() => fileInputRef.current?.click()}
                           disabled={isUploadingAvatar}
                         >
@@ -509,11 +490,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                     </div>
                   </div>
                   <div>
-                    <Label className="text-[#101010] mb-3 block">Прошлые аватары</Label>
+                    <Label className="text-ink mb-3 block">Прошлые аватары</Label>
                     <div className="grid grid-cols-4 gap-3">
                       {[1, 2, 3, 4].map((i) => (
-                        <div key={i} className="aspect-square bg-transparent border-2 border-black rounded-lg flex items-center justify-center">
-                          <span className="text-gray-600 text-xs">Нет фото</span>
+                        <div key={i} className="aspect-square bg-canvas-sunk border border-line rounded-2xl flex items-center justify-center">
+                          <span className="text-ink-3 text-micro">Нет фото</span>
                         </div>
                       ))}
                     </div>
@@ -525,8 +506,8 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <Label className="text-[#101010] text-base">Получать уведомления</Label>
-                      <p className="text-sm text-gray-500">
+                      <Label className="text-ink text-body">Получать уведомления</Label>
+                      <p className="text-caption text-ink-2">
                         Напоминания и рассылки через Telegram
                       </p>
                     </div>
@@ -536,7 +517,7 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                       disabled={notificationsLoading}
                     />
                   </div>
-                  <p className="text-xs text-gray-400">
+                  <p className="text-micro text-ink-3">
                     Вы также можете отключить уведомления командой /mute в боте
                   </p>
                 </div>
@@ -545,13 +526,13 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
           </div>
 
           {/* Sticky-футер ВНУТРИ скролла: всегда виден и не обрезается */}
-          <div className="sticky bottom-0 z-20 border-t border-gray-300 bg-[#F9FAFB] px-4 py-3 footer-safe">
+          <div className="sticky bottom-0 z-20 border-t border-line bg-canvas px-4 py-3 footer-safe">
             {isTMA ? (
               // В TMA показываем только кнопку "Сохранить"
               <Button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="w-full bg-gray-900 hover:bg-gray-800 text-white border-0 rounded-2xl"
+                className="w-full bg-ink hover:bg-ink/90 text-signal-ink border-0 rounded-full"
               >
                 {isSaving ? "Сохранение..." : "Сохранить изменения"}
               </Button>
@@ -561,11 +542,11 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                 <Button
                   variant="outline"
                   onClick={onClose}
-                  className="flex-1 bg-transparent border-gray-500 text-gray-600 hover:bg-gray-200 hover:text-gray-900 hover:border-gray-400"
+                  className="flex-1 bg-transparent border-line text-ink-2 hover:bg-canvas-sunk hover:text-ink rounded-full"
                 >
                   Закрыть
                 </Button>
-                <Button onClick={handleSignOut} className="flex-1 bg-red-700 hover:bg-red-800 text-white border-0">
+                <Button onClick={handleSignOut} className="flex-1 bg-destructive hover:bg-destructive/90 text-destructive-foreground border-0 rounded-full">
                   Выйти
                 </Button>
               </div>

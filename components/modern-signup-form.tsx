@@ -12,18 +12,11 @@ function SubmitButton() {
   const { pending } = useFormStatus()
 
   return (
-    <Button
-      type="submit"
-      disabled={pending}
-      className="w-full text-white py-3 text-base font-medium rounded-xl h-12 border-0 transition-all duration-200 disabled:opacity-50"
-      style={{
-        backgroundColor: '#292929',
-      }}
-    >
+    <Button type="submit" disabled={pending} className="w-full">
       {pending ? (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Создание аккаунта...
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Создаём аккаунт
         </>
       ) : (
         "Зарегистрироваться"
@@ -36,84 +29,62 @@ export default function ModernSignupForm() {
   const [state, formAction] = useActionState(signUp, null)
 
   return (
-    <div className="w-full space-y-6">
-      <div className="space-y-2 text-center [500px]:text-left">
-        <h1 className="text-2xl [500px]:text-3xl font-bold tracking-tight text-gray-900">Создать аккаунт</h1>
-        <p className="text-base text-gray-600">Начните организовывать свой гардероб</p>
+    <div className="w-full">
+      <div className="space-y-2 text-center min-[500px]:text-left">
+        <h1 className="text-display text-ink">Создать аккаунт</h1>
+        <p className="text-body text-ink-2">Соберите свой гардероб за пару минут</p>
       </div>
 
-      <form action={formAction} className="space-y-5">
-        {state?.error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">{state.error}</div>
-        )}
+      <form action={formAction} className="mt-6 space-y-4">
+        {/* Место под сообщение зарезервировано заранее — форма не прыгает */}
+        <div className="min-h-[18px]" aria-live="polite">
+          {state?.error && <p className="animate-fade-up text-caption text-destructive">{state.error}</p>}
+          {state?.success && <p className="animate-fade-up text-caption text-ink">{state.success}</p>}
+        </div>
 
-        {state?.success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-xl text-sm">
-            {state.success}
-          </div>
-        )}
-
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              Электронная почта
+        <div className="space-y-3">
+          <div className="space-y-1.5 animate-fade-up" style={{ animationDelay: "40ms" }}>
+            <label htmlFor="email" className="block text-caption text-ink-2">
+              Почта
             </label>
             <Input
               id="email"
               name="email"
               type="email"
               placeholder="ваш@email.com"
+              autoComplete="email"
               required
-              className="h-11 text-base border-gray-300 rounded-xl"
-              style={{
-                borderColor: '#292929',
-              }}
             />
           </div>
-          <div className="space-y-2">
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+          <div className="space-y-1.5 animate-fade-up" style={{ animationDelay: "80ms" }}>
+            <label htmlFor="password" className="block text-caption text-ink-2">
               Пароль
             </label>
-            <Input
-              id="password"
-              name="password"
-              type="password"
-              required
-              className="h-11 text-base border-gray-300 rounded-xl"
-              style={{
-                borderColor: '#292929',
-              }}
-            />
+            <Input id="password" name="password" type="password" autoComplete="new-password" required />
           </div>
         </div>
 
-        <div className="space-y-3">
+        <div className="animate-fade-up" style={{ animationDelay: "120ms" }}>
           <SubmitButton />
-
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full py-3 text-base font-medium rounded-xl h-12 hover:bg-gray-50 transition-all duration-200"
-            style={{
-              borderColor: '#292929',
-            }}
-            asChild
-          >
-            <Link href="/auth/login">Уже есть аккаунт? Войти</Link>
-          </Button>
         </div>
 
-        <div className="text-center text-xs text-gray-500 leading-relaxed">
-          Регистрируясь, вы соглашаетесь с нашими{" "}
-          <Link href="/terms" className="text-gray-700 hover:underline font-medium">
-            Условиями использования
+        <p className="text-center text-caption text-ink-3">
+          Уже есть аккаунт?{" "}
+          <Link href="/auth/login" className="font-medium text-ink hover:underline">
+            Войти
+          </Link>
+        </p>
+
+        <p className="text-center text-micro leading-relaxed text-ink-3">
+          Регистрируясь, вы соглашаетесь с{" "}
+          <Link href="/terms" className="text-ink-2 hover:text-ink hover:underline">
+            условиями
           </Link>{" "}
           и{" "}
-          <Link href="/privacy" className="text-gray-700 hover:underline font-medium">
-            Политикой конфиденциальности
+          <Link href="/privacy" className="text-ink-2 hover:text-ink hover:underline">
+            политикой конфиденциальности
           </Link>
-          .
-        </div>
+        </p>
       </form>
     </div>
   )

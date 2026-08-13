@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Card } from "@/components/ui/card"
 import { STYLE_LABELS } from "@/lib/labels"
 import { CommonSheet } from "./common-sheet"
 import { ChevronRight } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 interface StyleData {
   style: string
@@ -18,26 +18,16 @@ interface StyleProfileCardProps {
   userItemsCount: number
 }
 
-// Palette aligned with brand CTA gradient (linear-gradient(135deg, #EC9DE2, #89AEFF))
-// All tones sit on the pink → lavender → blue axis for visual cohesion with buttons.
-const STYLE_COLORS: Record<string, string> = {
-  casual: "#89AEFF",
-  classic: "#A8A3F0",
-  minimalist: "#C6D3F7",
-  streetwear: "#EC9DE2",
-  formal: "#8F93D8",
-  sport: "#7FC0F5",
-  romantic: "#F5B8E5",
-  bohemian: "#E0A8D0",
-  vintage: "#C5A3E3",
-  preppy: "#A8C4FF",
-  grunge: "#B5B5D8",
-  business: "#7A92D8",
+// Оттенки чернил + один сигнальный акцент на доминирующий сегмент.
+// Никаких пастельных hex-ов — только токены из test/gauntlet/design/BAR.md.
+const RANK_COLORS = ["hsl(var(--signal))", "hsl(var(--ink) / .55)", "hsl(var(--ink) / .3)", "hsl(var(--ink) / .15)"]
+const RANK_COLOR_FALLBACK = "hsl(var(--ink) / .15)"
+
+function rankColor(index: number): string {
+  return RANK_COLORS[index] ?? RANK_COLOR_FALLBACK
 }
 
-const STYLE_COLOR_FALLBACK = "#B5B5D8"
-
-// Style advice — palettes based on real user wardrobe data + complementary accents
+// Style advice — content data (real recommended palettes), not decorative UI gradients.
 const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: string[]; colorNames: string[] }> = {
   casual: {
     title: "Повседневный стиль",
@@ -77,7 +67,7 @@ const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: stri
   },
 }
 
-function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
+function PieChart({ data, size = 56 }: { data: StyleData[]; size?: number }) {
   const pad = 2
   const r = (size - pad * 2) / 2
   const cx = size / 2
@@ -100,7 +90,7 @@ function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
     const y2 = cy + r * Math.sin(endRad)
 
     const largeArc = angle > 180 ? 1 : 0
-    const color = STYLE_COLORS[item.style] || STYLE_COLOR_FALLBACK
+    const color = rankColor(i)
 
     // Single item = full circle
     if (data.length === 1) {
@@ -121,7 +111,7 @@ function PieChart({ data, size = 120 }: { data: StyleData[]; size?: number }) {
       <g>
         {segments}
         {/* Inner circle for donut effect */}
-        <circle cx={cx} cy={cy} r={r * 0.55} fill="white" />
+        <circle cx={cx} cy={cy} r={r * 0.55} fill="hsl(var(--canvas))" />
       </g>
     </svg>
   )
@@ -178,75 +168,51 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
 
   if (!dominantStyle) {
     return (
-      <Card className="p-6 mb-8 bg-card border-0 shadow-[0_2px_8px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.06)]">
-        <h3 className="text-lg font-semibold text-foreground tracking-tight mb-1">Ваш гардероб</h3>
-        <p className="text-sm text-muted-foreground">
+      <div className="mb-4 px-3.5 py-2.5 rounded-full bg-canvas-sunk">
+        <p className="text-caption text-ink-2 truncate">
           {userItemsCount > 0 ? `${userItemsCount} вещей — анализируем стиль...` : "Добавьте вещи, чтобы узнать ваш стиль"}
         </p>
-      </Card>
+      </div>
     )
   }
 
+  // Раунд 5, критик: 75% первого экрана было хромом, ряд товара срезан таббаром.
+  // Карточка стиля + отдельный ряд чипов-процентов схлопнуты в ОДНУ строку —
+  // товар на экране гардероба важнее статистики о товаре. Тап по строке всё ещё
+  // открывает полный разбор по стилю в шите (see openStyleAdvice ниже).
   return (
     <>
-      {/* Main card — always expanded, never changes height */}
-      <Card
-        ref={cardRef}
-        className="mb-8 bg-card border-0 overflow-visible shadow-[0_2px_8px_rgba(0,0,0,0.04),0_4px_16px_rgba(0,0,0,0.06)]"
-      >
-        <div className="px-6 pt-6 pb-5">
-          <div className="flex items-center gap-5">
-            <div className="flex-shrink-0">
-              <PieChart data={styleDistribution} size={96} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground mb-1">Ваш стиль</p>
-              <h3 className="text-xl font-bold text-foreground tracking-tight mb-3">
-                {STYLE_LABELS[dominantStyle] || dominantStyle}
-              </h3>
-              <div className="space-y-2.5">
-                {styleDistribution.map((item) => (
-                  <button
-                    key={item.style}
-                    onClick={() => openStyleAdvice(item.style)}
-                    className="flex items-center gap-2.5 w-full text-left group"
-                  >
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm"
-                      style={{ backgroundColor: STYLE_COLORS[item.style] || STYLE_COLOR_FALLBACK }}
-                    />
-                    <span className="text-sm text-foreground/70 group-hover:text-foreground transition-colors">
-                      {STYLE_LABELS[item.style] || item.style}
-                    </span>
-                    <span className="text-xs text-muted-foreground ml-auto">{item.percentage}%</span>
-                    <ChevronRight className="w-3 h-3 text-muted-foreground group-hover:text-foreground transition-colors" />
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </Card>
+      <div ref={cardRef} className="mb-4">
+        <button
+          onClick={() => openStyleAdvice(dominantStyle)}
+          className="w-full flex items-center gap-3 pl-2 pr-3.5 py-2 rounded-full bg-canvas-sunk text-left transition-transform duration-press ease-out active:scale-[.99]"
+        >
+          <PieChart data={styleDistribution} size={32} />
+          <span className="flex-1 min-w-0 text-caption font-semibold text-ink truncate">
+            Ваш стиль: {STYLE_LABELS[dominantStyle] || dominantStyle}
+          </span>
+          <ChevronRight className="w-3.5 h-3.5 text-ink-3 shrink-0" />
+        </button>
+      </div>
 
       {/* Sticky compact bar — fixed, separate from document flow */}
       <div
-        className={`fixed top-[100px] left-0 right-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/30 transition-all duration-300 ${
-          showStickyBar
-            ? "translate-y-0 opacity-100"
-            : "-translate-y-full opacity-0 pointer-events-none"
-        }`}
+        className={cn(
+          "fixed top-[100px] left-0 right-0 z-30 glass border-b border-line/60 transition-all duration-300",
+          showStickyBar ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
+        )}
       >
         <div className="flex items-center gap-3 px-4 py-2.5 max-w-screen-xl mx-auto">
-          <PieChart data={styleDistribution} size={36} />
+          <PieChart data={styleDistribution} size={32} />
           <div className="flex-1">
-            <span className="text-sm font-semibold text-foreground">
+            <span className="text-caption font-semibold text-ink">
               {STYLE_LABELS[dominantStyle] || dominantStyle}
             </span>
-            <span className="text-xs text-muted-foreground ml-2">{userItemsCount} вещей</span>
+            <span className="text-caption text-ink-2 ml-2">{userItemsCount} вещей</span>
           </div>
           <button
             onClick={() => openStyleAdvice(dominantStyle)}
-            className="text-xs font-medium px-3 py-1.5 rounded-full bg-secondary text-foreground/70 hover:text-foreground transition-colors"
+            className="text-caption font-medium px-3 py-1.5 rounded-full bg-canvas-sunk text-ink-2 active:scale-95 transition-transform duration-press"
           >
             Советы
           </button>
@@ -268,24 +234,24 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
           <div className="space-y-6 pb-6">
             <div>
               <div className="mb-3">
-                <p className="text-sm font-medium text-foreground">Рекомендуемая палитра</p>
-                <p className="text-[11px] text-muted-foreground mt-0.5">На основе вашего гардероба</p>
+                <p className="text-body font-medium text-ink">Рекомендуемая палитра</p>
+                <p className="text-caption text-ink-2 mt-0.5">На основе вашего гардероба</p>
               </div>
               <div className="flex gap-3">
                 {advice.colors.map((color, i) => (
                   <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
                     <div
-                      className="w-full aspect-square rounded-2xl shadow-sm border border-black/5"
+                      className="w-full aspect-square rounded-[18px] border border-line"
                       style={{ backgroundColor: color }}
                     />
-                    <span className="text-[10px] text-muted-foreground text-center leading-tight">{advice.colorNames[i]}</span>
+                    <span className="text-caption text-ink-2 text-center leading-tight">{advice.colorNames[i]}</span>
                   </div>
                 ))}
               </div>
             </div>
             <div className="space-y-3">
               {advice.advice.split("\n\n").map((paragraph, i) => (
-                <p key={i} className="text-sm text-foreground/70 leading-relaxed">
+                <p key={i} className="text-body text-ink-2 leading-relaxed">
                   {paragraph}
                 </p>
               ))}

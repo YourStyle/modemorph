@@ -2,13 +2,13 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
 import { CategoryProgressSheet } from "@/components/category-progress-sheet"
-import { Plus, ChevronDown, ChevronUp, Search, Sparkles } from "lucide-react"
+import { Plus, ChevronDown, ChevronUp, Search, Sparkles, LayoutGrid, Shirt } from "lucide-react"
 import { useAddToCloset } from "@/contexts/add-to-closet-context"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
 
@@ -20,17 +20,11 @@ import { useToast } from "@/hooks/use-toast"
 import { useFeature } from "@/hooks/use-feature"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
+import { cn } from "@/lib/utils"
 
-import { STYLE_LABELS } from "@/lib/labels"
 import { StyleProfileCard } from "@/components/style-profile-card"
 import { StyleCheckSheet } from "@/components/style-check-sheet"
-
-const clothingCategories = [
-  { id: "outerwear", name: "Верхняя одежда", icon: "🧥", emoji: "🧥" },
-  { id: "pants", name: "Брюки", icon: "👖", emoji: "👖" },
-  { id: "shoes", name: "Обувь", icon: "👠", emoji: "👠" },
-  { id: "dresses", name: "Платья", icon: "👗", emoji: "👗" },
-]
+import { normalizeClothingType, clothingCategories } from "@/lib/clothing-types"
 
 interface BasicWardrobeItem {
   id: number
@@ -47,72 +41,160 @@ interface BasicWardrobeItem {
   gender?: string
 }
 
+interface WardrobeListItem {
+  id: number
+  item_name: string
+  image_url?: string
+  clothing_type?: string
+  created_at?: string
+}
+
 interface UploadedPhoto {
   file: File
   preview: string
   id: string
 }
 
-// Skeleton component for user wardrobe items
-const UserWardrobeSkeleton = () => {
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-      {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-        <Card key={i} className="bg-white border-0 shadow-sm overflow-hidden">
-          <div className="aspect-square bg-gray-200 animate-pulse"></div>
-          <div className="p-3 space-y-2">
-            <div className="h-3 bg-gray-200 rounded w-3/4 animate-pulse"></div>
-            <div className="h-2 bg-gray-200 rounded w-1/2 animate-pulse"></div>
-            <div className="h-2 bg-gray-200 rounded w-1/3 animate-pulse"></div>
-          </div>
-        </Card>
-      ))}
-    </div>
-  )
+// === Лента категорий — главный элемент экрана, "сразу под заголовком" ===
+// Она же навигация/фильтр/витрина: реальные фото вещей вместо белой карточки
+// "Ваш гардероб" + дропдауна сортировки, которые раньше занимали этот блок.
+const RIBBON_CATEGORY_ORDER = [
+  "light-upper",
+  "warm-upper",
+  "dresses-skirts",
+  "pants",
+  "sets",
+  "outerwear",
+  "shoes",
+] as const
+
+const RIBBON_CATEGORY_LABELS: Record<(typeof RIBBON_CATEGORY_ORDER)[number], string> = {
+  "light-upper": "Верх",
+  "warm-upper": "Тёплое",
+  "dresses-skirts": "Платья",
+  pants: "Брюки",
+  sets: "Костюмы",
+  outerwear: "Куртки",
+  shoes: "Обувь",
 }
 
-// Skeleton component for basic wardrobe items
-const BasicItemsSkeleton = () => {
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
-        <Card key={i} className="bg-white border-0 shadow-sm overflow-hidden">
-          <div className="aspect-square bg-gray-200 animate-pulse"></div>
-          <div className="p-3 space-y-2">
-            <div className="h-3 bg-gray-200 rounded w-4/5 animate-pulse"></div>
-            <div className="h-2 bg-gray-200 rounded w-3/5 animate-pulse"></div>
-            <div className="h-2 bg-gray-200 rounded w-2/5 animate-pulse"></div>
-          </div>
-        </Card>
-      ))}
-    </div>
-  )
+interface RibbonCategory {
+  id: string
+  label: string
+  image?: string
 }
 
-// Компонент для превью выбранных фото
-const SelectedPhotosPreview = ({ photos, onRemove }: { photos: UploadedPhoto[]; onRemove: (id: string) => void }) => {
-  if (photos.length === 0) return null
+function buildRibbonCategories(items: WardrobeListItem[]): RibbonCategory[] {
+  const buckets = new Map<string, string | undefined>()
 
-  return (
-    <div className="mb-4">
-      <h3 className="text-sm font-medium text-gray-700 mb-2">Выбранные фото ({photos.length})</h3>
-      <div className="flex gap-2 overflow-x-auto pb-2">
-        {photos.map((photo) => (
-          <div key={photo.id} className="relative flex-shrink-0">
-            <img
-              src={photo.preview || "/placeholder.svg"}
-              alt="Preview"
-              className="w-16 h-16 object-cover rounded-lg border"
-            />
-            <button
-              onClick={() => onRemove(photo.id)}
-              className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center"
-            >
-              ×
-            </button>
+  for (const item of items) {
+    const canonical = normalizeClothingType(item.clothing_type)
+    if (!canonical) continue
+
+    const categoryKey = RIBBON_CATEGORY_ORDER.find((key) =>
+      (clothingCategories[key].types as readonly string[]).includes(canonical),
+    )
+    if (!categoryKey) continue
+
+    if (!buckets.has(categoryKey) || (!buckets.get(categoryKey) && item.image_url)) {
+      buckets.set(categoryKey, item.image_url)
+    }
+  }
+
+  return RIBBON_CATEGORY_ORDER.filter((key) => buckets.has(key)).map((key) => ({
+    id: key,
+    label: RIBBON_CATEGORY_LABELS[key],
+    image: buckets.get(key),
+  }))
+}
+
+function CategoryRibbon({
+  loading,
+  items,
+  active,
+  onSelect,
+}: {
+  loading: boolean
+  items: WardrobeListItem[]
+  active: string
+  onSelect: (id: string) => void
+}) {
+  const categories = useMemo(() => buildRibbonCategories(items), [items])
+
+  // Пустое состояние ленты — скелетоны-шиммер, а не значок камеры по центру:
+  // камера уже есть ниже, в пустом состоянии самой сетки, дублировать не нужно.
+  if (loading) {
+    return (
+      <div className="flex gap-4 mb-4 overflow-x-hidden">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="flex flex-col items-center gap-1.5 shrink-0">
+            <div className="skeleton w-14 h-14 rounded-full" />
+            <div className="skeleton h-2.5 w-9 rounded-full" />
           </div>
         ))}
       </div>
+    )
+  }
+
+  if (categories.length === 0) return null
+
+  return (
+    <div className="flex gap-4 mb-4 overflow-x-auto scrollbar-hide -mx-4 px-4">
+      <button onClick={() => onSelect("all")} className="flex flex-col items-center gap-1.5 shrink-0">
+        <span
+          className={cn(
+            "w-14 h-14 rounded-full flex items-center justify-center bg-ink ring-2 transition-transform duration-press ease-out active:scale-95",
+            active === "all" ? "ring-signal" : "ring-transparent",
+          )}
+        >
+          <LayoutGrid className="w-5 h-5 text-signal-ink" />
+        </span>
+        <span className={cn("text-caption whitespace-nowrap", active === "all" ? "text-ink font-semibold" : "text-ink-2")}>
+          Все
+        </span>
+      </button>
+
+      {categories.map((cat) => {
+        const isActive = active === cat.id
+        return (
+          <button key={cat.id} onClick={() => onSelect(cat.id)} className="flex flex-col items-center gap-1.5 shrink-0">
+            {/* Постоянная волосяная обводка (не только у активной) — иначе на
+                молочно-бежевом гардеробе фото сливаются с --canvas-sunk и кружок
+                читается только по силуэту (артефакт фикстур, но подложка дешёвая). */}
+            <span
+              className={cn(
+                "w-14 h-14 rounded-full overflow-hidden bg-canvas-sunk ring-1 ring-line transition-transform duration-press ease-out active:scale-95",
+                isActive && "ring-2 ring-signal",
+              )}
+            >
+              {cat.image ? (
+                <img src={cat.image} alt={cat.label} className="w-full h-full object-cover" />
+              ) : null}
+            </span>
+            <span className={cn("text-caption whitespace-nowrap", isActive ? "text-ink font-semibold" : "text-ink-2")}>
+              {cat.label}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Skeleton component for basic wardrobe items — тот же язык, что у "Ваших вещей":
+// карточка без обводки/тени, радиус наследуется от Card (18px), утопленные полоски.
+const BasicItemsSkeleton = () => {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((i) => (
+        <Card key={i} className="border-0 overflow-hidden">
+          <div className="skeleton aspect-square" />
+          <div className="p-2.5 space-y-2">
+            <div className="skeleton h-2.5 rounded-full w-4/5" />
+            <div className="skeleton h-2.5 rounded-full w-2/5" />
+          </div>
+        </Card>
+      ))}
     </div>
   )
 }
@@ -123,6 +205,8 @@ export default function WardrobePage() {
   const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(true)
   const [showAllBasicItems, setShowAllBasicItems] = useState(false)
   const [userItemsCount, setUserItemsCount] = useState(0)
+  const [userItems, setUserItems] = useState<WardrobeListItem[]>([])
+  const [hasLoadedItemsOnce, setHasLoadedItemsOnce] = useState(false)
   const [addingItemId, setAddingItemId] = useState<number | null>(null)
   const [refreshUserItems, setRefreshUserItems] = useState(0)
   const [selectedPhotos, setSelectedPhotos] = useState<UploadedPhoto[]>([])
@@ -135,6 +219,7 @@ export default function WardrobePage() {
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "name">("newest")
   const [searchQuery, setSearchQuery] = useState("")
+  const [activeCategory, setActiveCategory] = useState("all")
   const [dominantStyle, setDominantStyle] = useState<string | null>(null)
   const [styleTags, setStyleTags] = useState<string[]>([])
   const [styleCheckOpen, setStyleCheckOpen] = useState(false)
@@ -267,11 +352,14 @@ export default function WardrobePage() {
       params.append("sort", sortBy)
 
       const data = await api.get(`/api/wardrobe-user-items?${params.toString()}`)
-      setUserItemsCount(Array.isArray(data) ? data.length : 0)
+      const items = Array.isArray(data) ? data : []
+      setUserItems(items)
+      setUserItemsCount(items.length)
     } catch (error) {
       console.error("Error fetching user items:", error)
     } finally {
       setIsLoadingUserItems(false)
+      setHasLoadedItemsOnce(true)
     }
   }
 
@@ -394,15 +482,35 @@ export default function WardrobePage() {
     })
   }
 
+  // Поиск и сортировка не показываются, пока вещей мало — сортировать восемь
+  // вещей нечем, а контролы над пустой/короткой сеткой только добавляют хром.
+  const showSearchAndSort = userItemsCount >= 8
+
   return (
-    <div className="min-h-screen bg-background pb-32">
+    // pb-32 здесь дублировал pb-[...96px...] у app/app/layout-client.tsx main —
+    // раунд 5 критика: первый ряд товара срезан таббаром. Сама обрезка идёт не
+    // отсюда (таббар — position:fixed, он перекрывает низ ЛЮБОГО кадра
+    // независимо от скролла), а от избытка хрома НАД сеткой; но лишний нижний
+    // паддинг здесь был реальным найденным дублем — почищено.
+    <div className="min-h-screen bg-background pb-6">
       <div className="px-4 pt-2 pb-6">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">Гардероб</h1>
+        <div className="mb-5">
+          <h1 className="text-h1 text-foreground">Гардероб</h1>
         </div>
 
-        {/* Style profile + Add button */}
+        {/* Лента категорий — сразу под заголовком: навигация, фильтр и витрина
+            реальных вещей одновременно. */}
+        <CategoryRibbon
+          loading={!hasLoadedItemsOnce}
+          items={userItems}
+          active={activeCategory}
+          onSelect={setActiveCategory}
+        />
+
+        {/* Style profile — одна строка, тап открывает разбор в шите. Раньше это
+            была карточка + отдельный ряд чипов-процентов (~145px) — товар на
+            экране гардероба важнее статистики о товаре. */}
         <StyleProfileCard
           dominantStyle={dominantStyle}
           styleTags={styleTags}
@@ -419,78 +527,71 @@ export default function WardrobePage() {
           multiple
         />
 
-        <div className="flex gap-3 mb-6">
-          <Button
-            onClick={handleAddToWardrobe}
-            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium shadow-md"
-          >
+        <div className="flex gap-3 mb-4">
+          <Button onClick={handleAddToWardrobe} className="flex-1 h-12">
             + Добавить
           </Button>
-          <Button
-            onClick={() => setStyleCheckOpen(true)}
-            variant="outline"
-            className="h-12 rounded-2xl px-4 border-border/50"
-            style={{ background: "linear-gradient(to right, rgba(236,157,226,0.08), rgba(137,174,255,0.08))" }}
-          >
-            <Sparkles className="h-4 w-4 mr-1.5" style={{ color: "#A78BFA" }} />
-            <span className="text-sm font-medium">Подойдёт?</span>
+          <Button onClick={() => setStyleCheckOpen(true)} variant="outline" className="h-12 px-4">
+            <Sparkles className="h-4 w-4 mr-1.5 text-ink-2" />
+            <span>Подойдёт?</span>
           </Button>
         </div>
 
-        {/* Фильтры и поиск */}
-        <div className="space-y-3 mb-6">
-          {/* Поиск */}
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Поиск по названию вещи..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-secondary/50 border-border/50 rounded-xl h-11"
-            />
+        {/* Поиск и сортировка — только когда есть что сортировать */}
+        {showSearchAndSort && (
+          <div className="flex gap-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-ink-3 h-4 w-4" />
+              <Input
+                placeholder="Поиск..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-12"
+              />
+            </div>
+
+            <Select value={sortBy} onValueChange={(value: "newest" | "oldest" | "name") => setSortBy(value)}>
+              <SelectTrigger className="flex-1 h-12 rounded-full border-transparent bg-canvas-sunk text-ink">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Сначала новые</SelectItem>
+                <SelectItem value="oldest">Сначала старые</SelectItem>
+                <SelectItem value="name">По названию</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+        )}
 
-          {/* Сортировка */}
-          <Select value={sortBy} onValueChange={(value: "newest" | "oldest" | "name") => setSortBy(value)}>
-            <SelectTrigger className="w-48 bg-secondary/50 border-border/50 rounded-xl">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="newest">Сначала новые</SelectItem>
-              <SelectItem value="oldest">Сначала старые</SelectItem>
-              <SelectItem value="name">По названию</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* User's Wardrobe */}
+        {/* User's Wardrobe — без заголовка "Ваши вещи": дублировал H1 "Гардероб"
+            на этом же экране (раунд 5 критика). */}
         <div className="mb-8">
-          <h2 className="text-lg font-semibold text-foreground tracking-tight mb-4">Ваши вещи</h2>
-          {isLoadingUserItems ? (
-            <UserWardrobeSkeleton />
-          ) : (
-            <UserWardrobeGrid
-              onItemsChange={setUserItemsCount}
-              refreshTrigger={refreshUserItems}
-              searchQuery={searchQuery}
-              sortBy={sortBy}
-              onAddFirstItem={handleAddToWardrobe}
-            />
-          )}
+          <UserWardrobeGrid
+            onItemsChange={setUserItemsCount}
+            refreshTrigger={refreshUserItems}
+            searchQuery={searchQuery}
+            sortBy={sortBy}
+            categoryFilter={activeCategory}
+            onAddFirstItem={handleAddToWardrobe}
+          />
         </div>
 
         {/* Basic Items */}
         <div>
-          <h2 className="text-lg font-semibold text-foreground tracking-tight mb-4">Рекомендуемые базовые вещи</h2>
+          <h2 className="text-h2 text-foreground mb-4">Рекомендуемые базовые вещи</h2>
 
           {isLoadingBasicItems ? (
             <BasicItemsSkeleton />
           ) : (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {displayedBasicItems.map((item) => (
-                  <Card key={item.id} className="bg-white border-0 shadow-sm overflow-hidden relative group">
-                    <div className="aspect-square bg-gray-100 flex items-center justify-center relative">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+                {displayedBasicItems.map((item, index) => (
+                  <Card
+                    key={item.id}
+                    className="border-0 overflow-hidden relative group animate-fade-up"
+                    style={{ animationDelay: `${Math.min(index, 7) * 45}ms` }}
+                  >
+                    <div className="aspect-square bg-canvas-sunk flex items-center justify-center relative">
                       {item.image_url ? (
                         <img
                           src={item.image_url || "/placeholder.svg"}
@@ -498,19 +599,20 @@ export default function WardrobePage() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <span className="text-2xl">👕</span>
+                        <Shirt className="h-6 w-6 text-ink-3" strokeWidth={1.75} aria-hidden="true" />
                       )}
 
                       {/* Кнопка добавления - всегда видна на мобильных и планшетах, при наведении на десктопе */}
-                      <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                      <div className="absolute inset-0 bg-ink/20 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <Button
                           onClick={() => handleAddBaseItem(item)}
                           size="sm"
                           disabled={addingItemId === item.id}
-                          className="bg-white text-gray-900 hover:bg-gray-100 shadow-lg text-xs px-2 py-1 h-7"
+                          variant="secondary"
+                          className="text-xs px-2 py-1 h-7"
                         >
                           {addingItemId === item.id ? (
-                            <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin mr-1" />
+                            <div className="w-3 h-3 border border-ink-3 border-t-transparent rounded-full animate-spin mr-1" />
                           ) : (
                             <Plus className="h-3 w-3 mr-1" />
                           )}
@@ -518,18 +620,13 @@ export default function WardrobePage() {
                         </Button>
                       </div>
                     </div>
-                    <div className="p-3">
-                      <h3 className="font-medium text-gray-900 text-xs mb-1 line-clamp-2 leading-tight">
+                    <div className="px-2.5 pt-2 pb-2.5">
+                      <h3 className="text-caption font-semibold text-ink truncate">
                         {item.item_name}
                       </h3>
                       {item.description && (
-                        <p className="text-xs text-gray-500 mb-2 line-clamp-2 leading-tight">{item.description}</p>
+                        <p className="text-caption text-ink-2 truncate mt-0.5">{item.description}</p>
                       )}
-                      <div className="flex flex-wrap gap-1">
-                        <span className="text-xs text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded text-center">
-                          {item.clothing_type}
-                        </span>
-                      </div>
                     </div>
                   </Card>
                 ))}
@@ -537,18 +634,14 @@ export default function WardrobePage() {
 
               {basicItems.length === 0 && (
                 <div className="text-center py-8">
-                  <p className="text-gray-500">Все базовые вещи уже добавлены в ваш гардероб!</p>
+                  <p className="text-ink-2">Все базовые вещи уже добавлены в ваш гардероб!</p>
                 </div>
               )}
 
-              {/* Кнопка показать/с��рыть все под сеткой */}
+              {/* Кнопка показать/скрыть все под сеткой */}
               {basicItems.length > 12 && (
                 <div className="flex justify-center mt-6">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowAllBasicItems(!showAllBasicItems)}
-                    className="bg-transparent"
-                  >
+                  <Button variant="outline" onClick={() => setShowAllBasicItems(!showAllBasicItems)}>
                     {showAllBasicItems ? (
                       <>
                         Скрыть <ChevronUp className="h-4 w-4 ml-1" />

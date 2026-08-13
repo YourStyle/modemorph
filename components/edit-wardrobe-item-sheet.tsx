@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
+import { Shirt } from "lucide-react"
 import { CommonSheet } from "./common-sheet"
 import {api} from "@/lib/api-client";
 
@@ -282,7 +283,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
             {/* Мобильная версия - фото сверху */}
             <div className="block md:hidden">
               <div className="flex flex-col items-center mb-6">
-                <div className="w-40 h-40 bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
+                <div className="w-40 h-40 bg-canvas-sunk rounded-lg overflow-hidden flex items-center justify-center">
                   {item.image_url ? (
                     <img
                       src={item.image_url || "/placeholder.svg"}
@@ -290,7 +291,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <span className="text-4xl">👕</span>
+                    <Shirt className="h-10 w-10 text-ink-3" strokeWidth={1.75} aria-hidden="true" />
                   )}
                 </div>
                 <p className="text-[#101010] text-sm mt-2 text-center font-medium">{item.item_name}</p>
@@ -407,7 +408,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
               {/* Фото слева - 50% */}
               <div className="flex-1 flex flex-col items-center">
                 <Label className="text-[#101010] mb-2">Фото</Label>
-                <div className="w-full max-w-48 aspect-square bg-gray-600 rounded-lg overflow-hidden flex items-center justify-center">
+                <div className="w-full max-w-48 aspect-square bg-canvas-sunk rounded-lg overflow-hidden flex items-center justify-center">
                   {item.image_url ? (
                     <img
                       src={item.image_url || "/placeholder.svg"}
@@ -415,7 +416,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <span className="text-4xl">👕</span>
+                    <Shirt className="h-10 w-10 text-ink-3" strokeWidth={1.75} aria-hidden="true" />
                   )}
                 </div>
                 <p className="text-[#101010] text-sm mt-2 text-center font-medium">{item.item_name}</p>

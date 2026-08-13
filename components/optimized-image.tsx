@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import Image from "next/image"
+import { ImageOff } from "lucide-react"
 import { cn } from "@/lib/utils"
 import {
   createOptimizedImageUrl,
@@ -162,18 +163,18 @@ export function OptimizedImage({
     return (
       <div
         className={cn(
-          "flex flex-col items-center justify-center bg-gray-100 text-gray-400 text-xs border border-gray-200 rounded",
+          "flex flex-col items-center justify-center bg-canvas-sunk text-ink-3 text-xs border border-line rounded",
           className,
         )}
         style={{ width, height }}
       >
-        <div className="text-2xl mb-1">📷</div>
+        <ImageOff className="h-6 w-6 mb-1" strokeWidth={1.75} aria-hidden="true" />
         <div className="text-center px-2">
           <div>Изображение</div>
           <div>недоступно</div>
         </div>
         {showConnectionInfo && (
-          <div className="text-xs text-gray-300 mt-1">
+          <div className="text-xs text-ink-3 mt-1">
             {connectionType} {useProxy ? "(proxy)" : "(direct)"}
           </div>
         )}
@@ -182,16 +183,16 @@ export function OptimizedImage({
   }
 
   return (
-    <div className={cn("relative overflow-hidden bg-gray-100", className)}>
+    <div className={cn("relative overflow-hidden bg-canvas-sunk", className)}>
       {/* Скелет��н во время загрузки */}
       {isLoading && (
         <div
-          className="absolute inset-0 bg-gradient-to-r from-gray-200 via-gray-300 to-gray-200 animate-pulse"
+          className="skeleton absolute inset-0"
           style={{ width, height }}
         >
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-gray-400 text-xs">
-              {isVerySlowConnection() ? "Загрузка..." : useProxy ? "Через прокси..." : "📷"}
+            <div className="text-ink-3 text-caption">
+              {isVerySlowConnection() ? "Загрузка..." : useProxy ? "Через прокси..." : ""}
             </div>
           </div>
         </div>

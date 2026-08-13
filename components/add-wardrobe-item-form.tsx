@@ -14,28 +14,30 @@ import { toast } from "sonner"
 import { ColorPicker } from "./color-picker"
 import { useRouter } from "next/navigation"
 import { api } from "@/lib/api-client"
+import { getClothingTypesByCategory } from "@/lib/clothing-types"
 
-const CLOTHING_TYPES = [
-  "верхняя", // футболка, рубашка, свитер, худи, кардиган, пиджак и т.п.
-  "нижняя", // брюки, джинсы, шорты, юбка
-  "платье",
-  "комбинезон",
-  "верхняя одежда", // пальто, куртка, пуховик, плащ
-  "обувь",
-  "аксессуар", // сумка, ремень, шапка, шарф, украшения
-  "часы",
-  "головной убор",
-  "спорт",
-] as const
+// Форма писала свой русский словарь ('верхняя'/'нижняя'/'аксессуар'/...), который
+// не понимает ни один потребитель: слот вещи резолвится по _SLOT_MAP
+// (backend/clothing_taxonomy.py), а всё, чего там нет, молча выпадает из образов.
+// Замер прод-БД 13.08.2026: 43 вещи пользователей и 13 вещей каталога лежали с
+// такими значениями. Теперь селект отдаёт канонические слаги.
+const CLOTHING_TYPE_OPTIONS = getClothingTypesByCategory()
 
 const GENDER_OPTIONS = ["male", "female", "unisex"] as const
 
-const AI_PART_MAPPING: Record<string, string> = {
-  upper: "верхняя",
-  lower: "нижняя",
-  accessories: "аксессуар",
+// Gemini отдаёт грубую зону (upper/lower/dress/accessories), а не тип одежды.
+// Раньше её писали прямо в clothing_type — отсюда 'верхняя' и 'аксессуар' в БД.
+// Теперь это только подпись в списке распознанного; тип выбирает пользователь
+// из канонического словаря, либо (для 'платье') он однозначен.
+const AI_PART_LABELS: Record<string, string> = {
+  upper: "верх",
+  lower: "низ",
   dress: "платье",
+  accessories: "аксессуар",
 }
+
+// Единственная зона, у которой есть однозначный слаг.
+const AI_PART_TO_TYPE: Record<string, string> = { dress: "dress" }
 
 interface BasicItem {
   id: number
@@ -226,7 +228,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       shade: item.shade || prev.shade,
       has_print: item.has_print === "true",
       has_details: item.has_details !== "false" && item.has_details !== "",
-      clothing_type: AI_PART_MAPPING[item.part] || prev.clothing_type,
+      clothing_type: AI_PART_TO_TYPE[item.part] || prev.clothing_type,
     }))
 
     if (item.img_url) {
@@ -423,7 +425,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                               <p className="text-xs text-gray-600 mt-1 line-clamp-2">{item.description}</p>
                               <div className="flex gap-2 mt-2 text-xs text-gray-500">
                                 <span className="bg-gray-100 px-2 py-1 rounded">
-                                  {AI_PART_MAPPING[item.part] || item.part}
+                                  {AI_PART_LABELS[item.part] || item.part}
                                 </span>
                                 <span className="bg-gray-100 px-2 py-1 rounded">{item.material}</span>
                                 {item.img_url && (
@@ -493,11 +495,13 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                   <SelectValue placeholder="Выберите тип одежды" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CLOTHING_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
+                  {CLOTHING_TYPE_OPTIONS.map((group) =>
+                    group.types.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    )),
+                  )}
                 </SelectContent>
               </Select>
             </div>

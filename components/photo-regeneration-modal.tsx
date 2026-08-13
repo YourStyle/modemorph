@@ -4,7 +4,7 @@ import type React from "react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { ChevronLeft, ChevronRight, X, Upload, Edit3 } from "lucide-react"
+import { ChevronLeft, ChevronRight, X, Upload, Edit3, Check } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -136,12 +136,12 @@ export function PhotoRegenerationModal({
           <div className="h-full flex flex-col">
             <div className="p-6 border-b">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Примеры фотографий</h2>
+                <h2 className="text-h2 text-ink">Примеры фотографий</h2>
                 <Button variant="ghost" size="sm" onClick={handleClose}>
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" strokeWidth={1.75} />
                 </Button>
               </div>
-              <p className="text-sm text-gray-600 mt-2">
+              <p className="text-body text-ink-2 mt-2">
                 Посмотрите примеры хороших и плохих фотографий для лучшего результата
               </p>
             </div>
@@ -151,46 +151,49 @@ export function PhotoRegenerationModal({
                 <img
                   src={currentExample.url || "/placeholder.svg"}
                   alt={currentExample.title}
-                  className="w-full h-80 object-cover rounded-lg"
+                  className="w-full h-80 object-cover rounded-[14px]"
                 />
 
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-transparent"
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 h-9 w-9 glass text-ink"
                   onClick={prevExample}
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
                 </Button>
 
                 <Button
-                  variant="outline"
-                  size="sm"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent"
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 glass text-ink"
                   onClick={nextExample}
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
                 </Button>
 
                 <Badge
-                  variant={currentExample.type === "good" ? "default" : "destructive"}
-                  className="absolute top-2 left-2"
+                  variant="secondary"
+                  className="absolute top-2 left-2 gap-1 glass text-ink border-transparent"
                 >
+                  {currentExample.type === "good" ? <Check className="h-3 w-3" strokeWidth={2} /> : <X className="h-3 w-3" strokeWidth={2} />}
                   {currentExample.type === "good" ? "Хорошо" : "Плохо"}
                 </Badge>
               </div>
 
               <div className="text-center mt-6 max-w-md">
-                <h3 className="font-semibold text-lg">{currentExample.title}</h3>
-                <p className="text-gray-600 text-sm mt-2">{currentExample.description}</p>
+                <h3 className="text-h2 text-ink">{currentExample.title}</h3>
+                <p className="text-body text-ink-2 mt-2">{currentExample.description}</p>
               </div>
 
               <div className="flex gap-2 mt-4">
                 {EXAMPLE_PHOTOS.map((_, index) => (
                   <button
                     key={index}
-                    className={`w-2 h-2 rounded-full transition-colors ${
-                      index === currentExampleIndex ? "bg-blue-500" : "bg-gray-300"
+                    className={`w-2 h-2 rounded-full transition-transform duration-press ${
+                      index === currentExampleIndex ? "bg-signal scale-125" : "bg-canvas-sunk"
                     }`}
                     onClick={() => setCurrentExampleIndex(index)}
                   />
@@ -199,10 +202,10 @@ export function PhotoRegenerationModal({
             </div>
 
             <div className="p-6 border-t flex gap-3">
-              <Button variant="outline" onClick={handleClose} className="flex-1 bg-transparent">
+              <Button variant="outline" onClick={handleClose} className="flex-1">
                 Отмена
               </Button>
-              <Button onClick={() => setCurrentStep("upload")} className="flex-1">
+              <Button variant="signal" onClick={() => setCurrentStep("upload")} className="flex-1">
                 Генерация
               </Button>
             </div>
@@ -214,18 +217,18 @@ export function PhotoRegenerationModal({
           <div className="h-full flex flex-col">
             <div className="p-6 border-b">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Загрузить фото</h2>
+                <h2 className="text-h2 text-ink">Загрузить фото</h2>
                 <Button variant="ghost" size="sm" onClick={handleClose}>
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" strokeWidth={1.75} />
                 </Button>
               </div>
             </div>
 
             <div className="flex-1 flex flex-col items-center justify-center p-6">
               <div className="w-full max-w-md">
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
-                  <p className="text-sm text-gray-600 mb-4">Выберите фото для улучшения</p>
+                <div className="border-2 border-dashed border-line rounded-[14px] p-8 text-center">
+                  <Upload className="mx-auto h-12 w-12 text-ink-3 mb-4" strokeWidth={1.75} />
+                  <p className="text-body text-ink-2 mb-4">Выберите фото для улучшения</p>
                   <input
                     type="file"
                     accept="image/*"
@@ -239,9 +242,9 @@ export function PhotoRegenerationModal({
                 </div>
 
                 {selectedFile && (
-                  <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm font-medium">Выбранный файл:</p>
-                    <p className="text-sm text-gray-600">{selectedFile.name}</p>
+                  <div className="mt-4 p-4 bg-canvas-sunk rounded-[14px]">
+                    <p className="text-body font-medium text-ink">Выбранный файл:</p>
+                    <p className="text-body text-ink-2">{selectedFile.name}</p>
                   </div>
                 )}
               </div>
@@ -251,7 +254,7 @@ export function PhotoRegenerationModal({
               <Button variant="outline" onClick={() => setCurrentStep("examples")} className="flex-1">
                 Назад
               </Button>
-              <Button onClick={handleGenerate} disabled={!selectedFile || isRegenerating} className="flex-1">
+              <Button variant="signal" onClick={handleGenerate} disabled={!selectedFile || isRegenerating} className="flex-1">
                 {isRegenerating ? "Генерация..." : "Сгенерировать"}
               </Button>
             </div>
@@ -263,9 +266,9 @@ export function PhotoRegenerationModal({
           <div className="h-full flex flex-col">
             <div className="p-6 border-b">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold">Результат генерации</h2>
+                <h2 className="text-h2 text-ink">Результат генерации</h2>
                 <Button variant="ghost" size="sm" onClick={handleClose}>
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4" strokeWidth={1.75} />
                 </Button>
               </div>
             </div>
@@ -277,15 +280,15 @@ export function PhotoRegenerationModal({
                     <img
                       src={regenerationResult.imageUrl || "/placeholder.svg"}
                       alt="Результат генерации"
-                      className="w-full h-80 object-cover rounded-lg"
+                      className="w-full h-80 object-cover rounded-[14px]"
                     />
                     <Button
-                      variant="secondary"
+                      variant="ghost"
                       size="sm"
-                      className="absolute top-2 right-2"
+                      className="absolute top-2 right-2 glass text-ink"
                       onClick={() => setCurrentStep("editor")}
                     >
-                      <Edit3 className="h-4 w-4 mr-1" />
+                      <Edit3 className="h-4 w-4 mr-1" strokeWidth={1.75} />
                       Редактировать
                     </Button>
                   </div>
@@ -342,10 +345,10 @@ export function PhotoRegenerationModal({
             </div>
 
             <div className="p-6 border-t flex gap-3">
-              <Button variant="outline" onClick={handleClose} className="flex-1 bg-transparent">
+              <Button variant="outline" onClick={handleClose} className="flex-1">
                 Отмена
               </Button>
-              <Button onClick={handleClose} className="flex-1">
+              <Button variant="signal" onClick={handleClose} className="flex-1">
                 Сохранить
               </Button>
             </div>

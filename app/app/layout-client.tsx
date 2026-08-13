@@ -46,8 +46,12 @@ export default function AppClientLayout({
   return (
     <div className="min-h-screen bg-background">
       {!hideTopNavigation && <TopNavigation />}
+      {/* ponytail: nav height hardcoded in the padding; move to a --nav-h token if the bar resizes */}
       <main
-        className={cn("pt-0 max-w-7xl m-auto", isAssistant ? "pb-0" : "pb-10")}
+        className={cn(
+          "pt-0 max-w-7xl m-auto",
+          isAssistant ? "pb-0" : "pb-[calc(env(safe-area-inset-bottom,0px)+96px)]",
+        )}
         style={isTmaIos && !hideTopNavigation ? { paddingTop: "calc(env(safe-area-inset-top, 0px) + 70px)" } : undefined}
       >
         {children}

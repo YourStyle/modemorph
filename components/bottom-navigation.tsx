@@ -2,87 +2,75 @@
 
 import Link from "next/link"
 import {usePathname} from "next/navigation"
-import {LayoutGrid, Shirt, Sparkles, Bookmark, Bot} from 'lucide-react'
+import {LayoutGrid, Shirt, Bot, Sparkles, Bookmark} from 'lucide-react'
 import {cn} from "@/lib/utils"
-import {AIAssistantLoader} from "./ai-assistant-loader"
-
 
 const navItems = [
     {href: "/app", icon: LayoutGrid, label: "Подборки"},
     {href: "/app/wardrobe", icon: Shirt, label: "Одежда"},
-    {href: "/app/ai-assistant", icon: Bot, label: "MM", isAI: true},
+    {href: "/app/ai-assistant", icon: Bot, label: "MM"},
     {href: "/app/inspiration", icon: Sparkles, label: "Идеи"},
     {href: "/app/looks", icon: Bookmark, label: "Образы"},
 ]
 
+// Один штрих на всё: активный пункт отличается ТОЛЬКО цветом (--signal), не
+// заливкой и не толщиной линии — иначе ряд иконок читается как три разных манеры.
+const ICON_STROKE = 1.75
+
 export function BottomNavigation() {
     const pathname = usePathname()
+    const foundIndex = navItems.findIndex((item) => pathname === item.href)
+    const activeIndex = foundIndex === -1 ? 0 : foundIndex
 
     return (
-        <div className="fixed bottom-0 left-0 right-0 z-50 pb-4">
-            <div className="max-w-md mx-auto px-4">
-                <nav className="flex items-center justify-center">
-                    <div
-                        className="relative rounded-full px-6 py-3 md:px-8 md:py-4 flex items-center justify-center gap-2 overflow-hidden"
-                        style={{
-                            background: 'rgba(17, 24, 39, 0.7)',
-                            backdropFilter: 'blur(20px) saturate(180%)',
-                            WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 1px 0 0 rgba(255, 255, 255, 0.1)',
-                            border: '1px solid rgba(255, 255, 255, 0.08)',
-                        }}
-                    >
-                        {/* Gradient overlay для эффекта жидкости */}
-                        <div
-                            className="absolute inset-0 rounded-full pointer-events-none"
-                            style={{
-                                background: 'radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.05) 0%, transparent 50%)',
-                            }}
-                        />
-                        {navItems.map((item) => {
-                            const isActive = pathname === item.href
-                            const Icon = item.icon
+        // Уровень 1 liquid glass (test/gauntlet/design/LIQUID_GLASS.md) — прижатая к низу
+        // стеклянная панель на весь борт, без плавающей пилюли. glass-refract добавляет
+        // преломление уровня 2 только там, где backdrop-filter: url() поддержан (Chromium).
+        // Единственный акцент бара — цвет активной иконки/подписи, больше нигде --signal нет.
+        <nav
+            aria-label="Основная навигация"
+            // glass-strong, а не glass: бар стоит над сеткой фотографий, и на .62 сквозь
+            // него просвечивала вещь — мутное пятно садилось прямо под подпись вкладки
+            className="glass-strong glass-refract fixed inset-x-0 bottom-0 z-50 will-change-transform"
+            style={{paddingBottom: "env(safe-area-inset-bottom, 0px)"}}
+        >
+            <div className="grid grid-cols-5">
+                {navItems.map((item, index) => {
+                    const isActive = index === activeIndex
+                    const Icon = item.icon
 
-
-                            return (
-                                <Link
+                    return (
+                        <Link
+                            key={item.href}
+                            href={item.href}
+                            aria-current={isActive ? "page" : undefined}
+                            className="flex min-w-0 flex-col items-center justify-center gap-0.5 pt-2 pb-1.5"
+                        >
+                            <Icon
+                                className="h-6 w-6 transition-colors duration-[var(--dur-press)]"
+                                style={{color: isActive ? "hsl(var(--signal))" : "hsl(var(--ink-3))"}}
+                                strokeWidth={ICON_STROKE}
+                                aria-hidden="true"
+                            />
+                            {/* Whering: подпись только под активным пунктом — заодно чинит обрезание текста.
+                                Живёт внутри линии иконок, не упирается в safe-area: bar-контейнер уже
+                                добавляет env(safe-area-inset-bottom) отдельным paddingBottom снаружи. */}
+                            {isActive && (
+                                <span
                                     key={item.href}
-                                    href={item.href}
                                     className={cn(
-                                        "flex flex-col items-center gap-1 transition-colors relative group min-w-[60px] md:min-w-[80px] z-10",
-                                        isActive ? "text-white" : "text-gray-400 hover:text-gray-300",
+                                        "animate-in fade-in slide-in-from-bottom-1 text-[10px] font-medium leading-none",
+                                        "duration-200 ease-[var(--ease-out)]",
                                     )}
+                                    style={{color: "hsl(var(--signal))"}}
                                 >
-                                    {item.isAI ? (
-                                        <AIAssistantLoader
-                                            size={isActive ? 36 : 32}
-                                            className={cn("transition-all duration-200", isActive && "scale-110")}
-                                        />
-                                    ) : (
-                                        <Icon
-                                            className={cn(
-                                                "transition-all duration-200",
-                                                "w-6 h-6 md:w-7 md:h-7",
-                                            )}
-                                        />
-                                    )}
-                                    <span
-                                        className={cn(
-                                            "text-xs font-medium transition-all duration-20 md:block text-center",
-                                        )}
-                                    >
-                    {item.label}
-                  </span>
-                                    {isActive && !item.isAI && (
-                                        <div
-                                            className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-1 h-1 bg-white rounded-full"/>
-                                    )}
-                                </Link>
-                            )
-                        })}
-                    </div>
-                </nav>
+                                    {item.label}
+                                </span>
+                            )}
+                        </Link>
+                    )
+                })}
             </div>
-        </div>
+        </nav>
     )
 }

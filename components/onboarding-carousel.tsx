@@ -1,27 +1,24 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { useEffect, useState } from "react"
+import { ChevronLeft, ChevronRight, Shirt, Sparkles, BarChart3 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const onboardingSlides = [
   {
     title: "Умный гардероб",
-    subtitle: "Организуйте свою одежду в цифровом виде и никогда не забывайте, что у вас есть",
-    image: "/placeholder.svg?height=300&width=300&text=Smart+Wardrobe",
-    icon: "👗",
+    subtitle: "Соберите одежду в цифровом виде и всегда помните, что у вас есть",
+    Icon: Shirt,
   },
   {
     title: "Идеальные образы",
-    subtitle: "Получайте рекомендации нарядов на основе погоды и мероприятий",
-    image: "/placeholder.svg?height=300&width=300&text=Perfect+Outfits",
-    icon: "✨",
+    subtitle: "Получайте подборки нарядов под погоду и мероприятие",
+    Icon: Sparkles,
   },
   {
     title: "Аналитика стиля",
-    subtitle: "Отслеживайте свои предпочтения в стиле и открывайте новые сочетания",
-    image: "/placeholder.svg?height=300&width=300&text=Style+Analytics",
-    icon: "📊",
+    subtitle: "Следите за предпочтениями и открывайте новые сочетания",
+    Icon: BarChart3,
   },
 ]
 
@@ -33,11 +30,15 @@ export function OnboardingCarousel({ compact = false }: OnboardingCarouselProps)
   const [currentSlide, setCurrentSlide] = useState(0)
 
   useEffect(() => {
+    // Компактная лента живёт над формой входа — автопрокрутка там только
+    // отвлекает от полей. На весь экран (десктоп) карусель — единственный
+    // контент слева, там автоплей уместен.
+    if (compact) return
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % onboardingSlides.length)
     }, 4000)
     return () => clearInterval(timer)
-  }, [])
+  }, [compact])
 
   const nextSlide = () => {
     setCurrentSlide((prev) => (prev + 1) % onboardingSlides.length)
@@ -47,65 +48,82 @@ export function OnboardingCarousel({ compact = false }: OnboardingCarouselProps)
     setCurrentSlide((prev) => (prev - 1 + onboardingSlides.length) % onboardingSlides.length)
   }
 
-  const currentSlideData = onboardingSlides[currentSlide]
-
   return (
-    <div className={`relative overflow-hidden bg-gray-50 ${compact ? "h-80" : "h-full"}`}>
-      <div className="h-full flex flex-col items-center justify-center p-8 text-gray-900 transition-all duration-500">
-        {/* Navigation arrows for desktop */}
-        {!compact && (
-          <>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 hover:bg-gray-200 z-10"
-              onClick={prevSlide}
-            >
-              <ChevronLeft className="h-6 w-6" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 hover:bg-gray-200 z-10"
-              onClick={nextSlide}
-            >
-              <ChevronRight className="h-6 w-6" />
-            </Button>
-          </>
-        )}
+    <div
+      className={`relative overflow-hidden bg-canvas-sunk ${compact ? "h-60" : "h-full"}`}
+    >
+      {/* Navigation arrows for desktop */}
+      {!compact && (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute left-2 top-1/2 z-10 -translate-y-1/2 text-ink hover:bg-canvas"
+            onClick={prevSlide}
+            aria-label="Предыдущий слайд"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-2 top-1/2 z-10 -translate-y-1/2 text-ink hover:bg-canvas"
+            onClick={nextSlide}
+            aria-label="Следующий слайд"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </Button>
+        </>
+      )}
 
-        {/* Content */}
-        <div className="text-center max-w-md mx-auto">
-          <div className={`mb-8 ${compact ? "h-32" : "h-64"} flex flex-col items-center justify-center`}>
-            <div className={`${compact ? "text-4xl mb-4" : "text-6xl mb-6"}`}>{currentSlideData.icon}</div>
-            <img
-              src={currentSlideData.image || "/placeholder.svg"}
-              alt={currentSlideData.title}
-              className={`${compact ? "h-16 w-16" : "h-32 w-32"} object-contain opacity-20 rounded-2xl`}
-            />
-          </div>
-
-          <h2 className={`font-bold mb-4 text-gray-900 ${compact ? "text-2xl" : "text-4xl"}`}>
-            {currentSlideData.title}
-          </h2>
-
-          <p className={`text-gray-600 leading-relaxed ${compact ? "text-sm" : "text-lg"}`}>
-            {currentSlideData.subtitle}
-          </p>
-        </div>
-
-        {/* Pagination dots */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex space-x-2">
-          {onboardingSlides.map((_, index) => (
-            <button
-              key={index}
-              className={`h-2 rounded-full transition-all duration-300 ${
-                index === currentSlide ? "bg-gray-900 w-6" : "bg-gray-400 w-2"
+      {/* Track — slides on transform only, никаких прыжков высоты */}
+      <div
+        className="flex h-full ease-out"
+        style={{
+          width: `${onboardingSlides.length * 100}%`,
+          transform: `translateX(-${(100 / onboardingSlides.length) * currentSlide}%)`,
+          transitionProperty: "transform",
+          transitionDuration: "var(--dur-sheet)",
+          transitionTimingFunction: "var(--ease-out)",
+        }}
+      >
+        {onboardingSlides.map(({ title, subtitle, Icon }, index) => (
+          <div
+            key={index}
+            className="flex h-full flex-col items-center justify-center px-8 text-center"
+            style={{ width: `${100 / onboardingSlides.length}%` }}
+            aria-hidden={index !== currentSlide}
+          >
+            <div
+              className={`flex items-center justify-center rounded-full bg-canvas text-ink ${
+                compact ? "mb-4 h-14 w-14" : "mb-6 h-20 w-20"
               }`}
-              onClick={() => setCurrentSlide(index)}
-            />
-          ))}
-        </div>
+            >
+              <Icon className={compact ? "h-6 w-6" : "h-9 w-9"} strokeWidth={1.75} />
+            </div>
+
+            <h2 className={compact ? "text-h2 text-ink" : "text-display text-ink"}>{title}</h2>
+            <p className={`mt-2 max-w-[280px] text-ink-2 ${compact ? "text-caption" : "text-body"}`}>
+              {subtitle}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Pagination dots — цвет и transform, без анимации width/height */}
+      <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
+        {onboardingSlides.map((_, index) => (
+          <button
+            key={index}
+            type="button"
+            aria-label={`Слайд ${index + 1}`}
+            aria-current={index === currentSlide}
+            className={`h-1.5 w-1.5 rounded-full transition-[transform,background-color] duration-press ease-out ${
+              index === currentSlide ? "scale-125 bg-signal" : "scale-100 bg-line"
+            }`}
+            onClick={() => setCurrentSlide(index)}
+          />
+        ))}
       </div>
     </div>
   )

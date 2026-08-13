@@ -2,9 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactElement } from "react"
 import Image from "next/image"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Bookmark, BookmarkCheck, ChevronDown, ChevronUp, Heart, Loader2, Zap } from "lucide-react"
+import { Bookmark, ChevronDown, ChevronUp, Heart, Loader2, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { SubscriptionSheet } from "@/components/subscription-sheet"
@@ -554,12 +552,26 @@ export default function InspirationPage(): ReactElement {
   const remaining = Math.max(0, (current?.items?.length ?? 0) - visibleItems.length)
   const currentPreview = getPreviewSrc(current)
 
+  // Тёмная роль тех же токенов (не отдельная палитра): полноэкранное фото
+  // живёт на тёмном холсте лучше, чем на тёплой бумаге, но --canvas/--ink/--line
+  // здесь — те же переменные, просто переопределены локально для ветки ленты.
+  // .glass и остальные утилиты наследуют их через каскад без единой правки в globals.css.
+  const darkFeedVars: React.CSSProperties = {
+    ["--canvas" as any]: "0 0% 6%",
+    ["--canvas-sunk" as any]: "0 0% 13%",
+    ["--surface" as any]: "0 0% 6%",
+    ["--ink" as any]: "0 0% 97%",
+    ["--ink-2" as any]: "0 0% 72%",
+    ["--ink-3" as any]: "0 0% 48%",
+    ["--line" as any]: "0 0% 20%",
+  }
+
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black text-white grid place-items-center">
-        <div className="flex items-center gap-3 text-neutral-300">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span>Загрузка</span>
+      <div className="fixed inset-0 overflow-hidden bg-canvas" style={darkFeedVars}>
+        <div className="skeleton absolute inset-0" />
+        <div className="absolute inset-x-0 bottom-24 flex justify-center px-6">
+          <span className="text-caption text-ink-2">Подбираем образы</span>
         </div>
       </div>
     )
@@ -567,9 +579,15 @@ export default function InspirationPage(): ReactElement {
 
   if (error) {
     return (
-      <div className="fixed inset-0 bg-black text-white grid place-items-center p-4">
-        <div className="text-center">
-          <div className="text-neutral-300">{error}</div>
+      <div className="fixed inset-0 grid place-items-center bg-canvas p-6" style={darkFeedVars}>
+        <div className="max-w-xs text-center">
+          <p className="text-body text-ink-2 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="h-10 rounded-full border border-line px-5 text-caption font-medium text-ink transition-transform duration-press active:scale-[0.98]"
+          >
+            Повторить
+          </button>
         </div>
       </div>
     )
@@ -577,37 +595,37 @@ export default function InspirationPage(): ReactElement {
 
   return (
     <div
-      className="fixed inset-0 z-[1000] bg-black text-white overflow-hidden overscroll-none box-border"
+      className="fixed inset-0 z-[1000] bg-canvas text-ink overflow-hidden overscroll-none box-border"
       style={{
         paddingBottom: "var(--sab, env(safe-area-inset-bottom, 0px))",
         paddingTop: isDesktop ? "0" : "var(--sat, env(safe-area-inset-top, 0px))",
+        ...darkFeedVars,
       }}
     >
-      {/* Верхние вкладки */}
-      <div className="absolute top-0 left-0 right-0 z-[3000] bg-black/80 backdrop-blur border-b border-neutral-900">
+      {/* Верхние вкладки — стеклянный хром (LIQUID_GLASS.md: закреплённая шапка),
+          акцент только на активном табе, как «активная дата» из BAR.md */}
+      <div className="glass absolute top-0 left-0 right-0 z-[3000] border-b border-line">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
-          <div className="flex justify-center gap-8 pt-[95px]">
+          <div className="flex justify-center gap-8 pt-[95px] pb-3">
             <button
               className={cn(
-                "px-2 pb-1 text-lg font-semibold transition-colors tracking-wide",
-                activeTab === "popular" ? "text-white" : "text-neutral-400 hover:text-white",
+                "px-1 pb-1.5 text-body font-semibold tracking-tight transition-colors duration-press",
+                activeTab === "popular" ? "text-signal" : "text-ink-3",
               )}
-
               onClick={() => setActiveTab("popular")}
             >
               Популярные
-              {activeTab === "popular" && <div className="h-0.5 bg-white rounded mt-1" />}
+              {activeTab === "popular" && <div className="h-0.5 mt-1.5 rounded-full bg-signal" />}
             </button>
             <button
               className={cn(
-                "px-2 pb-1 text-lg font-semibold transition-colors tracking-wide",
-                activeTab === "liked" ? "text-white" : "text-neutral-400 hover:text-white",
+                "px-1 pb-1.5 text-body font-semibold tracking-tight transition-colors duration-press",
+                activeTab === "liked" ? "text-signal" : "text-ink-3",
               )}
-
               onClick={() => setActiveTab("liked")}
             >
               Понравившиеся
-              {activeTab === "liked" && <div className="h-0.5 bg-white rounded mt-1" />}
+              {activeTab === "liked" && <div className="h-0.5 mt-1.5 rounded-full bg-signal" />}
             </button>
           </div>
         </div>
@@ -615,31 +633,32 @@ export default function InspirationPage(): ReactElement {
 
       <main className="absolute left-0 right-0 bottom-0 top-[135px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
         {/* Контейнер карточек: вертикальный скролл, снап к экрану, плавный скролл */}
-        <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-neutral-950 select-none">
+        <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-canvas select-none">
           {/* Оверлей лимита */}
           {isBlurred && (
-            <div className="absolute inset-0 z-[4000] bg-black/80 backdrop-blur-sm flex items-center justify-center">
-              <div className="text-center p-6 bg-gray-900/90 rounded-xl border border-gray-700 max-w-sm mx-4">
-                <Zap className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">Дневной лимит исчерпан</h3>
-                <p className="text-gray-300 mb-4 text-sm">
+            <div className="absolute inset-0 z-[4000] flex items-center justify-center bg-canvas/85 backdrop-blur-md">
+              <div className="mx-4 max-w-sm rounded-[18px] bg-canvas-sunk p-6 text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-signal/15">
+                  <Zap className="h-6 w-6 text-signal" />
+                </div>
+                <h3 className="text-h2 text-ink mb-2">Дневной лимит исчерпан</h3>
+                <p className="text-body text-ink-2 mb-5">
                   Вы просмотрели {dailyViewsLimit} образов сегодня. Купите дополнительные просмотры или оформите
                   подписку Pro.
                 </p>
-                <div className="space-y-3">
-                  <Button
+                <div className="space-y-2.5">
+                  <button
                     onClick={handleBuyMoreViews}
-                    className="w-full bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800"
+                    className="h-11 w-full rounded-full bg-signal text-body font-semibold text-signal-ink transition-transform duration-press active:scale-[0.98]"
                   >
                     Купить 5 просмотров за 2 токена
-                  </Button>
-                  <Button
+                  </button>
+                  <button
                     onClick={() => setShowPaywall(true)}
-                    variant="outline"
-                    className="w-full border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
+                    className="h-11 w-full rounded-full border border-line text-body font-medium text-ink transition-transform duration-press active:scale-[0.98]"
                   >
                     Оформить подписку Pro
-                  </Button>
+                  </button>
                 </div>
               </div>
             </div>
@@ -655,8 +674,8 @@ export default function InspirationPage(): ReactElement {
             )}
           >
             {rendered.length === 0 ? (
-              <div className="h-full grid place-items-center">
-                <div className="text-neutral-400">Пока нет образов</div>
+              <div className="h-full grid place-items-center px-6">
+                <p className="text-body text-ink-2">Пока нет образов</p>
               </div>
             ) : (
               rendered.map((o, i) => {
@@ -672,7 +691,8 @@ export default function InspirationPage(): ReactElement {
                     key={o.id}
                     data-index={globalIndex}
                     data-window-node="1"
-                    className="snap-start h-full w-full relative"
+                    className="snap-start h-full w-full relative animate-fade-up"
+                    style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
                   >
                     <Slide
                       title={o.title}
@@ -699,7 +719,7 @@ export default function InspirationPage(): ReactElement {
                 onClick={gotoPrev}
                 disabled={index === 0 || filtered.length === 0}
                 className={cn(
-                  "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
+                  "glass w-12 h-12 rounded-full text-ink flex items-center justify-center",
                   index === 0 || filtered.length === 0 ? "opacity-60 cursor-not-allowed" : "",
                   "pointer-events-auto",
                 )}
@@ -712,7 +732,7 @@ export default function InspirationPage(): ReactElement {
                 onClick={gotoNext}
                 disabled={index >= filtered.length - 1 || filtered.length === 0}
                 className={cn(
-                  "w-12 h-12 rounded-full bg-white/90 text-black flex items-center justify-center shadow-xl hover:bg-white",
+                  "glass w-12 h-12 rounded-full text-ink flex items-center justify-center",
                   index >= filtered.length - 1 || filtered.length === 0 ? "opacity-60 cursor-not-allowed" : "",
                   "pointer-events-auto",
                 )}
@@ -720,20 +740,24 @@ export default function InspirationPage(): ReactElement {
                 <ChevronDown className="w-6 h-6" />
               </button>
 
-              {/* Мобильные кнопки лайка/сохранения */}
+              {/* Мобильные кнопки лайка/сохранения — стеклянные, состояние «активно» отдаёт
+                  иконке единственный акцент (--signal), как «кнопка Save» из BAR.md */}
               <div className="mt-9 flex flex-col gap-3 pointer-events-auto sm:hidden">
                 <button
                   onClick={() => current && handleLike(current)}
                   disabled={isLiking}
-                  aria-label="Лайк"
-                  className={cn(
-                    "w-12 h-12 rounded-full flex items-center justify-center shadow-xl",
-                    current?.isLiked
-                      ? "bg-red-500 text-white"
-                      : "bg-white/15 text-white hover:bg-white/25 active:bg-white/30",
-                  )}
+                  aria-label={current?.isLiked ? "Убрать лайк" : "Лайк"}
+                  aria-pressed={!!current?.isLiked}
+                  className="glass w-12 h-12 rounded-full flex items-center justify-center transition-transform duration-press active:scale-95"
                 >
-                  {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
+                  {isLiking ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-ink" />
+                  ) : (
+                    <Heart
+                      className={cn("w-5 h-5", current?.isLiked ? "text-signal" : "text-ink")}
+                      fill={current?.isLiked ? "currentColor" : "none"}
+                    />
+                  )}
                 </button>
 
                 <button
@@ -742,17 +766,19 @@ export default function InspirationPage(): ReactElement {
                   aria-label={
                     !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"
                   }
-                  className={cn(
-                    "w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-xl",
-                    !!current && (isSaving || savedOutfitIds.has(current.id) || current.isSaved) && "opacity-80",
-                  )}
+                  aria-pressed={!!current && (savedOutfitIds.has(current.id) || current.isSaved)}
+                  className="glass w-12 h-12 rounded-full flex items-center justify-center transition-transform duration-press active:scale-95 disabled:opacity-100"
                 >
                   {isSaving ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? (
-                    <BookmarkCheck className="w-5 h-5" />
+                    <Loader2 className="w-5 h-5 animate-spin text-ink" />
                   ) : (
-                    <Bookmark className="w-5 h-5" />
+                    <Bookmark
+                      className={cn(
+                        "w-5 h-5",
+                        !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "text-signal" : "text-ink",
+                      )}
+                      fill={!!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "currentColor" : "none"}
+                    />
                   )}
                 </button>
               </div>
@@ -762,50 +788,57 @@ export default function InspirationPage(): ReactElement {
           {/* Desktop/tablet экшены по углам */}
           <div className="hidden sm:block">
             <div className={cn("absolute bottom-3 left-3 pointer-events-auto", isBlurred ? "z-[2000]" : "z-[6000]")}>
-              <Button
+              <button
                 onClick={() => current && handleSave(current)}
                 disabled={isSaving || (!!current && savedOutfitIds.has(current.id))}
-                className="bg-white text-black hover:bg-neutral-200 h-11 w-11 p-0 rounded-full shadow-xl"
+                className="glass h-11 w-11 rounded-full flex items-center justify-center transition-transform duration-press active:scale-95 disabled:opacity-100"
                 aria-label={
                   !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "Сохранено" : "Сохранить"
                 }
+                aria-pressed={!!current && (savedOutfitIds.has(current.id) || current.isSaved)}
               >
                 {isSaving ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? (
-                  <BookmarkCheck className="w-5 h-5" />
+                  <Loader2 className="w-5 h-5 animate-spin text-ink" />
                 ) : (
-                  <Bookmark className="w-5 h-5" />
+                  <Bookmark
+                    className={cn(
+                      "w-5 h-5",
+                      !!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "text-signal" : "text-ink",
+                    )}
+                    fill={!!current && (savedOutfitIds.has(current.id) || current.isSaved) ? "currentColor" : "none"}
+                  />
                 )}
-              </Button>
+              </button>
             </div>
 
             <div className={cn("absolute bottom-3 right-3 pointer-events-auto", isBlurred ? "z-[2000]" : "z-[6000]")}>
-              <Button
-                variant="secondary"
+              <button
                 onClick={() => current && handleLike(current)}
                 disabled={isLiking}
-                className={cn(
-                  "h-11 w-11 p-0 rounded-full shadow-xl",
-                  current?.isLiked
-                    ? "bg-red-500 text-white hover:bg-red-600"
-                    : "bg-white/15 text-white hover:bg-white/25",
-                )}
-                aria-label="Лайк"
+                className="glass h-11 w-11 rounded-full flex items-center justify-center transition-transform duration-press active:scale-95"
+                aria-label={current?.isLiked ? "Убрать лайк" : "Лайк"}
+                aria-pressed={!!current?.isLiked}
               >
-                {isLiking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Heart className="w-5 h-5" />}
-              </Button>
+                {isLiking ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-ink" />
+                ) : (
+                  <Heart
+                    className={cn("w-5 h-5", current?.isLiked ? "text-signal" : "text-ink")}
+                    fill={current?.isLiked ? "currentColor" : "none"}
+                  />
+                )}
+              </button>
             </div>
           </div>
         </section>
 
         {/* Точки прогресса */}
         {filtered.length > 0 && (
-          <div className="mt-3 flex justify-center gap-2 px-4">
+          <div className="mt-3 flex justify-center gap-1.5 px-4">
             {filtered.map((_, i) => (
               <div
                 key={i}
-                className={cn("h-1.5 rounded-full transition-all", i === index ? "w-6 bg-white" : "w-2 bg-neutral-600")}
+                className={cn("h-1.5 w-1.5 rounded-full transition-colors duration-press", i === index ? "bg-ink" : "bg-ink-3/50")}
               />
             ))}
           </div>
@@ -859,24 +892,25 @@ function Slide({
       <BufferedImage
         src={previewSrc || "/placeholder.svg?height=1200&width=900&query=outfit%20preview"}
         alt={title || "Образ"}
-        className="object-cover sm:object-contain bg-neutral-950"
+        className="object-cover sm:object-contain bg-canvas"
       />
 
       {!!title && (
         <div className="absolute top-3 left-3 right-24 z-20">
-          <Badge variant="secondary" className="bg-white/95 text-black hover:bg-white inline-flex">
+          <span className="glass inline-flex max-w-full truncate rounded-full px-3 py-1.5 text-caption font-medium text-ink">
             {title}
-          </Badge>
+          </span>
         </div>
       )}
 
-      {/* Левый столбец с миниатюрами (плейсхолдеры — белые до загрузки) */}
-      <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-20">
-        {items.map((item) => (
+      {/* Левый столбец с миниатюрами (плейсхолдеры — белые до загрузки); лесенкой fade-up по индексу */}
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 flex flex-col gap-2.5 z-20">
+        {items.map((item, i) => (
           <button
             key={item.id}
             onClick={onItemClick}
-            className="relative w-14 h-14 rounded-xl overflow-hidden ring-1 ring-white/15 bg-white shadow-lg hover:ring-white/30 transition-all active:scale-95"
+            className="relative w-14 h-14 rounded-xl overflow-hidden ring-1 ring-line/70 bg-white transition-transform duration-press active:scale-95 animate-fade-up"
+            style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
             title={item.name || "Вещь"}
           >
             {item.image_url ? (
@@ -890,11 +924,11 @@ function Slide({
         {remaining > 0 && (
           <button
             onClick={onItemClick}
-            className="w-14 h-14 rounded-xl bg-white text-black font-semibold flex items-center justify-center ring-1 ring-white/15 shadow-xl hover:bg-neutral-100 transition-all active:scale-95"
+            className="w-14 h-14 rounded-xl bg-canvas-sunk text-ink font-semibold flex items-center justify-center ring-1 ring-line/70 transition-transform duration-press active:scale-95"
             aria-label="Показать все вещи"
             title="Показать все вещи"
           >
-            <span className="text-sm">{`+${remaining}`}</span>
+            <span className="text-caption">{`+${remaining}`}</span>
           </button>
         )}
       </div>

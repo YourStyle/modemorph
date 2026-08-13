@@ -2,20 +2,62 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { MapPin, User } from "lucide-react"
+import {
+  MapPin,
+  User,
+  Sun,
+  CloudSun,
+  Cloud,
+  CloudRain,
+  CloudSnow,
+  CloudLightning,
+  CloudFog,
+  Wind,
+  X,
+  type LucideIcon,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { UserProfileSheet } from "./user-profile-sheet"
 import { api } from "@/lib/api-client"
 import { getUserCoords } from "@/lib/tma/geo"
 import { CityPickerSheet } from "@/components/city-picker-sheet"
+import { cn } from "@/lib/utils"
 
 interface WeatherData {
   temperature: number
   description: string
   location: string
+  /** Эмодзи с бэкенда — больше не рендерим напрямую, оставлен для обратной совместимости. */
   icon: string
+  /** OpenWeather "main" (Clear/Clouds/Rain/...) — по нему маппим на lucide-иконку. */
+  condition?: string
   country?: string
+}
+
+// Погода — иконкой из того же набора, что остальной хром, не эмодзи (другой рендер,
+// другая насыщенность, другая оптическая высота рядом с иконкой профиля).
+const WEATHER_ICONS: Record<string, LucideIcon> = {
+  clear: Sun,
+  clouds: Cloud,
+  rain: CloudRain,
+  drizzle: CloudRain,
+  thunderstorm: CloudLightning,
+  snow: CloudSnow,
+  mist: CloudFog,
+  fog: CloudFog,
+  haze: CloudFog,
+  smoke: CloudFog,
+  dust: CloudFog,
+  sand: CloudFog,
+  ash: CloudFog,
+  squall: Wind,
+  tornado: Wind,
+}
+
+function WeatherIcon({ condition, className }: { condition?: string; className?: string }) {
+  const Icon = WEATHER_ICONS[(condition || "").toLowerCase()] || CloudSun
+  return <Icon className={className} strokeWidth={1.75} aria-hidden="true" />
 }
 
 interface UserProfile {
@@ -29,7 +71,6 @@ export function TopNavigation() {
   const router = useRouter()
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [currentTime, setCurrentTime] = useState("")
   const [currentDate, setCurrentDate] = useState("")
   const [weatherLoading, setWeatherLoading] = useState(true)
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
@@ -40,15 +81,15 @@ export function TopNavigation() {
   const [showCityHint, setShowCityHint] = useState(false)
 
   useEffect(() => {
+    // Дата — не часы (их и так показывает ОС в статус-баре), секундный тик ей не
+    // нужен. Обновляем раз в час — этого достаточно, чтобы не залипнуть на вчера,
+    // если сессия открыта дольше суток.
     updateDateTime()
-    const interval = setInterval(updateDateTime, 1000)
-    return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
     updateWeekday()
-    // обновлять раз в час достаточно, но можно и реже.
-    const interval = setInterval(updateWeekday, 60 * 60 * 1000)
+    const interval = setInterval(() => {
+      updateDateTime()
+      updateWeekday()
+    }, 60 * 60 * 1000)
     return () => clearInterval(interval)
   }, [])
 
@@ -89,14 +130,29 @@ export function TopNavigation() {
     }
   }, [])
 
+  // Шапка (test/gauntlet/design/LIQUID_GLASS.md): прозрачная наверху страницы,
+  // стеклянная после скролла. passive-листенер + rAF-throttle, переключаем только
+  // opacity уже смонтированного стеклянного слоя — backdrop-filter никогда не
+  // анимируется и не пересчитывается.
+  const [isScrolled, setIsScrolled] = useState(false)
+  useEffect(() => {
+    let ticking = false
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(() => {
+        setIsScrolled(window.scrollY > 4)
+        ticking = false
+      })
+    }
+    onScroll()
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
+  }, [])
+
 
   const updateDateTime = () => {
     const now = new Date()
-    const timeOptions: Intl.DateTimeFormatOptions = {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: "Europe/Moscow",
-    }
     const dateOptions: Intl.DateTimeFormatOptions = {
       weekday: "long",
       day: "numeric",
@@ -104,7 +160,6 @@ export function TopNavigation() {
       timeZone: "Europe/Moscow",
     }
 
-    setCurrentTime(now.toLocaleTimeString("ru-RU", timeOptions))
     setCurrentDate(now.toLocaleDateString("ru-RU", dateOptions))
   }
 
@@ -149,7 +204,8 @@ export function TopNavigation() {
     temperature: 20,
     description: "ясно",
     location: "Москва",
-    icon: "☀️",
+    icon: "",
+    condition: "Clear",
   }
 
   const loadWeather = async () => {
@@ -163,7 +219,8 @@ export function TopNavigation() {
           temperature: cachedWeather.temperature,
           description: cachedWeather.description,
           location: cachedWeather.location,
-          icon: cachedWeather.icon || "🌤️",
+          icon: cachedWeather.icon || "",
+          condition: cachedWeather.condition,
         })
         setWeatherLoading(false)
         return
@@ -194,7 +251,8 @@ export function TopNavigation() {
         temperature: weatherData.temperature,
         description: weatherData.description,
         location: weatherData.location,
-        icon: weatherData.icon || "🌤️",
+        icon: weatherData.icon || "",
+        condition: weatherData.condition,
       })
     } catch {
       setWeather(FALLBACK_WEATHER)
@@ -208,7 +266,8 @@ export function TopNavigation() {
       temperature: w.temperature,
       description: w.description,
       location: w.location,
-      icon: w.icon || "🌤️",
+      icon: w.icon || "",
+      condition: w.condition,
       country: w.country || "",
     })
     setShowCityHint(false)
@@ -245,15 +304,21 @@ export function TopNavigation() {
   if (isTmaMobile) {
     return (
       <>
+        {/* Стеклянная подложка шапки — смонтирована всегда, backdrop-filter не анимируется:
+            наверху страницы прозрачна, после скролла проявляется через opacity. */}
         <div
-          className="fixed inset-x-0 top-0 z-40 bg-background"
+          aria-hidden="true"
+          className={cn(
+            "glass glass-refract fixed inset-x-0 top-0 z-40 border-b border-line transition-opacity duration-200 ease-[var(--ease-out)] will-change-transform",
+            isScrolled ? "opacity-100" : "opacity-0",
+          )}
           style={{ height: "calc(env(safe-area-inset-top, 0px) + 70px)", pointerEvents: "auto" }}
         />
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
           <div className="mt-[60px] pointer-events-auto">
             <button
               onClick={handleProfileClick}
-              className="flex items-center gap-2 rounded-full px-3 py-1.5 bg-background/80 backdrop-blur text-foreground shadow-md"
+              className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-foreground"
             >
               {/* Только короткий день недели, меньше шрифт */}
               <span className="text-xs font-medium whitespace-nowrap">
@@ -268,7 +333,7 @@ export function TopNavigation() {
                   className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap"
                   title="Выбрать город"
                 >
-                  <span>{weather.icon}</span>
+                  <WeatherIcon condition={weather.condition} className="h-3.5 w-3.5" />
                   <span>{weather.temperature}°C</span>
                 </button>
               )}
@@ -297,15 +362,18 @@ export function TopNavigation() {
 
         {showCityHint && weather && (
           <div className="px-4 py-2 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2">
-            <span>
-              📍 Погода: {weather.location}
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+              Погода: {weather.location}
               {weather.country ? `, ${weather.country}` : ""}. Не ваш город?
             </span>
             <span className="flex items-center gap-3 shrink-0">
               <button onClick={() => { setCityPickerOpen(true); dismissCityHint() }} className="font-semibold underline">
                 Выбрать
               </button>
-              <button onClick={dismissCityHint} aria-label="Закрыть" className="opacity-60">✕</button>
+              <button onClick={dismissCityHint} aria-label="Закрыть" className="opacity-60">
+                <X className="h-3.5 w-3.5" strokeWidth={1.75} aria-hidden="true" />
+              </button>
             </span>
           </div>
         )}
@@ -328,22 +396,28 @@ export function TopNavigation() {
   }
 
   return (
-    <div className="bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-3">
-      <div className="flex items-center justify-between">
-        {/* Левая часть - Время и дата */}
+    <header className="sticky top-0 z-40">
+      {/* Стеклянная подложка — смонтирована всегда (backdrop-filter не анимируется),
+          прозрачна наверху страницы, проявляется через opacity после скролла. */}
+      <div
+        aria-hidden="true"
+        className={cn(
+          "glass glass-refract absolute inset-0 border-b border-line transition-opacity duration-200 ease-[var(--ease-out)] will-change-transform",
+          isScrolled ? "opacity-100" : "opacity-0",
+        )}
+      />
+      <div className="relative flex items-center justify-between px-4 py-3">
+        {/* Левая часть — дата (тише заголовка экрана, не дублирует системные часы). */}
         <div className="flex items-center space-x-4">
-          <div className="text-left">
-            <div className="flex items-center space-x-2">
-              <div className="text-sm font-semibold text-foreground">{currentDate}</div>
-              {/* Компактная погода на мобильных */}
-              {weather && !weatherLoading && (
-                <div className="flex items-center space-x-1 sm:hidden">
-                  <span className="text-sm">{weather.icon}</span>
-                  <span className="text-sm font-medium text-gray-700">{weather.temperature}°C</span>
-                </div>
-              )}
-            </div>
-            <div className="text-xs text-gray-500">{currentTime}</div>
+          <div className="flex items-center gap-2">
+            <span className="text-caption text-ink-2">{currentDate}</span>
+            {/* Компактная погода на мобильных */}
+            {weather && !weatherLoading && (
+              <span className="flex items-center gap-1 sm:hidden text-caption text-ink-2">
+                <WeatherIcon condition={weather.condition} className="h-3.5 w-3.5" />
+                <span>{weather.temperature}°C</span>
+              </span>
+            )}
           </div>
 
           {/* Полная погода на десктопе — тап → выбор города */}
@@ -351,12 +425,12 @@ export function TopNavigation() {
             <button
               type="button"
               onClick={() => setCityPickerOpen(true)}
-              className="hidden sm:flex items-center space-x-2 text-sm text-gray-600 hover:text-gray-900"
+              className="hidden sm:flex items-center space-x-2 text-caption text-ink-2 hover:text-ink"
               title="Выбрать город"
             >
-              <MapPin className="h-4 w-4" />
+              <MapPin className="h-4 w-4" strokeWidth={1.75} />
               <span>{weather.location}</span>
-              <span className="text-lg">{weather.icon}</span>
+              <WeatherIcon condition={weather.condition} className="h-4 w-4" />
               <span className="font-medium">{weather.temperature}°C</span>
               <span className="capitalize">{weather.description}</span>
             </button>
@@ -419,6 +493,6 @@ export function TopNavigation() {
         currentCity={weather?.location}
         currentCountry={weather?.country}
       />
-    </div>
+    </header>
   )
 }

@@ -1,202 +1,116 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
+import { ArrowRight } from "lucide-react"
 import Link from "next/link"
+import { Button } from "@/components/ui/button"
 import { useTMA } from "@/hooks/use-tma"
+
+type FanLook = {
+  src: string
+  alt: string
+  x: number
+  y: number
+  rotate: number
+  z: number
+  size: string
+}
+
+const MOBILE_LOOKS: FanLook[] = [
+  { src: "https://storage.yandexcloud.net/modemorphs3/static/1_woman.png", alt: "Стильный женский образ", x: -75, y: 15, rotate: -20, z: 10, size: "w-28 h-40" },
+  { src: "https://storage.yandexcloud.net/modemorphs3/static/2_woman.png", alt: "Элегантный женский образ", x: 0, y: 0, rotate: 0, z: 30, size: "w-32 h-44" },
+  { src: "https://storage.yandexcloud.net/modemorphs3/static/3_woman.png", alt: "Модный женский образ", x: 75, y: 15, rotate: 20, z: 10, size: "w-28 h-40" },
+]
+
+const DESKTOP_LOOKS: FanLook[] = [
+  { src: "https://storage.yandexcloud.net/modemorphs3/static/1_woman.png", alt: "Стильный женский образ 1", x: -280, y: 70, rotate: -25, z: 10, size: "w-52 h-72" },
+  { src: "https://storage.yandexcloud.net/modemorphs3/static/2_woman.png", alt: "Элегантный женский образ 2", x: -140, y: 20, rotate: -12, z: 20, size: "w-52 h-72" },
+  { src: "https://storage.yandexcloud.net/modemorphs3/static/3_woman.png", alt: "Модный женский образ 3", x: 0, y: 0, rotate: 0, z: 30, size: "w-52 h-72" },
+  { src: "https://storage.yandexcloud.net/modemorphs3/static/4_woman.png", alt: "Трендовый женский образ 4", x: 140, y: 20, rotate: 12, z: 20, size: "w-52 h-72" },
+  { src: "https://storage.yandexcloud.net/modemorphs3/static/5_woman.png", alt: "Современный женский образ 5", x: 280, y: 70, rotate: 25, z: 10, size: "w-52 h-72" },
+]
 
 export function AnimatedLanding() {
   const { isTMA, isLoading } = useTMA()
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="min-h-screen bg-canvas flex flex-col">
       {/* Навигация */}
       <nav className="flex justify-end p-4 lg:p-6 animate-fade-in-down">
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
           <Link href="/auth/login">
-              <Button variant="ghost" className="text-gray-600 hover:text-gray-900">
-                Войти
-              </Button>
-            </Link>
+            <Button variant="ghost" size="sm">
+              Войти
+            </Button>
+          </Link>
           {!isLoading && !isTMA && (
             <Link href="/auth/sign-up">
-            <Button className="bg-gray-900 hover:bg-gray-800 text-white">Регистрация</Button>
-          </Link>
+              <Button variant="default" size="sm">
+                Регистрация
+              </Button>
+            </Link>
           )}
         </div>
       </nav>
 
       {/* Основной контент */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-8 lg:px-12">
-        <div className="max-w-md lg:max-w-7xl w-full text-center space-y-4 lg:space-y-12">
-          {/* Заголовок с анимацией */}
-          <div className="space-y-4 lg:space-y-6">
-            <h1
-              className="text-4xl lg:text-6xl font-extrabold text-foreground tracking-tight leading-tight animate-fade-in-up animation-delay-200"
-            >
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 lg:px-12">
+        <div className="max-w-md lg:max-w-7xl w-full text-center space-y-6 lg:space-y-12">
+          {/* Заголовок */}
+          <div className="space-y-3 lg:space-y-5">
+            <h1 className="text-display lg:text-[64px] lg:leading-[68px] text-ink animate-fade-in-up animation-delay-100">
               Mode Morph
             </h1>
-
-            {/* Описание с анимацией */}
-            <p className="text-base lg:text-xl text-muted-foreground leading-relaxed max-w-lg lg:max-w-2xl mx-auto animate-fade-in-up animation-delay-400">
-              Создавайте стильные образы за секунды с помощью умного анализа вашего гардероба. Mode Morph поможет найти
-              идеальные сочетания для любого случая.
+            <p className="text-body lg:text-[19px] lg:leading-[28px] text-ink-2 max-w-[300px] lg:max-w-2xl mx-auto animate-fade-in-up animation-delay-200">
+              Создавайте стильные образы за секунды с помощью умного анализа вашего гардероба.
+              Mode Morph поможет найти идеальные сочетания для любого случая.
             </p>
           </div>
 
           {/* Карточки с фотографиями в веерном стиле */}
-          <div className="relative py-4 lg:py-20 animate-fade-in-up animation-delay-800">
-            {/* Мобильная версия - 3 карточки веером */}
+          <div className="relative py-4 lg:py-20 animate-fade-in-up animation-delay-300">
+            {/* Мобильная версия — 3 карточки веером */}
             <div className="block lg:hidden overflow-hidden">
               <div className="relative w-full h-72 mx-auto flex items-center justify-center">
-                {/* Левая карточка - 1_woman */}
-                <div className="absolute group cursor-pointer">
+                {MOBILE_LOOKS.map((look) => (
                   <div
-                    className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-28 h-40 z-0"
-                    style={{ transform: "translateX(-65px) translateY(30px) rotate(-20deg)" }}
-                  ></div>
-                  <div
-                    className="relative w-28 h-40 rounded-3xl overflow-hidden shadow-xl z-10 transition-all duration-300 group-hover:scale-105"
-                    style={{ transform: "translateX(-75px) translateY(15px) rotate(-20deg)" }}
+                    key={look.alt}
+                    className={`absolute ${look.size} rounded-2xl overflow-hidden bg-surface shadow-lg transition-transform duration-300 ease-out`}
+                    style={{
+                      transform: `translateX(${look.x}px) translateY(${look.y}px) rotate(${look.rotate}deg)`,
+                      zIndex: look.z,
+                    }}
                   >
-                    <img
-                      src="https://storage.yandexcloud.net/modemorphs3/static/1_woman.png"
-                      alt="Стильный женский образ"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={look.src} alt={look.alt} className="w-full h-full object-cover" />
                   </div>
-                </div>
-
-                {/* Центральная карточка - 2_woman */}
-                <div className="absolute group cursor-pointer">
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-32 h-44 z-0"></div>
-                  <div className="relative w-32 h-44 rounded-3xl overflow-hidden shadow-xl z-30 transition-all duration-300 group-hover:scale-105">
-                    <img
-                      src="https://storage.yandexcloud.net/modemorphs3/static/2_woman.png"
-                      alt="Элегантный женский образ"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                </div>
-
-                {/* Правая карточка - 3_woman */}
-                <div className="absolute group cursor-pointer">
-                  <div
-                    className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-28 h-40 z-0"
-                    style={{ transform: "translateX(65px) translateY(30px) rotate(20deg)" }}
-                  ></div>
-                  <div
-                    className="relative w-28 h-40 rounded-3xl overflow-hidden shadow-xl z-10 transition-all duration-300 group-hover:scale-105"
-                    style={{ transform: "translateX(75px) translateY(15px) rotate(20deg)" }}
-                  >
-                    <img
-                      src="https://storage.yandexcloud.net/modemorphs3/static/3_woman.png"
-                      alt="Модный женский образ"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
 
-            {/* ДЕСКТОПНАЯ ВЕРСИЯ - 5 КАРТОЧЕК ВЕЕРОМ */}
+            {/* Десктопная версия — 5 карточек веером */}
             <div className="hidden lg:block">
               <div className="relative w-full h-[32rem] mx-auto flex items-center justify-center">
-                {/* 1. КРАЙНЯЯ ЛЕВАЯ КАРТОЧКА */}
-                <div
-                  className="absolute group cursor-pointer z-10"
-                  style={{ transform: "translateX(-280px) translateY(70px) rotate(-25deg)" }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
-                  <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-10">
-                    <img
-                      src="https://storage.yandexcloud.net/modemorphs3/static/1_woman.png"
-                      alt="Стильный женский образ 1"
-                      className="w-full h-full object-cover"
-                    />
+                {DESKTOP_LOOKS.map((look) => (
+                  <div
+                    key={look.alt}
+                    className={`absolute ${look.size} rounded-2xl overflow-hidden bg-surface shadow-lg transition-transform duration-300 ease-out hover:-translate-y-2`}
+                    style={{
+                      transform: `translateX(${look.x}px) translateY(${look.y}px) rotate(${look.rotate}deg)`,
+                      zIndex: look.z,
+                    }}
+                  >
+                    <img src={look.src} alt={look.alt} className="w-full h-full object-cover" />
                   </div>
-                </div>
-
-                {/* 2. ЛЕВАЯ КАРТОЧКА */}
-                <div
-                  className="absolute group cursor-pointer z-20"
-                  style={{ transform: "translateX(-140px) translateY(20px) rotate(-12deg)" }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
-                  <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-20">
-                    <img
-                      src="https://storage.yandexcloud.net/modemorphs3/static/2_woman.png"
-                      alt="Элегантный женский образ 2"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                </div>
-
-                {/* 3. ЦЕНТРАЛЬНАЯ КАРТОЧКА */}
-                <div
-                  className="absolute group cursor-pointer z-30"
-                  style={{ transform: "translateX(0px) translateY(0px) rotate(0deg)" }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
-                  <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-30">
-                    <img
-                      src="https://storage.yandexcloud.net/modemorphs3/static/3_woman.png"
-                      alt="Модный женский образ 3"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                </div>
-
-                {/* 4. ПРАВАЯ КАРТОЧКА */}
-                <div
-                  className="absolute group cursor-pointer z-20"
-                  style={{ transform: "translateX(140px) translateY(20px) rotate(12deg)" }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
-                  <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-20">
-                    <img
-                      src="https://storage.yandexcloud.net/modemorphs3/static/4_woman.png"
-                      alt="Трендовый женский образ 4"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                </div>
-
-                {/* 5. КРАЙНЯЯ ПРАВАЯ КАРТОЧКА */}
-                <div
-                  className="absolute group cursor-pointer z-10"
-                  style={{ transform: "translateX(280px) translateY(70px) rotate(25deg)" }}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-pink-400 via-purple-500 via-blue-500 via-green-400 via-yellow-400 to-red-400 rounded-3xl opacity-0 group-hover:opacity-30 blur-lg transition-all duration-500 w-52 h-72"></div>
-                  <div className="relative w-52 h-72 rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 group-hover:scale-105 bg-white z-10">
-                    <img
-                      src="https://storage.yandexcloud.net/modemorphs3/static/5_woman.png"
-                      alt="Современный женский образ 5"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </div>
 
-          {/* Профессиональная кнопка с анимацией */}
-          <div className="pt-4 lg:pt-8 animate-fade-in-up animation-delay-1400">
-            <Link href="/auth/sign-up">
-              <Button
-                size="lg"
-                className="
-                  w-full lg:w-auto lg:px-16 
-                  bg-gray-900 hover:bg-gray-800 
-                  text-white font-medium text-base
-                  py-4 lg:py-5
-                  rounded-xl
-                  shadow-sm hover:shadow-md
-                  transition-all duration-200
-                  border border-gray-900
-                  focus:ring-2 focus:ring-gray-900 focus:ring-offset-2
-                "
-              >
+          {/* Основная кнопка */}
+          <div className="pt-2 lg:pt-8 animate-fade-in-up animation-delay-400">
+            <Link href="/auth/sign-up" className="block lg:inline-block">
+              <Button variant="signal" size="lg" className="w-full lg:w-auto lg:px-16">
                 Попробовать
+                <ArrowRight strokeWidth={2} />
               </Button>
             </Link>
           </div>
@@ -204,16 +118,17 @@ export function AnimatedLanding() {
       </div>
 
       {/* Нижний индикатор (как на iPhone) */}
-      <div className="flex justify-center pb-2 lg:hidden animate-fade-in animation-delay-1600">
-        <div className="w-32 h-1 bg-black rounded-full"></div>
+      <div className="flex justify-center pb-2 lg:hidden animate-fade-in animation-delay-500">
+        <div className="w-32 h-1 bg-ink/20 rounded-full" />
       </div>
 
-      {/* CSS анимации */}
+      {/* CSS-анимации появления. Только transform/opacity — совместимо с
+          prefers-reduced-motion (глобальное правило уже есть в globals.css). */}
       <style jsx>{`
         @keyframes fadeInDown {
           from {
             opacity: 0;
-            transform: translate3d(0, -100%, 0);
+            transform: translate3d(0, -12px, 0);
           }
           to {
             opacity: 1;
@@ -224,40 +139,7 @@ export function AnimatedLanding() {
         @keyframes fadeInUp {
           from {
             opacity: 0;
-            transform: translate3d(0, 100%, 0);
-          }
-          to {
-            opacity: 1;
-            transform: translate3d(0, 0, 0);
-          }
-        }
-
-        @keyframes slideInLeft {
-          from {
-            opacity: 0;
-            transform: translate3d(-100%, 0, 0);
-          }
-          to {
-            opacity: 1;
-            transform: translate3d(0, 0, 0);
-          }
-        }
-
-        @keyframes slideInRight {
-          from {
-            opacity: 0;
-            transform: translate3d(100%, 0, 0);
-          }
-          to {
-            opacity: 1;
-            transform: translate3d(0, 0, 0);
-          }
-        }
-
-        @keyframes slideInUp {
-          from {
-            opacity: 0;
-            transform: translate3d(0, 100%, 0);
+            transform: translate3d(0, 16px, 0);
           }
           to {
             opacity: 1;
@@ -275,72 +157,35 @@ export function AnimatedLanding() {
         }
 
         .animate-fade-in-down {
-          animation: fadeInDown 0.8s ease-out;
+          animation: fadeInDown 0.5s var(--ease-out, ease-out) both;
         }
 
         .animate-fade-in-up {
-          animation: fadeInUp 0.8s ease-out;
-          animation-fill-mode: both;
-        }
-
-        .animate-slide-in-left {
-          animation: slideInLeft 0.8s ease-out;
-          animation-fill-mode: both;
-        }
-
-        .animate-slide-in-right {
-          animation: slideInRight 0.8s ease-out;
-          animation-fill-mode: both;
-        }
-
-        .animate-slide-in-up {
-          animation: slideInUp 0.8s ease-out;
-          animation-fill-mode: both;
+          animation: fadeInUp 0.55s var(--ease-out, ease-out) both;
         }
 
         .animate-fade-in {
-          animation: fadeIn 0.8s ease-out;
-          animation-fill-mode: both;
+          animation: fadeIn 0.5s var(--ease-out, ease-out) both;
+        }
+
+        .animation-delay-100 {
+          animation-delay: 0.1s;
         }
 
         .animation-delay-200 {
           animation-delay: 0.2s;
         }
 
+        .animation-delay-300 {
+          animation-delay: 0.3s;
+        }
+
         .animation-delay-400 {
           animation-delay: 0.4s;
         }
 
-        .animation-delay-600 {
-          animation-delay: 0.6s;
-        }
-
-        .animation-delay-800 {
-          animation-delay: 0.8s;
-        }
-
-        .animation-delay-900 {
-          animation-delay: 0.9s;
-        }
-
-        .animation-delay-1000 {
-          animation-delay: 1.0s;
-        }
-
-        .animation-delay-1100 {
-          animation-delay: 1.1s;
-        }
-
-        .animation-delay-1200 {
-          animation-delay: 1.2s;
-        }
-
-        .animation-delay-1400 {
-          animation-delay: 1.4s;
-        }
-
-        .animation-delay-1600 {
-          animation-delay: 1.6s;
+        .animation-delay-500 {
+          animation-delay: 0.5s;
         }
       `}</style>
     </div>

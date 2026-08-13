@@ -2,7 +2,18 @@
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react"
 import Image from "next/image"
-import { Sparkles, Download, Bookmark, BookmarkCheck, ChevronDown, Camera, Check, ShieldCheck } from "lucide-react"
+import {
+  Sparkles,
+  Download,
+  Bookmark,
+  BookmarkCheck,
+  ChevronDown,
+  Camera,
+  Check,
+  ShieldCheck,
+  Shirt,
+  Images as GalleryIcon,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { CommonSheet } from "@/components/common-sheet"
@@ -14,51 +25,13 @@ import { useTryOn } from "@/contexts/try-on-context"
 import { api } from "@/lib/api-client"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
-
-const GradientButton = ({
-  onClick,
-  disabled,
-  children,
-  className = "",
-}: {
-  onClick?: () => void
-  disabled?: boolean
-  children: React.ReactNode
-  className?: string
-}) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    className={`w-full h-12 rounded-2xl text-white font-semibold text-sm transition-opacity disabled:opacity-60 ${className}`}
-    style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-  >
-    {children}
-  </button>
-)
-
-const OutlineButton = ({
-  onClick,
-  disabled,
-  children,
-  className = "",
-}: {
-  onClick?: () => void
-  disabled?: boolean
-  children: React.ReactNode
-  className?: string
-}) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    className={`w-full h-12 rounded-2xl font-semibold text-sm border border-[#292929]/20 text-[#292929] bg-white transition-opacity disabled:opacity-60 flex items-center justify-center gap-2 ${className}`}
-  >
-    {children}
-  </button>
-)
 
 /**
  * Big item card used in the confirming state — rendered inside a 2-col grid.
@@ -78,25 +51,25 @@ const ItemCard = ({
 
   return (
     <div
-      className="flex flex-col gap-2 rounded-2xl bg-white border border-gray-100 p-2 shadow-[0_1px_4px_rgba(0,0,0,0.03)] will-change-transform"
+      className="flex flex-col gap-2 rounded-[14px] bg-surface border border-line p-2 will-change-transform"
       style={gatherStyle}
     >
-      <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
+      <div className="relative w-full aspect-square rounded-[14px] overflow-hidden bg-canvas-sunk flex items-center justify-center">
         {imageUrl ? (
           <Image src={imageUrl} alt={name || "item"} fill sizes="(max-width: 480px) 45vw, 200px" className="object-cover" />
         ) : (
-          <span className="text-4xl">👕</span>
+          <Shirt className="w-8 h-8 text-ink-3" strokeWidth={1.75} />
         )}
       </div>
       {(name || color) && (
         <div className="flex flex-col gap-0.5 px-1 pb-1">
           {name && (
-            <p className="text-[11px] font-medium text-[#101010] leading-tight line-clamp-2">
+            <p className="text-caption font-medium text-ink leading-tight line-clamp-2">
               {name}
             </p>
           )}
           {color && (
-            <p className="text-[10px] text-[#101010]/50 leading-tight capitalize">
+            <p className="text-caption text-ink-3 leading-tight capitalize">
               {color}
             </p>
           )}
@@ -191,32 +164,38 @@ const GatherStage = ({
         })}
       </div>
 
-      {/* Avatar — the gather target. Pulses softly as items arrive. */}
-      <div
-        ref={avatarRef}
-        className="relative w-28 h-28 rounded-full overflow-hidden ring-4 ring-white shadow-[0_12px_48px_rgba(137,174,255,0.45)]"
-        style={{
-          background: "linear-gradient(135deg, #EC9DE2 0%, #89AEFF 100%)",
-          animation: started ? "gatherPulse 900ms ease-out infinite" : undefined,
-        }}
-      >
-        {avatarUrl ? (
-          <Image src={avatarUrl} alt="avatar" fill sizes="112px" className="object-cover" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-3xl">✨</div>
-        )}
+      {/* Avatar — the gather target. A separate ring layer pulses via
+          transform/opacity only (no box-shadow transitions). */}
+      <div ref={avatarRef} className="relative w-28 h-28">
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-full bg-signal/25 will-change-transform"
+          style={{
+            opacity: started ? undefined : 0,
+            animation: started ? "gatherPulse 900ms ease-out infinite" : undefined,
+          }}
+        />
+        <div className="absolute inset-0 rounded-full overflow-hidden ring-4 ring-surface bg-canvas-sunk">
+          {avatarUrl ? (
+            <Image src={avatarUrl} alt="avatar" fill sizes="112px" className="object-cover" />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-ink">
+              <Sparkles className="w-8 h-8 text-signal-ink" strokeWidth={1.75} />
+            </div>
+          )}
+        </div>
       </div>
 
-      <p className="text-sm text-[#101010]/60 text-center">
+      <p className="text-caption text-ink-2 text-center">
         Собираем образ…
       </p>
 
-      {/* Scoped keyframes */}
+      {/* Scoped keyframes — transform + opacity only */}
       <style>{`
         @keyframes gatherPulse {
-          0%   { box-shadow: 0 12px 48px rgba(137,174,255,0.45), 0 0 0 0 rgba(236,157,226,0.55); }
-          70%  { box-shadow: 0 12px 48px rgba(137,174,255,0.45), 0 0 0 18px rgba(236,157,226,0.0); }
-          100% { box-shadow: 0 12px 48px rgba(137,174,255,0.45), 0 0 0 0 rgba(236,157,226,0.0); }
+          0%   { transform: scale(1);    opacity: .45; }
+          70%  { transform: scale(1.35); opacity: 0; }
+          100% { transform: scale(1.35); opacity: 0; }
         }
       `}</style>
     </div>
@@ -225,8 +204,7 @@ const GatherStage = ({
 
 /**
  * RefundErrorCard — shown when VTON generation fails.
- * Communicates that no credits were spent and invites the user to retry,
- * using a soft gradient illustration with a shield + sparkle motif.
+ * Communicates that no credits were spent and invites the user to retry.
  */
 const RefundErrorCard = ({
   message,
@@ -237,70 +215,28 @@ const RefundErrorCard = ({
   onRetry: () => void
   onClose: () => void
 }) => (
-  <div className="flex flex-col items-center gap-5 py-4 text-center">
-    {/* Illustration: soft gradient orb with shield + sparkles */}
-    <div className="relative w-32 h-32 flex items-center justify-center">
-      <div
-        className="absolute inset-0 rounded-full opacity-90"
-        style={{
-          background:
-            "radial-gradient(circle at 30% 30%, #FDE7F7 0%, #E8EFFF 55%, #DCE6FF 100%)",
-        }}
-      />
-      <div
-        className="absolute inset-4 rounded-full"
-        style={{
-          background:
-            "linear-gradient(135deg, rgba(236,157,226,0.35), rgba(137,174,255,0.35))",
-          animation: "refundFloat 2.4s ease-in-out infinite",
-        }}
-      />
-      <div
-        className="relative w-16 h-16 rounded-full flex items-center justify-center shadow-[0_6px_20px_rgba(137,174,255,0.35)]"
-        style={{ background: "linear-gradient(135deg, #EC9DE2 0%, #89AEFF 100%)" }}
-      >
-        <ShieldCheck className="w-8 h-8 text-white" strokeWidth={2.2} />
-      </div>
-      {/* Sparkles */}
-      <Sparkles className="absolute top-1 right-4 w-4 h-4 text-[#EC9DE2]" />
-      <Sparkles className="absolute bottom-3 left-3 w-3 h-3 text-[#89AEFF]" />
-      <style>{`
-        @keyframes refundFloat {
-          0%, 100% { transform: scale(1); opacity: 0.9; }
-          50%      { transform: scale(1.08); opacity: 1; }
-        }
-      `}</style>
+  <div className="flex flex-col items-center gap-5 py-4 text-center animate-scale-in">
+    <div className="w-20 h-20 rounded-full bg-ink flex items-center justify-center">
+      <ShieldCheck className="w-8 h-8 text-signal-ink" strokeWidth={1.75} />
     </div>
 
     <div className="space-y-2 max-w-xs">
-      <p className="font-semibold text-[#101010]">Не получилось создать примерку</p>
-      <p className="text-sm text-[#101010]/60 leading-relaxed">{message}</p>
-      <div
-        className="inline-flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-full text-[11px] font-medium"
-        style={{
-          background: "linear-gradient(135deg, rgba(236,157,226,0.12), rgba(137,174,255,0.12))",
-          color: "#6E6EA3",
-        }}
-      >
-        <ShieldCheck className="w-3.5 h-3.5" />
+      <p className="text-body font-semibold text-ink">Не получилось создать примерку</p>
+      <p className="text-caption text-ink-2 leading-relaxed">{message}</p>
+      <div className="inline-flex items-center gap-1.5 mt-1 px-3 py-1.5 rounded-full bg-canvas-sunk text-ink-2 text-micro">
+        <ShieldCheck className="w-3.5 h-3.5" strokeWidth={1.75} />
         Токены не списаны — мы вернули их вам
       </div>
     </div>
 
     <div className="flex flex-col gap-3 w-full pt-1">
-      <button
-        onClick={onRetry}
-        className="w-full h-12 rounded-2xl text-white font-semibold text-sm transition-opacity hover:opacity-90"
-        style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-      >
-        <span className="flex items-center justify-center gap-2">
-          <Sparkles className="w-4 h-4" />
-          Попробовать снова
-        </span>
-      </button>
+      <Button variant="signal" className="w-full" onClick={onRetry}>
+        <Sparkles className="w-4 h-4" />
+        Попробовать снова
+      </Button>
       <button
         onClick={onClose}
-        className="text-sm text-[#101010]/60 underline underline-offset-2"
+        className="text-caption text-ink-2 underline underline-offset-2"
       >
         Закрыть
       </button>
@@ -313,29 +249,26 @@ const ItemCircle = ({ item }: { item: any }) => {
   const imageUrl = item?.image_url || item?.img_url || item?.finalImageUrl || null
 
   return (
-    <div className="flex-shrink-0 w-12 h-12 rounded-full overflow-hidden bg-gray-100 border border-gray-200 flex items-center justify-center">
+    <div className="flex-shrink-0 w-12 h-12 rounded-full overflow-hidden bg-canvas-sunk border border-line flex items-center justify-center">
       {imageUrl ? (
         <Image src={imageUrl} alt={item?.item_name || item?.name || "item"} width={48} height={48} className="object-cover w-full h-full" />
       ) : (
-        <span className="text-lg">👕</span>
+        <Shirt className="w-5 h-5 text-ink-3" strokeWidth={1.75} />
       )}
     </div>
   )
 }
 
-/** Gradient progress bar + label */
+/** Flat progress bar + label — fill animates via transform: scaleX only */
 const ProgressBlock = ({ progress, label }: { progress: number; label: string }) => (
   <div className="w-full max-w-sm mx-auto mt-4">
-    <div className="relative h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+    <div className="relative h-2 w-full bg-canvas-sunk rounded-full overflow-hidden">
       <div
-        className="absolute left-0 top-0 h-full transition-[width] duration-300"
-        style={{
-          width: `${progress}%`,
-          background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-        }}
+        className="absolute inset-0 h-full origin-left rounded-full bg-signal transition-transform duration-300 ease-out will-change-transform"
+        style={{ transform: `scaleX(${progress / 100})` }}
       />
     </div>
-    <div className="flex justify-between text-xs mt-2 text-neutral-400">
+    <div className="flex justify-between text-caption mt-2 text-ink-3">
       <span>{label}</span>
       <span>{Math.round(progress)}%</span>
     </div>
@@ -375,8 +308,8 @@ const ProfileForm = ({ initial, onSave, isSaving }: ProfileFormProps) => {
   return (
     <div className="flex flex-col gap-4 pb-6">
       <div className="text-center mb-1">
-        <p className="text-sm font-semibold text-[#101010]">Заполните данные для примерки</p>
-        <p className="text-xs text-[#101010]/60 mt-1">
+        <p className="text-body font-semibold text-ink">Заполните данные для примерки</p>
+        <p className="text-caption text-ink-2 mt-1">
           Рост, вес и размеры нужны для точной виртуальной примерки
         </p>
       </div>
@@ -384,35 +317,33 @@ const ProfileForm = ({ initial, onSave, isSaving }: ProfileFormProps) => {
       <div className="grid grid-cols-2 gap-3">
         {/* Height */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#101010]/70">Рост (см)</label>
-          <input
+          <label className="text-caption font-medium text-ink-2">Рост (см)</label>
+          <Input
             type="text"
             inputMode="numeric"
             value={form.height}
             onChange={(e) => handleNumber("height", e.target.value)}
             placeholder="170"
-            className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-white text-sm text-[#101010] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-300"
           />
         </div>
 
         {/* Weight */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#101010]/70">Вес (кг)</label>
-          <input
+          <label className="text-caption font-medium text-ink-2">Вес (кг)</label>
+          <Input
             type="text"
             inputMode="numeric"
             value={form.weight}
             onChange={(e) => handleNumber("weight", e.target.value)}
             placeholder="70"
-            className="w-full h-10 px-3 rounded-xl border border-gray-200 bg-white text-sm text-[#101010] placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-300"
           />
         </div>
 
         {/* Top size */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#101010]/70">Размер верха</label>
+          <label className="text-caption font-medium text-ink-2">Размер верха</label>
           <Select value={form.top_size} onValueChange={(v) => setForm((p) => ({ ...p, top_size: v }))}>
-            <SelectTrigger className="h-10 rounded-xl border-gray-200 bg-white text-sm">
+            <SelectTrigger className="h-12 rounded-full border-transparent bg-canvas-sunk text-[15px] text-ink">
               <SelectValue placeholder="Размер" />
             </SelectTrigger>
             <SelectContent>
@@ -425,9 +356,9 @@ const ProfileForm = ({ initial, onSave, isSaving }: ProfileFormProps) => {
 
         {/* Bottom size */}
         <div className="space-y-1.5">
-          <label className="text-xs font-medium text-[#101010]/70">Размер низа</label>
+          <label className="text-caption font-medium text-ink-2">Размер низа</label>
           <Select value={form.bottom_size} onValueChange={(v) => setForm((p) => ({ ...p, bottom_size: v }))}>
-            <SelectTrigger className="h-10 rounded-xl border-gray-200 bg-white text-sm">
+            <SelectTrigger className="h-12 rounded-full border-transparent bg-canvas-sunk text-[15px] text-ink">
               <SelectValue placeholder="Размер" />
             </SelectTrigger>
             <SelectContent>
@@ -439,12 +370,10 @@ const ProfileForm = ({ initial, onSave, isSaving }: ProfileFormProps) => {
         </div>
       </div>
 
-      <GradientButton onClick={() => onSave(form)} disabled={!isValid || isSaving} className="mt-2">
-        <span className="flex items-center justify-center gap-2">
-          <Sparkles className="w-4 h-4" />
-          {isSaving ? "Сохраняем…" : "Сохранить и начать примерку"}
-        </span>
-      </GradientButton>
+      <Button variant="signal" className="w-full mt-2" onClick={() => onSave(form)} disabled={!isValid || isSaving}>
+        <Sparkles className="w-4 h-4" />
+        {isSaving ? "Сохраняем…" : "Сохранить и начать примерку"}
+      </Button>
     </div>
   )
 }
@@ -462,18 +391,14 @@ const LoadingExperience = ({ showGame, setShowGame, progress }: LoadingExperienc
     return (
       <>
         <div
-          className="w-full rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center overflow-hidden"
+          className="w-full rounded-[14px] border border-line bg-canvas-sunk flex items-center justify-center overflow-hidden"
           style={{ height: `${GAME_HEIGHT}px` }}
         >
           <div className="w-full px-4 max-w-xs mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
-            <p className="text-sm text-neutral-600 mb-4">Пока ИИ создаёт примерку:</p>
-            <button
-              className="w-full h-11 rounded-2xl text-white font-medium px-4 border-0 transition-opacity hover:opacity-90"
-              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-              onPointerUp={() => setShowGame(true)}
-            >
+            <p className="text-caption text-ink-2 mb-4">Пока ИИ создаёт примерку:</p>
+            <Button variant="signal" className="w-full" onPointerUp={() => setShowGame(true)}>
               Сыграть в игру
-            </button>
+            </Button>
           </div>
         </div>
         <ProgressBlock progress={progress} label="Создаём образ…" />
@@ -483,7 +408,7 @@ const LoadingExperience = ({ showGame, setShowGame, progress }: LoadingExperienc
 
   return (
     <>
-      <div className="w-full rounded-xl overflow-hidden" style={{ height: `${GAME_HEIGHT}px` }}>
+      <div className="w-full rounded-[14px] overflow-hidden" style={{ height: `${GAME_HEIGHT}px` }}>
         <FallingObjectsGame
           analysisDone={progress >= 100}
           onRequestFinish={() => setShowGame(false)}
@@ -628,9 +553,9 @@ const AvatarPicker = ({ selectedUrl, onSelect }: AvatarPickerProps) => {
   if (loading) {
     return (
       <div className="flex items-center gap-3 py-2">
-        <div className="w-16 h-16 rounded-full bg-gray-100 animate-pulse" />
-        <div className="w-12 h-12 rounded-full bg-gray-100 animate-pulse" />
-        <div className="w-12 h-12 rounded-full bg-gray-100 animate-pulse" />
+        <div className="skeleton w-16 h-16 rounded-full" />
+        <div className="skeleton w-12 h-12 rounded-full" />
+        <div className="skeleton w-12 h-12 rounded-full" />
       </div>
     )
   }
@@ -639,21 +564,21 @@ const AvatarPicker = ({ selectedUrl, onSelect }: AvatarPickerProps) => {
 
   return (
     <div className="space-y-3">
-      <p className="text-xs font-medium text-[#101010]/60">Ваше фото для примерки</p>
+      <p className="text-micro uppercase tracking-wide text-ink-3">Ваше фото для примерки</p>
 
-      <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-none">
+      <div className="flex items-center gap-3 overflow-x-auto pb-1 scrollbar-hide">
         {/* Camera button */}
         <button
           type="button"
           onClick={() => cameraInputRef.current?.click()}
           disabled={uploading}
-          className="flex-shrink-0 w-16 h-16 rounded-full border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-0.5 text-gray-400 hover:border-purple-300 hover:text-purple-400 transition-colors"
+          className="flex-shrink-0 w-16 h-16 rounded-full border-2 border-dashed border-line flex flex-col items-center justify-center gap-0.5 text-ink-3 transition-transform duration-press active:scale-[.97]"
         >
           {uploading ? (
-            <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            <div className="w-5 h-5 border-2 border-line border-t-ink rounded-full animate-spin" />
           ) : (
             <>
-              <Camera className="w-5 h-5" />
+              <Camera className="w-5 h-5" strokeWidth={1.75} />
               <span className="text-[8px] leading-none">Фото</span>
             </>
           )}
@@ -684,11 +609,12 @@ const AvatarPicker = ({ selectedUrl, onSelect }: AvatarPickerProps) => {
             key={avatar.id}
             type="button"
             onClick={() => onSelect(avatar.url)}
-            className={`flex-shrink-0 relative rounded-full overflow-hidden transition-all ${
+            className={cn(
+              "flex-shrink-0 relative rounded-full overflow-hidden ring-2 ring-offset-2 ring-offset-background transition-transform duration-press active:scale-[.97]",
               avatar.url === effectiveSelected
-                ? "ring-2 ring-offset-2 ring-purple-400 w-16 h-16"
-                : "w-12 h-12 opacity-70 hover:opacity-100"
-            }`}
+                ? "ring-signal w-16 h-16"
+                : "ring-transparent w-12 h-12 opacity-70"
+            )}
           >
             <Image
               src={avatar.url}
@@ -698,12 +624,12 @@ const AvatarPicker = ({ selectedUrl, onSelect }: AvatarPickerProps) => {
               sizes="64px"
             />
             {avatar.url === effectiveSelected && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                <Check className="w-4 h-4 text-white" />
+              <div className="absolute inset-0 flex items-center justify-center bg-ink/30">
+                <Check className="w-4 h-4 text-signal-ink" />
               </div>
             )}
             {avatar.isPrimary && avatar.url !== effectiveSelected && (
-              <div className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[7px] text-center py-0.5">
+              <div className="absolute bottom-0 inset-x-0 bg-ink/60 text-signal-ink text-[7px] text-center py-0.5">
                 Текущий
               </div>
             )}
@@ -715,9 +641,9 @@ const AvatarPicker = ({ selectedUrl, onSelect }: AvatarPickerProps) => {
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex-shrink-0 w-16 h-16 rounded-full border-2 border-dashed border-gray-300 flex flex-col items-center justify-center gap-0.5 text-gray-400"
+            className="flex-shrink-0 w-16 h-16 rounded-full border-2 border-dashed border-line flex flex-col items-center justify-center gap-0.5 text-ink-3"
           >
-            <span className="text-lg">📷</span>
+            <GalleryIcon className="w-5 h-5" strokeWidth={1.75} />
             <span className="text-[8px] leading-none">Галерея</span>
           </button>
         )}
@@ -730,18 +656,14 @@ const AvatarPicker = ({ selectedUrl, onSelect }: AvatarPickerProps) => {
             type="checkbox"
             checked={setAsAvatar}
             onChange={(e) => setSetAsAvatar(e.target.checked)}
-            className="w-4 h-4 rounded border-gray-300 text-purple-500 focus:ring-purple-400"
+            className="w-4 h-4 rounded border-line accent-ink"
           />
-          <span className="text-xs text-[#101010]/70">Использовать как новый аватар</span>
+          <span className="text-caption text-ink-2">Использовать как новый аватар</span>
         </label>
       )}
     </div>
   )
 }
-
-// ---------------------------------------------------------------------------
-// Share helper
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Main component
@@ -912,8 +834,8 @@ export function TryOnSheet() {
             {/* Profile loading */}
             {profileLoading && (
               <div className="flex flex-col items-center justify-center gap-3 py-10">
-                <div className="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-[#101010]/60">Проверяем профиль…</p>
+                <div className="w-8 h-8 border-2 border-line border-t-ink rounded-full animate-spin" />
+                <p className="text-body text-ink-2">Проверяем профиль…</p>
               </div>
             )}
 
@@ -934,7 +856,7 @@ export function TryOnSheet() {
                     never hidden behind the sticky footer. */}
                 <div className="flex flex-col gap-5 pb-28">
                   {/* Description */}
-                  <p className="text-sm text-[#101010]/70 leading-relaxed">
+                  <p className="text-body text-ink-2 leading-relaxed">
                     Примерим этот образ на вас? Выберите фото или сделайте новое.
                   </p>
 
@@ -945,13 +867,13 @@ export function TryOnSheet() {
                   />
 
                   {/* Info */}
-                  <p className="text-xs text-[#101010]/50 leading-relaxed">
+                  <p className="text-caption text-ink-3 leading-relaxed">
                     Примерка займёт 30–60 секунд
                   </p>
 
                   {/* Outfit title + item cards (2-col grid) */}
                   {session?.suggestion?.title && (
-                    <p className="text-base font-semibold text-[#101010]">
+                    <p className="text-h2 text-ink">
                       {session.suggestion.title}
                     </p>
                   )}
@@ -966,17 +888,12 @@ export function TryOnSheet() {
 
                 {/* Pinned CTA footer — stays glued to the bottom of the sheet
                     while the body scrolls. Negative margins cancel the parent's
-                    px-6 / pb-6 so the footer is flush with the sheet edges; a
-                    top gradient fades the content scrolling underneath. */}
-                <div className="sticky bottom-0 -mx-6 -mb-6 px-6 pt-6 pb-5 bg-gradient-to-t from-background via-background to-background/0 pointer-events-none">
-                  <div className="pointer-events-auto">
-                    <GradientButton onClick={handleConfirm} disabled={isConfirming}>
-                      <span className="flex items-center justify-center gap-2">
-                        <Sparkles className="w-4 h-4" />
-                        {isConfirming ? "Запускаем…" : "Начать примерку"}
-                      </span>
-                    </GradientButton>
-                  </div>
+                    px-6 / pb-6 so the footer is flush with the sheet edges. */}
+                <div className="sticky bottom-0 -mx-6 -mb-6 px-6 pt-4 pb-5 bg-canvas border-t border-line">
+                  <Button variant="signal" className="w-full" onClick={handleConfirm} disabled={isConfirming}>
+                    <Sparkles className="w-4 h-4" />
+                    {isConfirming ? "Запускаем…" : "Начать примерку"}
+                  </Button>
                 </div>
               </>
             )}
@@ -994,18 +911,7 @@ export function TryOnSheet() {
               />
             ) : (
               <>
-                <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className="text-base font-semibold"
-                    style={{
-                      background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                    }}
-                  >
-                    Создаём примерку…
-                  </span>
-                </div>
+                <p className="text-h2 text-ink mb-1">Создаём примерку…</p>
 
                 <LoadingExperience
                   showGame={showGame}
@@ -1013,17 +919,14 @@ export function TryOnSheet() {
                   progress={session.progress}
                 />
 
-                <p className="text-xs text-center text-neutral-400 mt-1">
+                <p className="text-caption text-center text-ink-3 mt-1">
                   Можно свернуть и подождать в фоне
                 </p>
 
-                <button
-                  onClick={handleMinimize}
-                  className="w-full h-10 rounded-2xl border border-[#292929]/20 text-[#292929] text-sm font-medium flex items-center justify-center gap-1.5 bg-white"
-                >
+                <Button variant="outline" className="w-full" onClick={handleMinimize}>
                   <ChevronDown className="w-4 h-4" />
                   Свернуть
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -1035,10 +938,10 @@ export function TryOnSheet() {
             {/* Result image */}
             {session.resultUrl && (
               <div
-                className="relative w-full overflow-hidden rounded-2xl"
+                className="relative w-full overflow-hidden rounded-[14px]"
                 style={{
                   aspectRatio: "3/4",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+                  boxShadow: "0 8px 32px hsl(var(--ink) / 0.12)",
                 }}
               >
                 <Image
@@ -1054,7 +957,7 @@ export function TryOnSheet() {
 
             {/* Outfit title */}
             {session.suggestion?.title && (
-              <p className="text-base font-semibold text-[#101010] truncate">
+              <p className="text-h2 text-ink truncate">
                 {session.suggestion.title}
               </p>
             )}
@@ -1063,34 +966,29 @@ export function TryOnSheet() {
             <div className="flex flex-col gap-3">
               {/* Save button */}
               {session.saved ? (
-                <button
-                  disabled
-                  className="w-full h-12 rounded-2xl text-sm font-semibold flex items-center justify-center gap-2 bg-green-50 text-green-600 border border-green-200"
-                >
+                <Button variant="outline" disabled className="w-full">
                   <BookmarkCheck className="w-4 h-4" />
                   Сохранено
-                </button>
+                </Button>
               ) : (
-                <GradientButton onClick={handleSave} disabled={isSaving}>
-                  <span className="flex items-center justify-center gap-2">
-                    <Bookmark className="w-4 h-4" />
-                    {isSaving ? "Сохраняем…" : "Сохранить примерку"}
-                  </span>
-                </GradientButton>
+                <Button variant="signal" className="w-full" onClick={handleSave} disabled={isSaving}>
+                  <Bookmark className="w-4 h-4" />
+                  {isSaving ? "Сохраняем…" : "Сохранить примерку"}
+                </Button>
               )}
 
               {/* Save-to-phone button */}
-              <OutlineButton onClick={handleSavePhoto}>
+              <Button variant="outline" className="w-full" onClick={handleSavePhoto}>
                 <Download className="w-4 h-4" />
                 Сохранить фото
-              </OutlineButton>
+              </Button>
             </div>
 
             {/* Items strip */}
             {items.length > 0 && (
               <div className="flex flex-col gap-2">
-                <p className="text-xs font-medium text-[#101010]/50">Образ</p>
-                <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+                <p className="text-micro uppercase tracking-wide text-ink-3">Образ</p>
+                <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
                   {items.slice(0, 6).map((item: any, i: number) => (
                     <ItemCircle key={i} item={item} />
                   ))}

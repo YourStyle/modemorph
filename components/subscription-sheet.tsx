@@ -226,7 +226,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
         <SheetPrimitive.Content
           ref={contentRef}
           className={cn(
-            "fixed z-50 inset-x-0 bottom-0 rounded-t-3xl border-0 p-0 bg-[#F9FAFB] transition-all duration-300 overflow-hidden shadow-lg data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+            "fixed z-50 inset-x-0 bottom-0 rounded-t-[28px] border-0 p-0 bg-canvas transition-all duration-300 overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.12),0_-1px_4px_rgba(0,0,0,0.04)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
             currentView === "credits" ? "h-[85vh]" : "h-[65vh]"
           )}
           style={{
@@ -238,71 +238,66 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
           onTouchEnd={handleTouchEnd}
           onInteractOutside={(e) => e.preventDefault()}
         >
-        {/* Drag handle */}
-        <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
-          <div className="w-12 h-1 rounded-full bg-gray-300" />
+        {/* Стеклянная шапка (LIQUID_GLASS.md, уровень 1) — только ручка и (для пакетов) кнопка назад.
+            Тело ниже — плотный холст, там блюрить нечего. */}
+        <div className="glass relative will-change-transform">
+          {/* Drag handle */}
+          <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
+            <div className="w-10 h-1 rounded-full bg-ink/15" />
+          </div>
+
+          {/* Back button for credits view */}
+          {currentView === "credits" && (
+            <button
+              onClick={() => setCurrentView("subscription")}
+              className="absolute top-4 left-4 p-2 rounded-full transition-transform duration-press active:scale-95 z-10 text-ink hover:bg-canvas-sunk"
+              aria-label="Назад"
+            >
+              <ChevronLeft className="w-5 h-5" strokeWidth={1.75} />
+            </button>
+          )}
         </div>
 
-        {/* Back button for credits view */}
-        {currentView === "credits" && (
-          <button
-            onClick={() => setCurrentView("subscription")}
-            className="absolute top-4 left-4 p-2 rounded-full transition-colors z-10 text-[#101010] hover:bg-gray-200"
-            aria-label="Назад"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-        )}
-
-        <div className="px-6 pb-6 h-full flex flex-col text-[#101010]">
+        <div className="px-6 pb-6 h-full flex flex-col text-ink overflow-y-auto">
           {currentView === "subscription" ? (
             <div className="flex flex-col h-full space-y-4">
               {/* Header */}
               <div className="text-center space-y-1 pt-2 flex-shrink-0">
-                <h2 className="text-xl font-bold text-[#101010]">
+                <h2 className="text-h2 text-ink">
                   {title}
                 </h2>
-                <p className="text-sm text-[#101010]/70">
+                <p className="text-body text-ink-2">
                   {subtitle}
                 </p>
               </div>
 
               {subActive && (
-                <div className="flex-shrink-0 rounded-xl bg-emerald-50 text-emerald-800 text-sm px-3 py-2 text-center">
-                  ✓ Подписка активна{subExpiresLabel ? ` до ${subExpiresLabel}` : ""}. Покупка продлит её.
+                <div className="flex-shrink-0 rounded-2xl bg-canvas-sunk text-ink text-caption px-3 py-2 text-center">
+                  Подписка активна{subExpiresLabel ? ` до ${subExpiresLabel}` : ""}. Покупка продлит её.
                 </div>
               )}
 
               {/* Plan selection */}
               <div className="space-y-2 flex-shrink-0">
                 {loading ? (
-                  <div className="text-center py-8">Загрузка...</div>
+                  <div className="text-center py-8 text-body text-ink-2">Загрузка...</div>
                 ) : (
                   subscriptionPlans.map((plan) => {
                     const key = plan.plan_type as Plan
+                    const isSelected = selectedPlan === key
                     return (
                       <button
                         key={key}
                         onClick={() => setSelectedPlan(key)}
                         className={cn(
-                          "w-full p-3 rounded-xl bg-[#F5F4FF] transition-all relative",
-                          selectedPlan === key && "bg-gradient-to-r from-[#EC9DE2]/10 to-[#89AEFF]/10"
+                          "w-full p-3 rounded-2xl bg-canvas-sunk transition-transform duration-press ease-out active:scale-[.99] relative border-2",
+                          isSelected ? "border-ink" : "border-transparent"
                         )}
-                        style={
-                          selectedPlan === key
-                            ? {
-                                border: "2px solid transparent",
-                                backgroundImage: "linear-gradient(#F5F4FF, #F5F4FF), linear-gradient(to right, #EC9DE2, #89AEFF)",
-                                backgroundOrigin: "border-box",
-                                backgroundClip: "padding-box, border-box",
-                              }
-                            : undefined
-                        }
                       >
                         <div className="flex items-center justify-between">
                           <div className="text-left">
-                            <div className="font-semibold text-sm text-[#101010]">{plan.display_name}</div>
-                            <div className="text-xs text-[#101010]/60">
+                            <div className="font-semibold text-body text-ink">{plan.display_name}</div>
+                            <div className="text-caption text-ink-2">
                               {key === "yearly"
                                 ? `${plan.description} (${plan.price_rub} ₽)`
                                 : plan.description
@@ -310,13 +305,13 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
                             </div>
                           </div>
                           <div className="text-right">
-                            <div className="font-bold text-base text-[#101010]">
+                            <div className="font-bold text-body text-ink">
                               {key === "yearly"
                                 ? `${Math.round(plan.price_rub / 12)} ₽`
                                 : `${plan.price_rub} ₽`
                               }
                             </div>
-                            <div className="text-xs text-[#101010]/60">
+                            <div className="text-caption text-ink-2">
                               {key === "yearly" ? "в месяц" : `${plan.credits} кредитов`}
                             </div>
                           </div>
@@ -333,10 +328,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
                 <Button
                   onClick={handleGetAccess}
                   disabled={isProcessing}
-                  className="w-full h-12 text-sm font-semibold rounded-xl text-white border-0"
-                  style={{
-                    background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-                  }}
+                  className="w-full h-12 text-body font-semibold rounded-full bg-ink text-signal-ink border-0 hover:bg-ink/90"
                 >
                   {isProcessing ? "Обработка..." : subActive ? "Продлить подписку" : "Получить доступ"}
                 </Button>
@@ -344,7 +336,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
                 {/* View credit packs link */}
                 <button
                   onClick={() => setCurrentView("credits")}
-                  className="w-full text-center text-sm text-[#101010]/70 hover:text-[#101010] transition-colors underline"
+                  className="w-full text-center text-caption text-ink-2 hover:text-ink transition-colors underline"
                 >
                   Посмотреть пакеты кредитов
                 </button>
@@ -352,7 +344,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
                 {/* Continue free button */}
                 <button
                   onClick={handleContinueFree}
-                  className="w-full text-center text-sm text-[#101010] hover:text-[#101010]/70 transition-colors font-medium"
+                  className="w-full text-center text-caption text-ink hover:text-ink-2 transition-colors font-medium"
                 >
                   Продолжить бесплатно
                 </button>
@@ -362,10 +354,10 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
             <div className="space-y-6">
               {/* Header */}
               <div className="text-center space-y-2 pt-12">
-                <h2 className="text-2xl font-bold text-[#101010]">
+                <h2 className="text-h1 text-ink">
                   Пакеты кредитов
                 </h2>
-                <p className="text-base text-[#101010]/70">
+                <p className="text-body text-ink-2">
                   Выберите подходящий пакет
                 </p>
               </div>
@@ -373,24 +365,24 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
               {/* Credit packs */}
               <div className="space-y-3">
                 {loading ? (
-                  <div className="text-center py-8">Загрузка...</div>
+                  <div className="text-center py-8 text-body text-ink-2">Загрузка...</div>
                 ) : (
                   creditPacks.map((pack) => (
                     <button
                       key={pack.id}
                       onClick={() => handleBuyCreditPack(pack)}
                       disabled={isProcessing}
-                      className="w-full p-4 rounded-2xl bg-[#F5F4FF] hover:bg-[#F5F4FF]/80 transition-all"
+                      className="w-full p-4 rounded-2xl bg-canvas-sunk hover:bg-line transition-colors"
                     >
                       <div className="flex items-center justify-between">
                         <div className="text-left">
-                          <div className="font-semibold text-[#101010]">{pack.name}</div>
-                          <div className="text-xs text-[#101010]/60 mt-0.5">
+                          <div className="font-semibold text-body text-ink">{pack.name}</div>
+                          <div className="text-caption text-ink-2 mt-0.5">
                             {(pack.price_rub / pack.credits).toFixed(1)} ₽ за кредит
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="font-bold text-lg text-[#101010]">{pack.price_rub} ₽</div>
+                          <div className="font-bold text-h2 text-ink">{pack.price_rub} ₽</div>
                         </div>
                       </div>
                     </button>
@@ -401,7 +393,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
               {/* Continue free button */}
               <button
                 onClick={handleContinueFree}
-                className="w-full text-center text-[#101010] hover:text-[#101010]/70 transition-colors font-medium pt-4"
+                className="w-full text-center text-ink hover:text-ink-2 transition-colors font-medium pt-4"
               >
                 Продолжить бесплатно
               </button>

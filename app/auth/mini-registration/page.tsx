@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { User, Weight, Ruler, Shirt, Users, Share2, Megaphone, Heart } from "lucide-react"
+import { User, Weight, Ruler, Shirt, Users, Share2, Megaphone, Heart, Loader2 } from "lucide-react"
 import { api } from "@/lib/api-client"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 
 interface FormData {
   gender: string
@@ -14,6 +16,9 @@ interface FormData {
   shoe_size: string
   referral: string
 }
+
+const selectClassName =
+  "flex h-12 w-full rounded-full border border-transparent bg-canvas-sunk px-4 text-[15px] text-ink transition-colors duration-enter ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/15"
 
 export default function MiniRegistrationPage() {
   const router = useRouter()
@@ -110,52 +115,47 @@ export default function MiniRegistrationPage() {
 
   if (!ready || !showForm) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="text-gray-600">Загрузка...</p>
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
+        <div className="space-y-4 text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-line border-t-ink" />
+          <p className="text-body text-ink-2">Загрузка...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      <main className="mx-auto max-w-md px-6 py-8">
+    <div className="min-h-screen bg-canvas">
+      <main className="mx-auto max-w-md px-4 py-8">
         {/* Progress indicator */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
+          <p className="mb-2 text-micro text-ink-3">Шаг {currentStep} из 3</p>
+          <div className="flex gap-2">
             {[1, 2, 3].map((step) => (
               <div
                 key={step}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                  step <= currentStep ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-500"
+                className={`h-1.5 flex-1 rounded-full transition-colors duration-press ease-out ${
+                  step <= currentStep ? "bg-signal" : "bg-canvas-sunk"
                 }`}
-              >
-                {step}
-              </div>
+              />
             ))}
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-              style={{ width: `${(currentStep / 3) * 100}%` }}
-            />
           </div>
         </div>
 
         {/* Step 1: Basic Info */}
         {currentStep === 1 && (
-          <div className="space-y-6">
-            <div className="text-center mb-6">
-              <User className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-              <h1 className="text-2xl font-bold text-gray-900">Основная информация</h1>
-              <p className="text-gray-600 mt-2">Расскажите немного о себе</p>
+          <div key={1} className="animate-fade-up space-y-6">
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-canvas-sunk text-ink">
+                <User className="h-6 w-6" strokeWidth={1.75} />
+              </div>
+              <h1 className="text-h1 text-ink">Основная информация</h1>
+              <p className="mt-2 text-body text-ink-2">Расскажите немного о себе</p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Пол</label>
+                <label className="mb-2 block text-caption text-ink-2">Пол</label>
                 <div className="grid grid-cols-2 gap-3">
                   {[
                     { value: "male", label: "Мужской" },
@@ -163,11 +163,12 @@ export default function MiniRegistrationPage() {
                   ].map((option) => (
                     <button
                       key={option.value}
+                      type="button"
                       onClick={() => updateFormData("gender", option.value)}
-                      className={`p-3 rounded-lg border-2 text-sm font-medium transition-all ${
+                      className={`rounded-lg border p-3 text-[15px] font-medium transition-colors duration-press ease-out ${
                         formData.gender === option.value
-                          ? "border-blue-600 bg-blue-50 text-blue-700"
-                          : "border-gray-200 text-gray-700 hover:border-gray-300"
+                          ? "border-ink bg-ink text-signal-ink"
+                          : "border-line text-ink-2 hover:border-ink/30"
                       }`}
                     >
                       {option.label}
@@ -176,32 +177,30 @@ export default function MiniRegistrationPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Ruler className="w-4 h-4 inline mr-1" />
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-caption text-ink-2">
+                  <Ruler className="h-3.5 w-3.5" />
                   Рост (см)
                 </label>
-                <input
+                <Input
                   type="number"
                   value={formData.height}
                   onChange={(e) => updateFormData("height", e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="175"
                   min="140"
                   max="220"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Weight className="w-4 h-4 inline mr-1" />
+              <div className="space-y-1.5">
+                <label className="flex items-center gap-1.5 text-caption text-ink-2">
+                  <Weight className="h-3.5 w-3.5" />
                   Вес (кг)
                 </label>
-                <input
+                <Input
                   type="number"
                   value={formData.weight}
                   onChange={(e) => updateFormData("weight", e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="70"
                   min="40"
                   max="200"
@@ -213,20 +212,22 @@ export default function MiniRegistrationPage() {
 
         {/* Step 2: Sizes */}
         {currentStep === 2 && (
-          <div className="space-y-6">
-            <div className="text-center mb-6">
-              <Shirt className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-              <h1 className="text-2xl font-bold text-gray-900">Размеры одежды</h1>
-              <p className="text-gray-600 mt-2">Укажите ваши размеры</p>
+          <div key={2} className="animate-fade-up space-y-6">
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-canvas-sunk text-ink">
+                <Shirt className="h-6 w-6" strokeWidth={1.75} />
+              </div>
+              <h1 className="text-h1 text-ink">Размеры одежды</h1>
+              <p className="mt-2 text-body text-ink-2">Укажите ваши размеры</p>
             </div>
 
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Размер верха</label>
+              <div className="space-y-1.5">
+                <label className="block text-caption text-ink-2">Размер верха</label>
                 <select
                   value={formData.top_size}
                   onChange={(e) => updateFormData("top_size", e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={selectClassName}
                 >
                   <option value="">Выберите размер</option>
                   <option value="XS">XS</option>
@@ -238,12 +239,12 @@ export default function MiniRegistrationPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Размер низа</label>
+              <div className="space-y-1.5">
+                <label className="block text-caption text-ink-2">Размер низа</label>
                 <select
                   value={formData.bottom_size}
                   onChange={(e) => updateFormData("bottom_size", e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={selectClassName}
                 >
                   <option value="">Выберите размер</option>
                   <option value="XS">XS</option>
@@ -255,12 +256,12 @@ export default function MiniRegistrationPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Размер обуви</label>
+              <div className="space-y-1.5">
+                <label className="block text-caption text-ink-2">Размер обуви</label>
                 <select
                   value={formData.shoe_size}
                   onChange={(e) => updateFormData("shoe_size", e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={selectClassName}
                 >
                   <option value="">Выберите размер</option>
                   {Array.from({ length: 20 }, (_, i) => i + 35).map((size) => (
@@ -276,14 +277,16 @@ export default function MiniRegistrationPage() {
 
         {/* Step 3: Referral */}
         {currentStep === 3 && (
-          <div className="space-y-6">
-            <div className="text-center mb-6">
-              <Share2 className="w-12 h-12 text-blue-600 mx-auto mb-3" />
-              <h1 className="text-2xl font-bold text-gray-900">Откуда узнали о нас?</h1>
-              <p className="text-gray-600 mt-2">Помогите нам стать лучше</p>
+          <div key={3} className="animate-fade-up space-y-6">
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-canvas-sunk text-ink">
+                <Share2 className="h-6 w-6" strokeWidth={1.75} />
+              </div>
+              <h1 className="text-h1 text-ink">Откуда узнали о нас?</h1>
+              <p className="mt-2 text-body text-ink-2">Помогите нам стать лучше</p>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-2">
               {[
                 { value: "friends", label: "От друзей", icon: Users },
                 { value: "social", label: "Социальные сети", icon: Share2 },
@@ -296,14 +299,15 @@ export default function MiniRegistrationPage() {
                 return (
                   <button
                     key={option.value}
+                    type="button"
                     onClick={() => updateFormData("referral", option.value)}
-                    className={`w-full p-4 rounded-lg border-2 text-left transition-all flex items-center ${
+                    className={`flex w-full items-center rounded-lg border p-4 text-left text-[15px] font-medium transition-colors duration-press ease-out ${
                       formData.referral === option.value
-                        ? "border-blue-600 bg-blue-50 text-blue-700"
-                        : "border-gray-200 text-gray-700 hover:border-gray-300"
+                        ? "border-ink bg-ink text-signal-ink"
+                        : "border-line text-ink-2 hover:border-ink/30"
                     }`}
                   >
-                    <IconComponent className="w-5 h-5 mr-3" />
+                    <IconComponent className="mr-3 h-5 w-5 shrink-0" strokeWidth={1.75} />
                     {option.label}
                   </button>
                 )
@@ -312,34 +316,37 @@ export default function MiniRegistrationPage() {
           </div>
         )}
 
+        {/* Reserved space for submit error — не ломает вёрстку */}
+        <div className="mt-4 min-h-[18px]" aria-live="polite">
+          {submitError && <p className="animate-fade-up text-center text-caption text-destructive">{submitError}</p>}
+        </div>
+
         {/* Navigation buttons */}
-        <div className="flex justify-between mt-8 pt-6 border-t border-gray-200">
-          {currentStep > 1 && (
-            <button onClick={prevStep} className="px-6 py-3 text-gray-600 hover:text-gray-800 font-medium">
+        <div className="mt-4 flex items-center justify-between border-t border-line pt-6">
+          {currentStep > 1 ? (
+            <Button type="button" variant="ghost" onClick={prevStep}>
               Назад
-            </button>
+            </Button>
+          ) : (
+            <span />
           )}
 
-          <div className="ml-auto">
-            {currentStep < 3 ? (
-              <button
-                onClick={nextStep}
-                disabled={!isStepValid()}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                Далее
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={!isStepValid() || isSubmitting}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-              >
-                {isSubmitting ? "Сохранение..." : "Завершить"}
-              </button>
-            )}
-          </div>
-          {submitError && <p className="text-sm text-red-600 text-center mt-2">{submitError}</p>}
+          {currentStep < 3 ? (
+            <Button type="button" onClick={nextStep} disabled={!isStepValid()}>
+              Далее
+            </Button>
+          ) : (
+            <Button type="button" onClick={handleSubmit} disabled={!isStepValid() || isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Сохраняем
+                </>
+              ) : (
+                "Завершить"
+              )}
+            </Button>
+          )}
         </div>
       </main>
     </div>

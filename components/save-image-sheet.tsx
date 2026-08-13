@@ -5,6 +5,7 @@ import { createPortal } from "react-dom"
 import { X, Share2, Download, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { shareBlob } from "@/lib/save-image"
+import { Button } from "@/components/ui/button"
 
 /**
  * Full-screen preview of a watermarked image. The user long-presses the image
@@ -70,9 +71,9 @@ export function SaveImageSheet({
       onClick={onClose}
     >
       <div className="flex items-center justify-between p-4 text-white/90">
-        <span className="text-sm font-medium">Сохранить изображение</span>
-        <button onClick={onClose} className="p-1 rounded-full hover:bg-white/10" aria-label="Закрыть">
-          <X className="w-5 h-5" />
+        <span className="text-body font-medium">Сохранить изображение</span>
+        <button onClick={onClose} className="p-1 rounded-full transition-transform duration-press active:scale-[.9] hover:bg-white/10" aria-label="Закрыть">
+          <X className="w-5 h-5" strokeWidth={1.75} />
         </button>
       </div>
 
@@ -83,26 +84,21 @@ export function SaveImageSheet({
           <img
             src={url}
             alt="ModeMorph"
-            className="max-w-full max-h-[70vh] rounded-2xl shadow-2xl select-none"
+            className="max-w-full max-h-[70vh] rounded-[14px] shadow-2xl select-none"
             style={{ WebkitTouchCallout: "default" } as React.CSSProperties}
           />
         )}
       </div>
 
       <div className="p-5 pb-8 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <p className="text-center text-xs text-white/70 flex items-center justify-center gap-1.5">
-          <Download className="w-3.5 h-3.5" />
+        <p className="text-center text-caption text-white/70 flex items-center justify-center gap-1.5">
+          <Download className="w-3.5 h-3.5" strokeWidth={1.75} />
           Зажмите фото, чтобы сохранить в галерею
         </p>
-        <button
-          onClick={handleShare}
-          disabled={!blob}
-          className="w-full h-12 rounded-2xl text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-          style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-        >
+        <Button variant="signal" className="w-full" onClick={handleShare} disabled={!blob}>
           <Share2 className="w-4 h-4" />
           Поделиться
-        </button>
+        </Button>
       </div>
     </div>,
     document.body,

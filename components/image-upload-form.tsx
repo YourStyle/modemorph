@@ -6,7 +6,7 @@ import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Upload, X, Loader2, Check, Plus } from "lucide-react"
+import { Upload, X, Loader2, Check, Plus, Shirt } from "lucide-react"
 import Image from "next/image"
 import { api } from "@/lib/api-client"
 import { type ResponseItem, type ItemWithImage, loadBasicItemImages } from "@/lib/image-processing"
@@ -136,7 +136,11 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
 
       const itemData = {
         item_name: item.item_name,
-        clothing_type: item.clothing_item,
+        // Бэкенд резолвит английский ответ Gemini в канонический слаг
+        // (backend/app/api/misc.py -> clothing_taxonomy.resolve_clothing_type).
+        // Сырой clothing_item писать в колонку нельзя: 'sweater'/'polo shirt'
+        // не понимает ни один потребитель слотов.
+        clothing_type: item.clothing_type || null,
         material: item.material,
         color: item.color,
         style: item.style,
@@ -284,7 +288,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
                 <Card key={index} className="overflow-hidden">
                   <CardContent className="p-3">
                     {/* Изображение */}
-                    <div className="aspect-square mb-3 bg-gray-50 rounded-lg overflow-hidden relative">
+                    <div className="aspect-square mb-3 bg-canvas-sunk rounded-lg overflow-hidden relative">
                       {item.finalImageUrl ? (
                         <Image
                           src={item.finalImageUrl || "/placeholder.svg"}
@@ -295,7 +299,7 @@ export function ImageUploadForm({ onSuccess }: ImageUploadFormProps) {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <span className="text-3xl">👕</span>
+                          <Shirt className="h-8 w-8 text-ink-3" strokeWidth={1.75} aria-hidden="true" />
                         </div>
                       )}
                     </div>

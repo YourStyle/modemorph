@@ -5,7 +5,7 @@ import {useState, useEffect, useRef} from "react"
 import {Button} from "@/components/ui/button"
 import {Card, CardContent} from "@/components/ui/card"
 import {Badge} from "@/components/ui/badge"
-import {Upload, X, Loader2, Check, Plus, AlertCircle} from "lucide-react"
+import {Upload, X, Loader2, Check, Plus, AlertCircle, Shirt} from "lucide-react"
 import {AIAssistantLoader} from "@/components/ai-assistant-loader"
 import Image from "next/image"
 import {PhotoRegenerationModal} from "./photo-regeneration-modal"
@@ -54,66 +54,63 @@ interface PhotoAnalysisFormProps {
     onAnalysisStart?: () => void
 }
 
-/** Gradient progress bar matching try-on sheet style */
+/** Honest, always-visible progress — single signal accent on the fill. */
 const ProgressBlock: React.FC<{ progress: number; progressText: string }> = ({progress, progressText}) => (
     <div className="w-full max-w-sm mx-auto mt-4">
-        <div className="relative h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+        <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-canvas-sunk">
             <div
-                className="absolute left-0 top-0 h-full transition-[width] duration-300"
-                style={{
-                    width: `${progress}%`,
-                    background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-                }}
+                className="absolute left-0 top-0 h-full w-full origin-left rounded-full bg-signal transition-transform duration-300 ease-out"
+                style={{ transform: `scaleX(${Math.max(0.02, Math.min(1, progress / 100))})` }}
             />
         </div>
-        <div className="flex justify-between text-xs mt-2 text-neutral-400">
+        <div className="mt-2 flex justify-between text-caption text-ink-2">
             <span>{progressText}</span>
-            <span>{Math.round(progress)}%</span>
+            <span className="tabular-nums text-ink">{Math.round(progress)}%</span>
         </div>
     </div>
 )
 
+const GAME_HEIGHT = 300
+
 interface LoadingExperienceProps {
-    showGame: boolean
-    setShowGame: (v: boolean) => void
     progress: number
     progressText: string
 }
 
-const LoadingExperience: React.FC<LoadingExperienceProps> = ({ showGame, setShowGame, progress, progressText }) => {
-    const GAME_HEIGHT = 300
-
-    if (!showGame) {
-        return (
-            <>
-                <div
-                    className="w-full rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center overflow-hidden"
-                    style={{ height: `${GAME_HEIGHT}px` }}
-                >
-                    <div className="w-full px-4 max-w-xs mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
-                        <p className="text-sm text-neutral-600 mb-4">Пока ИИ анализирует фото:</p>
-                        <button
-                            className="w-full h-11 rounded-2xl text-white font-medium px-4 border-0 transition-opacity hover:opacity-90"
-                            style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-                            onPointerUp={() => setShowGame(true)}
-                        >
-                            Сыграть в игру
-                        </button>
-                    </div>
-                </div>
-                <ProgressBlock progress={progress} progressText={progressText} />
-            </>
-        )
-    }
+/**
+ * The game itself owns its idle "Начать игру" screen, so this wrapper no
+ * longer stacks a second play prompt on top of it — one tap gets you
+ * playing instead of two. Dismissing the game (X) drops to a quiet
+ * "watching progress" state with a way back in, rather than nagging
+ * again with the same prompt.
+ */
+const LoadingExperience: React.FC<LoadingExperienceProps> = ({ progress, progressText }) => {
+    const [showGame, setShowGame] = useState(true)
 
     return (
         <>
-            <div className="w-full rounded-xl overflow-hidden" style={{ height: `${GAME_HEIGHT}px` }}>
-                <FallingObjectsGame
-                    analysisDone={progress >= 100}
-                    onRequestFinish={() => setShowGame(false)}
-                />
-            </div>
+            {showGame ? (
+                <div className="w-full overflow-hidden rounded-lg" style={{ height: `${GAME_HEIGHT}px` }}>
+                    <FallingObjectsGame
+                        analysisDone={progress >= 100}
+                        onRequestFinish={() => setShowGame(false)}
+                    />
+                </div>
+            ) : (
+                <div
+                    className="flex w-full flex-col items-center justify-center gap-3 rounded-lg border border-line bg-canvas-sunk px-6 text-center"
+                    style={{ height: `${GAME_HEIGHT}px` }}
+                >
+                    <AIAssistantLoader size={40} />
+                    <p className="text-body text-ink-2">Ждём результат анализа</p>
+                    <button
+                        onClick={() => setShowGame(true)}
+                        className="text-caption text-ink-2 underline underline-offset-4 transition-transform duration-press active:scale-95"
+                    >
+                        Снова сыграть
+                    </button>
+                </div>
+            )}
             <ProgressBlock progress={progress} progressText={progressText} />
         </>
     )
@@ -149,7 +146,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
 
     const [showRegenerationModal, setShowRegenerationModal] = useState(false)
     const [isFirstTimeRegeneration, setIsFirstTimeRegeneration] = useState(true)
-    const [showGame, setShowGame] = useState(false)
     const [showPaywall, setShowPaywall] = useState(false)
 
     // Загрузить данные из существующей сессии при монтировании
@@ -436,7 +432,11 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 item_name: item.item_name,
                 // AI отдаёт тип вещи в clothing_item; без этой строки в БД падает
                 // DEFAULT 'верхняя' и сборка образов по слотам работает вслепую
-                clothing_type: item.clothing_item,
+                // Бэкенд резолвит английский ответ Gemini в канонический слаг
+        // (backend/app/api/misc.py -> clothing_taxonomy.resolve_clothing_type).
+        // Сырой clothing_item писать в колонку нельзя: 'sweater'/'polo shirt'
+        // не понимает ни один потребитель слотов.
+        clothing_type: item.clothing_type || null,
                 material: item.material,
                 color: item.color,
                 style: item.style,
@@ -518,75 +518,9 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         <div className="space-y-6">
             {/* Checking Limits Loader */}
             {checkingLimits && (
-                <div className="flex flex-col items-center justify-center space-y-6 py-12">
-                    <div className="relative w-32 h-32">
-                        {/* Анимированные иконки одежды */}
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <svg
-                                className="w-16 h-16 text-purple-400 animate-pulse"
-                                style={{ animationDelay: "0ms", animationDuration: "1500ms" }}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
-                                />
-                            </svg>
-                        </div>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <svg
-                                className="w-12 h-12 text-pink-400 animate-pulse"
-                                style={{ animationDelay: "300ms", animationDuration: "1500ms" }}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M21 15.546c-.523 0-1.046.151-1.5.454a2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0 2.704 2.704 0 00-3 0 2.704 2.704 0 01-3 0 2.701 2.701 0 00-1.5-.454M9 6v2m3-2v2m3-2v2M9 3h.01M12 3h.01M15 3h.01M21 21v-7a2 2 0 00-2-2H5a2 2 0 00-2 2v7h18zm-3-9v-2a2 2 0 00-2-2H8a2 2 0 00-2 2v2h12z"
-                                />
-                            </svg>
-                        </div>
-                        <div className="absolute inset-0 flex items-center justify-center">
-                            <svg
-                                className="w-10 h-10 text-blue-400 animate-pulse"
-                                style={{ animationDelay: "600ms", animationDuration: "1500ms" }}
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                            >
-                                <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
-                                />
-                            </svg>
-                        </div>
-                    </div>
-                    <div className="text-center space-y-2">
-                        <p className="text-lg font-medium text-neutral-100">Проверяем лимиты</p>
-                        <div className="flex items-center justify-center space-x-1">
-                            <div
-                                className="w-2 h-2 bg-purple-400 rounded-full animate-bounce"
-                                style={{ animationDelay: "0ms" }}
-                            />
-                            <div
-                                className="w-2 h-2 bg-pink-400 rounded-full animate-bounce"
-                                style={{ animationDelay: "150ms" }}
-                            />
-                            <div
-                                className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"
-                                style={{ animationDelay: "300ms" }}
-                            />
-                        </div>
-                    </div>
+                <div className="flex flex-col items-center justify-center gap-4 py-12">
+                    <AIAssistantLoader size={40} />
+                    <p className="text-body text-ink-2">Проверяем лимиты</p>
                 </div>
             )}
 
@@ -600,8 +534,6 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
             {/* Loading section */}
             {loading && (
                 <LoadingExperience
-                    showGame={showGame}
-                    setShowGame={setShowGame}
                     progress={progress}
                     progressText={progressText}
                 />
@@ -654,7 +586,9 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                                            className="rounded-md object-cover"/>
                                 ) : (
                                     <div
-                                        className="w-24 h-24 bg-gray-100 rounded-md flex items-center justify-center text-3xl">👕</div>
+                                        className="w-24 h-24 bg-canvas-sunk rounded-md flex items-center justify-center">
+                                        <Shirt size={28} strokeWidth={2} className="text-ink-3" />
+                                    </div>
                                 )}
                                 {/* Info */}
                                 <div className="flex-1 space-y-2">

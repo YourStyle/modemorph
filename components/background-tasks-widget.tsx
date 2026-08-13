@@ -6,7 +6,7 @@ import { useTryOn } from "@/contexts/try-on-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { X, CheckCircle2, Loader2, AlertCircle, Shirt, Sparkles } from "lucide-react"
+import { X, CheckCircle2, Loader2, AlertTriangle, Check, Shirt, Sparkles } from "lucide-react"
 import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { CommonSheet } from "@/components/common-sheet"
@@ -23,19 +23,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 
-/** Gradient progress bar matching try-on sheet style */
+/** Плоская сигнальная полоса прогресса — один акцент, без градиента.
+    Моторика только на transform (scaleX), не на width. */
 const ProgressBlock: React.FC<{ progress: number; progressText: string }> = ({ progress, progressText }) => (
   <div className="w-full max-w-sm mx-auto mt-4">
-    <div className="relative h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+    <div className="relative h-1.5 w-full bg-canvas-sunk rounded-full overflow-hidden">
       <div
-        className="absolute left-0 top-0 h-full transition-[width] duration-300"
-        style={{
-          width: `${progress}%`,
-          background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-        }}
+        className="absolute left-0 top-0 h-full w-full origin-left bg-signal rounded-full transition-transform duration-300"
+        style={{ transform: `scaleX(${Math.max(0, Math.min(1, progress / 100))})` }}
       />
     </div>
-    <div className="flex justify-between text-xs mt-2 text-neutral-400">
+    <div className="flex justify-between text-caption mt-2 text-ink-3">
       <span>{progressText}</span>
       <span>{Math.round(progress)}%</span>
     </div>
@@ -56,14 +54,13 @@ const LoadingExperience: React.FC<LoadingExperienceProps> = ({ showGame, setShow
     return (
       <>
         <div
-          className="w-full rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center overflow-hidden"
+          className="w-full rounded-2xl border border-line bg-canvas-sunk flex items-center justify-center overflow-hidden"
           style={{ height: `${GAME_HEIGHT}px` }}
         >
           <div className="w-full px-4 max-w-xs mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
-            <p className="text-sm text-neutral-600 mb-4">Пока ИИ анализирует фото:</p>
+            <p className="text-body text-ink-2 mb-4">Пока ИИ анализирует фото:</p>
             <button
-              className="w-full h-11 rounded-2xl text-white font-medium px-4 border-0 transition-opacity hover:opacity-90"
-              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+              className="w-full h-11 rounded-full bg-ink text-signal-ink font-medium px-4 border-0 transition-transform duration-press active:scale-[.98]"
               onPointerUp={() => setShowGame(true)}
             >
               Сыграть в игру
@@ -105,9 +102,9 @@ const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: nu
         stroke="currentColor"
         strokeWidth={strokeWidth}
         fill="none"
-        className="text-gray-200"
+        className="text-line"
       />
-      {/* Прогресс */}
+      {/* Прогресс — единственный акцент бабла */}
       <circle
         cx={size / 2}
         cy={size / 2}
@@ -117,7 +114,7 @@ const CircularProgress = ({ progress, size = 64 }: { progress: number; size?: nu
         fill="none"
         strokeDasharray={circumference}
         strokeDashoffset={offset}
-        className="text-blue-600 transition-all duration-300"
+        className="text-signal transition-[stroke-dashoffset] duration-300"
         strokeLinecap="round"
       />
     </svg>
@@ -272,7 +269,11 @@ export function BackgroundTasksWidget() {
 
       const itemData = {
         item_name: item.item_name || item.name,
-        clothing_type: item.clothing_item,
+        // Бэкенд резолвит английский ответ Gemini в канонический слаг
+        // (backend/app/api/misc.py -> clothing_taxonomy.resolve_clothing_type).
+        // Сырой clothing_item писать в колонку нельзя: 'sweater'/'polo shirt'
+        // не понимает ни один потребитель слотов.
+        clothing_type: item.clothing_type || null,
         material: item.material || "",
         color: item.color || "",
         style: item.style || "",
@@ -412,46 +413,30 @@ export function BackgroundTasksWidget() {
   // Don't hide widget if results or progress sheet is open
   if (activeTasks.length === 0 && !showResultsSheet && !showProgressSheet) return null
 
+  // Бабл — часть системного хрома (LIQUID_GLASS.md: «плавающие контролы поверх
+  // фото» — один из двух разрешённых постоянных стеклянных элементов). Обязан
+  // держаться строго над таб-баром: бар 50px + safe-area, плюс 16px зазор,
+  // чтобы никогда не наезжать на подпись активного пункта.
+  const bubbleBottomStyle = { bottom: "calc(50px + env(safe-area-inset-bottom, 0px) + 16px)" }
+
+  const bubbleStateBorder = bubbleState.status === "completed"
+    ? "border-signal/40"
+    : bubbleState.status === "error"
+    ? "border-destructive/40"
+    : "border-line"
+
   return (
     <>
       {/* Единый агрегированный бабл */}
-      <div className="fixed bottom-24 right-4 z-50">
+      <div className="fixed right-4 z-40" style={bubbleBottomStyle}>
         <div className="relative">
           <div
             onClick={handleBubbleClick}
-            className="relative w-16 h-16 rounded-full shadow-xl transition-all duration-300 cursor-pointer hover:scale-105"
-            style={{
-              background: bubbleState.status === "completed"
-                ? 'rgba(34, 197, 94, 0.15)'
-                : bubbleState.status === "error"
-                ? 'rgba(239, 68, 68, 0.15)'
-                : 'rgba(255, 255, 255, 0.85)',
-              backdropFilter: 'blur(20px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(20px) saturate(180%)',
-              boxShadow: bubbleState.status === "completed"
-                ? '0 8px 32px 0 rgba(34, 197, 94, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
-                : bubbleState.status === "error"
-                ? '0 8px 32px 0 rgba(239, 68, 68, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)'
-                : '0 8px 32px 0 rgba(0, 0, 0, 0.1), inset 0 1px 0 0 rgba(255, 255, 255, 0.3)',
-              border: bubbleState.status === "completed"
-                ? '1px solid rgba(34, 197, 94, 0.3)'
-                : bubbleState.status === "error"
-                ? '1px solid rgba(239, 68, 68, 0.3)'
-                : '1px solid rgba(255, 255, 255, 0.18)',
-            }}
+            className={cn(
+              "glass relative w-16 h-16 rounded-full cursor-pointer border transition-transform duration-press ease-out active:scale-95 will-change-transform",
+              bubbleStateBorder
+            )}
           >
-            {/* Gradient overlay */}
-            <div
-              className="absolute inset-0 rounded-full pointer-events-none"
-              style={{
-                background: bubbleState.status === "completed"
-                  ? 'radial-gradient(circle at 30% 30%, rgba(34, 197, 94, 0.3) 0%, transparent 70%)'
-                  : bubbleState.status === "error"
-                  ? 'radial-gradient(circle at 30% 30%, rgba(239, 68, 68, 0.3) 0%, transparent 70%)'
-                  : 'radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.2) 0%, transparent 70%)',
-              }}
-            />
-
             {/* Круговой прогресс */}
             {bubbleState.status === "processing" && (
               <div className="absolute inset-0">
@@ -464,30 +449,23 @@ export function BackgroundTasksWidget() {
               {bubbleState.status === "processing" && (
                 <>
                   {bubbleState.hasTryOn ? (
-                    <Sparkles className="w-5 h-5 text-purple-500 -mt-1" />
+                    <Sparkles className="w-5 h-5 text-signal -mt-1" strokeWidth={1.75} />
                   ) : (
-                    <Shirt className="w-5 h-5 text-blue-600 -mt-1" />
+                    <Shirt className="w-5 h-5 text-signal -mt-1" strokeWidth={1.75} />
                   )}
-                  <span className="text-[10px] font-bold text-gray-700 mt-0.5 ml-[1px]">
+                  <span className="text-[10px] font-bold text-ink mt-0.5 ml-[1px]">
                     {Math.round(bubbleState.avgProgress)}%
                   </span>
                 </>
               )}
-              {bubbleState.status === "completed" && <CheckCircle2 className="w-7 h-7 text-green-600" />}
-              {bubbleState.status === "error" && <AlertCircle className="w-7 h-7 text-red-600" />}
+              {/* Бабл сам уже круг — иконка без своего кольца, чтобы не рисовать круг в круге */}
+              {bubbleState.status === "completed" && <Check className="w-7 h-7 text-signal" strokeWidth={2} />}
+              {bubbleState.status === "error" && <AlertTriangle className="w-6 h-6 text-destructive" strokeWidth={1.75} />}
             </div>
 
             {/* Бейдж с количеством задач */}
             {bubbleState.count > 1 && (
-              <div className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-md"
-                style={{
-                  background: bubbleState.status === "completed"
-                    ? '#16a34a'
-                    : bubbleState.status === "error"
-                    ? '#dc2626'
-                    : '#2563eb',
-                }}
-              >
+              <div className="absolute -top-1 -left-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold bg-ink text-signal-ink">
                 {bubbleState.count}
               </div>
             )}
@@ -500,20 +478,20 @@ export function BackgroundTasksWidget() {
                 if (showProgressSheet) setShowProgressSheet(false)
                 activeTasks.forEach((t) => removeTask(t.id))
               }}
-              className="absolute -top-1 -right-1 w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center hover:bg-gray-700 transition-colors shadow-md"
+              className="absolute -top-1 -right-1 w-5 h-5 bg-ink text-signal-ink rounded-full flex items-center justify-center hover:bg-ink/80 transition-colors"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3 w-3" strokeWidth={1.75} />
             </button>
           </div>
 
           {/* Tooltip */}
           {showTooltip === "aggregate" && bubbleState.completed.length > 0 && (
-            <div className="absolute -top-14 right-0 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="bg-gray-900 text-white px-3 py-2 rounded-lg text-xs font-medium shadow-lg whitespace-nowrap">
+            <div className="absolute -top-14 right-0 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              <div className="bg-ink text-signal-ink px-3 py-2 rounded-2xl text-caption font-medium whitespace-nowrap">
                 {bubbleState.completed.length === 1
                   ? (bubbleState.completed[0].type === "virtual_tryon" ? "Примерка готова!" : "Анализ завершён!")
                   : `Готово: ${bubbleState.completed.length} ${bubbleState.completed.length < 5 ? "задачи" : "задач"}`}
-                <div className="absolute bottom-0 right-6 transform translate-y-1/2 rotate-45 w-2 h-2 bg-gray-900" />
+                <div className="absolute bottom-0 right-6 transform translate-y-1/2 rotate-45 w-2 h-2 bg-ink" />
               </div>
             </div>
           )}
@@ -527,7 +505,7 @@ export function BackgroundTasksWidget() {
         backgroundColor="dark"
         swipeAction="close"
       >
-        <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-neutral-100">
+        <div className="h-[calc(100vh-160px)] overflow-y-auto overscroll-contain pr-2 pb-20 pb-safe text-ink">
             {/* Табы — показываем только если больше одной сессии */}
             {completedSessions.length > 1 && (
               <div className="flex gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
@@ -540,17 +518,17 @@ export function BackgroundTasksWidget() {
                       key={s.sessionId}
                       onClick={() => handleTabChange(i)}
                       className={cn(
-                        "flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200",
+                        "flex-shrink-0 px-4 py-2 rounded-full text-caption font-medium transition-transform duration-press active:scale-95",
                         isActive
-                          ? "bg-white text-gray-900 shadow-md"
-                          : "bg-white/10 text-gray-400 hover:bg-white/20"
+                          ? "bg-ink text-signal-ink"
+                          : "bg-canvas-sunk text-ink-2 hover:text-ink"
                       )}
                     >
                       Анализ {i + 1}
                       {count > 0 && (
                         <span className={cn(
                           "ml-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold",
-                          isActive ? "bg-gray-900 text-white" : "bg-white/20 text-gray-300"
+                          isActive ? "bg-canvas/25 text-signal-ink" : "bg-line text-ink-2"
                         )}>
                           {count}
                         </span>
@@ -568,8 +546,8 @@ export function BackgroundTasksWidget() {
               return (
                 <>
                   <div className="mb-6">
-                    <h2 className="text-2xl font-semibold text-[#101010] mb-2">Результаты анализа</h2>
-                    <p className="text-[#101010] text-sm">
+                    <h2 className="text-h2 text-ink mb-2">Результаты анализа</h2>
+                    <p className="text-caption text-ink-2">
                       {itemsCount > 0
                         ? `Найдено ${itemsCount} ${itemsCount === 1 ? "вещь" : itemsCount < 5 ? "вещи" : "вещей"}`
                         : "Результаты анализа фотографий"}
@@ -578,7 +556,7 @@ export function BackgroundTasksWidget() {
 
                   <div className="space-y-4">
                     {session?.items?.map((item: any, index: number) => (
-                <Card key={index} className="bg-white/5 border-white/10 overflow-hidden">
+                <Card key={index} className="bg-canvas-sunk border-line overflow-hidden rounded-2xl">
                   <CardContent className="flex flex-col sm:flex-row gap-4 p-4">
                     {/* Изображение */}
                     {(item.finalImageUrl || item.image_url || item.img_url) ? (
@@ -587,12 +565,12 @@ export function BackgroundTasksWidget() {
                           src={item.finalImageUrl || item.image_url || item.img_url}
                           alt={item.item_name || item.name}
                           fill
-                          className="rounded-md object-cover"
+                          className="rounded-xl object-cover"
                         />
                       </div>
                     ) : (
-                      <div className="w-24 h-24 bg-white/10 rounded-md flex items-center justify-center text-3xl">
-                        👕
+                      <div className="w-24 h-24 bg-line/60 rounded-xl flex items-center justify-center">
+                        <Shirt className="w-8 h-8 text-ink-3" strokeWidth={1.75} />
                       </div>
                     )}
 
@@ -600,29 +578,29 @@ export function BackgroundTasksWidget() {
                     <div className="flex-1 space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1">
-                          <h3 className="font-semibold text-[#101010] text-base">
+                          <h3 className="font-semibold text-body text-ink">
                             {item.item_name || item.name}
                           </h3>
                           {item.basic_item_id && (
-                            <Badge className="mt-1 bg-blue-500/20 text-blue-300 border-blue-500/30">
+                            <Badge className="mt-1 bg-canvas-sunk text-ink-2 border-line">
                               Базовая
                             </Badge>
                           )}
                         </div>
                       </div>
 
-                      <div className="text-sm text-[#C9C9C9] space-y-1">
+                      <div className="text-caption text-ink-2 space-y-1">
                         {item.material && (
-                          <p>Материал: <span className="text-[#101010]">{item.material}</span></p>
+                          <p>Материал: <span className="text-ink">{item.material}</span></p>
                         )}
                         {item.color && (
-                          <p>Цвет: <span className="text-[#101010]">{item.color}</span></p>
+                          <p>Цвет: <span className="text-ink">{item.color}</span></p>
                         )}
                         {item.shade && (
-                          <p>Оттенок: <span className="text-[#101010]">{item.shade}</span></p>
+                          <p>Оттенок: <span className="text-ink">{item.shade}</span></p>
                         )}
                         {item.style && (
-                          <p>Стиль: <span className="text-[#101010]">{item.style}</span></p>
+                          <p>Стиль: <span className="text-ink">{item.style}</span></p>
                         )}
                       </div>
 
@@ -632,7 +610,7 @@ export function BackgroundTasksWidget() {
                         disabled={addingItems.has(index) || addedItems.has(index)}
                         variant={addedItems.has(index) ? "secondary" : "default"}
                         size="sm"
-                        className="w-full mt-3 rounded-2xl"
+                        className="w-full mt-3 rounded-full"
                       >
                         {addingItems.has(index) && (
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -678,7 +656,7 @@ export function BackgroundTasksWidget() {
             const progressText = session?.progressText || "Анализируем..."
 
             return (
-              <div className="text-neutral-100">
+              <div className="text-ink">
                 <LoadingExperience
                   showGame={showGame}
                   setShowGame={setShowGame}

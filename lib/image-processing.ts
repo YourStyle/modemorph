@@ -5,6 +5,8 @@ export interface ResponseItem {
   basic_item_id: number | null
   need_gen: boolean
   clothing_item: string
+  /** Канонический слаг (backend/clothing_taxonomy.py) или null. */
+  clothing_type?: string | null
   description: string
   item_name: string
   material: string

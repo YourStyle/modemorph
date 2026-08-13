@@ -104,38 +104,42 @@ export function CommonSheet({
           onTouchEnd={handleTouchEnd}
           onInteractOutside={(e) => e.preventDefault()}
         >
-        {/* Drag handle */}
-        <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
-          <div className="w-10 h-1 rounded-full bg-foreground/15" />
+        {/* Стеклянная шапка шита (test/gauntlet/design/LIQUID_GLASS.md, уровень 1) — только
+            ручка и заголовок. Тело ниже остаётся плотным холстом, там блюрить нечего. */}
+        <div className="glass relative will-change-transform">
+          {/* Drag handle */}
+          <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
+            <div className="w-10 h-1 rounded-full bg-foreground/15" />
+          </div>
+
+          {/* Кнопка сворачивания (если передана) */}
+          {onMinimize && (
+            <button
+              onClick={onMinimize}
+              className="absolute top-4 right-16 p-2 rounded-full transition-all duration-200 z-10 text-foreground/60 hover:bg-secondary hover:text-foreground active:scale-95"
+              aria-label="Свернуть в виджет"
+            >
+              <ChevronDown className="w-5 h-5" />
+            </button>
+          )}
+
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 p-2 rounded-full transition-all duration-200 z-10 text-foreground/60 hover:bg-secondary hover:text-foreground active:scale-95"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {title && (
+            <SheetHeader className="px-6 pb-4">
+              <SheetTitle className="text-left text-foreground text-2xl font-semibold tracking-tight">
+                {title}
+              </SheetTitle>
+            </SheetHeader>
+          )}
         </div>
 
-        {/* Кнопка сворачивания (если передана) */}
-        {onMinimize && (
-          <button
-            onClick={onMinimize}
-            className="absolute top-4 right-16 p-2 rounded-full transition-all duration-200 z-10 text-foreground/60 hover:bg-secondary hover:text-foreground active:scale-95"
-            aria-label="Свернуть в виджет"
-          >
-            <ChevronDown className="w-5 h-5" />
-          </button>
-        )}
-
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-full transition-all duration-200 z-10 text-foreground/60 hover:bg-secondary hover:text-foreground active:scale-95"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        {title && (
-          <SheetHeader className="px-6 pb-4">
-            <SheetTitle className="text-left text-foreground text-2xl font-semibold tracking-tight">
-              {title}
-            </SheetTitle>
-          </SheetHeader>
-        )}
-
-        <div className={cn("px-6 pb-6 h-full overflow-y-auto text-foreground", !title && "pt-4")}>{children}</div>
+        <div className={cn("px-6 pb-6 h-full overflow-y-auto bg-background text-foreground", !title && "pt-4")}>{children}</div>
         </SheetPrimitive.Content>
       </SheetPortal>
     </Sheet>

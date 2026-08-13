@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CommonSheet } from "./common-sheet"
 import { toast } from "sonner"
-import {api} from "@/lib/api-client";
+import { Check } from "lucide-react"
+import { api } from "@/lib/api-client"
 
 interface WardrobeItem {
   id: number
@@ -41,11 +42,11 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
   const loadWardrobeItems = async () => {
     setLoading(true)
     try {
-      const items =  await api.get("/api/wardrobe-user-items")
+      const items = await api.get("/api/wardrobe-user-items")
       setWardrobeItems(items)
     } catch (error) {
       console.error("Error loading wardrobe items:", error)
-      toast.error("Ошибка загрузки ��ещей")
+      toast.error("Ошибка загрузки вещей")
     } finally {
       setLoading(false)
     }
@@ -98,92 +99,80 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
   }
 
   return (
-    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Создать образ" backgroundColor="dark">
-      <div className="space-y-6 pb-24">
+    <CommonSheet isOpen={isOpen} onClose={handleClose} title="Создать образ">
+      <div className="space-y-6 pb-28">
         {/* Items Selection */}
         <div>
-          <label className="block text-white font-medium text-sm mb-4">Выберите вещи</label>
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-caption font-semibold text-ink-2">Выберите вещи</label>
+            <span className="text-caption text-ink-3">{wardrobeItems.length} в гардеробе</span>
+          </div>
 
-          <div className="bg-white rounded-lg p-4 relative">
-            {/* Badge in top left corner */}
-            <div className="absolute top-3 left-3 bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-xs font-medium z-10">
-              Мой гардероб ({wardrobeItems.length})
+          {loading ? (
+            <div className="grid grid-cols-3 gap-2.5">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="rounded-[14px] overflow-hidden">
+                  <div className="skeleton aspect-square" />
+                </div>
+              ))}
             </div>
-
-            {loading ? (
-              <div className="text-center py-8 text-gray-500">Загрузка...</div>
-            ) : wardrobeItems.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">Нет вещей в гардеробе</div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-2 pt-8">
-                {wardrobeItems.map((item) => (
-                  <div
+          ) : wardrobeItems.length === 0 ? (
+            <div className="text-center py-10 text-ink-2 text-body">Нет вещей в гардеробе</div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2.5 max-h-80 overflow-y-auto pr-0.5">
+              {wardrobeItems.map((item) => {
+                const isSelected = selectedItems.has(item.id)
+                return (
+                  <button
+                    type="button"
                     key={item.id}
                     onClick={() => handleItemToggle(item.id)}
-                    className={`p-2 rounded-lg border-2 cursor-pointer transition-all hover:shadow-md ${
-                      selectedItems.has(item.id)
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 bg-white hover:bg-gray-50"
+                    className={`relative aspect-square rounded-[14px] bg-canvas-sunk flex items-center justify-center p-2.5 ring-2 transition-transform duration-press active:scale-[.97] ${
+                      isSelected ? "ring-signal" : "ring-transparent"
                     }`}
                   >
-                    <div className="aspect-square bg-gray-100 rounded mb-2 flex items-center justify-center p-1">
-                      <img
-                        src={item.image_url || "/placeholder.svg"}
-                        alt={item.item_name}
-                        className="max-w-full max-h-full object-contain"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = "/placeholder.svg"
-                        }}
-                      />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs font-medium text-gray-900 truncate">{item.item_name}</p>
-                      <p className="text-xs text-gray-500 truncate">{item.color}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                    <img
+                      src={item.image_url || "/placeholder.svg"}
+                      alt={item.item_name}
+                      className="max-w-full max-h-full object-contain"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement
+                        target.src = "/placeholder.svg"
+                      }}
+                    />
+                    {isSelected && (
+                      <span className="absolute top-1.5 right-1.5 h-5 w-5 rounded-full bg-signal text-signal-ink flex items-center justify-center">
+                        <Check className="w-3 h-3" />
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Name Input - moved below items selection */}
+        {/* Name Input */}
         <div>
-          <label className="block text-white font-medium text-sm mb-2">Название образа (необязательно)</label>
-          <Input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Введите название образа"
-            className="bg-white text-gray-900 border-gray-300"
-          />
+          <label className="block text-caption font-semibold text-ink-2 mb-2">Название образа (необязательно)</label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Введите название образа" />
         </div>
 
         {selectedItems.size > 0 && (
-          <div className="bg-blue-900 border border-blue-700 rounded-lg p-3">
-            <p className="text-sm text-blue-100">
-              Выбрано {selectedItems.size} вещ
-              {selectedItems.size === 1 ? "ь" : selectedItems.size < 5 ? "и" : "ей"}
-            </p>
-          </div>
+          <p className="text-caption text-ink-2">
+            Выбрано {selectedItems.size} вещ
+            {selectedItems.size === 1 ? "ь" : selectedItems.size < 5 ? "и" : "ей"}
+          </p>
         )}
       </div>
 
       {/* Fixed Buttons */}
-      <div className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-gray-700 p-4">
+      <div className="fixed bottom-0 left-0 right-0 bg-canvas border-t border-line p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="flex gap-3 max-w-md mx-auto">
-          <Button
-            variant="outline"
-            onClick={handleClose}
-            className="flex-1 border-gray-600 text-gray-300 hover:bg-gray-700 bg-transparent"
-          >
+          <Button variant="outline" onClick={handleClose} className="flex-1">
             Отмена
           </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={selectedItems.size === 0 || saving}
-            className="flex-1 bg-white hover:bg-gray-100 text-gray-900"
-          >
+          <Button onClick={handleSubmit} disabled={selectedItems.size === 0 || saving} className="flex-1">
             {saving ? "Сохраняем..." : "Сохранить образ"}
           </Button>
         </div>

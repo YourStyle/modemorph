@@ -73,27 +73,27 @@ export function CityPickerSheet({ isOpen, onClose, onPicked, currentCity, curren
   return (
     <CommonSheet isOpen={isOpen} onClose={onClose} backgroundColor="white">
       <div className="pb-4">
-        <h2 className="text-xl font-semibold text-center text-[#101010] mb-1">Выбор города</h2>
-        <p className="text-sm text-muted-foreground text-center mb-4">
+        <h2 className="text-h2 text-center text-ink mb-1">Выбор города</h2>
+        <p className="text-caption text-ink-2 text-center mb-4">
           {currentCity
             ? `Сейчас: ${currentCity}${currentCountry ? `, ${currentCountry}` : ""}`
             : "Укажи свой город для точной погоды"}
         </p>
 
         <div className="relative mb-3">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-3" strokeWidth={1.75} />
           <input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Начни вводить город…"
-            className="w-full h-12 pl-10 pr-3 rounded-xl bg-[#F5F4FF] outline-none text-[#101010] placeholder:text-gray-400"
+            className="w-full h-12 pl-10 pr-3 rounded-full bg-canvas-sunk outline-none text-ink placeholder:text-ink-3"
           />
         </div>
 
         {searching && (
           <div className="flex justify-center py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-[#B97DC6]" />
+            <Loader2 className="h-5 w-5 animate-spin text-signal" strokeWidth={1.75} />
           </div>
         )}
 
@@ -103,12 +103,12 @@ export function CityPickerSheet({ isOpen, onClose, onPicked, currentCity, curren
               <button
                 disabled={applying}
                 onClick={() => pick(c)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 text-left disabled:opacity-50"
+                className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-canvas-sunk text-left disabled:opacity-50 transition-colors"
               >
-                <MapPin className="h-4 w-4 text-[#B97DC6] shrink-0" />
-                <span className="text-[#101010]">
+                <MapPin className="h-4 w-4 text-ink-3 shrink-0" strokeWidth={1.75} />
+                <span className="text-body text-ink">
                   {c.name}
-                  <span className="text-gray-500 text-sm">
+                  <span className="text-ink-2 text-caption">
                     {c.state ? `, ${c.state}` : ""}
                     {c.country ? `, ${c.country}` : ""}
                   </span>
@@ -117,7 +117,7 @@ export function CityPickerSheet({ isOpen, onClose, onPicked, currentCity, curren
             </li>
           ))}
           {!searching && q.trim().length >= 2 && results.length === 0 && (
-            <li className="text-center text-sm text-muted-foreground py-4">Ничего не найдено</li>
+            <li className="text-center text-caption text-ink-2 py-4">Ничего не найдено</li>
           )}
         </ul>
       </div>

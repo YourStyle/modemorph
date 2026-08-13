@@ -56,7 +56,7 @@ export function ItemDetailsModal({ item, isOpen, onClose, isAdmin = false }: Ite
   const body = (
     <div className="space-y-5 pb-2">
       {/* Image */}
-      <div className="aspect-[4/3] bg-secondary/30 rounded-2xl overflow-hidden">
+      <div className="aspect-[4/3] bg-canvas-sunk rounded-[14px] overflow-hidden">
         {item.image_url && !imageError ? (
           <Image
             src={item.image_url}
@@ -68,7 +68,7 @@ export function ItemDetailsModal({ item, isOpen, onClose, isAdmin = false }: Ite
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Package className="h-12 w-12 text-muted-foreground" />
+            <Package className="h-12 w-12 text-ink-3" strokeWidth={1.75} />
           </div>
         )}
       </div>
@@ -102,21 +102,21 @@ export function ItemDetailsModal({ item, isOpen, onClose, isAdmin = false }: Ite
       {item.color && (
         <div className="flex items-center gap-2.5">
           {hex && (
-            <div className="w-7 h-7 rounded-full border border-black/5 shadow-sm flex-shrink-0" style={{ backgroundColor: hex }} />
+            <div className="w-7 h-7 rounded-full border border-line flex-shrink-0" style={{ backgroundColor: hex }} />
           )}
           <div>
-            <span className="text-sm font-medium text-foreground">{colorLabel}</span>
-            {item.shade && <span className="text-sm text-muted-foreground ml-1.5">({item.shade})</span>}
+            <span className="text-body font-medium text-ink">{colorLabel}</span>
+            {item.shade && <span className="text-body text-ink-3 ml-1.5">({item.shade})</span>}
           </div>
         </div>
       )}
 
       {/* Description */}
       {item.description && (
-        <p className="text-sm text-foreground/70 leading-relaxed">{item.description}</p>
+        <p className="text-body text-ink-2 leading-relaxed">{item.description}</p>
       )}
       {isAdmin && item.description_en && (
-        <p className="text-sm text-foreground/60 leading-relaxed italic">{item.description_en}</p>
+        <p className="text-body text-ink-3 leading-relaxed italic">{item.description_en}</p>
       )}
 
       {/* Characteristics */}
@@ -141,8 +141,8 @@ export function ItemDetailsModal({ item, isOpen, onClose, isAdmin = false }: Ite
 
       {/* Notes */}
       {item.notes && (
-        <div className="bg-secondary/50 rounded-xl p-3">
-          <p className="text-sm text-foreground/70">{item.notes}</p>
+        <div className="bg-canvas-sunk rounded-[14px] p-3">
+          <p className="text-body text-ink-2">{item.notes}</p>
         </div>
       )}
 
@@ -166,9 +166,9 @@ export function ItemDetailsModal({ item, isOpen, onClose, isAdmin = false }: Ite
 
       {/* Shop link */}
       {(item.url || item.shop_url) && (
-        <Button asChild variant="outline" className="w-full rounded-2xl h-11">
+        <Button asChild variant="outline" className="w-full">
           <a href={item.url || item.shop_url || "#"} target="_blank" rel="noopener noreferrer">
-            <ExternalLink className="h-4 w-4 mr-2" />
+            <ExternalLink className="h-4 w-4 mr-2" strokeWidth={1.75} />
             В магазин
           </a>
         </Button>

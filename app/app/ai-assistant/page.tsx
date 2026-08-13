@@ -3,11 +3,10 @@
 import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
-import { Send, Camera, Sparkles, Image as ImageIcon, Plus } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { Send, Camera, Sparkles, Plus, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { cn } from "@/lib/utils"
 import { sessionAuth } from "@/lib/tma/session-auth"
 import { PhotoAnalysisForm } from "@/components/photo-analysis-form"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits"
@@ -350,96 +349,106 @@ export default function AIAssistantPage() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background">
-      {/* Header */}
-      <div className="bg-background/80 backdrop-blur-xl border-b border-border/50 px-4 py-3">
-        <div className="flex items-center space-x-3">
-          <div className="rounded-xl p-2 shadow-sm" style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}>
-            <Sparkles className="h-4 w-4 text-white" />
+    // fixed на весь вьюпорт (как экран «Идеи»): экран — самостоятельный чат,
+    // не часть скролла страницы. Без этого общая закреплённая шапка (дата/погода)
+    // из layout-client добавляет высоту сверх 100dvh, документ скроллится, и
+    // автоскролл к последнему сообщению при монтировании уносит нашу шапку
+    // чата за пределы экрана — «прыжок» ровно того, что запрещено ТЗ.
+    <div className="fixed inset-0 z-[45] flex flex-col overflow-hidden bg-canvas">
+      {/* Header — стеклянная закреплённая шапка (LIQUID_GLASS.md), без градиента:
+          нейтральный значок, единственный акцент экрана зарезервирован под кнопку отправки */}
+      <div
+        className="glass relative z-10 border-b border-line px-4 pb-3"
+        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink">
+            <Sparkles className="h-4 w-4 text-canvas" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground tracking-tight">ИИ-Стилист</h1>
+          <h1 className="text-h1 text-ink">ИИ-Стилист</h1>
         </div>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-56">
-        {messages.map((message, index) => (
-          <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"} fade-in`}>
+        {messages.map((message, index) => {
+          const isUser = message.role === "user"
+          return (
             <div
-              className={`flex space-x-2.5 max-w-[85%] ${message.role === "user" ? "flex-row-reverse space-x-reverse" : ""}`}
+              key={index}
+              className={cn("flex animate-fade-up", isUser ? "justify-end" : "justify-start")}
+              style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}
             >
-              <Avatar className="h-7 w-7 flex-shrink-0 shadow-sm">
-                <AvatarFallback
-                  className={message.role === "user" ? "bg-gray-900 text-white text-xs" : "text-white text-xs"}
-                  style={message.role !== "user" ? { background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" } : undefined}
-                >
-                  {message.role === "user" ? "Вы" : "ИИ"}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex-1">
-                <Card className={message.role === "user" ? "bg-gray-900 text-white shadow-sm" : "bg-white shadow-sm"}>
-                  <CardContent className="p-3.5">
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                    {message.outfit && (
-                      <div className="mt-4 p-4 bg-gray-50 rounded-2xl">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-semibold text-gray-900 text-sm">{message.outfit.title}</h4>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleSaveOutfit(message.outfit!)}
-                            className="ml-2"
-                          >
-                            <Plus className="h-3 w-3 mr-1" />
-                            Сохранить
-                          </Button>
-                        </div>
-                        <p className="text-xs text-gray-500 mb-3">{message.outfit.description}</p>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-                          {message.outfit.items.map((item) => (
-                            <div key={item.id} className="text-center">
-                              <div className="aspect-square bg-white rounded-xl mb-2 overflow-hidden shadow-sm">
-                                <img
-                                  src={item.image_url || "/placeholder.svg"}
-                                  alt={item.name}
-                                  className="w-full h-full object-cover"
-                                  onError={(e) => {
-                                    const target = e.target as HTMLImageElement
-                                    target.src = "/placeholder.svg?height=150&width=150"
-                                  }}
-                                />
-                              </div>
-                              <p className="text-xs font-medium text-gray-900">{item.name}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+              <div className={cn("flex max-w-[85%] gap-2.5", isUser && "flex-row-reverse")}>
+                <Avatar className="h-7 w-7 flex-shrink-0">
+                  <AvatarFallback
+                    className={cn(
+                      "text-[11px] font-semibold",
+                      isUser ? "bg-canvas-sunk text-ink ring-1 ring-inset ring-line" : "bg-ink text-canvas",
                     )}
-                  </CardContent>
-                </Card>
+                  >
+                    {isUser ? "Вы" : "ИИ"}
+                  </AvatarFallback>
+                </Avatar>
+                <div
+                  className={cn(
+                    "rounded-2xl px-4 py-3",
+                    isUser ? "bg-ink text-canvas" : "bg-canvas-sunk text-ink",
+                  )}
+                >
+                  <p className="text-body whitespace-pre-wrap">{message.content}</p>
+                  {message.outfit && (
+                    <div className="mt-3 border-t border-line/60 pt-3">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <h4 className="text-caption font-semibold text-ink">{message.outfit.title}</h4>
+                        <button
+                          onClick={() => handleSaveOutfit(message.outfit!)}
+                          className="flex shrink-0 items-center gap-1 text-caption font-semibold text-signal transition-transform duration-press active:scale-95"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          Сохранить
+                        </button>
+                      </div>
+                      <p className="mb-3 text-caption text-ink-2">{message.outfit.description}</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {message.outfit.items.map((item) => (
+                          <div key={item.id} className="text-center">
+                            <div className="mb-1 aspect-square overflow-hidden rounded-xl bg-canvas">
+                              <img
+                                src={item.image_url || "/placeholder.svg"}
+                                alt={item.name}
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement
+                                  target.src = "/placeholder.svg?height=150&width=150"
+                                }}
+                              />
+                            </div>
+                            <p className="truncate text-[11px] text-ink-2">{item.name}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
 
         {isLoading && (
-          <div className="flex justify-start fade-in">
-            <div className="flex space-x-2.5 max-w-[85%]">
-              <Avatar className="h-7 w-7 flex-shrink-0 shadow-sm">
-                <AvatarFallback className="text-white text-xs" style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}>ИИ</AvatarFallback>
+          <div className="flex justify-start animate-fade-up" role="status" aria-live="polite">
+            <div className="flex max-w-[85%] gap-2.5">
+              <Avatar className="h-7 w-7 flex-shrink-0">
+                <AvatarFallback className="bg-ink text-canvas text-[11px] font-semibold">ИИ</AvatarFallback>
               </Avatar>
-              <Card className="bg-white shadow-sm">
-                <CardContent className="p-3.5">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "0ms" }} />
-                      <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "150ms" }} />
-                      <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: "300ms" }} />
-                    </div>
-                    <p className="text-sm text-muted-foreground">Думаю...</p>
-                  </div>
-                </CardContent>
-              </Card>
+              <div className="rounded-2xl bg-canvas-sunk px-4 py-3">
+                <span className="sr-only">Ассистент печатает ответ</span>
+                <div className="flex w-36 flex-col gap-2">
+                  <div className="skeleton h-2.5 w-full rounded-full" />
+                  <div className="skeleton h-2.5 w-2/3 rounded-full" />
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -447,44 +456,50 @@ export default function AIAssistantPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div className="fixed inset-x-0 bottom-0 bg-background/80 backdrop-blur-xl border-t border-border/50 pb-24">
+      {/* Input Area — закреплённая внизу, стеклянный хром; safe-area учтена в pb,
+          позиция fixed не зависит от скролла страницы, поэтому не «прыгает» при
+          появлении клавиатуры */}
+      <div className="glass fixed inset-x-0 bottom-0 z-10 border-t border-line pb-24">
         <div className="max-w-7xl mx-auto">
           {/* Quick Actions */}
-          <div className="px-4 pt-3 pb-2">
-            <Button
-              size="sm"
-              variant="outline"
+          <div className="flex gap-2 px-4 pt-3 pb-2">
+            <button
               onClick={() => handleQuickAction("outfit")}
               disabled={isLoading}
-              className="whitespace-nowrap border-border/50 text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3.5 py-2 text-caption font-medium text-ink-2 transition-transform duration-press active:scale-95 disabled:opacity-50"
             >
-              <Sparkles className="h-3 w-3 mr-1.5" />
+              <Sparkles className="h-3.5 w-3.5 text-ink-3" />
               Подобрать образ
-            </Button>
+            </button>
+            <button
+              onClick={() => handleQuickAction("photo")}
+              disabled={isLoading}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3.5 py-2 text-caption font-medium text-ink-2 transition-transform duration-press active:scale-95 disabled:opacity-50"
+            >
+              <Camera className="h-3.5 w-3.5 text-ink-3" />
+              Фото на анализ
+            </button>
           </div>
 
           {/* Input */}
           <div className="px-4 pb-4">
-            <div className="flex space-x-2.5">
-              <div className="flex-1">
-                <Input
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Опишите ваш стиль или задайте вопрос..."
-                  className="w-full bg-secondary/50 border-border/50"
-                  disabled={isLoading}
-                />
-              </div>
-              <Button
+            <div className="flex gap-2.5">
+              <Input
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Опишите ваш стиль или задайте вопрос..."
+                className="flex-1 rounded-full border-line bg-canvas-sunk text-ink placeholder:text-ink-3"
+                disabled={isLoading}
+              />
+              <button
                 onClick={() => handleSend()}
                 disabled={isLoading || !inputValue.trim()}
-                size="icon"
-                className="rounded-xl shadow-sm"
+                aria-label="Отправить"
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-signal text-signal-ink transition-transform duration-press active:scale-95 disabled:bg-canvas-sunk disabled:text-ink-3"
               >
                 <Send className="h-4 w-4" />
-              </Button>
+              </button>
             </div>
           </div>
         </div>
@@ -492,13 +507,17 @@ export default function AIAssistantPage() {
 
       {/* Photo Analysis Modal */}
       {showPhotoForm && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl fade-in-up">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold tracking-tight">Анализ фото</h3>
-              <Button variant="ghost" size="sm" onClick={() => setShowPhotoForm(false)}>
-                ✕
-              </Button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md rounded-2xl bg-canvas p-6 animate-scale-in">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-h2 text-ink">Анализ фото</h3>
+              <button
+                onClick={() => setShowPhotoForm(false)}
+                aria-label="Закрыть"
+                className="rounded-full p-1.5 text-ink-2 transition-colors hover:bg-canvas-sunk hover:text-ink"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
             <PhotoAnalysisForm
               onSuccess={(result) => {

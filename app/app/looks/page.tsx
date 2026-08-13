@@ -3,7 +3,13 @@
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Plus, Download, Trash2, Search, Sparkles } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Plus, Download, Trash2, Search, Sparkles, MoreVertical, Shirt, Package } from "lucide-react"
 import { SaveImageSheet } from "@/components/save-image-sheet"
 import { renderSinglePhoto, renderLookGrid } from "@/lib/save-image"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
@@ -45,6 +51,83 @@ interface LooksSection {
     user_looks: SavedLook
   }>
   created_at: string
+}
+
+// Лесенка появления карточек — максимум 8 шагов, дальше все карточки одной
+// задержкой (тот же язык, что и components/user-wardrobe-grid.tsx).
+const MAX_STAGGER_STEPS = 8
+const STAGGER_STEP_MS = 45
+
+function itemsLabel(count: number) {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod100 >= 11 && mod100 <= 14) return "вещей"
+  if (mod10 === 1) return "вещь"
+  if (mod10 >= 2 && mod10 <= 4) return "вещи"
+  return "вещей"
+}
+
+function looksLabel(count: number) {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod100 >= 11 && mod100 <= 14) return "образов"
+  if (mod10 === 1) return "образ"
+  if (mod10 >= 2 && mod10 <= 4) return "образа"
+  return "образов"
+}
+
+// Мозаика вещей образа — одна поверхность со швами в 1px (--line), а не
+// отдельная скруглённая плашка под каждой картинкой. Образ читается как один
+// объект; радиус живёт только на внешней Card.
+function LookMosaic({ items }: { items: ExpandedItem[] }) {
+  const shown = items.slice(0, 4)
+  const overflow = items.length - shown.length
+
+  if (shown.length === 0) {
+    return (
+      <div className="aspect-square bg-canvas-sunk ring-1 ring-inset ring-line flex items-center justify-center">
+        <Package className="w-6 h-6 text-ink-3" />
+      </div>
+    )
+  }
+
+  const gridClass =
+    shown.length === 1 ? "grid-cols-1 grid-rows-1" : shown.length === 2 ? "grid-cols-2 grid-rows-1" : "grid-cols-2 grid-rows-2"
+
+  return (
+    // p-px тем же --line, что и шов между плитками — светлая вещь (белое,
+    // кремовое) на canvas-sunk получает контур по периметру мозаики, а не
+    // только внутренние швы. Один и тот же 1px везде, нигде не удваивается.
+    <div className={`grid ${gridClass} gap-px aspect-square bg-line p-px`}>
+      {shown.map((item, index) => {
+        const name = item.source === "user" ? item.item_name : item.name_ru
+        const isLast = index === shown.length - 1
+        return (
+          <div
+            key={`${item.source}-${item.id}-${index}`}
+            className={`relative bg-canvas-sunk flex items-center justify-center p-2.5 ${
+              shown.length === 3 && index === 0 ? "row-span-2" : ""
+            }`}
+          >
+            <img
+              src={item.image_url || "/placeholder.svg"}
+              alt={name || "Вещь"}
+              className="max-w-full max-h-full object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement
+                target.src = "/placeholder.svg"
+              }}
+            />
+            {overflow > 0 && isLast && (
+              <div className="absolute inset-0 bg-ink/60 flex items-center justify-center">
+                <span className="text-body font-bold text-signal-ink">+{overflow}</span>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function LooksPage() {
@@ -106,7 +189,6 @@ export default function LooksPage() {
   const loadSavedLooks = async () => {
     try {
       const looks = await api.get("/api/user-looks")
-      console.log("Loaded looks:", looks)
       setSavedLooks(looks)
     } catch (error) {
       console.error("Error loading saved looks:", error)
@@ -205,131 +287,146 @@ export default function LooksPage() {
     }
   }
 
-  const LookCard = ({ look, showDelete = false }: { look: SavedLook; showDelete?: boolean }) => {
+  const handleSaveLookPhoto = (look: SavedLook) => {
+    const urls = (look.expandedItems || []).map((it) => it.image_url || "").filter(Boolean)
+    if (urls.length === 0) {
+      toast.error("Нет изображений для сохранения")
+      return
+    }
+    setSaveTarget({
+      render: () => renderLookGrid(urls, look.name),
+      fileName: `modemorph-look-${look.id}.png`,
+      title: look.name,
+    })
+  }
+
+  const handleSaveTryOnPhoto = (look: SavedLook) => {
+    if (!look.image_url) return
+    setSaveTarget({
+      render: () => renderSinglePhoto(look.image_url!),
+      fileName: `modemorph-tryon-${look.id}.png`,
+      title: look.name,
+    })
+  }
+
+  // Действия карточки живут в меню за иконкой "ещё" — не висят поверх фото
+  // постоянно и работают на тач-устройствах (в отличие от group-hover).
+  const LookCard = ({
+    look,
+    index,
+    showDelete = false,
+    className = "w-full",
+  }: {
+    look: SavedLook
+    index: number
+    showDelete?: boolean
+    className?: string
+  }) => {
     const items = look.expandedItems || []
-    console.log(`Rendering look ${look.id} with ${items.length} items:`, items)
 
     return (
-      <Card className="p-4 bg-white border-0 relative group hover:shadow-lg transition-all duration-300 flex-shrink-0 w-80 shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
-        <div className="grid grid-cols-3 gap-3 min-h-[240px]">
-          {items.length === 0 ? (
-            <div className="col-span-3 flex items-center justify-center text-gray-500">
-              <p>Нет вещей для отображения</p>
-            </div>
-          ) : (
-            items.slice(0, 6).map((item, index) => {
-              const itemName = item.source === "user" ? item.item_name : item.name_ru
-              const imageUrl = item.image_url || "/placeholder.svg"
+      <Card
+        className={`border-0 overflow-hidden relative group animate-fade-up ${className}`}
+        style={{ animationDelay: `${Math.min(index, MAX_STAGGER_STEPS - 1) * STAGGER_STEP_MS}ms` }}
+      >
+        <LookMosaic items={items} />
 
-              console.log(`Rendering item ${index}:`, { itemName, imageUrl, source: item.source })
-
-              return (
-                <div
-                  key={`${item.source}-${item.id}-${index}`}
-                  className={`flex items-center justify-center bg-secondary/40 rounded-xl p-2 ${
-                    items.length === 1
-                      ? "col-span-3"
-                      : items.length === 2 && index === 0
-                        ? "col-span-2"
-                        : items.length === 3 && index === 0
-                          ? "col-span-3"
-                          : items.length === 4 && index < 2
-                            ? "col-span-3"
-                            : items.length === 5 && index === 0
-                              ? "col-span-3"
-                              : ""
-                  }`}
-                >
-                  <img
-                    src={imageUrl || "/placeholder.svg"}
-                    alt={itemName || "Item"}
-                    className="max-w-full max-h-[100px] object-contain"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement
-                      console.log(`Image failed to load: ${target.src}`)
-                      target.src = "/placeholder.svg"
-                    }}
-                    onLoad={() => {
-                      console.log(`Image loaded successfully: ${imageUrl}`)
-                    }}
-                  />
-                </div>
-              )
-            })
-          )}
+        <div className="absolute top-2 right-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="glass h-7 w-7 rounded-full flex items-center justify-center text-ink active:scale-95 transition-transform duration-press"
+                aria-label="Действия с образом"
+              >
+                <MoreVertical className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleSaveLookPhoto(look)}>
+                <Download className="h-4 w-4 mr-2" />
+                Сохранить фото
+              </DropdownMenuItem>
+              {showDelete && (
+                <DropdownMenuItem onClick={() => handleDeleteLook(look.id)} className="text-red-600 focus:text-red-600">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Удалить
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        <div className="mt-4">
-          <h4 className="font-medium text-base truncate">{look.name}</h4>
-          {look.description && <p className="text-sm text-muted-foreground truncate mt-1">{look.description}</p>}
-          <p className="text-xs text-gray-400 mt-1">
-            {items.length} вещей ({look.items?.length || 0} в данных)
+        <div className="px-3 pt-2.5 pb-3">
+          <h4 className="text-caption font-semibold text-ink truncate">{look.name}</h4>
+          <p className="text-caption text-ink-2 mt-0.5">
+            {items.length} {itemsLabel(items.length)}
           </p>
         </div>
+      </Card>
+    )
+  }
 
-        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="p-1 h-auto bg-white/80 rounded-full"
-            onClick={(e) => {
-              e.stopPropagation()
-              const urls = (look.expandedItems || []).map((it) => it.image_url || "").filter(Boolean)
-              if (urls.length === 0) {
-                toast.error("Нет изображений для сохранения")
-                return
-              }
-              setSaveTarget({
-                render: () => renderLookGrid(urls, look.name),
-                fileName: `modemorph-look-${look.id}.png`,
-                title: look.name,
-              })
-            }}
-            aria-label="Сохранить образ"
-          >
-            <Download className="w-4 h-4" />
-          </Button>
-          {showDelete && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="p-1 h-auto text-red-500 hover:text-red-700"
-              onClick={(e) => {
-                e.stopPropagation()
-                handleDeleteLook(look.id)
+  const TryOnCard = ({ look, index }: { look: SavedLook; index: number }) => {
+    return (
+      <Card
+        className="border-0 overflow-hidden relative group flex-shrink-0 w-36 animate-fade-up"
+        style={{ animationDelay: `${Math.min(index, MAX_STAGGER_STEPS - 1) * STAGGER_STEP_MS}ms` }}
+      >
+        <div className="aspect-[3/4] relative bg-canvas-sunk">
+          {look.image_url && (
+            <img
+              src={look.image_url}
+              alt={look.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement
+                target.src = "/placeholder.svg"
               }}
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
+            />
           )}
         </div>
 
-        {paywallOpen && (
-          <SubscriptionSheet
-            isOpen={paywallOpen}
-            source="limit:outfits_saved"
-            onClose={() => setPaywallOpen(false)}
-            onSuccess={() => setPaywallOpen(false)}
-          />
-        )}
+        <div className="absolute top-2 right-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => e.stopPropagation()}
+                className="glass h-7 w-7 rounded-full flex items-center justify-center text-ink active:scale-95 transition-transform duration-press"
+                aria-label="Действия с примеркой"
+              >
+                <MoreVertical className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleSaveTryOnPhoto(look)}>
+                <Download className="h-4 w-4 mr-2" />
+                Сохранить фото
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleDeleteLook(look.id)} className="text-red-600 focus:text-red-600">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Удалить
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div className="px-3 pt-2.5 pb-3">
+          <h4 className="text-caption font-semibold text-ink truncate">{look.name}</h4>
+        </div>
       </Card>
     )
   }
 
   const AddOutfitCard = ({ section }: { section: LooksSection }) => {
     return (
-      <Card
+      <button
         onClick={() => handleOpenAddOutfits(section)}
-        className="p-4 bg-secondary/30 border-2 border-dashed border-border/50 hover:border-border cursor-pointer transition-all duration-300 flex-shrink-0 w-80 min-h-[320px] flex items-center justify-center group hover:bg-secondary/50"
+        className="flex-shrink-0 w-36 aspect-square rounded-[18px] border border-dashed border-line bg-canvas-sunk/50 flex flex-col items-center justify-center gap-2 text-ink-2 transition-colors duration-press hover:bg-canvas-sunk active:scale-[.98]"
       >
-        <div className="text-center">
-          <div className="w-12 h-12 bg-secondary rounded-2xl flex items-center justify-center mx-auto mb-3 group-hover:bg-secondary/80 transition-colors">
-            <Plus className="w-6 h-6 text-muted-foreground" />
-          </div>
-          <p className="text-foreground font-medium text-sm">Добавить образы</p>
-          <p className="text-xs text-muted-foreground mt-1">Выберите образы для подборки</p>
-        </div>
-      </Card>
+        <Plus className="w-5 h-5" />
+        <span className="text-caption font-semibold">Добавить образы</span>
+      </button>
     )
   }
 
@@ -338,54 +435,41 @@ export default function LooksPage() {
     const hasLooks = sectionLooks.length > 0
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold text-foreground tracking-tight">{section.name}</h3>
-            <p className="text-sm text-muted-foreground">
-              {sectionLooks.length} образ{sectionLooks.length !== 1 ? "ов" : ""}
+            <h3 className="text-body font-semibold text-ink">{section.name}</h3>
+            <p className="text-caption text-ink-2">
+              {sectionLooks.length} {looksLabel(sectionLooks.length)}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {hasLooks && (
-              <div className="flex flex-col gap-2 w-full md:flex-row md:gap-4">
-                <Button
-                  onClick={() => handleOpenFilter(section)}
-                  variant="outline"
-                  size="sm"
-                  className="text-muted-foreground border-border/50 hover:bg-secondary/80 w-full md:w-auto"
-                >
-                  <Search className="w-4 h-4 mr-1" />
-                  Поиск и фильтры
-                </Button>
-                <Button
-                  onClick={() => handleOpenAddOutfits(section)}
-                  variant="outline"
-                  size="sm"
-                  className="text-muted-foreground border-border/50 hover:bg-secondary/80 w-full md:w-auto"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Добавить образы
-                </Button>
-              </div>
-            )}
-          </div>
+          {hasLooks && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => handleOpenFilter(section)}
+                aria-label="Поиск и фильтры"
+                className="h-8 w-8 rounded-full flex items-center justify-center text-ink-2 hover:bg-canvas-sunk active:scale-95 transition-[background-color,transform] duration-press"
+              >
+                <Search className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => handleOpenAddOutfits(section)}
+                aria-label="Добавить образы в подборку"
+                className="h-8 w-8 rounded-full flex items-center justify-center text-ink-2 hover:bg-canvas-sunk active:scale-95 transition-[background-color,transform] duration-press"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
 
-        <div className="relative min-h-[200px] scroll-section">
-          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 pt-1">
+        <div className="relative scroll-section">
+          <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1 pt-1">
             {!hasLooks && <AddOutfitCard section={section} />}
-            {sectionLooks.map((look) => (
-              <LookCard key={look.id} look={look} />
+            {sectionLooks.map((look, index) => (
+              <LookCard key={look.id} look={look} index={index} className="w-36 flex-shrink-0" />
             ))}
           </div>
-
-          {sectionLooks.length > 0 && (
-            <>
-              <div className="absolute top-0 left-0 w-4 h-full bg-gradient-to-r from-background to-transparent pointer-events-none" />
-              <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-l from-background to-transparent pointer-events-none" />
-            </>
-          )}
         </div>
       </div>
     )
@@ -393,35 +477,29 @@ export default function LooksPage() {
 
   if (loading) {
     return (
-      <div className="px-4 pt-2 pb-6 space-y-8 animate-pulse">
-        {/* Header Skeleton */}
-        <div className="space-y-4">
-          <div className="h-9 bg-gray-200 rounded-lg w-48" />
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="h-12 bg-gray-200 rounded-xl w-full sm:flex-1" />
-            <div className="h-12 bg-gray-200 rounded-xl w-full sm:flex-1" />
+      <div className="px-4 pt-2 pb-6 space-y-8">
+        {/* Header skeleton */}
+        <div className="space-y-3">
+          <div className="skeleton h-8 w-32 rounded-full" />
+          <div className="space-y-2">
+            <div className="skeleton h-[52px] w-full rounded-full" />
+            <div className="skeleton h-10 w-full rounded-full" />
           </div>
         </div>
 
-        {/* All Looks Section Skeleton */}
+        {/* All looks grid skeleton */}
         <div className="space-y-4">
-          <div>
-            <div className="h-7 bg-gray-200 rounded-lg w-40 mb-2" />
-            <div className="h-5 bg-gray-200 rounded w-24" />
+          <div className="flex items-baseline justify-between">
+            <div className="skeleton h-5 w-24 rounded-full" />
+            <div className="skeleton h-4 w-14 rounded-full" />
           </div>
-          <div className="flex gap-4 overflow-x-hidden">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex-shrink-0 w-80">
-                <div className="p-4 bg-gray-100 rounded-lg border border-gray-200">
-                  <div className="grid grid-cols-3 gap-3 min-h-[240px]">
-                    {[1, 2, 3, 4, 5, 6].map((j) => (
-                      <div key={j} className="bg-gray-200 rounded-lg h-24" />
-                    ))}
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    <div className="h-5 bg-gray-200 rounded w-3/4" />
-                    <div className="h-4 bg-gray-200 rounded w-1/2" />
-                  </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="rounded-[18px] overflow-hidden">
+                <div className="skeleton aspect-square" />
+                <div className="px-3 pt-2.5 pb-3 space-y-1.5">
+                  <div className="skeleton h-3 w-4/5 rounded-full" />
+                  <div className="skeleton h-2.5 w-2/5 rounded-full" />
                 </div>
               </div>
             ))}
@@ -434,159 +512,70 @@ export default function LooksPage() {
   return (
     <div className="px-4 pt-2 pb-6 space-y-8">
       {/* Header */}
-      <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-foreground tracking-tight">Образы</h1>
+      <div className="space-y-3">
+        <h1 className="text-h1 text-ink">Образы</h1>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Button
-            onClick={() => setIsCreateLookOpen(true)}
-            className="w-full sm:flex-1 bg-gray-900 hover:bg-gray-800 text-white h-12 rounded-2xl font-medium shadow-md"
-          >
-            <Plus className="w-5 h-5 mr-2" />
+        <div className="space-y-2">
+          <Button onClick={() => setIsCreateLookOpen(true)} variant="signal" size="lg" className="w-full">
+            <Plus className="w-5 h-5" />
             Создать образ
           </Button>
 
-          <Button
+          {/* Подборка — второстепенное действие, поэтому тише и мельче
+              основной кнопки, а не такая же пилюля рядом. */}
+          <button
             onClick={() => setIsAddCollectionOpen(true)}
-            variant="outline"
-            className="w-full sm:flex-1 border-border/50 text-foreground hover:bg-secondary/80 h-12 rounded-2xl font-medium"
+            className="w-full h-10 rounded-full border border-line text-ink-2 text-caption font-semibold flex items-center justify-center gap-1.5 transition-[background-color,transform] duration-press ease-out active:scale-[.98] hover:bg-canvas-sunk"
           >
-            <Plus className="w-5 h-5 mr-2" />
-            Добавить в чемодан
-          </Button>
+            <Plus className="w-3.5 h-3.5" />
+            Новая подборка
+          </button>
         </div>
       </div>
 
-      {/* All Looks Section */}
+      {/* All Looks — плотная сетка, а не карусель с картонками (планка: whering
+          wishlist grid) */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-foreground tracking-tight">Все образы</h2>
-            <p className="text-sm text-muted-foreground">{regularLooks.length} образов</p>
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-h2 text-ink">Все образы</h2>
+          <span className="text-caption text-ink-2">
+            {regularLooks.length} {looksLabel(regularLooks.length)}
+          </span>
+        </div>
+
+        {regularLooks.length > 0 ? (
+          <div className="grid grid-cols-2 gap-3">
+            {regularLooks.map((look, index) => (
+              <LookCard key={look.id} look={look} index={index} showDelete />
+            ))}
           </div>
-        </div>
-
-        <div className="relative scroll-section">
-          {regularLooks.length > 0 ? (
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 pt-1">
-              {regularLooks.map((look) => (
-                <LookCard key={look.id} look={look} showDelete={true} />
-              ))}
+        ) : (
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <div className="w-11 h-11 rounded-full bg-canvas-sunk flex items-center justify-center">
+              <Shirt className="w-5 h-5 text-ink-2" />
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
-              <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 shadow-md"
-                style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}
-              >
-                <Sparkles className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-lg font-bold text-foreground tracking-tight mb-1">Сохраните первый образ</h3>
-              <p className="text-sm text-muted-foreground mb-5 max-w-xs">Получите рекомендации на главной странице и сохраняйте понравившиеся образы здесь.</p>
-              <Button
-                onClick={() => setIsCreateLookOpen(true)}
-                className="rounded-2xl text-white text-sm font-semibold px-6 py-3 shadow-md border-0"
-                style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Создать первый образ
-              </Button>
-            </div>
-          )}
-
-          {regularLooks.length > 1 && (
-            <>
-              <div className="absolute top-0 left-0 w-4 h-full bg-gradient-to-r from-background to-transparent pointer-events-none" />
-              <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-l from-background to-transparent pointer-events-none" />
-            </>
-          )}
-        </div>
+            <p className="text-body text-ink-2 max-w-[220px]">Сохраните первый образ — и он всегда будет под рукой</p>
+          </div>
+        )}
       </div>
 
       {/* Try-Ons Section */}
       {tryOnLooks.length > 0 && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-foreground tracking-tight flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-purple-500" />
-                Примерки
-              </h2>
-              <p className="text-sm text-muted-foreground">{tryOnLooks.length} примерок</p>
-            </div>
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-h2 text-ink flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-ink-2" />
+              Примерки
+            </h2>
+            <span className="text-caption text-ink-2">{tryOnLooks.length} примерок</span>
           </div>
 
           <div className="relative scroll-section">
-            <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-6 pt-1">
-              {tryOnLooks.map((look) => (
-                <Card
-                  key={look.id}
-                  className="p-0 bg-white border-0 relative group hover:shadow-lg transition-all duration-300 flex-shrink-0 w-64 overflow-hidden shadow-[0_2px_8px_rgba(0,0,0,0.06)]"
-                >
-                  {/* Try-on result image */}
-                  {look.image_url && (
-                    <div className="aspect-[3/4] relative">
-                      <img
-                        src={look.image_url}
-                        alt={look.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement
-                          target.src = "/placeholder.svg"
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  <div className="p-3">
-                    <h4 className="font-medium text-sm truncate">{look.name}</h4>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {look.expandedItems?.length || look.items?.length || 0} вещей
-                    </p>
-                  </div>
-
-                  {/* Save + delete buttons */}
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    {look.image_url && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="p-1 h-auto bg-white/80 rounded-full"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setSaveTarget({
-                            render: () => renderSinglePhoto(look.image_url!),
-                            fileName: `modemorph-tryon-${look.id}.png`,
-                            title: look.name,
-                          })
-                        }}
-                        aria-label="Сохранить фото"
-                      >
-                        <Download className="w-4 h-4" />
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-1 h-auto text-red-500 hover:text-red-700 bg-white/80 rounded-full"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        handleDeleteLook(look.id)
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </Card>
+            <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1 pt-1">
+              {tryOnLooks.map((look, index) => (
+                <TryOnCard key={look.id} look={look} index={index} />
               ))}
             </div>
-
-            {tryOnLooks.length > 1 && (
-              <>
-                <div className="absolute top-0 left-0 w-4 h-full bg-gradient-to-r from-background to-transparent pointer-events-none" />
-                <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-l from-background to-transparent pointer-events-none" />
-              </>
-            )}
           </div>
         </div>
       )}
@@ -594,7 +583,7 @@ export default function LooksPage() {
       {/* Collections */}
       {sections.length > 0 && (
         <div className="space-y-8">
-          <h2 className="text-lg font-semibold text-foreground tracking-tight">Подборки</h2>
+          <h2 className="text-h2 text-ink">Подборки</h2>
           {sections.map((section) => (
             <CollectionSection key={section.id} section={section} />
           ))}
@@ -634,6 +623,15 @@ export default function LooksPage() {
           render={saveTarget.render}
           fileName={saveTarget.fileName}
           title={saveTarget.title}
+        />
+      )}
+
+      {paywallOpen && (
+        <SubscriptionSheet
+          isOpen={paywallOpen}
+          source="limit:outfits_saved"
+          onClose={() => setPaywallOpen(false)}
+          onSuccess={() => setPaywallOpen(false)}
         />
       )}
     </div>

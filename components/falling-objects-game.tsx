@@ -1,6 +1,26 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import {
+  Shirt,
+  Footprints,
+  Glasses,
+  Watch,
+  Backpack,
+  Gem,
+  Crown,
+  Trash2,
+  Skull,
+  Ban,
+  Hourglass,
+  Magnet,
+  Shield,
+  ShoppingBag,
+  Gauge,
+  X,
+  type LucideIcon,
+} from "lucide-react"
+import { cn } from "@/lib/utils"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -8,9 +28,9 @@ import { useState, useEffect, useRef, useCallback } from "react"
 
 interface FallingObject {
   id: number
-  x: number
-  y: number
-  emoji: string
+  x: number // 0-100, percent of play area width
+  y: number // 0-100, percent of play area height
+  icon: LucideIcon
   points: number
   isBad: boolean
   isPowerUp: boolean
@@ -18,54 +38,103 @@ interface FallingObject {
   size: number // 1 = normal, 0.8 = small, 1.3 = large
 }
 
+type EffectKind = "score" | "damage" | "power" | "shield"
+
 interface CollectedEffect {
   id: number
   x: number
   y: number
   text: string
-  color: string
+  kind: EffectKind
 }
 
 // ---------------------------------------------------------------------------
-// Config
+// Config — every falling object is a lucide icon, same monoline stroke as
+// the rest of the interface. No emoji anywhere: system emoji fonts render
+// differently per device, carry their own uncontrolled colors, and read as
+// a different product than the rest of the app.
 // ---------------------------------------------------------------------------
 
-const GOOD_ITEMS = [
-  { emoji: "👕", points: 10 },
-  { emoji: "👖", points: 15 },
-  { emoji: "👗", points: 20 },
-  { emoji: "🧥", points: 25 },
-  { emoji: "👠", points: 30 },
-  { emoji: "💍", points: 50 },
-  { emoji: "👑", points: 100 },
+const GOOD_ITEMS: { icon: LucideIcon; points: number }[] = [
+  { icon: Shirt, points: 10 },
+  { icon: Footprints, points: 15 },
+  { icon: Glasses, points: 20 },
+  { icon: Watch, points: 25 },
+  { icon: Backpack, points: 30 },
+  { icon: Gem, points: 50 },
+  { icon: Crown, points: 100 },
 ]
 
-const BAD_ITEMS = [
-  { emoji: "🧦", points: -15 },
-  { emoji: "💀", points: -30 },
-  { emoji: "🗑️", points: -20 },
+const BAD_ITEMS: { icon: LucideIcon; points: number }[] = [
+  { icon: Ban, points: -15 },
+  { icon: Skull, points: -30 },
+  { icon: Trash2, points: -20 },
 ]
 
-const POWER_UPS = [
-  { emoji: "⏳", type: "slow" as const },
-  { emoji: "🧲", type: "magnet" as const },
-  { emoji: "🛡️", type: "shield" as const },
+const POWER_UPS: { icon: LucideIcon; type: "slow" | "magnet" | "shield" }[] = [
+  { icon: Hourglass, type: "slow" },
+  { icon: Magnet, type: "magnet" },
+  { icon: Shield, type: "shield" },
 ]
 
-const GAME_HEIGHT = 300
+const CALM_TIPS = [
+  "Подбираем вещи под ваш стиль",
+  "Проверяем цвета и материалы",
+  "Собираем всё в гардероб",
+  "Совсем немного осталось",
+]
+
 const MAX_LIVES = 5
-const BASE_FALL_SPEED = 1.2
+const BASE_FALL_SPEED = 1.2 // % of height per reference frame (16.7ms)
 const MAX_FALL_SPEED = 4.5
 const SPEED_INCREMENT = 0.15
 const SPEED_DECAY_ON_MISS = 0.4
 const SPAWN_BASE_INTERVAL = 1800
 const SPAWN_MIN_INTERVAL = 700
-const TARGET_FPS = 60
-const FRAME_TIME = 1000 / TARGET_FPS
+const FRAME_TIME = 1000 / 60 // reference tick used to normalize delta time
+const MAX_DELTA_FACTOR = 4 // clamp so a backgrounded tab can't cause a jump
 const COMBO_TIMEOUT = 3000
 const SLOW_DURATION = 5000
 const MAGNET_DURATION = 4000
 const SHIELD_DURATION = 6000
+
+// Play surface treatment shared by every state (idle / calm / playing) so
+// the box never reads as an empty placeholder: hairline border + a soft
+// inset vignette (box-shadow, not a background gradient) toward the edges.
+const PLAY_SURFACE =
+  "rounded-lg border border-line bg-canvas-sunk shadow-[inset_0_0_36px_hsl(var(--ink)/0.07)]"
+
+// ---------------------------------------------------------------------------
+// Haptics — Telegram WebApp only, always guarded, never blocks the game
+// ---------------------------------------------------------------------------
+
+function triggerHaptic(kind: "light" | "medium" | "warning") {
+  if (typeof window === "undefined") return
+  try {
+    const hf = (window as any)?.Telegram?.WebApp?.HapticFeedback
+    if (!hf) return
+    if (kind === "warning") hf.notificationOccurred?.("warning")
+    else hf.impactOccurred?.(kind)
+  } catch {
+    // haptics are a nice-to-have, never let them break the loop
+  }
+}
+
+// Every screen in this file has exactly one signal spot, and it lives in
+// ProgressBlock (photo-analysis-form.tsx) — the one honest, always-visible
+// thread through every state. Everything in the game itself stays on
+// ink/canvas, matching components/ui/button.tsx's own default (bg-ink
+// text-signal-ink for "black buttons") rather than reaching for the accent.
+function effectClassName(kind: EffectKind) {
+  switch (kind) {
+    case "damage":
+      return "text-destructive"
+    case "shield":
+      return "text-ink-2"
+    default:
+      return "text-ink"
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -91,6 +160,10 @@ export default function FallingObjectsGame({
   const [combo, setCombo] = useState(0)
   const [fallSpeed, setFallSpeed] = useState(BASE_FALL_SPEED)
   const [level, setLevel] = useState(1)
+  const [popKey, setPopKey] = useState(0)
+  const [dims, setDims] = useState({ w: 0, h: 0 })
+  const [reducedMotion, setReducedMotion] = useState(false)
+  const [tipIndex, setTipIndex] = useState(0)
 
   // Power-up active states
   const [slowActive, setSlowActive] = useState(false)
@@ -101,10 +174,10 @@ export default function FallingObjectsGame({
   const [hpShake, setHpShake] = useState(false)
 
   const gameAreaRef = useRef<HTMLDivElement>(null)
-  const animationRef = useRef<number>()
+  const animationRef = useRef<number | undefined>(undefined)
   const lastSpawnRef = useRef<number>(0)
   const objectIdRef = useRef<number>(0)
-  const lastUpdateRef = useRef<number>(0)
+  const lastFrameRef = useRef<number>(0)
   const basketXRef = useRef<number>(50)
   const fallSpeedRef = useRef<number>(BASE_FALL_SPEED)
   const comboRef = useRef<number>(0)
@@ -131,6 +204,42 @@ export default function FallingObjectsGame({
   useEffect(() => {
     if (analysisDone && gameStarted && !gameOver) setShowFinishOverlay(true)
   }, [analysisDone, gameStarted, gameOver])
+
+  // ---------------------------------------------------------------------------
+  // Motion preference — offer a calm, static waiting screen instead of a game
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)")
+    setReducedMotion(mq.matches)
+    const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches)
+    mq.addEventListener?.("change", onChange)
+    return () => mq.removeEventListener?.("change", onChange)
+  }, [])
+
+  useEffect(() => {
+    if (!reducedMotion) return
+    const interval = setInterval(() => {
+      setTipIndex((i) => (i + 1) % CALM_TIPS.length)
+    }, 2400)
+    return () => clearInterval(interval)
+  }, [reducedMotion])
+
+  // ---------------------------------------------------------------------------
+  // Measure the play area so falling objects can be positioned with transforms
+  // instead of animating top/left (keeps everything on the compositor).
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!gameStarted) return
+    const el = gameAreaRef.current
+    if (!el) return
+    const measure = () => setDims({ w: el.clientWidth, h: el.clientHeight })
+    measure()
+    window.addEventListener("resize", measure)
+    return () => window.removeEventListener("resize", measure)
+  }, [gameStarted])
 
   // ---------------------------------------------------------------------------
   // Input handlers
@@ -175,7 +284,7 @@ export default function FallingObjectsGame({
         id: objectIdRef.current++,
         x: Math.random() * 80 + 10,
         y: -5,
-        emoji: pu.emoji,
+        icon: pu.icon,
         points: 0,
         isBad: false,
         isPowerUp: true,
@@ -188,7 +297,7 @@ export default function FallingObjectsGame({
         id: objectIdRef.current++,
         x: Math.random() * 80 + 10,
         y: -5,
-        emoji: bad.emoji,
+        icon: bad.icon,
         points: bad.points,
         isBad: true,
         isPowerUp: false,
@@ -207,7 +316,7 @@ export default function FallingObjectsGame({
         id: objectIdRef.current++,
         x: Math.random() * 80 + 10,
         y: -5,
-        emoji: item.emoji,
+        icon: item.icon,
         points: item.points,
         isBad: false,
         isPowerUp: false,
@@ -256,9 +365,9 @@ export default function FallingObjectsGame({
   // Add visual effect
   // ---------------------------------------------------------------------------
 
-  const addEffect = useCallback((x: number, y: number, text: string, color: string) => {
+  const addEffect = useCallback((x: number, y: number, text: string, kind: EffectKind) => {
     const id = objectIdRef.current++
-    setEffects((prev) => [...prev, { id, x, y, text, color }])
+    setEffects((prev) => [...prev, { id, x, y, text, kind }])
     setTimeout(() => {
       setEffects((prev) => prev.filter((e) => e.id !== id))
     }, 900)
@@ -283,17 +392,17 @@ export default function FallingObjectsGame({
   }, [])
 
   // ---------------------------------------------------------------------------
-  // Game loop
+  // Game loop — requestAnimationFrame driven by real elapsed time, not a
+  // fixed per-frame step, so speed stays consistent on slower devices.
   // ---------------------------------------------------------------------------
 
   const gameLoop = useCallback((timestamp: number) => {
-    if (!gameStarted || gameOver) return
+    if (!gameStarted || gameOver || reducedMotion) return
 
-    if (timestamp - lastUpdateRef.current < FRAME_TIME) {
-      animationRef.current = requestAnimationFrame(gameLoop)
-      return
-    }
-    lastUpdateRef.current = timestamp
+    if (!lastFrameRef.current) lastFrameRef.current = timestamp
+    const dt = timestamp - lastFrameRef.current
+    lastFrameRef.current = timestamp
+    const deltaFactor = Math.min(MAX_DELTA_FACTOR, Math.max(0, dt / FRAME_TIME))
 
     if (timestamp - lastSpawnRef.current > getSpawnInterval()) {
       spawnObject()
@@ -309,40 +418,42 @@ export default function FallingObjectsGame({
         let newX = obj.x
         if (magnetActiveRef.current && !obj.isBad) {
           const diff = basketXRef.current - obj.x
-          newX += diff * 0.03
+          newX += diff * 0.03 * deltaFactor
         }
-        return { ...obj, y: obj.y + currentSpeed, x: newX }
+        return { ...obj, y: obj.y + currentSpeed * deltaFactor, x: newX }
       })
 
       const remaining: FallingObject[] = []
       let scoreChange = 0
       let missedCount = 0
       let lostLives = 0
-      const newEffects: { x: number; y: number; text: string; color: string }[] = []
+      const newEffects: { x: number; y: number; text: string; kind: EffectKind }[] = []
       let caught = false
       let caughtBad = false
+      let caughtPower = false
 
       updated.forEach((obj) => {
         if (checkCollision(obj)) {
           if (obj.isPowerUp && obj.powerUpType) {
             activatePowerUp(obj.powerUpType)
-            newEffects.push({ x: basketXRef.current, y: 78, text: "⚡", color: "#8b5cf6" })
+            caughtPower = true
+            newEffects.push({ x: basketXRef.current, y: 78, text: "Бонус", kind: "power" })
           } else if (obj.isBad) {
             if (shieldActiveRef.current) {
-              newEffects.push({ x: basketXRef.current, y: 78, text: "🛡️", color: "#3b82f6" })
+              newEffects.push({ x: basketXRef.current, y: 78, text: "Блок", kind: "shield" })
             } else {
               scoreChange += obj.points
               caughtBad = true
               lostLives++
-              newEffects.push({ x: basketXRef.current, y: 78, text: `${obj.points} 💔`, color: "#ef4444" })
+              newEffects.push({ x: basketXRef.current, y: 78, text: `${obj.points}`, kind: "damage" })
             }
           } else {
             const comboMultiplier = Math.min(1 + comboRef.current * 0.25, 4)
             const pts = Math.round(obj.points * comboMultiplier)
             scoreChange += pts
             caught = true
-            const comboText = comboRef.current >= 2 ? ` x${comboMultiplier.toFixed(1)}` : ""
-            newEffects.push({ x: basketXRef.current, y: 78, text: `+${pts}${comboText}`, color: "#8b5cf6" })
+            const comboText = comboRef.current >= 2 ? ` ×${comboMultiplier.toFixed(1)}` : ""
+            newEffects.push({ x: basketXRef.current, y: 78, text: `+${pts}${comboText}`, kind: "score" })
           }
         } else if (obj.y > 105) {
           if (!obj.isBad && !obj.isPowerUp) {
@@ -353,15 +464,25 @@ export default function FallingObjectsGame({
         }
       })
 
+      if (caught || caughtPower) {
+        setPopKey((k) => k + 1)
+      }
+
       if (caught) {
         addCombo()
         setFallSpeed((prev) => Math.min(MAX_FALL_SPEED, prev + SPEED_INCREMENT))
+        triggerHaptic("light")
+      }
+
+      if (caughtPower) {
+        triggerHaptic("medium")
       }
 
       if (caughtBad) {
         resetCombo()
         setFallSpeed((prev) => Math.max(BASE_FALL_SPEED, prev - SPEED_INCREMENT * 3))
         triggerHpShake()
+        triggerHaptic("warning")
       }
 
       if (scoreChange !== 0) {
@@ -369,7 +490,7 @@ export default function FallingObjectsGame({
       }
 
       for (const e of newEffects) {
-        addEffect(e.x, e.y, e.text, e.color)
+        addEffect(e.x, e.y, e.text, e.kind)
       }
 
       // Lose lives from bad catches AND misses
@@ -381,6 +502,7 @@ export default function FallingObjectsGame({
           return BASE_FALL_SPEED + gained * SPEED_DECAY_ON_MISS
         })
         resetCombo()
+        if (!caughtBad) triggerHaptic("warning")
       }
 
       if (totalLost > 0) {
@@ -396,13 +518,14 @@ export default function FallingObjectsGame({
     })
 
     animationRef.current = requestAnimationFrame(gameLoop)
-  }, [gameStarted, gameOver, spawnObject, checkCollision, getSpawnInterval, addCombo, resetCombo, activatePowerUp, addEffect, triggerHpShake])
+  }, [gameStarted, gameOver, reducedMotion, spawnObject, checkCollision, getSpawnInterval, addCombo, resetCombo, activatePowerUp, addEffect, triggerHpShake])
 
   // ---------------------------------------------------------------------------
   // Start / reset
   // ---------------------------------------------------------------------------
 
   const startGame = () => {
+    triggerHaptic("light")
     setScore(0)
     setGameStarted(true)
     setGameOver(false)
@@ -419,7 +542,7 @@ export default function FallingObjectsGame({
     setHpShake(false)
     basketXRef.current = 50
     lastSpawnRef.current = 0
-    lastUpdateRef.current = 0
+    lastFrameRef.current = 0
     objectIdRef.current = 0
     scoreRef.current = 0
   }
@@ -429,11 +552,12 @@ export default function FallingObjectsGame({
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    if (gameStarted && !gameOver) {
+    if (gameStarted && !gameOver && !reducedMotion) {
+      lastFrameRef.current = 0
       animationRef.current = requestAnimationFrame(gameLoop)
     }
     return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current) }
-  }, [gameStarted, gameOver, gameLoop])
+  }, [gameStarted, gameOver, reducedMotion, gameLoop])
 
   useEffect(() => {
     const el = gameAreaRef.current
@@ -454,8 +578,29 @@ export default function FallingObjectsGame({
   // Derived
   // ---------------------------------------------------------------------------
 
-  const speedPercent = Math.round(((fallSpeed - BASE_FALL_SPEED) / (MAX_FALL_SPEED - BASE_FALL_SPEED)) * 100)
-  const speedColor = speedPercent < 30 ? "#22c55e" : speedPercent < 60 ? "#eab308" : "#ef4444"
+  const speedFraction = Math.min(1, Math.max(0, (fallSpeed - BASE_FALL_SPEED) / (MAX_FALL_SPEED - BASE_FALL_SPEED)))
+  const px = (percent: number, axis: "w" | "h") => (percent / 100) * dims[axis]
+  const BasketIcon = magnetActive ? Magnet : shieldActive ? Shield : ShoppingBag
+
+  // ---------------------------------------------------------------------------
+  // Render: reduced motion — calm, honest waiting instead of a fast game
+  // ---------------------------------------------------------------------------
+
+  if (reducedMotion) {
+    return (
+      <div className={cn("flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center", PLAY_SURFACE)}>
+        <div className="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-surface">
+          <ShoppingBag size={28} strokeWidth={2} className="text-ink-2" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-body text-ink">Пока мы всё подбираем</p>
+          <p key={tipIndex} className="text-caption text-ink-2 animate-fade-up">
+            {CALM_TIPS[tipIndex]}
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   // ---------------------------------------------------------------------------
   // Render: start screen
@@ -464,26 +609,27 @@ export default function FallingObjectsGame({
   if (!gameStarted) {
     return (
       <div
-        className="rounded-xl border border-purple-200/80 bg-gradient-to-b from-purple-100/80 to-pink-100/50 flex items-center justify-center text-center p-6"
-        style={{ height: `${GAME_HEIGHT}px`, touchAction: "manipulation" }}
+        className={cn("flex h-full w-full flex-col items-center justify-center gap-4 px-6 text-center", PLAY_SURFACE)}
+        style={{ touchAction: "manipulation" }}
       >
-        <div className="space-y-4 w-full max-w-xs mx-auto">
-          <p className="text-sm text-slate-600 leading-relaxed">
-            Ловите модные вещи и избегайте мусора!
-          </p>
-          <div className="flex gap-3 justify-center text-xs text-slate-500">
-            <span>⏳ замедление</span>
-            <span>🧲 магнит</span>
-            <span>🛡️ щит</span>
-          </div>
-          <button
-            onClick={startGame}
-            className="w-full px-6 py-3 text-white font-medium rounded-2xl shadow-lg transition-opacity hover:opacity-90 border-0"
-            style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-          >
-            Начать игру
-          </button>
+        <div className="flex h-16 w-16 items-center justify-center rounded-full border border-line bg-surface">
+          <ShoppingBag size={28} strokeWidth={2} className="text-ink-2" />
         </div>
+        <div className="space-y-1">
+          <p className="text-body text-ink">Пока мы колдуем над образом</p>
+          <p className="text-caption text-ink-2">Ловите вещи в сумку — счёт растёт, скорость тоже</p>
+        </div>
+        <div className="flex items-center gap-3 text-caption text-ink-3">
+          <span className="inline-flex items-center gap-1"><Hourglass size={13} strokeWidth={2} /> замедление</span>
+          <span className="inline-flex items-center gap-1"><Magnet size={13} strokeWidth={2} /> магнит</span>
+          <span className="inline-flex items-center gap-1"><Shield size={13} strokeWidth={2} /> щит</span>
+        </div>
+        <button
+          onClick={startGame}
+          className="h-11 w-full max-w-[220px] rounded-full bg-ink text-body font-semibold text-signal-ink transition-transform duration-press active:scale-95"
+        >
+          Начать игру
+        </button>
       </div>
     )
   }
@@ -495,109 +641,107 @@ export default function FallingObjectsGame({
   return (
     <div
       ref={gameAreaRef}
-      className="relative bg-gradient-to-b from-purple-200/80 to-pink-200/80 rounded-xl overflow-hidden cursor-none select-none border border-purple-200/50"
-      style={{ height: `${GAME_HEIGHT}px`, touchAction: "none" }}
+      className={cn("relative h-full w-full select-none overflow-hidden cursor-none", PLAY_SURFACE)}
+      style={{ touchAction: "none" }}
     >
       {/* HUD — single row */}
-      <div className="absolute top-2 left-2 right-2 flex items-start justify-between z-10">
+      <div className="absolute inset-x-2 top-2 z-10 flex items-start justify-between">
         {/* Score + combo underneath */}
-        <div className="flex flex-col items-start gap-0.5">
-          <div className="bg-white/90 backdrop-blur-sm rounded-xl px-3 h-7 shadow-sm flex items-center">
-            <span className="text-sm font-bold text-purple-600">{score}</span>
+        <div className="flex flex-col items-start gap-1">
+          <div className="flex h-7 items-center rounded-full border border-line bg-surface/95 px-3">
+            <span className="text-caption font-bold tabular-nums text-ink">{score}</span>
           </div>
           {combo >= 2 && (
-            <div className="bg-purple-500/90 backdrop-blur-sm rounded-xl px-2 h-5 shadow-sm flex items-center">
-              <span className="text-[10px] font-bold text-white">x{combo} streak</span>
+            <div className="flex h-5 items-center rounded-full bg-ink px-2">
+              <span className="text-micro text-signal-ink">×{combo}</span>
             </div>
           )}
         </div>
 
-        {/* Center: Level + Speed bar */}
-        <div className="bg-white/80 backdrop-blur-sm rounded-xl px-2 h-7 shadow-sm flex items-center gap-1.5">
-          <span className="text-[10px] font-medium text-slate-500">Ур.{level}</span>
-          <div className="w-8 h-2 bg-gray-200 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all duration-300" style={{ width: `${speedPercent}%`, backgroundColor: speedColor }} />
+        {/* Center: difficulty pace — no numeric level label, the bar says it all */}
+        <div className="flex h-7 items-center gap-1.5 rounded-full border border-line bg-surface/95 px-2">
+          <Gauge size={13} strokeWidth={2} className="text-ink-3" />
+          <div className="h-1.5 w-8 overflow-hidden rounded-full bg-canvas-sunk">
+            <div
+              className="h-full w-full origin-left rounded-full bg-ink-2 transition-transform duration-300"
+              style={{ transform: `scaleX(${Math.max(0.04, speedFraction)})` }}
+            />
           </div>
         </div>
 
-        {/* Right: powerups + lives + X */}
+        {/* Right: powerups + lives + close */}
         <div className="flex items-center gap-1.5">
-          {/* Power-up indicators */}
-          {slowActive && <span className="text-sm animate-pulse">⏳</span>}
-          {magnetActive && <span className="text-sm animate-pulse">🧲</span>}
-          {shieldActive && <span className="text-sm animate-pulse">🛡️</span>}
+          {slowActive && <Hourglass size={14} strokeWidth={2} className="text-ink-2 animate-pulse" />}
+          {magnetActive && <Magnet size={14} strokeWidth={2} className="text-ink-2 animate-pulse" />}
+          {shieldActive && <Shield size={14} strokeWidth={2} className="text-ink-2 animate-pulse" />}
 
-          {/* Lives */}
-          <div className={`bg-white/90 backdrop-blur-sm rounded-xl px-2 h-7 shadow-sm flex items-center gap-0.5 ${hpShake ? "animate-hp-shake" : ""}`}>
+          <div className={cn("flex h-7 items-center gap-1 rounded-full border border-line bg-surface/95 px-2", hpShake && "animate-hp-shake")}>
             {[...Array(MAX_LIVES)].map((_, i) => (
-              <span key={i} className="text-[10px]">{i < lives ? "❤️" : "🖤"}</span>
+              <span key={i} className={cn("h-1.5 w-1.5 rounded-full", i < lives ? "bg-ink" : "bg-canvas-sunk")} />
             ))}
           </div>
 
-          {/* Close (X) */}
           <button
             onClick={onRequestFinish}
-            className="w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm shadow-sm flex items-center justify-center border-0 text-slate-500 hover:text-slate-700 transition-colors"
+            aria-label="Закрыть игру"
+            className="flex h-7 w-7 items-center justify-center rounded-full border border-line bg-surface/95 text-ink-2 transition-transform duration-press active:scale-90"
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2 2L10 10M10 2L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
+            <X size={13} strokeWidth={2} />
           </button>
         </div>
       </div>
 
-      {/* Falling objects */}
-      {fallingObjects.map((obj) => (
-        <div
-          key={obj.id}
-          className={`absolute will-change-transform ${obj.isBad ? "game-wiggle" : ""}`}
-          style={{
-            left: `${obj.x}%`,
-            top: `${obj.y}%`,
-            transform: `translate(-50%, -50%) scale(${obj.size})`,
-            transition: "none",
-            fontSize: "1.5rem",
-          }}
-        >
-          {obj.emoji}
-        </div>
-      ))}
+      {dims.w > 0 && (
+        <>
+          {/* Falling objects */}
+          {fallingObjects.map((obj) => {
+            const Icon = obj.icon
+            return (
+              <div
+                key={obj.id}
+                className={cn("absolute left-0 top-0 will-change-transform", obj.isBad && "game-wiggle")}
+                style={{
+                  transform: `translate3d(${px(obj.x, "w")}px, ${px(obj.y, "h")}px, 0) translate(-50%, -50%) scale(${obj.size})`,
+                }}
+              >
+                <Icon size={24} strokeWidth={2} className={obj.isBad ? "text-destructive" : "text-ink"} />
+              </div>
+            )
+          })}
 
-      {/* Collected effects */}
-      {effects.map((e) => (
-        <div
-          key={`fx-${e.id}`}
-          className="absolute text-sm font-bold pointer-events-none game-fade-up"
-          style={{ left: `${e.x}%`, top: `${e.y}%`, transform: "translate(-50%, -50%)", color: e.color }}
-        >
-          {e.text}
-        </div>
-      ))}
+          {/* Collected effects */}
+          {effects.map((e) => (
+            <div
+              key={`fx-${e.id}`}
+              className={cn("absolute left-0 top-0 pointer-events-none text-caption font-bold game-rise-fade", effectClassName(e.kind))}
+              style={{ transform: `translate3d(${px(e.x, "w")}px, ${px(e.y, "h")}px, 0) translate(-50%, -50%)` }}
+            >
+              {e.text}
+            </div>
+          ))}
 
-      {/* Basket */}
-      <div
-        className="absolute bottom-3 text-3xl will-change-transform"
-        style={{ left: `${basketX}%`, transform: "translateX(-50%)" }}
-      >
-        {magnetActive ? "🧲" : shieldActive ? "🛡️" : "🛍️"}
-      </div>
+          {/* Basket */}
+          <div
+            className="absolute left-0 bottom-3 will-change-transform"
+            style={{ transform: `translate3d(${px(basketX, "w")}px, 0, 0) translate(-50%, 0)` }}
+          >
+            <span key={popKey} className="inline-flex items-center justify-center animate-pop">
+              <BasketIcon size={28} strokeWidth={2} className="text-ink" />
+            </span>
+          </div>
+        </>
+      )}
 
       {/* Game over overlay */}
       {gameOver && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-20">
-          <div className="bg-white p-6 rounded-2xl text-center space-y-4 shadow-2xl max-w-xs mx-4">
-            <h2 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-              Игра окончена!
-            </h2>
-            <p className="text-slate-600">
-              Счёт: <span className="font-bold text-purple-600">{score}</span>
-              <br />
-              <span className="text-xs text-slate-400">Уровень {level}</span>
-            </p>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-ink/50">
+          <div className="mx-4 w-full max-w-xs space-y-4 rounded-[18px] border border-line bg-surface p-6 text-center">
+            <p className="text-caption uppercase tracking-wide text-ink-2">Игра окончена</p>
+            <p className="text-display tabular-nums text-ink">{score}</p>
+            <p className="text-caption text-ink-2">очков · уровень {level}</p>
             <button
               onClick={startGame}
-              className="w-full px-6 py-3 text-white font-medium rounded-2xl shadow-lg transition-opacity hover:opacity-90 border-0"
-              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+              className="h-11 w-full rounded-full bg-ink text-body font-semibold text-signal-ink transition-transform duration-press active:scale-95"
             >
               Играть снова
             </button>
@@ -607,30 +751,30 @@ export default function FallingObjectsGame({
 
       {/* Analysis done overlay */}
       {showFinishOverlay && !gameOver && (
-        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-20">
-          <div className="bg-white p-6 rounded-2xl text-center space-y-4 shadow-2xl max-w-xs mx-4">
-            <h2 className="text-lg font-bold text-purple-700">Примерка готова!</h2>
-            <p className="text-slate-600">Хотите посмотреть результат?</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
-                className="w-full px-4 py-2 text-white font-medium rounded-2xl transition-opacity hover:opacity-90"
-                style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-              >
-                Да
-              </button>
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-ink/50">
+          <div className="mx-4 w-full max-w-xs space-y-4 rounded-[18px] border border-line bg-surface p-6 text-center">
+            <p className="text-h2 text-ink">Примерка готова</p>
+            <p className="text-body text-ink-2">Хотите посмотреть результат?</p>
+            <div className="grid grid-cols-2 gap-2.5">
               <button
                 onClick={() => setShowFinishOverlay(false)}
-                className="w-full px-4 py-2 bg-white hover:bg-slate-50 text-[#EC9DE2] font-medium rounded-2xl border border-[#EC9DE2] transition-colors"
+                className="h-11 rounded-full bg-canvas-sunk text-body font-medium text-ink transition-transform duration-press active:scale-95"
               >
                 Продолжить
+              </button>
+              <button
+                onClick={() => { setShowFinishOverlay(false); onRequestFinish?.() }}
+                className="h-11 rounded-full bg-ink text-body font-semibold text-signal-ink transition-transform duration-press active:scale-95"
+              >
+                Да
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Animations */}
+      {/* Local, transform-only keyframes — respects the global
+          prefers-reduced-motion override in app/globals.css */}
       <style jsx>{`
         @keyframes wiggle {
           0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
@@ -639,11 +783,11 @@ export default function FallingObjectsGame({
         }
         .game-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
 
-        @keyframes fadeUp {
+        @keyframes riseFade {
           0% { opacity: 1; transform: translate(-50%, -50%); }
           100% { opacity: 0; transform: translate(-50%, calc(-50% - 30px)); }
         }
-        .game-fade-up { animation: fadeUp 0.9s ease-out forwards; }
+        .game-rise-fade { animation: riseFade 0.9s var(--ease-out) forwards; }
 
         @keyframes hpShake {
           0%, 100% { transform: translateX(0); }

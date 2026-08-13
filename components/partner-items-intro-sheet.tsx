@@ -63,40 +63,37 @@ export function PartnerItemsIntroSheet({ sampleImages, shouldShow }: PartnerItem
           </div>
         )}
 
-        {/* Badge */}
+        {/* Badge — единственный акцент экрана */}
         <div className="flex justify-center mb-3">
-          <span
-            className="inline-flex items-center text-white text-sm px-3 py-1 rounded-full font-medium"
-            style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
-          >
-            <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+          <span className="inline-flex items-center bg-signal text-signal-ink text-caption px-3 py-1 rounded-full font-medium">
+            <Sparkles className="w-3.5 h-3.5 mr-1.5" strokeWidth={1.75} />
             Рекомендуем
           </span>
         </div>
 
-        <h2 className="text-xl font-bold text-foreground tracking-tight text-center mb-2">
+        <h2 className="text-h1 text-ink text-center mb-2">
           Вещи от наших партнёров
         </h2>
 
         <div className="space-y-2 px-2">
-          <p className="text-sm text-gray-600 text-center leading-relaxed">
-            В подборках вы увидите вещи с пометкой <span className="inline-flex items-center text-xs font-medium text-white px-1.5 py-0.5 rounded-md" style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}>
-            <Sparkles className="w-2.5 h-2.5 mr-0.5" />Рекомендуем</span> — это товары от проверенных партнёров: SELA, Lacoste, Gate31, Love Republic.
+          <p className="text-body text-ink-2 text-center leading-relaxed">
+            В подборках вы увидите вещи с пометкой <span className="inline-flex items-center text-micro font-medium bg-signal text-signal-ink px-1.5 py-0.5 rounded-md">
+            <Sparkles className="w-2.5 h-2.5 mr-0.5" strokeWidth={1.75} />Рекомендуем</span> — это товары от проверенных партнёров: SELA, Lacoste, Gate31, Love Republic.
           </p>
 
-          <p className="text-sm text-gray-600 text-center leading-relaxed">
+          <p className="text-body text-ink-2 text-center leading-relaxed">
             Мы подбираем их на основе вашего стиля и гардероба. Если вещь понравилась — можете перейти в магазин или сразу добавить её в свой гардероб.
           </p>
 
-          <p className="text-xs text-gray-400 text-center">
-            Вы также можете дать обратную связь 👍/👎 на каждый образ — мы учтём это в будущих рекомендациях.
+          <p className="text-caption text-ink-3 text-center">
+            Вы также можете дать обратную связь через лайк/дизлайк на каждый образ — мы учтём это в будущих рекомендациях.
           </p>
         </div>
 
         <div className="mt-4 px-2">
           <Button
             onClick={handleClose}
-            className="w-full bg-gray-900 hover:bg-gray-800 text-white h-11 rounded-2xl font-medium"
+            className="w-full bg-ink hover:bg-ink/90 text-signal-ink h-11 rounded-full font-medium border-0"
           >
             Понятно
           </Button>

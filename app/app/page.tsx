@@ -140,55 +140,56 @@ const GenerationLoadingScreen = () => {
   }, [])
 
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-6">
-      <div className="relative mb-8">
-        {/* Animated rings */}
-        <div className="w-24 h-24 rounded-full border-2 border-purple-200 animate-ping absolute inset-0 opacity-20" />
-        <div className="w-24 h-24 rounded-full border-2 border-blue-200 animate-ping absolute inset-0 opacity-15" style={{ animationDelay: "0.5s" }} />
-        <div
-          className="w-24 h-24 rounded-full flex items-center justify-center"
-          style={{ background: "linear-gradient(135deg, #EC9DE2, #89AEFF)" }}
-        >
-          <Sparkles className="w-10 h-10 text-white animate-pulse" />
+    <div className="flex flex-col items-center justify-center py-16">
+      <div className="relative mb-8 animate-fade-up">
+        <div className="w-20 h-20 rounded-full border border-line animate-ping absolute inset-0 opacity-50" />
+        <div className="w-20 h-20 rounded-full bg-ink flex items-center justify-center">
+          <Sparkles className="w-8 h-8 text-signal-ink animate-pulse" />
         </div>
       </div>
 
-      <h2 className="text-xl font-bold text-foreground tracking-tight mb-2 text-center">
-        Подбираем лучшие образы для вас{dots}
+      <h2
+        className="text-h2 text-ink text-center mb-2 animate-fade-up"
+        style={{ animationDelay: "50ms" }}
+      >
+        Подбираем образы{dots}
       </h2>
 
-      <p className="text-sm text-muted-foreground mb-6 text-center max-w-xs">
-        Первая генерация может занять от 1 до 2 минут. AI анализирует ваш гардероб и создаёт персональные рекомендации.
+      <p
+        className="text-caption text-ink-2 text-center max-w-xs mb-6 animate-fade-up"
+        style={{ animationDelay: "100ms" }}
+      >
+        Первая генерация занимает 1–2 минуты
       </p>
 
       {/* Animated tip */}
-      <div className="bg-card rounded-2xl px-5 py-3 shadow-sm border border-border/30 mb-6 min-w-[260px] text-center">
-        <p className="text-sm text-foreground/70 transition-opacity duration-300">
-          <Sparkles className="w-3.5 h-3.5 inline mr-1.5 text-purple-400" />
-          {tips[tipIndex]}
-        </p>
+      <div
+        className="bg-canvas-sunk rounded-full px-5 py-2.5 mb-6 min-w-[240px] text-center animate-fade-up"
+        style={{ animationDelay: "150ms" }}
+      >
+        <p className="text-caption text-ink-2">{tips[tipIndex]}</p>
       </div>
 
-      {/* Progress bar animation */}
-      <div className="w-64 h-1.5 bg-secondary rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full animate-progress"
-          style={{
-            background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-            animation: "progress 90s ease-out forwards",
-          }}
-        />
+      {/* Progress bar — transform-only, no width transitions */}
+      <div
+        className="w-64 h-1.5 bg-canvas-sunk rounded-full overflow-hidden animate-fade-up"
+        style={{ animationDelay: "200ms" }}
+      >
+        <div className="h-full w-full origin-left bg-signal rounded-full progress-fill" />
       </div>
 
       <style jsx>{`
-        @keyframes progress {
-          0% { width: 0%; }
-          10% { width: 15%; }
-          30% { width: 35%; }
-          50% { width: 55%; }
-          70% { width: 70%; }
-          90% { width: 85%; }
-          100% { width: 95%; }
+        @keyframes progress-fill {
+          0% { transform: scaleX(0); }
+          10% { transform: scaleX(.15); }
+          30% { transform: scaleX(.35); }
+          50% { transform: scaleX(.55); }
+          70% { transform: scaleX(.70); }
+          90% { transform: scaleX(.85); }
+          100% { transform: scaleX(.95); }
+        }
+        .progress-fill {
+          animation: progress-fill 90s ease-out forwards;
         }
       `}</style>
     </div>
@@ -487,9 +488,10 @@ export default function HomePage() {
   }
 
   return (
-      <div className="min-h-screen bg-background pb-10">
-        <div className="px-4 pt-2 pb-4">
-          {/* Hero for users with no items */}
+      <div className="min-h-screen bg-background pb-10 flex flex-col">
+        <div className="px-4 pt-2 pb-4 flex flex-1 flex-col">
+          {/* Hero for users with no items — stretches so the CTA can sit
+              in the thumb zone above the nav instead of floating mid-air. */}
           {userItemsCount === 0 && !itemsLoading && (
               <HomeHeroSection
                   userItemsCount={userItemsCount}
@@ -508,24 +510,33 @@ export default function HomePage() {
                 ) : recommendationsLoading ? (
                     <GenerationLoadingScreen />
                 ) : outfitSections.length === 0 ? (
-                    <div className="text-center py-16 fade-in-up">
-                      <div className="w-20 h-20 mx-auto mb-5 rounded-2xl flex items-center justify-center shadow-sm"
-                        style={{ background: "linear-gradient(135deg, rgba(236,157,226,0.12), rgba(137,174,255,0.12))" }}>
-                        <Sparkles className="h-8 w-8" style={{ color: "#A78BFA" }} />
+                    <div className="text-center py-16">
+                      <div
+                        className="w-16 h-16 mx-auto mb-5 rounded-2xl flex items-center justify-center bg-canvas-sunk animate-fade-up"
+                      >
+                        <Sparkles className="h-6 w-6 text-ink-2" />
                       </div>
-                      <h3 className="text-lg font-semibold text-foreground tracking-tight mb-2">
+                      <h3
+                        className="text-h2 text-ink mb-2 animate-fade-up"
+                        style={{ animationDelay: "50ms" }}
+                      >
                         {generationError ? "Что-то пошло не так" : "Ваши образы ждут"}
                       </h3>
-                      <p className="text-sm text-muted-foreground mb-6 max-w-[260px] mx-auto">
-                        {generationError ? "Попробуйте ещё раз — мы подберём для вас" : "Мы создадим подборки на основе вашего гардероба и стиля"}
+                      <p
+                        className="text-body text-ink-2 mb-6 max-w-[260px] mx-auto animate-fade-up"
+                        style={{ animationDelay: "100ms" }}
+                      >
+                        {generationError ? "Попробуйте ещё раз — мы подберём для вас" : "Соберём подборки на основе вашего гардероба"}
                       </p>
                       <Button
                           onClick={handleGetRecommendations}
                           disabled={recommendationsLoading}
-                          className="h-12 px-8 rounded-2xl text-white border-0 shadow-md"
-                          style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+                          variant="signal"
+                          size="lg"
+                          className="px-8 animate-fade-up"
+                          style={{ animationDelay: "150ms" }}
                       >
-                        <Sparkles className="h-4 w-4 mr-2" />
+                        <Sparkles className="h-4 w-4" />
                         Создать подборки
                       </Button>
                     </div>
@@ -538,11 +549,11 @@ export default function HomePage() {
                         }
 
                         return (
-                            <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-3 fade-in" style={{ animationDelay: `${sectionIndex * 0.1}s` }}>
+                            <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-3 animate-fade-up" style={{ animationDelay: `${sectionIndex * 50}ms` }}>
                               {/* Section Header */}
                               <div className="flex items-center justify-between">
-                                <h2 className="text-lg font-semibold text-foreground tracking-tight">{section.title || "Образы"}</h2>
-                                <span className="text-xs text-muted-foreground">
+                                <h2 className="text-h2 text-ink">{section.title || "Образы"}</h2>
+                                <span className="text-caption text-ink-2">
                           {section.looks_count || section.suggestions.length} образов
                         </span>
                               </div>
@@ -575,10 +586,6 @@ export default function HomePage() {
                                     )
                                   })}
                                 </div>
-
-                                {/* Scroll indicators */}
-                                <div className="absolute top-0 left-0 w-4 h-full bg-gradient-to-r from-background to-transparent pointer-events-none" />
-                                <div className="absolute top-0 right-0 w-4 h-full bg-gradient-to-l from-background to-transparent pointer-events-none" />
                               </div>
                             </div>
                         )

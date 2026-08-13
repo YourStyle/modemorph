@@ -82,18 +82,21 @@ function getBrandLogo(brand: string): { display: string; logoUrl: string } | nul
   return BRAND_LOGOS[brand.toLowerCase()] || BRAND_LOGOS[key] || null
 }
 
+// Один нейтральный вид бейджа источника независимо от секции — раньше тут
+// было три разных акцентных цвета (серый/синий/фиолетовый) на один экран.
 function getSourceBadge(source?: string): { label: string; className: string } | null {
+  const className = "bg-canvas-sunk text-ink-2 border border-line"
   switch (source) {
     case "user_only":
-      return { label: "Из вашего гардероба", className: "bg-gray-100 text-gray-700 border border-gray-200" }
+      return { label: "Из вашего гардероба", className }
     case "mix":
-      return { label: "Подобрано для вас", className: "bg-blue-50 text-blue-700 border border-blue-200" }
+      return { label: "Подобрано для вас", className }
     case "partner_only":
-      return { label: "От партнёров", className: "bg-purple-50 text-purple-700 border border-purple-200" }
+      return { label: "От партнёров", className }
     case "clip":
-      return { label: "Подобрано для вас", className: "bg-blue-50 text-blue-700 border border-blue-200" }
+      return { label: "Подобрано для вас", className }
     case "ai":
-      return { label: "Рекомендация стилиста", className: "bg-purple-50 text-purple-700 border border-purple-200" }
+      return { label: "Рекомендация стилиста", className }
     default:
       return null
   }
@@ -285,7 +288,7 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
             <div className="flex-1">
               <h3 className="font-semibold text-gray-900 mb-2 text-lg">{title}</h3>
               {isSaved && (
-                <Badge variant="secondary" className="bg-green-50 text-green-700 border-green-200">
+                <Badge variant="secondary" className="bg-canvas-sunk text-ink-2 border-line">
                   <BookmarkCheck className="w-3 h-3 mr-1" />
                   Сохранено
                 </Badge>
@@ -295,7 +298,7 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
             <Button
               variant="ghost"
               size="sm"
-              className={`p-2 ${isSaved ? "text-green-600" : "text-gray-400 hover:text-green-600"}`}
+              className={`p-2 ${isSaved ? "text-ink" : "text-gray-400 hover:text-ink"}`}
               onClick={handleSaveOutfit}
               disabled={saving || items.length === 0}
             >
@@ -339,28 +342,24 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
                       </div>
                     </div>
 
-                    {/* Item type indicator */}
-                    {!isUserItem(item) ? (
-                      <div className="absolute top-2 right-2">
-                        <span
-                          className="inline-flex items-center text-white text-xs px-1.5 py-0.5 rounded-md font-medium"
-                          style={{ background: 'linear-gradient(to right, #EC9DE2, #89AEFF)' }}
-                        >
-                          <Sparkles className="w-2.5 h-2.5 mr-0.5" />
-                          Рекомендуем
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="absolute top-2 right-2">
-                        <span
-                          className="inline-flex items-center text-white text-xs px-1.5 py-0.5 rounded-md font-medium"
-                          style={{ backgroundColor: '#292929' }}
-                        >
-                          <User className="w-2.5 h-2.5 mr-0.5" />
-                          Ваше
-                        </span>
-                      </div>
-                    )}
+                    {/* Item type indicator — один нейтральный тёмный чип для обоих
+                        случаев, различаются только иконкой и подписью (без
+                        градиента и без второго акцентного цвета). */}
+                    <div className="absolute top-2 right-2">
+                      <span className="inline-flex items-center text-signal-ink text-xs px-1.5 py-0.5 rounded-md font-medium bg-ink/85">
+                        {!isUserItem(item) ? (
+                          <>
+                            <Sparkles className="w-2.5 h-2.5 mr-0.5" />
+                            Рекомендуем
+                          </>
+                        ) : (
+                          <>
+                            <User className="w-2.5 h-2.5 mr-0.5" />
+                            Ваше
+                          </>
+                        )}
+                      </span>
+                    </div>
 
                     {/* Dislike item button */}
                     <button
@@ -370,7 +369,7 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
                         e.stopPropagation()
                         handleDislikeItemClick(item)
                       }}
-                      className="absolute bottom-2 right-2 p-1.5 rounded-full bg-white/80 hover:bg-red-50 text-gray-400 hover:text-red-500 opacity-0 group-hover/item:opacity-100 transition-all duration-200 z-10"
+                      className="absolute bottom-2 right-2 p-1.5 rounded-full bg-white/80 hover:bg-canvas-sunk text-gray-400 hover:text-ink opacity-0 group-hover/item:opacity-100 transition-all duration-200 z-10"
                     >
                       <CircleOff className="w-3.5 h-3.5" />
                     </button>
@@ -426,16 +425,14 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
             <Button
               variant="outline"
               size="sm"
-              className="w-full text-gray-700 bg-transparent"
-              style={{ borderColor: '#292929', borderRadius: '16px', borderWidth: '1px' }}
+              className="w-full border-ink text-ink bg-transparent rounded-2xl"
               onClick={() => setShowOutfitDetails(true)}
             >
               Весь образ
             </Button>
             <Button
               size="sm"
-              className="w-full text-white border-0"
-              style={{ backgroundColor: '#292929', borderRadius: '16px' }}
+              className="w-full bg-ink text-signal-ink border-0 rounded-2xl hover:bg-ink/90"
               onClick={openTryOn}
               disabled={!!vtonLoading}
             >
@@ -460,10 +457,10 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
               disabled={!!feedback}
               className={`p-2 rounded-full transition-all duration-300 ${
                 feedback === "like"
-                  ? "text-white bg-emerald-500 scale-110 shadow-sm"
+                  ? "text-signal-ink bg-ink scale-110"
                   : feedback === "dislike"
                   ? "text-gray-300 bg-gray-50 scale-90 opacity-50"
-                  : "text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 active:scale-95"
+                  : "text-gray-400 hover:text-ink hover:bg-canvas-sunk active:scale-95"
               } disabled:cursor-default`}
             >
               <ThumbsUp className="w-4 h-4" />
@@ -475,10 +472,10 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
               disabled={!!feedback}
               className={`p-2 rounded-full transition-all duration-300 ${
                 feedback === "dislike"
-                  ? "text-white bg-red-500 scale-110 shadow-sm"
+                  ? "text-signal-ink bg-ink scale-110"
                   : feedback === "like"
                   ? "text-gray-300 bg-gray-50 scale-90 opacity-50"
-                  : "text-gray-400 hover:text-red-500 hover:bg-red-50 active:scale-95"
+                  : "text-gray-400 hover:text-ink hover:bg-canvas-sunk active:scale-95"
               } disabled:cursor-default`}
             >
               <ThumbsDown className="w-4 h-4" />
@@ -559,14 +556,7 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
                         style={{ backgroundColor: item.color.startsWith("#") ? item.color : `#${item.color}` }}
                       />
                     )}
-                    <span
-                      className="text-xs px-2 py-1 rounded-md text-white font-medium"
-                      style={
-                        isUserItem(item)
-                          ? { backgroundColor: '#292929' }
-                          : { background: 'linear-gradient(to right, #EC9DE2, #89AEFF)' }
-                      }
-                    >
+                    <span className="text-xs px-2 py-1 rounded-md text-signal-ink font-medium bg-ink">
                       {isUserItem(item) ? "Ваше" : "Рекомендуем"}
                     </span>
                     {item.brand && item.brand.toLowerCase() !== "unknown" && (
@@ -582,7 +572,7 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
                         e.stopPropagation()
                         handleAffiliateClick(item)
                       }}
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full transition-colors"
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-ink bg-canvas-sunk hover:bg-line border border-line px-2.5 py-1 rounded-full transition-colors"
                     >
                       <ExternalLink className="w-3 h-3" />
                       В магазин
@@ -597,8 +587,7 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
           <Button
             onClick={handleSaveOutfit}
             disabled={saving || isSaved}
-            className="w-full text-white border-0"
-            style={{ backgroundColor: '#292929', borderRadius: '16px' }}
+            className="w-full bg-ink text-signal-ink border-0 rounded-2xl hover:bg-ink/90"
           >
             {saving ? (
               <>

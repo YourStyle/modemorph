@@ -1,5 +1,7 @@
 // lib/labels.ts — shared Russian labels for English enum values
 
+import { normalizeClothingType } from "./clothing-types"
+
 export const STYLE_LABELS: Record<string, string> = {
   casual: "Повседневный",
   formal: "Формальный",
@@ -20,7 +22,7 @@ export const CLOTHING_TYPE_LABELS: Record<string, string> = {
   shirt: "Рубашка",
   blouse: "Блузка",
   "tank-top": "Топ",
-  lonsleeve: "Лонгслив",
+  longsleeve: "Лонгслив",
   turtleneck: "Водолазка",
   pullover: "Свитер",
   cardigan: "Кардиган",
@@ -29,15 +31,27 @@ export const CLOTHING_TYPE_LABELS: Record<string, string> = {
   vest: "Жилет",
   "suit-jacket": "Пиджак",
   coat: "Пальто",
-  "puffer-jacket": "Куртка",
+  jacket: "Куртка",
+  // Было "Куртка" — подпись врала: puffer-jacket это пуховик, и после появления
+  // слага jacket две категории показывались пользователю одним словом.
+  "puffer-jacket": "Пуховик",
   parka: "Парка",
   classic: "Костюм",
   dress: "Платье",
   skirt: "Юбка",
+  jumpsuit: "Комбинезон",
   pants: "Брюки",
   jeans: "Джинсы",
   "sporty-pants": "Спортивные брюки",
   shorts: "Шорты",
+  "fur-coat": "Шуба",
+  "sheepskin-coat": "Дубленка",
+  "knitted-suit": "Вязаный костюм",
+  tracksuit: "Спортивный костюм",
+  shoes: "Туфли",
+  boots: "Ботинки",
+  sneakers: "Кроссовки",
+  sandals: "Босоножки",
 }
 
 export function styleLabel(key: string): string {
@@ -45,5 +59,6 @@ export function styleLabel(key: string): string {
 }
 
 export function clothingTypeLabel(key: string): string {
-  return CLOTHING_TYPE_LABELS[key] || key
+  const canonical = normalizeClothingType(key)
+  return (canonical && CLOTHING_TYPE_LABELS[canonical]) || CLOTHING_TYPE_LABELS[key] || key
 }

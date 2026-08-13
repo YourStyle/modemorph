@@ -1,8 +1,8 @@
 "use client"
 
-import { Camera, Sparkles, Eye } from "lucide-react"
+import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import Image from "next/image"
+import { cn } from "@/lib/utils"
 
 interface HomeHeroSectionProps {
   userItemsCount: number
@@ -10,135 +10,112 @@ interface HomeHeroSectionProps {
   onExploreFeatures?: () => void
 }
 
+const WEEKDAY_FORMATTER = new Intl.DateTimeFormat("ru-RU", { weekday: "short" })
+
+interface DayCell {
+  key: string
+  weekday: string
+  day: number
+  isToday: boolean
+}
+
+// Today-centered rolling window — always keeps "today" visible regardless
+// of where in the calendar week we currently are (unlike a fixed Mon–Sun strip).
+function buildDayStrip(): DayCell[] {
+  const today = new Date()
+  const cells: DayCell[] = []
+  for (let offset = -3; offset <= 3; offset++) {
+    const date = new Date(today)
+    date.setDate(today.getDate() + offset)
+    cells.push({
+      key: date.toISOString().slice(0, 10),
+      weekday: WEEKDAY_FORMATTER.format(date).replace(".", ""),
+      day: date.getDate(),
+      isToday: offset === 0,
+    })
+  }
+  return cells
+}
+
+const OUTFIT_SLOTS = [
+  { key: "top", label: "Верх" },
+  { key: "bottom", label: "Низ" },
+  { key: "shoes", label: "Обувь" },
+]
+
 export function HomeHeroSection({
   userItemsCount,
   onAddItems,
   onExploreFeatures,
 }: HomeHeroSectionProps) {
+  const days = buildDayStrip()
+
   return (
-    <div className="mb-6 bg-card rounded-2xl shadow-[0_2px_12px_rgba(0,0,0,0.06),0_8px_32px_rgba(0,0,0,0.08)] overflow-hidden">
-      {/* Gradient top bar */}
-      <div
-        className="h-1"
-        style={{
-          background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-        }}
-      />
-
-      <div className="p-6">
-        {/* Heading */}
-        <h2 className="text-2xl font-bold mb-2 tracking-tight text-foreground">
-          Твой AI-стилист в кармане
-        </h2>
-
-        <p className="text-sm text-muted-foreground mb-6">
-          Добавь вещи — и получи персональные образы от нейросети
-        </p>
-
-        {/* Try-on photo showcase */}
-        <div className="relative flex justify-center items-center h-52 mb-6">
-          {/* Clothes flatlay — behind, tilted right */}
-          <div
-            className="absolute right-4 bottom-2 w-36 h-44 rounded-2xl overflow-hidden shadow-md"
-            style={{ transform: "rotate(5deg)", zIndex: 1 }}
-          >
-            <Image
-              src="/img_1.png"
-              alt="Вещи образа"
-              fill
-              className="object-cover"
-              sizes="144px"
-            />
+    <div className="flex flex-1 flex-col">
+      {/* День-стрип — единственный сигнальный акцент на экране (today) */}
+      <div className="flex items-center justify-between mb-6 animate-fade-up">
+        {days.map((d) => (
+          <div key={d.key} className="flex flex-col items-center gap-1.5">
+            <span className="text-micro uppercase text-ink-3">{d.weekday}</span>
+            <span
+              className={cn(
+                "flex h-7 w-7 items-center justify-center rounded-full text-caption font-semibold",
+                d.isToday ? "bg-signal text-signal-ink" : "text-ink-2"
+              )}
+            >
+              {d.day}
+            </span>
           </div>
-          {/* Girl photo — front, tilted left */}
-          <div
-            className="absolute left-4 bottom-0 w-40 h-52 rounded-2xl overflow-hidden shadow-lg"
-            style={{ transform: "rotate(-4deg)", zIndex: 2 }}
-          >
-            <Image
-              src="/img.png"
-              alt="Виртуальная примерка"
-              fill
-              className="object-cover"
-              sizes="160px"
-            />
-          </div>
-        </div>
-
-        {/* Feature bullets */}
-        <div className="space-y-3 mb-6">
-          <FeatureBullet
-            icon={<Camera className="w-5 h-5" />}
-            title="Анализ вещей по фото"
-            description="AI распознает одежду с камеры за секунды"
-          />
-          <FeatureBullet
-            icon={<Sparkles className="w-5 h-5" />}
-            title="Персональные образы"
-            description="Подбор стильных сочетаний из твоего гардероба"
-          />
-          <FeatureBullet
-            icon={<Eye className="w-5 h-5" />}
-            title="Виртуальная примерка"
-            description="Примерь образ на себе до покупки"
-          />
-        </div>
-
-        {/* CTA Button */}
-        <Button
-          onClick={onAddItems}
-          className="w-full h-14 rounded-2xl text-white text-base font-semibold border-0"
-          style={{
-            background: "linear-gradient(to right, #EC9DE2, #89AEFF)",
-          }}
-        >
-          <Camera className="w-5 h-5 mr-2" />
-          Добавить первую вещь
-        </Button>
-
-        {/* Secondary link */}
-        {onExploreFeatures && (
-          <button
-            onClick={onExploreFeatures}
-            className="w-full mt-3 text-sm font-medium text-center"
-            style={{ color: "#89AEFF" }}
-          >
-            Узнать о Premium
-          </button>
-        )}
+        ))}
       </div>
-    </div>
-  )
-}
 
-// ─── Sub-components ─────────────────────────────────────────────
-
-function FeatureBullet({
-  icon,
-  title,
-  description,
-}: {
-  icon: React.ReactNode
-  title: string
-  description: string
-}) {
-  return (
-    <div className="flex items-start gap-3">
-      <div
-        className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
-        style={{ backgroundColor: "hsl(var(--secondary))", color: "#89AEFF" }}
+      <h1
+        className="text-h1 text-ink animate-fade-up"
+        style={{ animationDelay: "50ms" }}
       >
-        {icon}
+        Сегодня
+      </h1>
+      <p
+        className="text-body text-ink-2 mt-1 mb-4 animate-fade-up"
+        style={{ animationDelay: "100ms" }}
+      >
+        Добавь вещи — здесь появится готовый образ
+      </p>
+
+      {/* Пустые слоты образа — прямо на холсте, без коробки в коробке.
+          Контраст держит контур (border-ink-3), а не заливка: три оттенка
+          серого в 3% светлоты друг от друга были почти неразличимы. */}
+      <div className="grid grid-cols-1 gap-2.5 animate-fade-up" style={{ animationDelay: "150ms" }}>
+        {OUTFIT_SLOTS.map((slot) => (
+          <button
+            key={slot.key}
+            type="button"
+            onClick={onAddItems}
+            className="flex h-24 flex-col items-center justify-center gap-1.5 rounded-xl border-[1.5px] border-dashed border-ink-3 transition-transform duration-press ease-out active:scale-[.98]"
+          >
+            <Plus className="h-5 w-5 text-ink-2" />
+            <span className="text-micro uppercase text-ink-2">{slot.label}</span>
+          </button>
+        ))}
       </div>
-      <div>
-        <p className="text-sm font-semibold text-foreground">
-          {title}
-        </p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
+
+      {/* Пауза — намеренный воздух между слотами и кнопкой, а не мёртвый
+          холст после неё. */}
+      <div className="flex-1" />
+
+      <Button
+        onClick={onAddItems}
+        variant="default"
+        size="lg"
+        className="w-full animate-fade-up"
+        style={{ animationDelay: "200ms" }}
+      >
+        <Plus className="w-4 h-4" />
+        Добавить вещь
+      </Button>
+
+      {/* Резерв под плавающий таб-бар — кнопка не должна прятаться за ним */}
+      <div className="h-24" />
     </div>
   )
 }
-
-// ─── Helpers ────────────────────────────────────────────────────
-
