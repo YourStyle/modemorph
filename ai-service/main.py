@@ -77,7 +77,10 @@ async def _auto_build_index(app: FastAPI):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at "
-            "FROM wardrobe_items WHERE embedding IS NOT NULL"
+            "FROM wardrobe_items WHERE embedding IS NOT NULL "
+            # /clip/search и /clip/search/text отдают соседей FAISS без пост-фильтра,
+            # поэтому скрытые не должны попадать в индекс вообще.
+            "AND COALESCE(is_hidden, false) = false"
         )
 
     if not rows:

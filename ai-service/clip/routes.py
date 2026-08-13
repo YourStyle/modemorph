@@ -787,7 +787,10 @@ async def build_index(request: Request):
         rows = await conn.fetch(
             "SELECT id, item_name, image_url, clothing_type, color, embedding, created_at, "
             "partner_id, source_sku, gender, temp_min, temp_max "
-            "FROM wardrobe_items WHERE image_url IS NOT NULL"
+            "FROM wardrobe_items WHERE image_url IS NOT NULL "
+            # /clip/search and /clip/search/text return raw FAISS neighbours with
+            # no post-filter, so hidden items must never enter the index at all.
+            "AND COALESCE(is_hidden, false) = false"
         )
 
     items = [dict(r) for r in rows]
