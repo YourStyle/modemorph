@@ -11,7 +11,9 @@ import sys
 # из корня backend, а вторая вставка backend/app дала бы модуль дважды.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from app.services.outfit_compat import is_coherent, repair_outfit, shared_window  # noqa: E402
+from app.services.outfit_compat import (  # noqa: E402
+    is_coherent, item_window, repair_outfit, shared_window,
+)
 
 
 def _item(name, ct, tmin=None, tmax=None):
@@ -73,6 +75,58 @@ def test_cold_accessory_by_name_conflicts_with_shorts():
              _item("шорты", "shorts", 20, 35),
              _item("шапка вязаная", None, None, None)]
     assert is_coherent(items) is False
+
+
+def test_repair_keeps_a_base_garment():
+    # Баг 1 (продуктовый): жадный алгоритм по ширине окна раньше жертвовал
+    # футболкой и шортами ради шапки, шарфа и перчаток — их окно (-30, 12)
+    # шире окна базовой вещи, поэтому "выгоднее" на вид. Починка должна
+    # сначала выбрасывать аксессуары, и только если это не помогло —
+    # добираться до базового гардероба.
+    items = [_item("футболка", "t-shirt", 18, 35),
+             _item("шорты", "shorts", 20, 35),
+             _item("шапка", None, None, None),
+             _item("шарф", None, None, None),
+             _item("перчатки", None, None, None)]
+    kept, dropped = repair_outfit(items)
+    has_base_item = any(it["name"] in ("футболка", "шорты") for it in kept)
+    # Либо в остатке осталась хотя бы одна базовая вещь, либо образ признан
+    # неспасаемым целиком — но НЕ "одни аксессуары в kept".
+    assert kept == [] or has_base_item, kept
+
+
+def test_repair_leaves_a_coherent_pair_alone():
+    # Баг 2 (контрактный): уже согласованный образ раньше стирался целиком,
+    # потому что порог _MIN_OUTFIT_SIZE применялся ко ВСЕМ образам, включая
+    # те, что чинить было не нужно.
+    items = [_item("футболка", "t-shirt", 18, 35), _item("шорты", "shorts", 20, 35)]
+    assert is_coherent(items) is True
+    kept, dropped = repair_outfit(items)
+    assert kept == items, kept
+    assert dropped == [], dropped
+
+
+def test_repair_does_not_mutate_input():
+    items = [_item("футболка", "t-shirt", 18, 35),
+             _item("шорты", "shorts", 20, 35),
+             _item("куртка", "jacket", 0, 20),
+             _item("кроссовки", "sneakers", None, None)]
+    items_copy = [dict(it) for it in items]
+    repair_outfit(items)
+    assert items == items_copy, items
+
+
+def test_repair_on_empty_list():
+    kept, dropped = repair_outfit([])
+    assert kept == [], kept
+    assert dropped == [], dropped
+
+
+def test_item_window_with_only_one_bound():
+    lo, hi = item_window(_item("шорты", "shorts", 20, None))
+    assert (lo, hi) == (20, 50), (lo, hi)
+    lo, hi = item_window(_item("шорты", "shorts", None, 35))
+    assert (lo, hi) == (-50, 35), (lo, hi)
 
 
 if __name__ == "__main__":
