@@ -22,7 +22,7 @@ from app.core.deps import get_current_user
 from app.services.weather_rules import temp_ok
 from app.services.catalog_filters import gender_ok
 from app.services.capsule import capsule_style_guide
-from app.services.outfit_compat import repair_outfit
+from app.services.outfit_compat import repair_outfit, item_window
 
 logger = logging.getLogger(__name__)
 
@@ -478,8 +478,11 @@ async def generate_recommendations(
     # Get wardrobe items
     wardrobe_result = await db.execute(
         text("""
+            -- temp_min/temp_max заполнены у 1163 из 1319 вещей пользователей,
+            -- но не выбирались: и temp_ok, и окна для промпта работали на
+            -- догадке по названию вместо реальных данных.
             SELECT id, item_name, color, shade, style, material, clothing_type,
-                   has_print, image_url, user_id
+                   has_print, image_url, user_id, temp_min, temp_max
             FROM wardrobe_user_items
             WHERE user_id = :uid AND COALESCE(is_hidden, false) = false
             LIMIT 60
@@ -507,13 +510,27 @@ async def generate_recommendations(
     _temp = weather.get("temperature") or 15
     wardrobe_items = [i for i in wardrobe_items if temp_ok(i, _temp)]
 
-    # Get user's dominant style
+    # Профиль: стиль И размеры. Раньше читался только dominant_style, а он пуст
+    # у 161 из 295 профилей (55%) — у этих людей строка про стиль исчезала из
+    # промпта целиком. style_tags заполнен у 134 и не использовался нигде,
+    # размеры — у 209, и без них модель предлагает вещь, которую не купить.
     style_result = await db.execute(
-        text("SELECT dominant_style FROM user_profiles WHERE user_id = :uid"),
+        text("SELECT dominant_style, style_tags, top_size, bottom_size, shoe_size "
+             "FROM user_profiles WHERE user_id = :uid"),
         {"uid": user["id"]},
     )
     style_row = style_result.mappings().first()
     dominant_style = (style_row["dominant_style"] if style_row else "") or ""
+    # style_tags хранится строкой через запятую: 'casual,classic,vintage'.
+    style_tags = [
+        t.strip() for t in ((style_row["style_tags"] if style_row else "") or "").split(",")
+        if t.strip()
+    ]
+    sizes = {
+        "top": (style_row["top_size"] if style_row else "") or "",
+        "bottom": (style_row["bottom_size"] if style_row else "") or "",
+        "shoe": (style_row["shoe_size"] if style_row else "") or "",
+    }
 
     # Get disliked item IDs (graceful if table doesn't exist yet)
     disliked_ids = set()
@@ -589,10 +606,14 @@ async def generate_recommendations(
         rec_session_id = _uuid.uuid4().hex[:12]
 
     # Build prompt
+    # temp — окно носибельности вещи. Без него модель угадывает сезонность по
+    # названию и ставит шорты с курткой: их окна (20..35) и (0..20) касаются
+    # ровно в точке 20, и по отдельности каждая вещь выглядит уместной.
     wardrobe_json = json_lib.dumps([{
         "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
         "shade": i.get("shade"), "style": i.get("style"), "material": i.get("material"),
         "type": i.get("clothing_type"), "has_print": i.get("has_print"),
+        "temp": list(item_window(i)),
         "image_url": i.get("image_url"), "user_id": i.get("user_id"),
     } for i in wardrobe_items], ensure_ascii=False)
 
@@ -606,10 +627,56 @@ async def generate_recommendations(
             "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
             "shade": i.get("shade"), "material": i.get("material"),
             "type": i.get("clothing_type"), "image_url": i.get("image_url"),
+            "temp": list(item_window(i)),
             "url": i.get("url"), "brand": i.get("brand"),
         } for i in partner_items[:50]], ensure_ascii=False)
 
-    style_hint = f"\nUser's preferred style: {dominant_style}. Most outfits (70-80%) should match this style, 2-3 can experiment." if dominant_style else ""
+    # Сводка по слотам: модель должна понимать, ЧЕМ располагает, а не только
+    # видеть плоский список. «0 верхней одежды» — сигнал не требовать её.
+    # wardrobe_items — это выборка `WHERE user_id = :uid`, то есть уже только
+    # вещи пользователя. Фильтровать ещё раз по user_id не надо: если колонку
+    # когда-нибудь уберут из SELECT, такой фильтр молча обнулит всю сводку.
+    _owned = wardrobe_items
+    _slot_counts: dict[str, int] = {}
+    for _i in _owned:
+        _s = _SLOT_MAP.get(normalize_clothing_type(_i.get("clothing_type")) or "")
+        if _s:
+            _slot_counts[_s] = _slot_counts.get(_s, 0) + 1
+    slot_summary = ", ".join(f"{k}: {v}" for k, v in sorted(_slot_counts.items())) or "empty"
+
+    # Профиль молчит у 55% пользователей. Гардероб сам по себе — сигнал вкуса:
+    # что человек купил, то ему и нравится. Лучше вывести стиль из вещей, чем
+    # промолчать и оставить модель без единого ориентира.
+    if not dominant_style and not style_tags:
+        from collections import Counter as _Counter
+        _top_style = _Counter(
+            (i.get("style") or "").strip() for i in _owned if (i.get("style") or "").strip()
+        ).most_common(1)
+        _top_color = _Counter(
+            (i.get("color") or "").strip() for i in _owned if (i.get("color") or "").strip()
+        ).most_common(2)
+        _derived = []
+        if _top_style:
+            _derived.append(_top_style[0][0])
+        if _top_color:
+            _derived.append("wears mostly " + ", ".join(c for c, _ in _top_color))
+        dominant_style = "; ".join(_derived)
+
+    _style_parts = []
+    if dominant_style:
+        _style_parts.append(
+            f"User's preferred style: {dominant_style}. "
+            "Most outfits (70-80%) should match it, 2-3 can experiment."
+        )
+    if style_tags:
+        _style_parts.append("Style tags: " + ", ".join(style_tags) + ".")
+    if any(sizes.values()):
+        _style_parts.append(
+            "User sizes — top: {top}, bottom: {bottom}, shoe: {shoe}. "
+            "Never suggest a PARTNER item in a different size.".format(**sizes)
+        )
+    _style_parts.append(f"Wardrobe inventory by slot: {slot_summary}.")
+    style_hint = "\n" + "\n".join(_style_parts)
 
     has_partners = bool(partner_items)
 
@@ -635,7 +702,10 @@ MANDATORY RULES FOR EVERY OUTFIT:
 1. Each outfit = STRICTLY 4-6 items covering the FULL body:
    * Upper body (shirt/blouse/t-shirt/hoodie/sweater) — REQUIRED
    * Lower body (pants/jeans/skirt/shorts) OR dress — REQUIRED
-   * Outerwear (jacket/coat/blazer) — REQUIRED if weather < 18°C
+   * Outerwear — REQUIRED if weather < 15°C, OPTIONAL between 15 and 20°C.
+     Every item carries a "temp" window [min, max]. All items in ONE outfit
+     MUST share an overlap of at least 3°C. Shorts (20..35) and a jacket
+     (0..20) overlap only at the single point 20 — that is NOT an outfit.
    * FOOTWEAR — REQUIRED IN EVERY OUTFIT
    * Accessory (bag/scarf/belt/hat/glasses) — when possible
 2. FORBIDDEN: outfits with only 2-3 items. If you can't make 4+, skip it.
