@@ -101,7 +101,7 @@ async def gemini_name_and_organize(user_items, partner_items, weather, gender, s
 
     prompt = f"""Ты - стилист. Составь {sections_count} тематических раздела с образами из доступных вещей.
 
-Погода: {weather.get('temperature', 20)}°C, {weather.get('description', 'ясно')}
+Погода: {weather['temperature']}°C, {weather.get('description', 'ясно')}
 Пол: {gender or 'не указан'}
 
 Доступные вещи:
@@ -191,13 +191,24 @@ async def main():
                         user_row["user_id"],
                     )
 
+                # Без реальной погоды образ собирать нельзя: выдуманные 20 °C —
+                # единственная температура, при которой окна shorts (20..35) и
+                # jacket (0..20) пересекаются, и она рождала «куртку с шортами».
+                # Лучше пустая главная, чем брак.
+                if weather_row is None or weather_row["temperature"] is None:
+                    logger.warning(
+                        "нет погоды для %s — рекомендации пропущены",
+                        user_row["user_id"],
+                    )
+                    continue
                 weather = {
-                    "temperature": weather_row["temperature"] if weather_row else 20,
-                    "description": weather_row["description"] if weather_row else "ясно",
-                    "location": weather_row["city_name"] if weather_row else "Москва",
+                    "temperature": weather_row["temperature"],
+                    "description": weather_row["description"] or "ясно",
+                    "location": weather_row["city_name"] or "Москва",
                 }
                 gender = profile["gender"] if profile else None
-                temp = weather["temperature"] or 20
+                # НЕ `or 20`: ноль ложен в Python, и `0 or 20` даёт 20.
+                temp = weather["temperature"]
 
                 user_items = [dict(r) for r in user_items_rows]
 
