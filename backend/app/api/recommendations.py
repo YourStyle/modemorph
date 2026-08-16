@@ -22,6 +22,7 @@ from app.core.deps import get_current_user
 from app.services.weather_rules import temp_ok
 from app.services.catalog_filters import gender_ok
 from app.services.capsule import capsule_style_guide
+from app.services.outfit_compat import repair_outfit
 
 logger = logging.getLogger(__name__)
 
@@ -404,6 +405,17 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
             else:
                 # Clean up already-cached outfits with duplicate slots (pre-fix cache).
                 sug["items"] = _dedup_by_slot(enriched_items)
+        # Gap-секции — витрина по одному слоту, а не образ: чинить нечего.
+        if not is_gap_section:
+            for s in section.get("suggestions", []):
+                kept, dropped = repair_outfit(s.get("items") or [])
+                if dropped:
+                    logger.info(
+                        "[rec] образ %s: выброшено %d несочетаемых (%s)",
+                        s.get("id"), len(dropped),
+                        ", ".join(str(d.get("name")) for d in dropped),
+                    )
+                s["items"] = kept
         # Drop suggestions with too few items (post-dedup can drop below 3)
         section["suggestions"] = [s for s in section.get("suggestions", []) if len(s.get("items") or []) >= 3]
 
