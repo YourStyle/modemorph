@@ -180,7 +180,7 @@ async def _build_gap_section(
             rows = await db.execute(
                 text("""
                     SELECT id, item_name, image_url, clothing_type, color, url, notes,
-                           gender, temp_min, temp_max
+                           gender, temp_min, temp_max, price
                     FROM wardrobe_items
                     WHERE id = ANY(:ids) AND COALESCE(is_hidden, false) = false
                 """),
@@ -203,6 +203,10 @@ async def _build_gap_section(
                     "clothing_type": row.get("clothing_type"),
                     "url": row.get("url"),
                     "brand": brand,
+                    # Витрина «чего не хватает» — это список покупок, а не образ:
+                    # без цены карточка бесполезна. Заполнена у 36% каталога,
+                    # поэтому фронт рендерит блок цены только когда она есть.
+                    "price": row.get("price"),
                     "user_id": None,
                     "rec_session_id": rec_session_id,
                 })

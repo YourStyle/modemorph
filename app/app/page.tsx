@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { OutfitCard } from "@/components/outfit-card"
+import { GapShelf } from "@/components/gap-shelf"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Sparkles, Loader2, Camera } from "lucide-react"
@@ -40,9 +41,26 @@ interface LookSection {
   title: string
   looks_count?: number
   suggestions: OutfitSuggestion[]
-  source?: "user_only" | "mix" | "partner_only" | "clip" | "ai"
+  // wardrobe_gap — не образы, а витрина недостающих вещей: рендерится GapShelf.
+  source?: "user_only" | "mix" | "partner_only" | "clip" | "ai" | "wardrobe_gap"
   source_label?: string
   rec_session_id?: string | null
+}
+
+/** «1 вещь», «2 вещи», «5 вещей» — витрина считает вещи, а не образы. */
+function pluralItems(n: number): string {
+  const mod100 = n % 100
+  if (mod100 >= 11 && mod100 <= 14) return `${n} вещей`
+  switch (n % 10) {
+    case 1:
+      return `${n} вещь`
+    case 2:
+    case 3:
+    case 4:
+      return `${n} вещи`
+    default:
+      return `${n} вещей`
+  }
 }
 
 
@@ -554,11 +572,27 @@ export default function HomePage() {
                               <div className="flex items-center justify-between">
                                 <h2 className="text-h2 text-ink">{section.title || "Образы"}</h2>
                                 <span className="text-caption text-ink-2">
-                          {section.looks_count || section.suggestions.length} образов
+                          {section.source === "wardrobe_gap"
+                              ? pluralItems(section.suggestions.reduce((n, s) => n + (s.items?.length ?? 0), 0))
+                              : `${section.looks_count || section.suggestions.length} образов`}
                         </span>
                               </div>
 
-                              {/* Horizontal Scrolling Container — full bleed */}
+                              {/* Дыры гардероба — витрина товаров, а не образы:
+                                  внутри группы лежат взаимозаменяемые варианты
+                                  одного слота, «Примерить» для них бессмысленно. */}
+                              {section.source === "wardrobe_gap" ? (
+                                  <GapShelf
+                                      groups={section.suggestions
+                                          .filter(Boolean)
+                                          .map((suggestion, i) => ({
+                                            id: String(suggestion.id || `gap-${i}`),
+                                            title: suggestion.title,
+                                            items: suggestion.items ?? [],
+                                          }))}
+                                  />
+                              ) : (
+                              /* Horizontal Scrolling Container — full bleed */
                               <div className="relative scroll-section -mx-4">
                                 <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-6 pt-1 px-4 snap-x snap-mandatory">
                                   {section.suggestions.map((suggestion, suggestionIndex) => {
@@ -587,6 +621,7 @@ export default function HomePage() {
                                   })}
                                 </div>
                               </div>
+                              )}
                             </div>
                         )
                       })}
