@@ -7,7 +7,6 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { UserWardrobeGrid } from "@/components/user-wardrobe-grid"
-import { CategoryProgressSheet } from "@/components/category-progress-sheet"
 import { Plus, ChevronDown, ChevronUp, Search, Sparkles, LayoutGrid, Shirt } from "lucide-react"
 import { useAddToCloset } from "@/contexts/add-to-closet-context"
 import { useAIAnalysis } from "@/contexts/ai-analysis-context"
@@ -200,13 +199,11 @@ const BasicItemsSkeleton = () => {
 }
 
 export default function WardrobePage() {
-  const [isCategorySheetOpen, setIsCategorySheetOpen] = useState(false)
   const [basicItems, setBasicItems] = useState<BasicWardrobeItem[]>([])
   const [isLoadingBasicItems, setIsLoadingBasicItems] = useState(true)
   const [showAllBasicItems, setShowAllBasicItems] = useState(false)
   const [userItemsCount, setUserItemsCount] = useState(0)
   const [userItems, setUserItems] = useState<WardrobeListItem[]>([])
-  const [hasLoadedItemsOnce, setHasLoadedItemsOnce] = useState(false)
   const [addingItemId, setAddingItemId] = useState<number | null>(null)
   const [refreshUserItems, setRefreshUserItems] = useState(0)
   const [selectedPhotos, setSelectedPhotos] = useState<UploadedPhoto[]>([])
@@ -262,7 +259,8 @@ export default function WardrobePage() {
     const succeeded = analysisResults.filter((r: any) => r.success && r.items && r.items.length > 0).length
     if (succeeded <= 0) return
 
-    // спишем по 1 за каждое удачное фото (наш API сейчас списывает по 1 за вызов)
+    // спишем ровно за успешно распознанные фото, а не за все загруженные —
+    // нераспознанные/отклонённые ИИ фото лимит не тратят
     const res = await consume(
       "wardrobe_items_anlyzed",
       {
@@ -271,7 +269,7 @@ export default function WardrobePage() {
         photosCount: photos.length,
         succeeded,
       },
-      photos.length,
+      succeeded,
     )
     if (!res.ok && res.code === "payment_required") {
       setPaywallOpen(true)
@@ -359,12 +357,7 @@ export default function WardrobePage() {
       console.error("Error fetching user items:", error)
     } finally {
       setIsLoadingUserItems(false)
-      setHasLoadedItemsOnce(true)
     }
-  }
-
-  const handleCategoryClick = () => {
-    setIsCategorySheetOpen(true)
   }
 
   const handleAddToWardrobe = () => {
@@ -379,7 +372,10 @@ export default function WardrobePage() {
     // Проверяем есть ли активный анализ
     const activeSession = aiAnalysis.getActiveSession()
     if (activeSession) {
-      toast.error("Дождитесь завершения текущего анализа")
+      toast({
+        title: "Дождитесь завершения текущего анализа",
+        variant: "destructive",
+      })
       if (fileInputRef.current) {
         fileInputRef.current.value = ""
       }
@@ -469,8 +465,6 @@ export default function WardrobePage() {
   }
 
   const displayedBasicItems = showAllBasicItems ? basicItems : basicItems.slice(0, 12)
-  const targetItemsCount = 30
-  const progressPercentage = (userItemsCount / targetItemsCount) * 100
 
   const handleRemovePhoto = (photoId: string) => {
     setSelectedPhotos((prev) => {
@@ -502,7 +496,7 @@ export default function WardrobePage() {
         {/* Лента категорий — сразу под заголовком: навигация, фильтр и витрина
             реальных вещей одновременно. */}
         <CategoryRibbon
-          loading={!hasLoadedItemsOnce}
+          loading={isLoadingUserItems}
           items={userItems}
           active={activeCategory}
           onSelect={setActiveCategory}
@@ -602,14 +596,21 @@ export default function WardrobePage() {
                         <Shirt className="h-6 w-6 text-ink-3" strokeWidth={1.75} aria-hidden="true" />
                       )}
 
-                      {/* Кнопка добавления - всегда видна на мобильных и планшетах, при наведении на десктопе */}
-                      <div className="absolute inset-0 bg-ink/20 flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <Button
-                          onClick={() => handleAddBaseItem(item)}
-                          size="sm"
-                          disabled={addingItemId === item.id}
-                          variant="secondary"
-                          className="text-xs px-2 py-1 h-7"
+                      {/* Кнопка добавления - всегда видна на мобильных и планшетах, при наведении на десктопе.
+                          Кликабельна вся плашка (реальная зона касания = вся миниатюра), видимый чип
+                          в центре остаётся прежнего маленького размера — это только визуальная подсказка. */}
+                      <button
+                        type="button"
+                        onClick={() => handleAddBaseItem(item)}
+                        disabled={addingItemId === item.id}
+                        aria-label={`Добавить «${item.item_name}» в гардероб`}
+                        className="absolute inset-0 flex items-center justify-center bg-ink/20 opacity-100 transition-opacity disabled:pointer-events-none md:opacity-0 md:group-hover:opacity-100"
+                      >
+                        <span
+                          className={cn(
+                            "pointer-events-none inline-flex h-7 items-center rounded-full bg-secondary px-2 py-1 text-xs font-semibold text-secondary-foreground transition-transform duration-press",
+                            addingItemId === item.id && "opacity-50",
+                          )}
                         >
                           {addingItemId === item.id ? (
                             <div className="w-3 h-3 border border-ink-3 border-t-transparent rounded-full animate-spin mr-1" />
@@ -617,8 +618,8 @@ export default function WardrobePage() {
                             <Plus className="h-3 w-3 mr-1" />
                           )}
                           {addingItemId === item.id ? "..." : "Добавить"}
-                        </Button>
-                      </div>
+                        </span>
+                      </button>
                     </div>
                     <div className="px-2.5 pt-2 pb-2.5">
                       <h3 className="text-caption font-semibold text-ink truncate">
@@ -658,8 +659,6 @@ export default function WardrobePage() {
           )}
         </div>
       </div>
-
-      <CategoryProgressSheet isOpen={isCategorySheetOpen} onClose={() => setIsCategorySheetOpen(false)} />
 
       <SubscriptionSheet
         isOpen={paywallOpen}

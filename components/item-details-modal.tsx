@@ -47,7 +47,13 @@ interface ItemDetailsModalProps {
   isAdmin?: boolean
 }
 
-export function ItemDetailsModal({ item, isOpen, onClose, isAdmin = false }: ItemDetailsModalProps) {
+// onRefresh is accepted (wardrobe-item-card.tsx:210 passes it) but not called:
+// this modal only displays item data, it never mutates it, so there is
+// nothing here that would need to trigger a parent refetch. Removing the
+// field from the interface instead would break that caller's prop typing —
+// keeping it declared-and-accepted documents the contract until this modal
+// grows an actual mutating action (edit/delete) that needs it.
+export function ItemDetailsModal({ item, isOpen, onClose, onRefresh: _onRefresh, isAdmin = false }: ItemDetailsModalProps) {
   const [imageError, setImageError] = useState(false)
 
   const hex = item.color ? colorToHex(item.color) : null

@@ -17,24 +17,38 @@ const navItems = [
 // заливкой и не толщиной линии — иначе ряд иконок читается как три разных манеры.
 const ICON_STROKE = 1.75
 
+// Пилюля — фиксированная высота, а НЕ auto по контенту самого длинного пункта.
+// Раньше (grid со стрейчем по самой высокой ячейке) высота бара незаметно скакала
+// при смене активного пункта; сейчас каждая ячейка сама центрирует свой контент
+// внутри одной и той же высоты, так что пилюля не "дышит" при навигации.
+const PILL_HEIGHT = 64
+// Зазор между низом пилюли и краем экрана, ДО env(safe-area-inset-bottom).
+const PILL_BOTTOM_GAP = 12
+
 export function BottomNavigation() {
     const pathname = usePathname()
     const foundIndex = navItems.findIndex((item) => pathname === item.href)
     const activeIndex = foundIndex === -1 ? 0 : foundIndex
 
     return (
-        // Уровень 1 liquid glass (test/gauntlet/design/LIQUID_GLASS.md) — прижатая к низу
-        // стеклянная панель на весь борт, без плавающей пилюли. glass-refract добавляет
-        // преломление уровня 2 только там, где backdrop-filter: url() поддержан (Chromium).
-        // Единственный акцент бара — цвет активной иконки/подписи, больше нигде --signal нет.
+        // Плавающая пилюля, а не бар во весь борт: inset-x-4 (16px) с каждой стороны —
+        // фиксированное поле, а не auto-ширина по контенту, поэтому на любом вьюпорте
+        // 320–430px пилюля физически не может вылезти за экран, она всегда
+        // "100% минус 32px". grid-cols-5 внутри делит эту ширину поровну.
+        //
+        // glass-strong/glass-refract (app/globals.css, не мой файл) дают блюр+преломление;
+        // они по умолчанию тянут светлый --canvas-фон. Возвращаем пилюле тёмный вид, который
+        // просил владелец, локальным инлайн-оверрайдом фона на токене --ink — ни новых
+        // классов, ни градиента в globals.css не добавляем.
         <nav
             aria-label="Основная навигация"
-            // glass-strong, а не glass: бар стоит над сеткой фотографий, и на .62 сквозь
-            // него просвечивала вещь — мутное пятно садилось прямо под подпись вкладки
-            className="glass-strong glass-refract fixed inset-x-0 bottom-0 z-50 will-change-transform"
-            style={{paddingBottom: "env(safe-area-inset-bottom, 0px)"}}
+            className="glass-strong glass-refract fixed inset-x-4 z-50 rounded-full will-change-transform"
+            style={{
+                bottom: `calc(env(safe-area-inset-bottom, 0px) + ${PILL_BOTTOM_GAP}px)`,
+                background: "hsl(var(--ink) / 0.86)",
+            }}
         >
-            <div className="grid grid-cols-5">
+            <div className="grid grid-cols-5 px-1" style={{height: PILL_HEIGHT}}>
                 {navItems.map((item, index) => {
                     const isActive = index === activeIndex
                     const Icon = item.icon
@@ -44,22 +58,22 @@ export function BottomNavigation() {
                             key={item.href}
                             href={item.href}
                             aria-current={isActive ? "page" : undefined}
-                            className="flex min-w-0 flex-col items-center justify-center gap-0.5 pt-2 pb-1.5"
+                            aria-label={item.label}
+                            className="flex h-full min-w-0 flex-col items-center justify-center gap-0.5"
                         >
                             <Icon
-                                className="h-6 w-6 transition-colors duration-[var(--dur-press)]"
+                                className="h-6 w-6 shrink-0 transition-colors duration-[var(--dur-press)]"
                                 style={{color: isActive ? "hsl(var(--signal))" : "hsl(var(--ink-3))"}}
                                 strokeWidth={ICON_STROKE}
                                 aria-hidden="true"
                             />
-                            {/* Whering: подпись только под активным пунктом — заодно чинит обрезание текста.
-                                Живёт внутри линии иконок, не упирается в safe-area: bar-контейнер уже
-                                добавляет env(safe-area-inset-bottom) отдельным paddingBottom снаружи. */}
+                            {/* Whering: подпись только под активным пунктом — при пяти пунктах в узкой
+                                пилюле это единственный способ не обрезать текст. Ячейка — h-full с
+                                justify-center, поэтому появление лейбла не раздвигает саму пилюлю. */}
                             {isActive && (
                                 <span
-                                    key={item.href}
                                     className={cn(
-                                        "animate-in fade-in slide-in-from-bottom-1 text-[10px] font-medium leading-none",
+                                        "animate-in fade-in slide-in-from-bottom-1 whitespace-nowrap text-[10px] font-medium leading-none",
                                         "duration-200 ease-[var(--ease-out)]",
                                     )}
                                     style={{color: "hsl(var(--signal))"}}

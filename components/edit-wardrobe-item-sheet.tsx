@@ -81,7 +81,7 @@ const BASE_MATERIALS = [
   "Шерсть",
   "Кашемир",
   "Шелк",
-  "Поли��стер",
+  "Полиэстер",
   "Нейлон",
   "Спандекс",
   "Эластан",
@@ -174,33 +174,44 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
   const [styles, setStyles] = useState<string[]>(BASE_STYLES)
   const [clothingTypes, setClothingTypes] = useState<string[]>(CLOTHING_TYPES)
 
-  // Функция для добавления значения в список, если его там нет
-  const addToListIfNotExists = (list: string[], value: string | undefined): string[] => {
-    if (!value || value.trim() === "") return list
-    const trimmedValue = value.trim()
-    if (!list.includes(trimmedValue)) {
-      return [...list, trimmedValue].sort()
-    }
-    return list
+  // Значение из БД может прийти в любом регистре ("нейлон" vs справочное
+  // "Нейлон") — раньше addToListIfNotExists сравнивала строки как есть и
+  // добавляла дубль вместо того, чтобы узнать уже существующий пункт. Теперь
+  // сопоставляем без учёта регистра и возвращаем канонический вариант списка,
+  // чтобы Select показывал ровно один читаемый пункт как выбранный.
+  const mergeAndResolveValue = (
+    baseList: string[],
+    value: string | undefined,
+  ): { list: string[]; resolved: string } => {
+    const trimmedValue = (value ?? "").trim()
+    if (!trimmedValue) return { list: baseList, resolved: "" }
+    const existing = baseList.find((option) => option.toLowerCase() === trimmedValue.toLowerCase())
+    if (existing) return { list: baseList, resolved: existing }
+    return { list: [...baseList, trimmedValue].sort(), resolved: trimmedValue }
   }
 
   // Загрузка данных при открытии шторки
   useEffect(() => {
     if (isOpen && item) {
-      // Обновляем списки, добавляя текущие значения если их нет
-      setSizes(addToListIfNotExists(BASE_SIZES, item.size_type))
-      setShades(addToListIfNotExists(BASE_SHADES, item.shade))
-      setMaterials(addToListIfNotExists(BASE_MATERIALS, item.material))
-      setStyles(addToListIfNotExists(BASE_STYLES, item.style))
-      setClothingTypes(addToListIfNotExists(CLOTHING_TYPES, item.clothing_type))
+      const sizesResolved = mergeAndResolveValue(BASE_SIZES, item.size_type)
+      const shadesResolved = mergeAndResolveValue(BASE_SHADES, item.shade)
+      const materialsResolved = mergeAndResolveValue(BASE_MATERIALS, item.material)
+      const stylesResolved = mergeAndResolveValue(BASE_STYLES, item.style)
+      const clothingTypesResolved = mergeAndResolveValue(CLOTHING_TYPES, item.clothing_type)
+
+      setSizes(sizesResolved.list)
+      setShades(shadesResolved.list)
+      setMaterials(materialsResolved.list)
+      setStyles(stylesResolved.list)
+      setClothingTypes(clothingTypesResolved.list)
 
       setFormData({
-        size_type: item.size_type || "",
-        material: item.material || "",
-        style: item.style || "",
-        clothing_type: item.clothing_type || "",
+        size_type: sizesResolved.resolved,
+        material: materialsResolved.resolved,
+        style: stylesResolved.resolved,
+        clothing_type: clothingTypesResolved.resolved,
         has_print: item.has_print === true || item.has_print === "true",
-        shade: item.shade || "",
+        shade: shadesResolved.resolved,
         url: item.url || "",
         notes: item.notes || "",
         gender: item.gender || "",
@@ -274,8 +285,10 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
     return null
   }
 
+  const selectTriggerClassName = "h-12 rounded-full border-transparent bg-canvas-sunk text-[15px] text-ink"
+
   return (
-    <CommonSheet isOpen={isOpen} onClose={onClose} title="Редактировать вещь" backgroundColor="dark">
+    <CommonSheet isOpen={isOpen} onClose={onClose} title="Редактировать вещь" backgroundColor="white">
       <div className="flex flex-col h-full">
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
@@ -294,16 +307,16 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                     <Shirt className="h-10 w-10 text-ink-3" strokeWidth={1.75} aria-hidden="true" />
                   )}
                 </div>
-                <p className="text-[#101010] text-sm mt-2 text-center font-medium">{item.item_name}</p>
+                <p className="text-ink text-sm mt-2 text-center font-medium">{item.item_name}</p>
               </div>
 
               {/* Поля формы */}
               <div className="space-y-4">
                 {/* Тип одежды */}
                 <div className="space-y-2">
-                  <Label className="text-[#101010]">Тип одежды</Label>
+                  <Label className="text-ink-2">Тип одежды</Label>
                   <Select value={formData.clothing_type} onValueChange={(value) => handleInputChange("clothing_type", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectTrigger className={selectTriggerClassName}>
                       <SelectValue placeholder="Выберите тип" />
                     </SelectTrigger>
                     <SelectContent>
@@ -318,9 +331,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
                 {/* Размер */}
                 <div className="space-y-2">
-                  <Label className="text-[#101010]">Размер</Label>
+                  <Label className="text-ink-2">Размер</Label>
                   <Select value={formData.size_type} onValueChange={(value) => handleInputChange("size_type", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectTrigger className={selectTriggerClassName}>
                       <SelectValue placeholder="Выберите размер" />
                     </SelectTrigger>
                     <SelectContent>
@@ -335,9 +348,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
                 {/* Оттенок */}
                 <div className="space-y-2">
-                  <Label className="text-[#101010]">Оттенок</Label>
+                  <Label className="text-ink-2">Оттенок</Label>
                 <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
-                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectTrigger className={selectTriggerClassName}>
                     <SelectValue placeholder="Выберите оттенок" />
                   </SelectTrigger>
                   <SelectContent>
@@ -352,9 +365,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
               {/* Пол */}
               <div className="space-y-2">
-                <Label className="text-[#101010]">Пол</Label>
+                <Label className="text-ink-2">Пол</Label>
                 <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
-                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectTrigger className={selectTriggerClassName}>
                     <SelectValue placeholder="Выберите пол" />
                   </SelectTrigger>
                   <SelectContent>
@@ -369,9 +382,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
               {/* Материал */}
               <div className="space-y-2">
-                <Label className="text-[#101010]">Материал</Label>
+                <Label className="text-ink-2">Материал</Label>
                   <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectTrigger className={selectTriggerClassName}>
                       <SelectValue placeholder="Выберите материал" />
                     </SelectTrigger>
                     <SelectContent>
@@ -386,9 +399,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
                 {/* Стиль */}
                 <div className="space-y-2">
-                  <Label className="text-[#101010]">Стиль</Label>
+                  <Label className="text-ink-2">Стиль</Label>
                   <Select value={formData.style} onValueChange={(value) => handleInputChange("style", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectTrigger className={selectTriggerClassName}>
                       <SelectValue placeholder="Выберите стиль" />
                     </SelectTrigger>
                     <SelectContent>
@@ -407,7 +420,7 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
             <div className="hidden md:flex gap-6">
               {/* Фото слева - 50% */}
               <div className="flex-1 flex flex-col items-center">
-                <Label className="text-[#101010] mb-2">Фото</Label>
+                <Label className="text-ink-2 mb-2">Фото</Label>
                 <div className="w-full max-w-48 aspect-square bg-canvas-sunk rounded-lg overflow-hidden flex items-center justify-center">
                   {item.image_url ? (
                     <img
@@ -419,16 +432,16 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                     <Shirt className="h-10 w-10 text-ink-3" strokeWidth={1.75} aria-hidden="true" />
                   )}
                 </div>
-                <p className="text-[#101010] text-sm mt-2 text-center font-medium">{item.item_name}</p>
+                <p className="text-ink text-sm mt-2 text-center font-medium">{item.item_name}</p>
               </div>
 
               {/* Поля справа - 50% */}
               <div className="flex-1 space-y-4">
                 {/* Тип одежды */}
                 <div className="space-y-2">
-                  <Label className="text-[#101010]">Тип одежды</Label>
+                  <Label className="text-ink-2">Тип одежды</Label>
                   <Select value={formData.clothing_type} onValueChange={(value) => handleInputChange("clothing_type", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectTrigger className={selectTriggerClassName}>
                       <SelectValue placeholder="Выберите тип" />
                     </SelectTrigger>
                     <SelectContent>
@@ -443,9 +456,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
                 {/* Размер */}
                 <div className="space-y-2">
-                  <Label className="text-[#101010]">Размер</Label>
+                  <Label className="text-ink-2">Размер</Label>
                   <Select value={formData.size_type} onValueChange={(value) => handleInputChange("size_type", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectTrigger className={selectTriggerClassName}>
                       <SelectValue placeholder="Выберите размер" />
                     </SelectTrigger>
                     <SelectContent>
@@ -460,9 +473,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
                 {/* Оттенок */}
                 <div className="space-y-2">
-                  <Label className="text-[#101010]">Оттенок</Label>
+                  <Label className="text-ink-2">Оттенок</Label>
                 <Select value={formData.shade} onValueChange={(value) => handleInputChange("shade", value)}>
-                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectTrigger className={selectTriggerClassName}>
                     <SelectValue placeholder="Выберите оттенок" />
                   </SelectTrigger>
                   <SelectContent>
@@ -477,9 +490,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
               {/* Пол */}
               <div className="space-y-2">
-                <Label className="text-[#101010]">Пол</Label>
+                <Label className="text-ink-2">Пол</Label>
                 <Select value={formData.gender} onValueChange={(value) => handleInputChange("gender", value)}>
-                  <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                  <SelectTrigger className={selectTriggerClassName}>
                     <SelectValue placeholder="Выберите пол" />
                   </SelectTrigger>
                   <SelectContent>
@@ -494,9 +507,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
               {/* Материал */}
               <div className="space-y-2">
-                <Label className="text-[#101010]">Материал</Label>
+                <Label className="text-ink-2">Материал</Label>
                   <Select value={formData.material} onValueChange={(value) => handleInputChange("material", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectTrigger className={selectTriggerClassName}>
                       <SelectValue placeholder="Выберите материал" />
                     </SelectTrigger>
                     <SelectContent>
@@ -511,9 +524,9 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
 
                 {/* Стиль */}
                 <div className="space-y-2">
-                  <Label className="text-[#101010]">Стиль</Label>
+                  <Label className="text-ink-2">Стиль</Label>
                   <Select value={formData.style} onValueChange={(value) => handleInputChange("style", value)}>
-                    <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                    <SelectTrigger className={selectTriggerClassName}>
                       <SelectValue placeholder="Выберите стиль" />
                     </SelectTrigger>
                     <SelectContent>
@@ -534,16 +547,15 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                 id="has_print"
                 checked={formData.has_print}
                 onCheckedChange={(checked) => handleInputChange("has_print", checked as boolean)}
-                className="border-white data-[state=checked]:bg-white data-[state=checked]:text-black"
               />
-              <Label htmlFor="has_print" className="text-white">
+              <Label htmlFor="has_print" className="text-ink-2">
                 Есть принт
               </Label>
             </div>
 
             {/* Ссылка на товар */}
             <div className="space-y-2">
-              <Label htmlFor="url" className="text-white">
+              <Label htmlFor="url" className="text-ink-2">
                 Ссылка на товар в магазине
               </Label>
               <Input
@@ -552,13 +564,12 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                 value={formData.url}
                 onChange={(e) => handleInputChange("url", e.target.value)}
                 placeholder="https://shop.com/product/123"
-                className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
               />
             </div>
 
             {/* Заметки */}
             <div className="space-y-2">
-              <Label htmlFor="notes" className="text-white">
+              <Label htmlFor="notes" className="text-ink-2">
                 Заметки
               </Label>
               <Textarea
@@ -567,21 +578,16 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
                 onChange={(e) => handleInputChange("notes", e.target.value)}
                 placeholder="Дополнительная информация о вещи"
                 rows={3}
-                className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                className="min-h-[88px] rounded-2xl border-transparent bg-canvas-sunk text-[15px] text-ink placeholder:text-ink-3"
               />
             </div>
 
             {/* Кнопки для десктопа */}
             <div className="hidden md:flex gap-4 pt-4">
-              <Button type="submit" disabled={isLoading} className="flex-1 bg-gray-900 hover:bg-gray-800 text-white">
+              <Button type="submit" disabled={isLoading} className="flex-1">
                 {isLoading ? "Обновление..." : "Обновить"}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={onClose}
-                className="border-gray-600 text-white hover:bg-gray-700 bg-transparent"
-              >
+              <Button type="button" variant="outline" onClick={onClose}>
                 Отмена
               </Button>
             </div>
@@ -589,20 +595,12 @@ export function EditWardrobeItemSheet({ item, isOpen, onClose, onSuccess }: Edit
         </div>
 
         {/* Fixed bottom buttons for mobile */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-gray-800 border-t border-gray-600 p-4 z-50">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-canvas border-t border-line p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <div className="flex gap-4">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="flex-1 border-gray-600 text-white hover:bg-gray-700 bg-transparent"
-            >
+            <Button variant="outline" onClick={onClose} className="flex-1">
               Отмена
             </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={isLoading}
-              className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
-            >
+            <Button onClick={handleSubmit} disabled={isLoading} className="flex-1">
               {isLoading ? "Сохранение..." : "Сохранить"}
             </Button>
           </div>

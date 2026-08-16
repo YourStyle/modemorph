@@ -258,10 +258,12 @@ export function UserWardrobeGrid({
                   <DropdownMenuTrigger asChild>
                     <button
                       onClick={(e) => e.stopPropagation()}
-                      className="glass h-7 w-7 rounded-full flex items-center justify-center text-ink active:scale-95 transition-transform duration-press"
+                      className="group -m-2 flex h-11 w-11 items-center justify-center"
                       aria-label="Действия с вещью"
                     >
-                      <MoreVertical className="h-3.5 w-3.5" />
+                      <span className="glass flex h-7 w-7 items-center justify-center rounded-full text-ink transition-transform duration-press group-active:scale-95">
+                        <MoreVertical className="h-3.5 w-3.5" />
+                      </span>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">

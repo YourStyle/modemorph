@@ -9,6 +9,14 @@ import {
   Backpack,
   Gem,
   Crown,
+  Umbrella,
+  Ribbon,
+  Flower2,
+  VenetianMask,
+  SwatchBook,
+  Luggage,
+  Diamond,
+  Sparkles,
   Trash2,
   Skull,
   Ban,
@@ -57,11 +65,18 @@ interface CollectedEffect {
 
 const GOOD_ITEMS: { icon: LucideIcon; points: number }[] = [
   { icon: Shirt, points: 10 },
+  { icon: Umbrella, points: 12 },
   { icon: Footprints, points: 15 },
+  { icon: Ribbon, points: 18 },
   { icon: Glasses, points: 20 },
+  { icon: Flower2, points: 22 },
   { icon: Watch, points: 25 },
   { icon: Backpack, points: 30 },
+  { icon: VenetianMask, points: 35 },
+  { icon: SwatchBook, points: 40 },
+  { icon: Luggage, points: 45 },
   { icon: Gem, points: 50 },
+  { icon: Diamond, points: 65 },
   { icon: Crown, points: 100 },
 ]
 
@@ -97,6 +112,19 @@ const COMBO_TIMEOUT = 3000
 const SLOW_DURATION = 5000
 const MAGNET_DURATION = 4000
 const SHIELD_DURATION = 6000
+const LEVEL_UP_DISPLAY_MS = 1100
+
+// Fixed-size pool of reused nodes for the catch "impact ring" — driven by the
+// Web Animations API directly, never allocated per-catch, so a combo streak
+// on a weak Android can't spawn dozens of throwaway DOM nodes.
+const BURST_POOL_SIZE = 6
+
+// Dev-only self-test guard for the "objects stuck in a corner" regression:
+// if a bad object's real on-screen rect stops moving for this many sampled
+// frames while the game is running, something (most likely a CSS animation
+// stomping the same element's position transform, as happened before) is
+// freezing it again — see the effect below that watches badNodesRef.
+const STUCK_FRAME_LIMIT = 90 // ~1.5s at 60fps
 
 // Play surface treatment shared by every state (idle / calm / playing) so
 // the box never reads as an empty placeholder: hairline border + a soft
@@ -173,6 +201,9 @@ export default function FallingObjectsGame({
   // HP shake effect
   const [hpShake, setHpShake] = useState(false)
 
+  // Level-up celebration (transient pill, see render + effect below)
+  const [levelUpFlash, setLevelUpFlash] = useState<number | null>(null)
+
   const gameAreaRef = useRef<HTMLDivElement>(null)
   const animationRef = useRef<number | undefined>(undefined)
   const lastSpawnRef = useRef<number>(0)
@@ -186,6 +217,17 @@ export default function FallingObjectsGame({
   const slowActiveRef = useRef(false)
   const magnetActiveRef = useRef(false)
   const shieldActiveRef = useRef(false)
+  const dimsRef = useRef({ w: 0, h: 0 })
+  const prevLevelRef = useRef(1)
+  const levelUpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Impact-ring effect pool — see BURST_POOL_SIZE above
+  const burstElsRef = useRef<(HTMLDivElement | null)[]>([])
+  const burstCursorRef = useRef(0)
+
+  // Dev-only: real DOM nodes of currently-mounted bad (debuff) objects, used
+  // only by the stuck-position self-test effect further down.
+  const badNodesRef = useRef<Map<number, HTMLDivElement>>(new Map())
 
   // Sync refs
   useEffect(() => { fallSpeedRef.current = fallSpeed }, [fallSpeed])
@@ -194,11 +236,22 @@ export default function FallingObjectsGame({
   useEffect(() => { slowActiveRef.current = slowActive }, [slowActive])
   useEffect(() => { magnetActiveRef.current = magnetActive }, [magnetActive])
   useEffect(() => { shieldActiveRef.current = shieldActive }, [shieldActive])
+  useEffect(() => { dimsRef.current = dims }, [dims])
 
-  // Level up every 200 points
+  // Level up every 200 points — flashes a celebratory pill the moment the
+  // player actually crosses a threshold (not on mount/reset).
   useEffect(() => {
     const newLevel = Math.floor(score / 200) + 1
-    if (newLevel !== level) setLevel(newLevel)
+    if (newLevel !== level) {
+      setLevel(newLevel)
+      if (newLevel > prevLevelRef.current) {
+        setLevelUpFlash(newLevel)
+        triggerHaptic("medium")
+        if (levelUpTimerRef.current) clearTimeout(levelUpTimerRef.current)
+        levelUpTimerRef.current = setTimeout(() => setLevelUpFlash(null), LEVEL_UP_DISPLAY_MS)
+      }
+      prevLevelRef.current = newLevel
+    }
   }, [score, level])
 
   useEffect(() => {
@@ -383,6 +436,83 @@ export default function FallingObjectsGame({
   }, [])
 
   // ---------------------------------------------------------------------------
+  // Impact ring — pulls one node from the fixed pool and animates it with the
+  // Web Animations API instead of React state, so a combo streak never grows
+  // the DOM. Every keyframe carries the FULL transform (position + scale):
+  // that's deliberate, not decoration — a running animation (WAAPI or CSS)
+  // owns the `transform` property outright for its duration and would
+  // otherwise blank out any position set via el.style.transform beforehand.
+  // Skipping that is exactly what made the wiggle animation swallow the
+  // falling-object position below; see the fix there for the full story.
+  // ---------------------------------------------------------------------------
+
+  const burstTone = (kind: EffectKind) =>
+    kind === "damage" ? "hsl(var(--destructive))" : kind === "shield" ? "hsl(var(--ink-2))" : "hsl(var(--ink))"
+
+  const triggerBurst = useCallback((xPct: number, yPct: number, kind: EffectKind) => {
+    const { w, h } = dimsRef.current
+    if (!w || !h) return
+    const el = burstElsRef.current[burstCursorRef.current]
+    burstCursorRef.current = (burstCursorRef.current + 1) % BURST_POOL_SIZE
+    if (!el) return
+    el.getAnimations().forEach((a) => a.cancel())
+    el.style.borderColor = burstTone(kind)
+    const pos = `translate3d(${(xPct / 100) * w}px, ${(yPct / 100) * h}px, 0) translate(-50%, -50%)`
+    el.animate(
+      [
+        { transform: `${pos} scale(0.5)`, opacity: 0.6 },
+        { transform: `${pos} scale(1.8)`, opacity: 0 },
+      ],
+      { duration: 460, easing: "cubic-bezier(.22,.61,.36,1)" },
+    )
+  }, [])
+
+  // ---------------------------------------------------------------------------
+  // Dev-only self-test — see STUCK_FRAME_LIMIT above for what this guards.
+  // ---------------------------------------------------------------------------
+
+  const registerBadNode = useCallback((id: number, el: HTMLDivElement | null) => {
+    if (process.env.NODE_ENV === "production") return
+    if (el) badNodesRef.current.set(id, el)
+    else badNodesRef.current.delete(id)
+  }, [])
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return
+    if (!gameStarted || gameOver || reducedMotion) return
+
+    const lastSeen = new Map<number, { x: number; y: number; frozenFrames: number }>()
+    let raf = 0
+
+    const tick = () => {
+      badNodesRef.current.forEach((el, id) => {
+        const rect = el.getBoundingClientRect()
+        const prev = lastSeen.get(id)
+        if (prev && Math.abs(prev.x - rect.x) < 0.5 && Math.abs(prev.y - rect.y) < 0.5) {
+          prev.frozenFrames += 1
+          if (prev.frozenFrames === STUCK_FRAME_LIMIT) {
+            console.error(
+              `[falling-objects-game] self-test failed: bad object #${id} has not moved on screen for ` +
+                `${STUCK_FRAME_LIMIT} sampled frames (stuck at ${rect.x.toFixed(0)}, ${rect.y.toFixed(0)}). ` +
+                `Its internal x/y state may still be updating — this checks the real rendered position, ` +
+                `because the original bug (wiggle CSS animation overriding the inline position transform) ` +
+                `only ever showed up there.`,
+            )
+          }
+        } else {
+          lastSeen.set(id, { x: rect.x, y: rect.y, frozenFrames: 0 })
+        }
+      })
+      for (const id of lastSeen.keys()) {
+        if (!badNodesRef.current.has(id)) lastSeen.delete(id)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [gameStarted, gameOver, reducedMotion])
+
+  // ---------------------------------------------------------------------------
   // Collision
   // ---------------------------------------------------------------------------
 
@@ -491,6 +621,7 @@ export default function FallingObjectsGame({
 
       for (const e of newEffects) {
         addEffect(e.x, e.y, e.text, e.kind)
+        triggerBurst(e.x, e.y, e.kind)
       }
 
       // Lose lives from bad catches AND misses
@@ -518,7 +649,7 @@ export default function FallingObjectsGame({
     })
 
     animationRef.current = requestAnimationFrame(gameLoop)
-  }, [gameStarted, gameOver, reducedMotion, spawnObject, checkCollision, getSpawnInterval, addCombo, resetCombo, activatePowerUp, addEffect, triggerHpShake])
+  }, [gameStarted, gameOver, reducedMotion, spawnObject, checkCollision, getSpawnInterval, addCombo, resetCombo, activatePowerUp, addEffect, triggerHpShake, triggerBurst])
 
   // ---------------------------------------------------------------------------
   // Start / reset
@@ -540,11 +671,18 @@ export default function FallingObjectsGame({
     setMagnetActive(false)
     setShieldActive(false)
     setHpShake(false)
+    setLevelUpFlash(null)
     basketXRef.current = 50
     lastSpawnRef.current = 0
     lastFrameRef.current = 0
     objectIdRef.current = 0
     scoreRef.current = 0
+    prevLevelRef.current = 1
+    if (levelUpTimerRef.current) clearTimeout(levelUpTimerRef.current)
+    if (comboTimerRef.current) clearTimeout(comboTimerRef.current)
+    burstElsRef.current.forEach((el) => el?.getAnimations().forEach((a) => a.cancel()))
+    burstCursorRef.current = 0
+    badNodesRef.current.clear()
   }
 
   // ---------------------------------------------------------------------------
@@ -571,7 +709,10 @@ export default function FallingObjectsGame({
   }, [gameStarted, gameOver, handleMouseMove, handleTouchMove])
 
   useEffect(() => {
-    return () => { if (comboTimerRef.current) clearTimeout(comboTimerRef.current) }
+    return () => {
+      if (comboTimerRef.current) clearTimeout(comboTimerRef.current)
+      if (levelUpTimerRef.current) clearTimeout(levelUpTimerRef.current)
+    }
   }, [])
 
   // ---------------------------------------------------------------------------
@@ -644,12 +785,19 @@ export default function FallingObjectsGame({
       className={cn("relative h-full w-full select-none overflow-hidden cursor-none", PLAY_SURFACE)}
       style={{ touchAction: "none" }}
     >
+      {/* Ambient depth layer — two faint oversized icons drifting slowly behind
+          play, ink-3 at low opacity so it reads as atmosphere, not content.
+          Static left/top, transform-only drift; no gradients per the token
+          contract, just layering + very low contrast. */}
+      <Sparkles aria-hidden size={72} strokeWidth={1.5} className="pointer-events-none absolute -left-3 top-8 text-ink-3 opacity-[0.07] game-drift-a" />
+      <Shirt aria-hidden size={92} strokeWidth={1.5} className="pointer-events-none absolute -right-4 bottom-14 text-ink-3 opacity-[0.05] game-drift-b" />
+
       {/* HUD — single row */}
       <div className="absolute inset-x-2 top-2 z-10 flex items-start justify-between">
         {/* Score + combo underneath */}
         <div className="flex flex-col items-start gap-1">
           <div className="flex h-7 items-center rounded-full border border-line bg-surface/95 px-3">
-            <span className="text-caption font-bold tabular-nums text-ink">{score}</span>
+            <span key={popKey} className="text-caption font-bold tabular-nums text-ink animate-pop">{score}</span>
           </div>
           {combo >= 2 && (
             <div className="flex h-5 items-center rounded-full bg-ink px-2">
@@ -691,20 +839,45 @@ export default function FallingObjectsGame({
         </div>
       </div>
 
+      {/* Level-up celebration — transient, centered, ink-only (no --signal:
+          this screen's one accent budget belongs to ProgressBlock outside
+          the game, see effectClassName above). Duolingo-style beat: a big,
+          simple, short-lived confirmation that the player is being carried
+          forward, not a persistent badge. */}
+      {levelUpFlash !== null && (
+        <div className="pointer-events-none absolute inset-x-0 top-11 z-10 flex justify-center">
+          <div
+            className="game-level-pop flex items-center gap-1.5 rounded-full border border-line bg-surface/95 px-3 py-1 shadow-[0_6px_18px_hsl(var(--ink)/0.16)]"
+            style={{ "--game-level-dur": `${LEVEL_UP_DISPLAY_MS}ms` } as React.CSSProperties}
+          >
+            <Gauge size={13} strokeWidth={2} className="text-ink-2" />
+            <span className="text-caption font-bold text-ink">Уровень {levelUpFlash}</span>
+          </div>
+        </div>
+      )}
+
       {dims.w > 0 && (
         <>
-          {/* Falling objects */}
+          {/* Falling objects. Position lives on THIS div's inline transform.
+              The wiggle animation for bad items is deliberately on the INNER
+              span, never here — see the bug note in the <style> block below
+              for why sharing `transform` between an inline style and a
+              running animation on the same node is what stuck debuffs in
+              the corner. */}
           {fallingObjects.map((obj) => {
             const Icon = obj.icon
             return (
               <div
                 key={obj.id}
-                className={cn("absolute left-0 top-0 will-change-transform", obj.isBad && "game-wiggle")}
+                ref={obj.isBad ? (el) => registerBadNode(obj.id, el) : undefined}
+                className="absolute left-0 top-0 will-change-transform"
                 style={{
                   transform: `translate3d(${px(obj.x, "w")}px, ${px(obj.y, "h")}px, 0) translate(-50%, -50%) scale(${obj.size})`,
                 }}
               >
-                <Icon size={24} strokeWidth={2} className={obj.isBad ? "text-destructive" : "text-ink"} />
+                <span className={cn("block", obj.isBad && "game-wiggle")}>
+                  <Icon size={24} strokeWidth={2} className={obj.isBad ? "text-destructive" : "text-ink"} />
+                </span>
               </div>
             )
           })}
@@ -720,12 +893,35 @@ export default function FallingObjectsGame({
             </div>
           ))}
 
+          {/* Impact-ring pool — fixed BURST_POOL_SIZE nodes, reused for every
+              catch via the Web Animations API (see triggerBurst). Resting
+              state is invisible (opacity-0); never unmounted, never grows. */}
+          {Array.from({ length: BURST_POOL_SIZE }).map((_, i) => (
+            <div
+              key={`burst-${i}`}
+              ref={(el) => { burstElsRef.current[i] = el }}
+              className="absolute left-0 top-0 h-4 w-4 rounded-full border-2 opacity-0 pointer-events-none will-change-transform"
+            />
+          ))}
+
+          {/* Ground shadow — grounds the basket for a touch of depth. Static
+              ellipse, only its position transform is recomputed each frame
+              (same pattern as the basket itself), never transitioned. */}
+          <div
+            className="absolute left-0 bottom-2.5 h-1.5 w-7 rounded-full bg-ink/10 blur-[2px] will-change-transform"
+            style={{ transform: `translate3d(${px(basketX, "w")}px, 0, 0) translate(-50%, 0)` }}
+          />
+
           {/* Basket */}
           <div
             className="absolute left-0 bottom-3 will-change-transform"
             style={{ transform: `translate3d(${px(basketX, "w")}px, 0, 0) translate(-50%, 0)` }}
           >
-            <span key={popKey} className="inline-flex items-center justify-center animate-pop">
+            <span
+              key={popKey}
+              className="inline-flex items-center justify-center animate-pop"
+              style={{ filter: "drop-shadow(0 3px 4px hsl(var(--ink) / 0.28))" }}
+            >
               <BasketIcon size={28} strokeWidth={2} className="text-ink" />
             </span>
           </div>
@@ -773,31 +969,20 @@ export default function FallingObjectsGame({
         </div>
       )}
 
-      {/* Local, transform-only keyframes — respects the global
-          prefers-reduced-motion override in app/globals.css */}
-      <style jsx>{`
-        @keyframes wiggle {
-          0%, 100% { transform: translate(-50%, -50%) rotate(0deg); }
-          25% { transform: translate(-50%, -50%) rotate(-8deg); }
-          75% { transform: translate(-50%, -50%) rotate(8deg); }
-        }
-        .game-wiggle { animation: wiggle 0.5s ease-in-out infinite; }
+      {/* Кейфреймы игры переехали в app/globals.css: здесь они жили в
+          <style jsx>, и строка с ${LEVEL_UP_DISPLAY_MS} делала блок
+          динамическим — трансформ styled-jsx в SWC на этом файле уходил в
+          бесконечную компиляцию, next build висел больше 10 минут.
+          Длительность отдаём переменной, стили статические.
 
-        @keyframes riseFade {
-          0% { opacity: 1; transform: translate(-50%, -50%); }
-          100% { opacity: 0; transform: translate(-50%, calc(-50% - 30px)); }
-        }
-        .game-rise-fade { animation: riseFade 0.9s var(--ease-out) forwards; }
-
-        @keyframes hpShake {
-          0%, 100% { transform: translateX(0); }
-          20% { transform: translateX(-3px); }
-          40% { transform: translateX(3px); }
-          60% { transform: translateX(-2px); }
-          80% { transform: translateX(2px); }
-        }
-        .animate-hp-shake { animation: hpShake 0.4s ease-in-out; }
-      `}</style>
+          Заметка про баг с залипанием дебафов в углу: .game-wiggle обязана
+          висеть только на ВЛОЖЕННОМ span. На внешнем div лежит инлайновый
+          transform с координатами, а работающая CSS-анимация забирает
+          свойство transform целиком и не смешивается с инлайновым стилем.
+          Кейфреймы wiggle про translate3d ничего не знают, поэтому каждый
+          «плохой» объект схлопывался в левый верхний угол поля, продолжая
+          честно считать x/y под капотом. Самотест выше (registerBadNode +
+          выборка getBoundingClientRect) ловит рецидив ровно этой формы. */}
     </div>
   )
 }

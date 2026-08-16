@@ -109,7 +109,7 @@ export default function ModernLoginForm() {
               </label>
               <Link
                 href="/auth/reset"
-                className="text-caption text-ink-3 transition-colors duration-press hover:text-ink"
+                className="-my-3.5 py-3.5 text-caption text-ink-3 transition-colors duration-press hover:text-ink"
               >
                 Забыли пароль?
               </Link>
@@ -142,16 +142,21 @@ export default function ModernLoginForm() {
 
         <p className="text-center text-caption text-ink-3">
           Нет аккаунта?{" "}
-          <Link href="/auth/sign-up" className="font-medium text-ink hover:underline">
+          <Link href="/auth/sign-up" className="py-1.5 font-medium text-ink hover:underline">
             Зарегистрироваться
           </Link>
         </p>
 
+        {/* Разбито на две строки нарочно — с одним <p> ссылки на "условиями" и
+            "политикой конфиденциальности" оказывались на соседних строках без
+            зазора (line-height не оставляет межстрочного отступа сам по себе). */}
         <p className="text-center text-micro leading-relaxed text-ink-3">
           Входя, вы соглашаетесь с{" "}
           <Link href="/terms" className="text-ink-2 hover:text-ink hover:underline">
             условиями
-          </Link>{" "}
+          </Link>
+        </p>
+        <p className="mt-3 text-center text-micro leading-relaxed text-ink-3">
           и{" "}
           <Link href="/privacy" className="text-ink-2 hover:text-ink hover:underline">
             политикой конфиденциальности

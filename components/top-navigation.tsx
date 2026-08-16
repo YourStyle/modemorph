@@ -22,7 +22,13 @@ import { UserProfileSheet } from "./user-profile-sheet"
 import { api } from "@/lib/api-client"
 import { getUserCoords } from "@/lib/tma/geo"
 import { CityPickerSheet } from "@/components/city-picker-sheet"
+import { useTmaMobile } from "@/hooks/use-tma"
 import { cn } from "@/lib/utils"
+
+// Реальный верхний инсет Telegram + высота плавающей шапки — единая формула,
+// используется и для стеклянной подложки, и для отступа самой пилюли, и для
+// тоста про город ниже. Токены объявлены в app/globals.css.
+const TG_HEADER_HEIGHT = "calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-content-h, 52px))"
 
 interface WeatherData {
   temperature: number
@@ -73,10 +79,14 @@ export function TopNavigation() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [currentDate, setCurrentDate] = useState("")
   const [weatherLoading, setWeatherLoading] = useState(true)
+  // Объект погоды может приехать без температуры (кэш промахнулся, гео не дали,
+  // бэкенд ответил частично). Тогда чип рисовал голое "°C" без числа и выглядел
+  // сломанным — показываем чип только когда есть что показать.
+  const hasTemperature = weather != null && Number.isFinite(Number(weather.temperature))
   const [isProfileSheetOpen, setIsProfileSheetOpen] = useState(false)
   const [weekdayShort, setWeekdayShort] = useState("")
 
-  const [isTmaMobile, setIsTmaMobile] = useState(false)
+  const isTmaMobile = useTmaMobile()
   const [cityPickerOpen, setCityPickerOpen] = useState(false)
   const [showCityHint, setShowCityHint] = useState(false)
 
@@ -106,28 +116,6 @@ export function TopNavigation() {
     }
     window.addEventListener("profile:avatar-updated", handleAvatarUpdate)
     return () => window.removeEventListener("profile:avatar-updated", handleAvatarUpdate)
-  }, [])
-
-  useEffect(() => {
-    try {
-      const tg = typeof window !== "undefined"
-        ? (window as any).Telegram?.WebApp
-        : undefined
-      const hasInit =
-        !!tg?.initData && String(tg.initData).trim().length > 0
-      const hasUser =
-        !!tg?.initDataUnsafe?.user?.id ||
-        !!tg?.initDataUnsafe?.query_id
-      const platform = String(tg?.platform || "").toLowerCase()
-      const inTma =
-        hasInit && hasUser && platform && platform !== "unknown"
-      const isMobile = /ios|android/.test(platform)
-      if (inTma && isMobile) {
-        setIsTmaMobile(true)
-      }
-    } catch {
-      // игнорируем ошибки определения
-    }
   }, [])
 
   // Шапка (test/gauntlet/design/LIQUID_GLASS.md): прозрачная наверху страницы,
@@ -288,15 +276,6 @@ export function TopNavigation() {
     }
   }, [weather, weatherLoading])
 
-  const handleSignOut = async () => {
-    try {
-      await api.post("/api/auth/signout")
-      window.location.href = "/"
-    } catch {
-      // ignore
-    }
-  }
-
   const handleProfileClick = () => {
     setIsProfileSheetOpen(true)
   }
@@ -312,10 +291,13 @@ export function TopNavigation() {
             "glass glass-refract fixed inset-x-0 top-0 z-40 border-b border-line transition-opacity duration-200 ease-[var(--ease-out)] will-change-transform",
             isScrolled ? "opacity-100" : "opacity-0",
           )}
-          style={{ height: "calc(env(safe-area-inset-top, 0px) + 70px)", pointerEvents: "auto" }}
+          style={{ height: TG_HEADER_HEIGHT, pointerEvents: "auto" }}
         />
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
-          <div className="mt-[60px] pointer-events-auto">
+          <div
+            className="pointer-events-auto"
+            style={{ marginTop: "calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-gap, 12px))" }}
+          >
             <button
               onClick={handleProfileClick}
               className="glass flex items-center gap-2 rounded-full px-3 py-1.5 text-foreground"
@@ -326,7 +308,7 @@ export function TopNavigation() {
               </span>
 
               {/* Компактная погода: тап → выбор города */}
-              {weather && !weatherLoading && (
+              {hasTemperature && !weatherLoading && (
                 <button
                   type="button"
                   onClick={() => setCityPickerOpen(true)}
@@ -361,7 +343,13 @@ export function TopNavigation() {
         </div>
 
         {showCityHint && weather && (
-          <div className="px-4 py-2 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2">
+          // marginTop = та же формула, что у стеклянной подложки/пилюли выше —
+          // без неё тост рисуется в обычном потоке от y=0 и оказывается под
+          // фиксированной пилюлей и родной шапкой Telegram (z-40/z-50).
+          <div
+            className="px-4 py-2 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2"
+            style={{ marginTop: TG_HEADER_HEIGHT }}
+          >
             <span className="inline-flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
               Погода: {weather.location}
@@ -382,7 +370,6 @@ export function TopNavigation() {
         <UserProfileSheet
           isOpen={isProfileSheetOpen}
           onClose={() => setIsProfileSheetOpen(false)}
-          onSignOut={handleSignOut}
         />
         <CityPickerSheet
           isOpen={cityPickerOpen}
@@ -412,7 +399,7 @@ export function TopNavigation() {
           <div className="flex items-center gap-2">
             <span className="text-caption text-ink-2">{currentDate}</span>
             {/* Компактная погода на мобильных */}
-            {weather && !weatherLoading && (
+            {hasTemperature && !weatherLoading && (
               <span className="flex items-center gap-1 sm:hidden text-caption text-ink-2">
                 <WeatherIcon condition={weather.condition} className="h-3.5 w-3.5" />
                 <span>{weather.temperature}°C</span>
@@ -421,7 +408,7 @@ export function TopNavigation() {
           </div>
 
           {/* Полная погода на десктопе — тап → выбор города */}
-          {weather && !weatherLoading && (
+          {hasTemperature && !weatherLoading && (
             <button
               type="button"
               onClick={() => setCityPickerOpen(true)}
@@ -466,7 +453,7 @@ export function TopNavigation() {
 
           {/* Мобильная версия */}
           <div className="sm:hidden">
-            <Button variant="ghost" size="sm" className="p-2" onClick={handleProfileClick}>
+            <Button variant="ghost" size="icon" onClick={handleProfileClick}>
               {profile ? (
                 <Avatar className="h-6 w-6">
                   <AvatarImage src={profile.avatar_url || ""} />
@@ -484,7 +471,6 @@ export function TopNavigation() {
       <UserProfileSheet
         isOpen={isProfileSheetOpen}
         onClose={() => setIsProfileSheetOpen(false)}
-        onSignOut={handleSignOut}
       />
       <CityPickerSheet
         isOpen={cityPickerOpen}

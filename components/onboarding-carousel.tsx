@@ -110,7 +110,10 @@ export function OnboardingCarousel({ compact = false }: OnboardingCarouselProps)
         ))}
       </div>
 
-      {/* Pagination dots — цвет и transform, без анимации width/height */}
+      {/* Pagination dots — реальные переключатели слайдов, поэтому у каждого есть
+          скрытая зона касания 44x44 (-m-[19px] вокруг видимой точки 6px = ровно
+          44px, точка на глаз не меняется). Цвет и transform точки — без анимации
+          width/height. */}
       <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1.5">
         {onboardingSlides.map((_, index) => (
           <button
@@ -118,11 +121,15 @@ export function OnboardingCarousel({ compact = false }: OnboardingCarouselProps)
             type="button"
             aria-label={`Слайд ${index + 1}`}
             aria-current={index === currentSlide}
-            className={`h-1.5 w-1.5 rounded-full transition-[transform,background-color] duration-press ease-out ${
-              index === currentSlide ? "scale-125 bg-signal" : "scale-100 bg-line"
-            }`}
+            className="-m-[19px] flex h-11 w-11 items-center justify-center"
             onClick={() => setCurrentSlide(index)}
-          />
+          >
+            <span
+              className={`block h-1.5 w-1.5 rounded-full transition-[transform,background-color] duration-press ease-out ${
+                index === currentSlide ? "scale-125 bg-signal" : "scale-100 bg-line"
+              }`}
+            />
+          </button>
         ))}
       </div>
     </div>

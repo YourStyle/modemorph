@@ -212,12 +212,22 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [progress, progressText, results, analysisResults, error, loading, hasAnalyzed])
 
+    // aiAnalysis (объект контекста) — новый литерал на каждый рендер провайдера,
+    // а провайдер ре-рендерится каждые ~100мс, пока идёт анализ (см. use-background-
+    // photo-analysis.ts). Держим последнюю ссылку в ref и НЕ кладём aiAnalysis в
+    // deps ниже — иначе интервал ниже пересоздаётся с тем же периодом, что и сам
+    // себя опрашивает, и эффект по сути никогда не "устаканивается".
+    const aiAnalysisRef = useRef(aiAnalysis)
+    useEffect(() => {
+        aiAnalysisRef.current = aiAnalysis
+    })
+
     // Простой polling прогресса из сессии
     useEffect(() => {
         if (!sessionIdRef.current || !loading) return
 
         const interval = setInterval(() => {
-            const session = aiAnalysis.getSession(sessionIdRef.current!)
+            const session = aiAnalysisRef.current.getSession(sessionIdRef.current!)
             if (session) {
                 setProgress(session.progress)
                 setProgressText(session.progressText)
@@ -225,6 +235,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 if (session.status === "completed") {
                     clearInterval(interval)
                     setResults(session.items)
+                    setAnalysisResults(session.analysisResults || [])
                     setLoading(false)
                 } else if (session.status === "error") {
                     clearInterval(interval)
@@ -235,7 +246,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         }, 100)
 
         return () => clearInterval(interval)
-    }, [loading, aiAnalysis])
+    }, [loading])
 
     // Handler for selecting files from the hidden input
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -354,6 +365,13 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 files: photos.map(p => p.file),
                 batchId: batchId,
                 onComplete: async (data) => {
+                    // Реальный результат по каждому фото (успех/отказ + причина от AI),
+                    // а не заглушка — иначе блок "Проблемы с анализом" никогда не
+                    // покажется, а списание лимитов не сможет отличить распознанные
+                    // фото от отклонённых.
+                    const perFileResults: PhotoAnalysisResult[] = Array.isArray(data.results) ? data.results : []
+                    setAnalysisResults(perFileResults)
+
                     if (data.items && data.items.length > 0) {
                         // НЕ загружаем изображения в S3 здесь - они будут загружены при сохранении
                         // Просто передаём items с временными URL/base64
@@ -363,6 +381,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                         if (sessionIdRef.current) {
                             aiAnalysis.updateSession(sessionIdRef.current, {
                                 items: itemsWithTempImages,
+                                analysisResults: perFileResults,
                             })
                         }
 
@@ -371,9 +390,15 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                             onSuccess({
                                 items: itemsWithTempImages,
                                 photos: photos,
-                                analysisResults: [{ success: true, items: itemsWithTempImages }]
+                                analysisResults: perFileResults,
                             })
                         }
+                    } else if (sessionIdRef.current) {
+                        // Ни одно фото не распознано — всё равно доносим причины до
+                        // сессии, чтобы блок "Проблемы с анализом" мог их показать.
+                        aiAnalysis.updateSession(sessionIdRef.current, {
+                            analysisResults: perFileResults,
+                        })
                     }
                 },
                 onError: (error) => {

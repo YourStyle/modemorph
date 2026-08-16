@@ -114,6 +114,22 @@ export function HomeHeroSection({
         Добавить вещь
       </Button>
 
+      {/* Тихий вторичный вход в пейволл — единственный путь узнать про Premium
+          с пустого гардероба (без вещей нет ни одной карточки образа, на
+          которой лежит "Примерить", и это единственная другая точка входа).
+          Намеренно не баннер: обычный текст без фона, без --signal, ниже
+          основной кнопки — тот апселл, что стоял до сгиба, отсюда убрали
+          осознанно, и здесь он не должен вернуться в том же виде. */}
+      {onExploreFeatures && (
+        <button
+          type="button"
+          onClick={onExploreFeatures}
+          className="mt-1 flex h-11 w-full items-center justify-center text-caption text-ink-3 transition-colors active:text-ink-2"
+        >
+          Что умеет Premium
+        </button>
+      )}
+
       {/* Резерв под плавающий таб-бар — кнопка не должна прятаться за ним */}
       <div className="h-24" />
     </div>

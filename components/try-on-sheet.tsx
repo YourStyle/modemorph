@@ -21,6 +21,7 @@ import { SaveImageSheet } from "@/components/save-image-sheet"
 import { renderSinglePhoto } from "@/lib/save-image"
 import { SubscriptionSheet } from "@/components/subscription-sheet"
 import FallingObjectsGame from "@/components/falling-objects-game"
+import { AIAssistantLoader } from "@/components/ai-assistant-loader"
 import { useTryOn } from "@/contexts/try-on-context"
 import { api } from "@/lib/api-client"
 import { normalizeImageFile } from "@/lib/image-normalize"
@@ -104,6 +105,21 @@ const GatherStage = ({
   const [deltas, setDeltas] = useState<{ dx: number; dy: number }[]>([])
   const [started, setStarted] = useState(false)
 
+  // TryOnSheet re-renders every ~500ms while a session is loading (the fake
+  // progress timer in try-on-context.tsx writes a new `session` object on
+  // every tick), which recreates the inline `onComplete={() => ...}` handed
+  // down as a prop on every render. Keeping only the latest callback in a
+  // ref — instead of listing it as an effect dependency — decouples the
+  // completion timer below from that identity churn: no matter how often
+  // the parent re-renders or how the caller passes the callback (inline
+  // arrow, useCallback, whatever), this effect only reruns when `started`
+  // or `items.length` actually change, so the timeout gets a real chance to
+  // fire instead of being cleared and restarted every tick before it can.
+  const onCompleteRef = useRef(onComplete)
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  })
+
   // Compute per-item translation vectors from their grid cell to the avatar.
   useLayoutEffect(() => {
     if (!avatarRef.current) return
@@ -126,12 +142,13 @@ const GatherStage = ({
   }, [items.length])
 
   // Complete the stage after the longest item transition finishes.
+  // Deliberately does NOT depend on `onComplete` — see onCompleteRef above.
   useEffect(() => {
     if (!started) return
     const total = 900 + items.length * 80 + 300 // last stagger + fade
-    const t = setTimeout(onComplete, total)
+    const t = setTimeout(() => onCompleteRef.current(), total)
     return () => clearTimeout(t)
-  }, [started, items.length, onComplete])
+  }, [started, items.length])
 
   const visibleItems = items.slice(0, 6)
 
@@ -384,36 +401,41 @@ interface LoadingExperienceProps {
   progress: number
 }
 
+/**
+ * The game owns its own idle "Начать игру" screen, so this wrapper doesn't
+ * stack a second play prompt on top of it — one tap gets you playing
+ * instead of two (mirrors components/photo-analysis-form.tsx, which fixed
+ * the same double-prompt for photo analysis). Dismissing the game (X) drops
+ * to a quiet "watching progress" state with a way back in, rather than
+ * nagging again with the same prompt.
+ */
 const LoadingExperience = ({ showGame, setShowGame, progress }: LoadingExperienceProps) => {
   const GAME_HEIGHT = 300
 
-  if (!showGame) {
-    return (
-      <>
-        <div
-          className="w-full rounded-[14px] border border-line bg-canvas-sunk flex items-center justify-center overflow-hidden"
-          style={{ height: `${GAME_HEIGHT}px` }}
-        >
-          <div className="w-full px-4 max-w-xs mx-auto text-center select-none" style={{ touchAction: "manipulation" }}>
-            <p className="text-caption text-ink-2 mb-4">Пока ИИ создаёт примерку:</p>
-            <Button variant="signal" className="w-full" onPointerUp={() => setShowGame(true)}>
-              Сыграть в игру
-            </Button>
-          </div>
-        </div>
-        <ProgressBlock progress={progress} label="Создаём образ…" />
-      </>
-    )
-  }
-
   return (
     <>
-      <div className="w-full rounded-[14px] overflow-hidden" style={{ height: `${GAME_HEIGHT}px` }}>
-        <FallingObjectsGame
-          analysisDone={progress >= 100}
-          onRequestFinish={() => setShowGame(false)}
-        />
-      </div>
+      {showGame ? (
+        <div className="w-full rounded-[14px] overflow-hidden" style={{ height: `${GAME_HEIGHT}px` }}>
+          <FallingObjectsGame
+            analysisDone={progress >= 100}
+            onRequestFinish={() => setShowGame(false)}
+          />
+        </div>
+      ) : (
+        <div
+          className="flex w-full flex-col items-center justify-center gap-3 rounded-[14px] border border-line bg-canvas-sunk px-6 text-center"
+          style={{ height: `${GAME_HEIGHT}px` }}
+        >
+          <AIAssistantLoader size={40} />
+          <p className="text-body text-ink-2">Ждём результат примерки</p>
+          <button
+            onClick={() => setShowGame(true)}
+            className="text-caption text-ink-2 underline underline-offset-4 transition-transform duration-press active:scale-95"
+          >
+            Снова сыграть
+          </button>
+        </div>
+      )}
       <ProgressBlock progress={progress} label="Создаём образ…" />
     </>
   )
@@ -694,15 +716,16 @@ export function TryOnSheet() {
     height: "", weight: "", top_size: "", bottom_size: "",
   })
 
-  // Loading experience state
-  const [showGame, setShowGame] = useState(false)
+  // Loading experience state — game shown immediately (its own idle screen
+  // is the invitation to play), matching photo-analysis-form.tsx.
+  const [showGame, setShowGame] = useState(true)
   // "gathering" plays a ~1.8s animation before the game/progress appears
   const [loadingPhase, setLoadingPhase] = useState<"gathering" | "ready">("gathering")
 
   // Reset game/gathering state when loading starts
   useEffect(() => {
     if (sheetOpen && session?.status === "loading") {
-      setShowGame(false)
+      setShowGame(true)
       setLoadingPhase("gathering")
     }
   }, [sheetOpen, session?.status])
@@ -887,9 +910,13 @@ export function TryOnSheet() {
                 </div>
 
                 {/* Pinned CTA footer — stays glued to the bottom of the sheet
-                    while the body scrolls. Negative margins cancel the parent's
-                    px-6 / pb-6 so the footer is flush with the sheet edges. */}
-                <div className="sticky bottom-0 -mx-6 -mb-6 px-6 pt-4 pb-5 bg-canvas border-t border-line">
+                    while the body scrolls. Negative margins cancel the
+                    scroll container's px-6 / pb-[1.5rem+safe-area] (see
+                    common-sheet.tsx) exactly, then re-add the footer's own
+                    padding plus the safe-area inset so the button clears
+                    the iPhone home indicator instead of sitting flush
+                    against it. */}
+                <div className="sticky bottom-0 -mx-6 -mb-[calc(1.5rem+env(safe-area-inset-bottom))] px-6 pt-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] bg-canvas border-t border-line">
                   <Button variant="signal" className="w-full" onClick={handleConfirm} disabled={isConfirming}>
                     <Sparkles className="w-4 h-4" />
                     {isConfirming ? "Запускаем…" : "Начать примерку"}

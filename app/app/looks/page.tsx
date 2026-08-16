@@ -336,10 +336,12 @@ export default function LooksPage() {
             <DropdownMenuTrigger asChild>
               <button
                 onClick={(e) => e.stopPropagation()}
-                className="glass h-7 w-7 rounded-full flex items-center justify-center text-ink active:scale-95 transition-transform duration-press"
+                className="group -m-2 flex h-11 w-11 items-center justify-center"
                 aria-label="Действия с образом"
               >
-                <MoreVertical className="h-3.5 w-3.5" />
+                <span className="glass flex h-7 w-7 items-center justify-center rounded-full text-ink transition-transform duration-press group-active:scale-95">
+                  <MoreVertical className="h-3.5 w-3.5" />
+                </span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -392,10 +394,12 @@ export default function LooksPage() {
             <DropdownMenuTrigger asChild>
               <button
                 onClick={(e) => e.stopPropagation()}
-                className="glass h-7 w-7 rounded-full flex items-center justify-center text-ink active:scale-95 transition-transform duration-press"
+                className="group -m-2 flex h-11 w-11 items-center justify-center"
                 aria-label="Действия с примеркой"
               >
-                <MoreVertical className="h-3.5 w-3.5" />
+                <span className="glass flex h-7 w-7 items-center justify-center rounded-full text-ink transition-transform duration-press group-active:scale-95">
+                  <MoreVertical className="h-3.5 w-3.5" />
+                </span>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -444,20 +448,26 @@ export default function LooksPage() {
             </p>
           </div>
           {hasLooks && (
-            <div className="flex items-center gap-1">
+            // gap-4 — не эстетика: с исходным gap-1 (4px) две 44px-зоны касания
+            // физически перекрывались бы (визуальный размер иконок не трогаем).
+            <div className="flex items-center gap-4">
               <button
                 onClick={() => handleOpenFilter(section)}
                 aria-label="Поиск и фильтры"
-                className="h-8 w-8 rounded-full flex items-center justify-center text-ink-2 hover:bg-canvas-sunk active:scale-95 transition-[background-color,transform] duration-press"
+                className="group -m-1.5 flex h-11 w-11 items-center justify-center"
               >
-                <Search className="w-4 h-4" />
+                <span className="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-[background-color,transform] duration-press group-hover:bg-canvas-sunk group-active:scale-95">
+                  <Search className="w-4 h-4" />
+                </span>
               </button>
               <button
                 onClick={() => handleOpenAddOutfits(section)}
                 aria-label="Добавить образы в подборку"
-                className="h-8 w-8 rounded-full flex items-center justify-center text-ink-2 hover:bg-canvas-sunk active:scale-95 transition-[background-color,transform] duration-press"
+                className="group -m-1.5 flex h-11 w-11 items-center justify-center"
               >
-                <Plus className="w-4 h-4" />
+                <span className="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-[background-color,transform] duration-press group-hover:bg-canvas-sunk group-active:scale-95">
+                  <Plus className="w-4 h-4" />
+                </span>
               </button>
             </div>
           )}
@@ -522,10 +532,11 @@ export default function LooksPage() {
           </Button>
 
           {/* Подборка — второстепенное действие, поэтому тише и мельче
-              основной кнопки, а не такая же пилюля рядом. */}
+              основной кнопки, а не такая же пилюля рядом. h-11 — минимум касания,
+              а не просто эстетика: раньше была h-10 (40px). */}
           <button
             onClick={() => setIsAddCollectionOpen(true)}
-            className="w-full h-10 rounded-full border border-line text-ink-2 text-caption font-semibold flex items-center justify-center gap-1.5 transition-[background-color,transform] duration-press ease-out active:scale-[.98] hover:bg-canvas-sunk"
+            className="w-full h-11 rounded-full border border-line text-ink-2 text-caption font-semibold flex items-center justify-center gap-1.5 transition-[background-color,transform] duration-press ease-out active:scale-[.98] hover:bg-canvas-sunk"
           >
             <Plus className="w-3.5 h-3.5" />
             Новая подборка

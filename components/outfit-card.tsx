@@ -12,6 +12,12 @@ import { CommonSheet } from "./common-sheet"
 import { useTryOn } from "@/contexts/try-on-context"
 import { api } from "@/lib/api-client"
 import { useImpressionTracker, useRecTracking } from "@/hooks/use-rec-tracking"
+import {
+  shouldShowFeedbackToast,
+  markFeedbackToastShown,
+  shouldShowFeedbackExplainer,
+  markFeedbackExplainerSeen,
+} from "@/lib/feedback-flags"
 
 interface OutfitItem {
   id: string
@@ -105,6 +111,7 @@ function getSourceBadge(source?: string): { label: string; className: string } |
 export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutfit, userLooks = [], onTryOnClick, onTryOnSuccess, onDislikeItem }: OutfitCardProps) {
   const [saving, setSaving] = useState(false)
   const [showOutfitDetails, setShowOutfitDetails] = useState(false)
+  const [showFeedbackExplainer, setShowFeedbackExplainer] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
   const feedbackKey = `outfit_feedback_${sectionSource || "x"}_${suggestion?.id}`
@@ -146,7 +153,20 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
     if (feedback) return
     setFeedback(action)
     try { localStorage.setItem(feedbackKey, action) } catch { /* ignore */ }
-    toast.success(action === "like" ? "Спасибо! Учтём в подборках" : "Спасибо за обратную связь")
+
+    // Two independent, self-throttling nudges — a toast (max once/day) and a
+    // one-time-ever explainer sheet. On a user's very first ever rating both
+    // fire together; after that the toast keeps a daily cadence while the
+    // explainer never shows again. Neither can crash if storage is blocked.
+    if (shouldShowFeedbackToast()) {
+      toast.success("Учли — подборки на главной подстроятся под ваши реакции")
+      markFeedbackToastShown()
+    }
+    if (shouldShowFeedbackExplainer()) {
+      setShowFeedbackExplainer(true)
+      markFeedbackExplainerSeen()
+    }
+
     if (recSessionId && suggestion.id) {
       sendEvent({
         rec_session_id: recSessionId,
@@ -155,15 +175,38 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
       })
     }
   }
+
+  // Selected = filled signal chip (same single accent for both like and
+  // dislike — only the icon shape/fill differs, never a second color).
+  // Unrated = visible outline invitation, not a near-invisible ghost icon.
+  // The sibling button of whichever was picked fades out instead of
+  // disappearing, so the pair still reads as "one answer, not two toggles".
+  const feedbackButtonClass = (action: "like" | "dislike") => {
+    if (feedback === action) {
+      return "border-signal bg-signal text-signal-ink scale-105"
+    }
+    if (feedback && feedback !== action) {
+      return "border-line bg-transparent text-ink-3/30 scale-90"
+    }
+    return "border-line bg-transparent text-ink-3 hover:border-ink-3 hover:text-ink hover:bg-canvas-sunk active:scale-95"
+  }
   const title = suggestion.title || "Без названия"
   const suggestedItemsCount = suggestion.suggested_items_count || 0
 
+  // Match by the real wardrobe item IDs a look was saved with, never by
+  // suggestion.title: title defaults to "Без названия" (:194) for any
+  // untitled suggestion, so a string compare marks every other untitled
+  // suggestion "saved" the moment one look happens to share that name.
+  // suggestion.id isn't a persisted key either — the backend derives it
+  // per request as a hash of the item set (or a gap-slot label), so it
+  // can't be compared against a saved look's DB id. Item IDs are the only
+  // identifier both sides actually share.
   const isSaved = userLooks.some(
     (look: any) =>
-      look.name === title ||
-      (look.items &&
-        look.items.length === items.length &&
-        look.items.every((item: any) => items.some((suggItem) => suggItem.id === item.id.toString()))),
+      look.items &&
+      items.length > 0 &&
+      look.items.length === items.length &&
+      look.items.every((item: any) => items.some((suggItem) => suggItem.id === item.id.toString())),
   )
 
   const handleSaveOutfit = async () => {
@@ -447,38 +490,33 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
             </Button>
           </div>
 
-          {/* Like / Dislike feedback */}
-          <div className="flex items-center justify-end gap-1.5 mt-3">
-            <span className="text-xs text-gray-400 mr-1">{feedback ? (feedback === "like" ? "Вам понравилось" : "Учтём") : "Подходит?"}</span>
+          {/* Like / Dislike feedback — unrated state is an explicit outline
+              invitation (border + ink-3), not a near-invisible ghost icon,
+              so the pair reads as an unanswered question at a glance. Hit
+              areas are 44x44 regardless of the small glyph inside. */}
+          <div className="flex items-center justify-end gap-2 mt-3">
+            <span className="text-caption text-ink-3 mr-0.5">
+              {feedback ? (feedback === "like" ? "Вам понравилось" : "Учтём") : "Подходит?"}
+            </span>
             <button
               type="button"
               aria-label="Нравится"
+              aria-pressed={feedback === "like"}
               onClick={() => sendFeedback("like")}
               disabled={!!feedback}
-              className={`p-2 rounded-full transition-all duration-300 ${
-                feedback === "like"
-                  ? "text-signal-ink bg-ink scale-110"
-                  : feedback === "dislike"
-                  ? "text-gray-300 bg-gray-50 scale-90 opacity-50"
-                  : "text-gray-400 hover:text-ink hover:bg-canvas-sunk active:scale-95"
-              } disabled:cursor-default`}
+              className={`flex h-11 w-11 items-center justify-center rounded-full border transition-transform duration-200 ease-out disabled:cursor-default ${feedbackButtonClass("like")}`}
             >
-              <ThumbsUp className="w-4 h-4" />
+              <ThumbsUp className="w-[18px] h-[18px]" strokeWidth={1.75} fill={feedback === "like" ? "currentColor" : "none"} />
             </button>
             <button
               type="button"
               aria-label="Не нравится"
+              aria-pressed={feedback === "dislike"}
               onClick={() => sendFeedback("dislike")}
               disabled={!!feedback}
-              className={`p-2 rounded-full transition-all duration-300 ${
-                feedback === "dislike"
-                  ? "text-signal-ink bg-ink scale-110"
-                  : feedback === "like"
-                  ? "text-gray-300 bg-gray-50 scale-90 opacity-50"
-                  : "text-gray-400 hover:text-ink hover:bg-canvas-sunk active:scale-95"
-              } disabled:cursor-default`}
+              className={`flex h-11 w-11 items-center justify-center rounded-full border transition-transform duration-200 ease-out disabled:cursor-default ${feedbackButtonClass("dislike")}`}
             >
-              <ThumbsDown className="w-4 h-4" />
+              <ThumbsDown className="w-[18px] h-[18px]" strokeWidth={1.75} fill={feedback === "dislike" ? "currentColor" : "none"} />
             </button>
           </div>
         </CardContent>
@@ -522,7 +560,7 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
         backgroundColor="white"
         swipeAction="close"
       >
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4 pb-24">
           {/* Items Grid */}
           <div className="grid grid-cols-2 gap-3">
             {items.map((item, index) => (
@@ -582,12 +620,22 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
               </div>
             ))}
           </div>
+        </div>
 
-          {/* Save Button */}
+        {/* Pinned action footer — was missing entirely, so falling into
+            outfit details lost the try-on entry point the card has.
+            "Примерить" reuses the exact same openTryOn() handler as the
+            card's own button (same analytics events, same session flow);
+            no new code path. Negative margins cancel the scroll
+            container's own padding (see common-sheet.tsx), then re-add
+            padding plus the safe-area inset so nothing sits flush against
+            the iPhone home indicator. */}
+        <div className="sticky bottom-0 -mx-6 -mb-[calc(1.5rem+env(safe-area-inset-bottom))] px-6 pt-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] bg-canvas border-t border-line flex flex-col gap-2">
           <Button
+            variant="outline"
+            className="w-full border-ink text-ink bg-transparent rounded-2xl"
             onClick={handleSaveOutfit}
             disabled={saving || isSaved}
-            className="w-full bg-ink text-signal-ink border-0 rounded-2xl hover:bg-ink/90"
           >
             {saving ? (
               <>
@@ -605,6 +653,51 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
                 Сохранить образ
               </>
             )}
+          </Button>
+          <Button
+            className="w-full bg-ink text-signal-ink border-0 rounded-2xl hover:bg-ink/90"
+            onClick={() => {
+              setShowOutfitDetails(false)
+              openTryOn()
+            }}
+            disabled={!!vtonLoading}
+          >
+            {vtonLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Примеряем...
+              </>
+            ) : (
+              "Примерить"
+            )}
+          </Button>
+        </div>
+      </CommonSheet>
+
+      {/* First-ever rating explainer — one-time, tells the user their
+          like/dislike taps actually drive the home feed, not just a shrug
+          into the void. Never repeats after this (see lib/feedback-flags.ts). */}
+      <CommonSheet
+        isOpen={showFeedbackExplainer}
+        onClose={() => setShowFeedbackExplainer(false)}
+        title=""
+        backgroundColor="white"
+        swipeAction="close"
+      >
+        <div className="pb-5 text-center">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-signal/15">
+            <ThumbsUp className="h-5 w-5 text-signal" strokeWidth={1.75} />
+          </div>
+          <h2 className="text-h1 text-ink mb-2">Ваши реакции меняют подборки</h2>
+          <p className="text-body text-ink-2 leading-relaxed px-2">
+            Рекомендации на главной находятся в прямой зависимости от лайков и дизлайков под образами —
+            подборки обновляются под ваши реакции. Чем больше вы оцените, тем точнее будет подбор.
+          </p>
+          <Button
+            onClick={() => setShowFeedbackExplainer(false)}
+            className="w-full mt-5 bg-ink hover:bg-ink/90 text-signal-ink h-11 rounded-full font-medium border-0"
+          >
+            Понятно
           </Button>
         </div>
       </CommonSheet>

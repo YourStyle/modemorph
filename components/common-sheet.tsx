@@ -12,6 +12,15 @@ interface CommonSheetProps {
   onClose: () => void
   title?: string
   children: React.ReactNode
+  /**
+   * @deprecated НЕ РАБОТАЕТ. Шит всегда рисуется на светлом холсте.
+   * Проп остался ради 13 существующих вызовов; пять из них передают "dark"
+   * и ничего этим не добиваются. Именно из-за него три шита
+   * (create-look, add-collection, visual-search) верстались под тёмный фон
+   * и показывали белый текст по светлому — то есть невидимый.
+   * Содержимое любого шита обязано быть светлым: text-ink / text-ink-2.
+   * Не добавляйте новых вызовов с этим пропом, его нужно вычистить целиком.
+   */
   backgroundColor?: "white" | "dark"
   onMinimize?: () => void
   /** Поведение при свайпе вниз: 'close' (по умолчанию) или 'minimize' */
@@ -27,7 +36,6 @@ export function CommonSheet({
   onMinimize,
   swipeAction = 'close'
 }: CommonSheetProps) {
-  const isDark = backgroundColor === "dark"
   const [dragY, setDragY] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const startYRef = useRef<number>(0)
@@ -90,6 +98,7 @@ export function CommonSheet({
           ref={contentRef}
           className={cn(
             "fixed z-50 inset-x-0 bottom-0 h-[80vh] rounded-t-[28px] border-0 p-0 bg-background",
+            "flex flex-col",
             "transition-all duration-300 overflow-hidden",
             "shadow-[0_-4px_24px_rgba(0,0,0,0.12),0_-1px_4px_rgba(0,0,0,0.04)]",
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
@@ -106,7 +115,7 @@ export function CommonSheet({
         >
         {/* Стеклянная шапка шита (test/gauntlet/design/LIQUID_GLASS.md, уровень 1) — только
             ручка и заголовок. Тело ниже остаётся плотным холстом, там блюрить нечего. */}
-        <div className="glass relative will-change-transform">
+        <div className="glass relative shrink-0 will-change-transform">
           {/* Drag handle */}
           <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
             <div className="w-10 h-1 rounded-full bg-foreground/15" />
@@ -139,7 +148,21 @@ export function CommonSheet({
           )}
         </div>
 
-        <div className={cn("px-6 pb-6 h-full overflow-y-auto bg-background text-foreground", !title && "pt-4")}>{children}</div>
+        {/* Scroll container — flex-1 (not h-full) so it only claims the
+            space left over after the header's own flow height, instead of
+            stacking a second 100%-of-parent box below it and overflowing
+            the sheet. min-h-0 is required: without it a flex child refuses
+            to shrink below its content size and the scroll breaks. Bottom
+            padding adds env(safe-area-inset-bottom) on top of the visual
+            pb-6 so content isn't hidden behind the iPhone home indicator. */}
+        <div
+          className={cn(
+            "flex-1 min-h-0 px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] overflow-y-auto bg-background text-foreground",
+            !title && "pt-4"
+          )}
+        >
+          {children}
+        </div>
         </SheetPrimitive.Content>
       </SheetPortal>
     </Sheet>

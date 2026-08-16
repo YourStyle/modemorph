@@ -38,7 +38,7 @@ const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: stri
   classic: {
     title: "Классический стиль",
     advice: "Вне времени и всегда уместен. Инвестируйте в качество: хороший блейзер, прямые брюки, рубашки из натуральных тканей.\n\nПравило пропорций: сочетайте приталенный верх со свободным низом или наоборот — никогда не всё одновременно оверсайз.\n\nВаш гардероб строится на тёмной базе. Добавляйте глубину через нейви и тёплые нейтралы — шоколадный, верблюжий.",
-    colors: ["#1C1C1E", "#2C3E5A", "#F5F0EB", "#8B6F4E"],
+    colors: ["#1C1C1E", "#1E3A5F", "#F5F0EB", "#7B3F00"],
     colorNames: ["Чёрный", "Тёмно-синий", "Молочный", "Шоколадный"],
   },
   minimalist: {
@@ -56,13 +56,13 @@ const STYLE_ADVICE: Record<string, { title: string; advice: string; colors: stri
   formal: {
     title: "Формальный стиль",
     advice: "Элегантность в деталях. Фокус на посадке: одежда должна сидеть идеально. Плечевой шов — на плече, рукава — до косточки запястья.\n\nПравило «одного акцента»: в строгом образе допустим один яркий элемент — галстук, брошь или часы.\n\nОснова — тёмные тона и молочный. Благородные акценты: бордо, тёмное золото, глубокий синий.",
-    colors: ["#2C2C2E", "#F5F0EB", "#722F37", "#2C3E5A"],
+    colors: ["#2C2C2E", "#F5F0EB", "#722F37", "#1E3A5F"],
     colorNames: ["Графит", "Молочный", "Бордо", "Тёмно-синий"],
   },
   sport: {
     title: "Спортивный стиль",
     advice: "Функциональность + эстетика. Athleisure составляет 25% fashion-рынка — это больше не «только для зала».\n\nВыбирайте технологичные ткани: влагоотводящие, эластичные, дышащие. Монохромные спортивные образы выглядят дороже.\n\nПравило «спорт + город»: комбинируйте спортивные вещи с casual — лосины + оверсайз свитер, кроссовки + тренч.",
-    colors: ["#1C1C1E", "#F5F5F5", "#3D7ABF", "#C8A882"],
+    colors: ["#1C1C1E", "#F5F5F5", "#2563EB", "#C8A882"],
     colorNames: ["Чёрный", "Белый", "Синий электрик", "Бежевый"],
   },
 }
@@ -195,16 +195,23 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
         </button>
       </div>
 
-      {/* Sticky compact bar — fixed, separate from document flow */}
+      {/* Sticky compact bar — fixed, separate from document flow. Раньше это была
+          edge-to-edge полоса (left-0 right-0), а прямо над ней в TMA-хроме висит
+          пилюля профиля/погоды (top-navigation.tsx) — рядом с ней полоса во всю
+          ширину смотрелась чужеродно. Теперь та же форма: инсеты 16px по бокам
+          (поля экрана из контракта), rounded-full, стекло, тонкий контур по
+          периметру вместо нижней границы. "Советы" уже открывает шторку советов
+          по стилю (openStyleAdvice), а не настройки — второй кликабельный элемент
+          (иконка вопроса) был бы для этого же действия избыточен. */}
       <div
         className={cn(
-          "fixed top-[100px] left-0 right-0 z-30 glass border-b border-line/60 transition-all duration-300",
+          "fixed top-[100px] inset-x-4 z-30 transition-all duration-300",
           showStickyBar ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
         )}
       >
-        <div className="flex items-center gap-3 px-4 py-2.5 max-w-screen-xl mx-auto">
-          <PieChart data={styleDistribution} size={32} />
-          <div className="flex-1">
+        <div className="flex items-center gap-3 px-4 py-2.5 max-w-screen-xl mx-auto rounded-full glass ring-1 ring-line/60">
+          <PieChart data={styleDistribution} size={28} />
+          <div className="flex-1 min-w-0 truncate">
             <span className="text-caption font-semibold text-ink">
               {STYLE_LABELS[dominantStyle] || dominantStyle}
             </span>
@@ -212,7 +219,7 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
           </div>
           <button
             onClick={() => openStyleAdvice(dominantStyle)}
-            className="text-caption font-medium px-3 py-1.5 rounded-full bg-canvas-sunk text-ink-2 active:scale-95 transition-transform duration-press"
+            className="shrink-0 text-caption font-medium px-3 py-1.5 rounded-full bg-canvas-sunk text-ink-2 active:scale-95 transition-transform duration-press"
           >
             Советы
           </button>
@@ -237,14 +244,18 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
                 <p className="text-body font-medium text-ink">Рекомендуемая палитра</p>
                 <p className="text-caption text-ink-2 mt-0.5">На основе вашего гардероба</p>
               </div>
-              <div className="flex gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 {advice.colors.map((color, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-1.5">
+                  // items-start (не items-center/stretch) — иначе двухстрочная подпись
+                  // ("Приглушённый голубой") растягивает свою ячейку grid по высоте и
+                  // плитка над ней визуально укрупняется относительно соседей. aspect-square
+                  // держит плитку строго квадратной независимо от длины текста под ней.
+                  <div key={i} className="flex flex-col items-start gap-1.5">
                     <div
                       className="w-full aspect-square rounded-[18px] border border-line"
                       style={{ backgroundColor: color }}
                     />
-                    <span className="text-caption text-ink-2 text-center leading-tight">{advice.colorNames[i]}</span>
+                    <span className="text-caption text-ink-2 text-center leading-tight w-full">{advice.colorNames[i]}</span>
                   </div>
                 ))}
               </div>

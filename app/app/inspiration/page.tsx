@@ -188,7 +188,6 @@ export default function InspirationPage(): ReactElement {
   const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(() => getViewedOutfits())
 
   const [dailyViewsUsed, setDailyViewsUsed] = useState(0)
-  const [dailyViewsLimit] = useState(10)
   const [showPaywall, setShowPaywall] = useState(false)
   const [isBlurred, setIsBlurred] = useState(false)
   const [userCredits, setUserCredits] = useState(0)
@@ -643,7 +642,7 @@ export default function InspirationPage(): ReactElement {
                 </div>
                 <h3 className="text-h2 text-ink mb-2">Дневной лимит исчерпан</h3>
                 <p className="text-body text-ink-2 mb-5">
-                  Вы просмотрели {dailyViewsLimit} образов сегодня. Купите дополнительные просмотры или оформите
+                  Вы просмотрели {dailyViewsUsed} образов сегодня. Купите дополнительные просмотры или оформите
                   подписку Pro.
                 </p>
                 <div className="space-y-2.5">

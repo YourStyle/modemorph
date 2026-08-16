@@ -4,7 +4,8 @@ import { useState } from "react"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
-import { Plus, ExternalLink, Loader2 } from "lucide-react"
+import { Plus, ExternalLink, Loader2, Check } from "lucide-react"
+import { toast } from "sonner"
 import {api} from "@/lib/api-client";
 
 type OutfitItem = {
@@ -34,9 +35,13 @@ interface OutfitItemsSheetProps {
 
 export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: OutfitItemsSheetProps) {
   const [addingItems, setAddingItems] = useState<Set<string>>(new Set())
+  const [addedItems, setAddedItems] = useState<Set<string>>(new Set())
 
   const handleAddToWardrobe = async (item: OutfitItem) => {
-    if (addingItems.has(item.id)) return
+    // Guards against both an in-flight request and a repeat tap on an item
+    // that already succeeded — previously nothing distinguished "loading"
+    // from "done", so a slow request invited duplicate adds.
+    if (addingItems.has(item.id) || addedItems.has(item.id)) return
 
     setAddingItems((prev) => new Set([...prev, item.id]))
 
@@ -67,9 +72,11 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
         throw new Error(errorData.error || "Failed to add item to wardrobe")
       }
 
-      console.log("Item added to wardrobe successfully")
+      setAddedItems((prev) => new Set([...prev, item.id]))
+      toast.success(`«${item.name || "Вещь"}» добавлена в гардероб`)
     } catch (error) {
       console.error("Error adding item to wardrobe:", error)
+      toast.error("Не получилось добавить вещь в гардероб. Попробуйте ещё раз")
     } finally {
       setAddingItems((prev) => {
         const next = new Set(prev)
@@ -112,11 +119,15 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
   <Button
     size="sm"
     onClick={() => handleAddToWardrobe(item)}
-    disabled={addingItems.has(item.id)}
-    className="w-full sm:flex-1 h-12 text-sm rounded-lg px-4 bg-white text-black hover:bg-neutral-200 active:translate-y-[1px] transition-colors disabled:opacity-70"
+    disabled={addingItems.has(item.id) || addedItems.has(item.id)}
+    className="w-full sm:flex-1 h-12 text-sm rounded-lg px-4 bg-white text-black hover:bg-neutral-200 active:translate-y-[1px] transition-colors disabled:opacity-100 disabled:bg-neutral-700 disabled:text-neutral-300"
   >
     {addingItems.has(item.id) ? (
       <Loader2 className="w-3 h-3 animate-spin" />
+    ) : addedItems.has(item.id) ? (
+      <>
+        <Check className="w-3 h-3 mr-1" />Добавлено
+      </>
     ) : (
       <>
         <Plus className="w-3 h-3 mr-1" />В гардероб

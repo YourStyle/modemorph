@@ -86,7 +86,7 @@ export function useBackgroundPhotoAnalysis() {
               },
             })
             if (onComplete) {
-              onComplete({ items: session.items })
+              onComplete({ items: session.items, results: session.analysisResults })
             }
           } else if (session.status === "error") {
             clearInterval(checkInterval)
@@ -220,44 +220,44 @@ export function useBackgroundPhotoAnalysis() {
 
             // Проверяем на rejection
             if (items.length > 0 && items[0].acceptable === false) {
-              return { success: false, error: items[0].reason, isRejection: true }
+              return { success: false, error: items[0].reason, isRejection: true, fileName: file.name }
             }
 
-            return { success: true, data: items }
+            return { success: true, data: items, fileName: file.name }
           } catch (error) {
             clearTimeout(timeoutId)
             const message = error instanceof DOMException && error.name === "AbortError"
               ? "Превышено время ожидания ответа от AI. Попробуйте позже."
               : error instanceof Error ? error.message : "Unknown error"
             console.error(`[PhotoAnalysis] Error analyzing file ${index}:`, message, error)
-            return { success: false, error: message }
+            return { success: false, error: message, fileName: file.name }
           }
         })
 
         const results = await Promise.all(analysisPromises)
 
-        // Собираем все успешные результаты
-        const allItems: any[] = []
-        const errors: string[] = []
-
-        for (const result of results) {
-          if (result.success && Array.isArray(result.data)) {
-            allItems.push(...result.data)
-          } else if (!result.success && result.error) {
-            errors.push(result.error)
+        // Разбираем результат по каждому фото — нужно и для честного списания
+        // лимитов (по числу реально распознанных фото, а не по числу загруженных),
+        // и для показа причины отказа пользователю на конкретном фото.
+        const perFileResults = results.map((result) => {
+          if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+            const items = result.data.map((item: any) => ({
+              ...item,
+              finalImageUrl: item.image_url || item.img_url,
+            }))
+            return { success: true as const, items, fileName: result.fileName }
           }
-        }
-
-        // Проверяем, есть ли items в результате
-        if (allItems.length === 0) {
-          throw new Error(errors[0] || "Не удалось найти вещи на фото")
-        }
+          return {
+            success: false as const,
+            items: [] as any[],
+            fileName: result.fileName,
+            error: result.error || "Не удалось распознать вещь на фото",
+            rejectionReason: result.isRejection ? result.error : undefined,
+          }
+        })
 
         // Images will be uploaded to S3 when the user saves the item, not during analysis
-        const itemsWithImages = allItems.map(item => ({
-          ...item,
-          finalImageUrl: item.image_url || item.img_url
-        }))
+        const itemsWithImages = perFileResults.flatMap((r) => r.items)
 
         clearInterval(progressTimer)
         progressCompleted = true
@@ -265,8 +265,11 @@ export function useBackgroundPhotoAnalysis() {
         // IMPORTANT: Call onComplete BEFORE updating session status to "completed",
         // because photo-analysis-form.tsx polls session status every 100ms and will
         // stop loading when it sees "completed" — we must deliver results first.
+        // Note: we no longer throw when itemsWithImages is empty — a batch where
+        // every photo was rejected is still a valid, completed analysis; the
+        // per-photo rejection reasons in `results` are what the UI should show.
         if (onComplete) {
-          onComplete({ items: itemsWithImages })
+          onComplete({ items: itemsWithImages, results: perFileResults })
         }
 
         updateTask(taskId, {
@@ -283,12 +286,13 @@ export function useBackgroundPhotoAnalysis() {
           aiAnalysis.updateSession(sessionId, {
             status: "completed",
             items: itemsWithImages,
+            analysisResults: perFileResults,
             progress: 100,
             progressText: "Готово!",
           })
         }
 
-        return { success: true, taskId, result: { items: itemsWithImages } }
+        return { success: true, taskId, result: { items: itemsWithImages, results: perFileResults } }
       } catch (error) {
         // Останавливаем таймер прогресса при ошибке
         clearInterval(progressTimer)

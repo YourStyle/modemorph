@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { toast } from "@/hooks/use-toast"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 /**
  * "Войти через Яндекс" — starts the backend OAuth flow (GET /api/auth/yandex/start).
@@ -14,6 +16,11 @@ import { toast } from "@/hooks/use-toast"
  * On a redirect (or on any unexpected response) we just navigate for real —
  * only a confirmed 501 shows the toast. This is the simplest robust option
  * without adding a dedicated "is Yandex login enabled" endpoint.
+ *
+ * Visual: neutral outline pill (shared `buttonVariants({variant:"outline"})`,
+ * same as the Telegram button) instead of Yandex's brand red fill — the app
+ * has exactly one accent color (--signal) and Yandex's red nearly matched it.
+ * The Yandex logo mark itself (white circle + red "Я") stays untouched.
  */
 export function YandexLoginButton() {
   const [checking, setChecking] = useState(false)
@@ -54,8 +61,7 @@ export function YandexLoginButton() {
       type="button"
       onClick={handleClick}
       disabled={checking}
-      className="w-full flex items-center justify-center gap-2 rounded-xl h-12 text-base font-medium text-white transition-all duration-200 hover:opacity-90 disabled:opacity-50"
-      style={{ backgroundColor: "#FC3F1D" }}
+      className={cn(buttonVariants({ variant: "outline" }), "h-12 w-full gap-2")}
     >
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <circle cx="12" cy="12" r="12" fill="white" />

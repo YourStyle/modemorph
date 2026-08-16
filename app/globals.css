@@ -58,6 +58,27 @@
     --border: var(--line);
     --input: var(--line);
     --ring: var(--ink);
+
+    /* === Telegram Mini App top safe-area (test/gauntlet, iPhone 14 gauntlet) ===
+       --tg-top is written at runtime by lib/tma/safe-area.ts (hooks/use-tma.ts
+       useTmaSafeArea()) from Telegram's real WebApp.safeAreaInset.top +
+       WebApp.contentSafeAreaInset.top — env(safe-area-inset-top) alone only
+       knows the device notch, not Telegram's own header chrome (Close/⌄/⋯
+       pill), which is what was hiding content/toasts under it. It is
+       intentionally undeclared here (no value) so every consumer's own
+       `var(--tg-top, env(safe-area-inset-top, 0px))` falls back to the device
+       safe area outside Telegram / on old clients that don't report it.
+
+       --tg-nav-content-h / --tg-nav-gap describe the app's own floating
+       date/weather/avatar pill (components/top-navigation.tsx) — real,
+       deliberate design measurements, not a guess: --tg-nav-gap is the space
+       between the safe top and the pill, --tg-nav-content-h is the full
+       reserved band (gap + pill) other layout (app/app/layout-client.tsx main
+       padding, the backdrop, the city toast) must clear. Single definition —
+       the two magic 70px/60px hardcoded numbers that used to disagree
+       across files derived from this. */
+    --tg-nav-gap: 12px;
+    --tg-nav-content-h: 52px;
   }
 
   .dark {
@@ -99,6 +120,57 @@
     font-family: 'Manrope', sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* === Tap/focus jerk fix ===
+     Reported: "при клике на все кнопки и элементы фокус на них резко
+     прыгает, экран дёргается". Two real, compounding WebKit-in-Telegram
+     causes, both fixed here without ever hiding the focus indicator:
+
+     1) `scroll-padding-*` — WebKit's native "scroll focused element into
+        view" logic reasons about the *whole* viewport rectangle, it has no
+        idea our header/footer are `position: fixed` overlays covering part
+        of it. Any tap near those edges (very common: cards next to the
+        fixed bottom pill, buttons under the fixed header) reads as
+        "occluded" and WebKit hard-scrolls to compensate — the actual
+        "screen jerks" the report describes. Reserving the same bands via
+        scroll-padding tells it that area doesn't need clearing.
+     2) `-webkit-tap-highlight-color` — WebKit's default tap flash is a
+        solid, non-eased grey rectangle over the *whole* hit target (many
+        buttons here use -m-2/-m-1.5 44px hit zones around small icons), so
+        it pops a rectangle much bigger than the visible icon on every tap.
+        Killed in favour of our own transform-based active states (BAR.md:
+        motion only on transform/opacity), which are already used
+        everywhere (`active:scale-*`).
+
+     Focus itself is untouched for keyboard users: outline/box-shadow-based
+     rings never affect layout per the CSS spec (only `border` would), so
+     nothing here needs to fight a layout-shifting outline — the fix is the
+     scroll behavior and the tap flash, not the ring. */
+  html {
+    scroll-padding-top: calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-content-h, 52px));
+    scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+  }
+  html, body {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, a, [role="button"], input, textarea, select, summary {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* Baseline focus-visible for the many raw <button>/<a> in this codebase
+     that don't already opt into a Tailwind `ring` (shadcn Button/Input do,
+     and keep working — this only fills the gap for the rest). Keyboard-only
+     (:focus-visible), fixed offset so it never grows the box, and skipped
+     for mouse/touch clicks (:focus without :focus-visible) so we're not
+     fighting the tap-highlight removal above with a mouse-click ring. */
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid hsl(var(--ink) / 0.55);
+    outline-offset: 2px;
   }
 
   /* Unified typography — Manrope for everything */
@@ -209,4 +281,74 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Telegram Login Widget — сторонний iframe нельзя стилизовать изнутри
+     и он рисуется на своём (тёмном) фоне. Растягиваем реальный iframe на
+     весь наш pill-контейнер и прячем через opacity: 0 — клик проходит
+     насквозь в настоящую кнопку виджета (авторизация штатная), а видимую
+     pill-кнопку рисует наша разметка под ним. Ничего в data-атрибутах или
+     параметрах виджета не меняется — только CSS обёртки.
+     См. components/auth/telegram-login-button.tsx */
+  .tg-login-frame iframe {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border: 0 !important;
+    opacity: 0 !important;
+  }
+
+  /* === Моторика игры ожидания (components/falling-objects-game.tsx) ===
+     Жили в <style jsx> внутри компонента и вешали сборку: строка
+     `animation: levelPop ${LEVEL_UP_DISPLAY_MS}ms ...` — интерполяция внутри
+     styled-jsx, из-за неё блок становится динамическим, а трансформ SWC на
+     1000-строчном компоненте уходил в бесконечную компиляцию (next build
+     висел >10 минут на фазе "Creating an optimized production build";
+     с заглушкой вместо игры проходил за ~2). Длительность теперь приезжает
+     переменной --game-level-dur, стили статические. Все анимации — только
+     transform/opacity, глобальный prefers-reduced-motion их гасит. */
+  @keyframes wiggle {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-8deg); }
+    75% { transform: rotate(8deg); }
+  }
+  /* Только на вложенном span: на внешнем div живёт инлайновый transform с
+     координатами, а анимация забрала бы это свойство целиком — именно так
+     дебафы залипали в левом верхнем углу. */
+  .game-wiggle { animation: wiggle 0.5s ease-in-out infinite; transform-origin: center; }
+
+  @keyframes driftA {
+    0%, 100% { transform: translateY(0) rotate(-4deg); }
+    50% { transform: translateY(10px) rotate(-1deg); }
+  }
+  .game-drift-a { animation: driftA 7s ease-in-out infinite; }
+
+  @keyframes driftB {
+    0%, 100% { transform: translateY(0) rotate(3deg); }
+    50% { transform: translateY(-9px) rotate(6deg); }
+  }
+  .game-drift-b { animation: driftB 9s ease-in-out infinite; }
+
+  @keyframes levelPop {
+    0% { transform: translateY(-6px) scale(0.85); opacity: 0; }
+    15% { transform: translateY(0) scale(1.06); opacity: 1; }
+    25%, 82% { transform: translateY(0) scale(1); opacity: 1; }
+    100% { transform: translateY(-4px) scale(0.96); opacity: 0; }
+  }
+  .game-level-pop { animation: levelPop var(--game-level-dur, 1100ms) var(--ease-out) both; }
+
+  @keyframes riseFade {
+    0% { opacity: 1; transform: translate(-50%, -50%); }
+    100% { opacity: 0; transform: translate(-50%, calc(-50% - 30px)); }
+  }
+  .game-rise-fade { animation: riseFade 0.9s var(--ease-out) forwards; }
+
+  @keyframes hpShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-3px); }
+    40% { transform: translateX(3px); }
+    60% { transform: translateX(-2px); }
+    80% { transform: translateX(2px); }
+  }
+  .animate-hp-shake { animation: hpShake 0.4s ease-in-out; }
 }

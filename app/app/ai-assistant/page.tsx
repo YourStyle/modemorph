@@ -359,7 +359,7 @@ export default function AIAssistantPage() {
           нейтральный значок, единственный акцент экрана зарезервирован под кнопку отправки */}
       <div
         className="glass relative z-10 border-b border-line px-4 pb-3"
-        style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)" }}
+        style={{ paddingTop: "calc(var(--tg-top, env(safe-area-inset-top, 0px)) + 0.75rem)" }}
       >
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink">
@@ -466,7 +466,7 @@ export default function AIAssistantPage() {
             <button
               onClick={() => handleQuickAction("outfit")}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3.5 py-2 text-caption font-medium text-ink-2 transition-transform duration-press active:scale-95 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3.5 py-2 text-caption font-medium text-ink-2 transition-transform duration-press active:scale-95 disabled:opacity-50"
             >
               <Sparkles className="h-3.5 w-3.5 text-ink-3" />
               Подобрать образ
@@ -474,7 +474,7 @@ export default function AIAssistantPage() {
             <button
               onClick={() => handleQuickAction("photo")}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3.5 py-2 text-caption font-medium text-ink-2 transition-transform duration-press active:scale-95 disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3.5 py-2 text-caption font-medium text-ink-2 transition-transform duration-press active:scale-95 disabled:opacity-50"
             >
               <Camera className="h-3.5 w-3.5 text-ink-3" />
               Фото на анализ
@@ -496,7 +496,7 @@ export default function AIAssistantPage() {
                 onClick={() => handleSend()}
                 disabled={isLoading || !inputValue.trim()}
                 aria-label="Отправить"
-                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-signal text-signal-ink transition-transform duration-press active:scale-95 disabled:bg-canvas-sunk disabled:text-ink-3"
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-signal text-signal-ink transition-transform duration-press active:scale-95 disabled:bg-canvas-sunk disabled:text-ink-3"
               >
                 <Send className="h-4 w-4" />
               </button>

@@ -2,7 +2,7 @@
 
 import { useState, useRef } from "react"
 import { CommonSheet } from "./common-sheet"
-import { Upload, Loader2, Sparkles } from "lucide-react"
+import { Upload, Loader2, Sparkles, AlertCircle } from "lucide-react"
 import { api } from "@/lib/api-client"
 import { STYLE_LABELS, CLOTHING_TYPE_LABELS } from "@/lib/labels"
 
@@ -27,6 +27,7 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
   const [preview, setPreview] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<StyleCheckResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,12 +36,14 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
     setPhoto(file)
     setPreview(URL.createObjectURL(file))
     setResult(null)
+    setError(null)
   }
 
   const handleCheck = async () => {
     if (!photo) return
     setLoading(true)
     setResult(null)
+    setError(null)
     try {
       const formData = new FormData()
       formData.append("image", photo)
@@ -48,6 +51,7 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
       setResult(data)
     } catch (e: any) {
       console.error("Style check failed:", e)
+      setError("Не получилось проверить вещь. Попробуйте ещё раз")
     } finally {
       setLoading(false)
     }
@@ -57,6 +61,7 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
     setPhoto(null)
     setPreview(null)
     setResult(null)
+    setError(null)
   }
 
   return (
@@ -93,6 +98,13 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
                 <span className="inline-flex items-center"><Sparkles className="h-4 w-4 mr-2" /> Проверить совместимость</span>
               )}
             </button>
+
+            {error && !loading && (
+              <div className="flex items-center gap-2 text-caption text-destructive">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
           </>
         ) : (
           <>
