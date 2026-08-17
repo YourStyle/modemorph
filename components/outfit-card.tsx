@@ -114,7 +114,11 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
   const [showFeedbackExplainer, setShowFeedbackExplainer] = useState(false)
   const [selectedItem, setSelectedItem] = useState<OutfitItem | null>(null)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
-  const feedbackKey = `outfit_feedback_${sectionSource || "x"}_${suggestion?.id}`
+  // В ключ входит rec_session_id, иначе оценка прилипает к чужому образу:
+  // id образов детерминированные и переиспользуются каждый день
+  // (mix_<user>_<секция>_<индекс>), так что вчерашний лайк подсвечивался на
+  // сегодняшнем, совершенно другом образе, занявшем ту же позицию.
+  const feedbackKey = `outfit_feedback_${sectionSource || "x"}_${recSessionId || "nosess"}_${suggestion?.id}`
   const [feedback, setFeedback] = useState<"like" | "dislike" | null>(() => {
     if (typeof window === "undefined" || !suggestion?.id) return null
     try {

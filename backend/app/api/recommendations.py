@@ -50,6 +50,7 @@ _GAP_PROMPTS = {
     "outerwear": "coat jacket winter outerwear",
     "dress": "dress",
     "set": "matching set suit",
+    "shoes": "shoes sneakers boots footwear",
 }
 
 # Minimum count per slot before we consider it "complete".
@@ -62,6 +63,12 @@ _MIN_ITEMS_PER_SLOT = {
     "dress": 0,      # optional — only flag for women
     "layer": 2,
     "set": 0,        # optional
+    # Обуви тут не было, поэтому пользователь с НУЛЁМ обуви не получал ни одной
+    # гэп-подсказки: остальные слоты у него закрыты впритык (top 4 при минимуме 4,
+    # layer 2 при 2), outerwear отсекался по теплу, dress — по полу, и _detect_gaps
+    # возвращал пустой список. Обувь — единственный слот, без которого образ
+    # физически не носится, так что минимум здесь 1, а не «побольше для красоты».
+    "shoes": 1,
 }
 
 
@@ -509,6 +516,19 @@ async def generate_recommendations(
     # clothing_type + name.
     _temp = weather.get("temperature") or 15
     wardrobe_items = [i for i in wardrobe_items if temp_ok(i, _temp)]
+
+    # Вещи, тип которых не резолвится в слот (аксессуары и незаполненное
+    # 'верхняя'), не отдаём композитору. Иначе они попадают в КАЖДЫЙ образ:
+    # _dedup_by_slot складывает бесслотовые вещи в passthrough и сохраняет
+    # безусловно, поэтому одни очки с clothing_type='верхняя' оказались во всех
+    # десяти образах пользователя разом. Слота под аксессуары в _SLOT_MAP нет,
+    # и пока его нет — место такой вещи не в образе.
+    _slotted = [i for i in wardrobe_items
+                if _SLOT_MAP.get(normalize_clothing_type(i.get("clothing_type")) or "")]
+    # Страховка: если у человека вообще нечего разложить по слотам, лучше
+    # собрать образ из чего есть, чем не собрать ничего.
+    if _slotted:
+        wardrobe_items = _slotted
 
     # Профиль: стиль И размеры. Раньше читался только dominant_style, а он пуст
     # у 161 из 295 профилей (55%) — у этих людей строка про стиль исчезала из

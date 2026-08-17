@@ -29,6 +29,14 @@ TEMP_RANGES: dict[str, tuple[int, int]] = {
     "pants": (-5, 30),
     "jeans": (0, 28), "sporty-pants": (5, 25), "shorts": (20, 35),
     "classic": (5, 28), "knitted-suit": (0, 20), "tracksuit": (5, 25),
+    # Обувь раньше отсутствовала здесь целиком, и это был не пропуск одной
+    # строки, а дыра: infer_temp_range() возвращал (None, None), temp_ok()
+    # честно фейлил-открыто, и сандалии предлагались при +19 с дождём, а
+    # ботильоны — в жару. Ни один каталожный shoes/boots/sneakers/sandals
+    # в проде не имеет temp_min/temp_max, так что работал ровно этот путь.
+    # sandals с минимумом 22 — как у tank-top: жалоба была именно про сланцы
+    # при +19 с дождём, так что порог обязан быть выше девятнадцати.
+    "shoes": (5, 30), "sneakers": (0, 30), "boots": (-25, 15), "sandals": (22, 40),
 }
 
 # Heavy winter outerwear — exclude in warm weather even when untagged.
