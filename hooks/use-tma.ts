@@ -50,11 +50,11 @@ export function useTMA() {
 
 /**
  * Single source of truth for the top safe-area inset in Telegram Mini Apps.
- * Mounts `initTmaSafeArea()` once (subscribes `--tg-top` on :root to
+ * Mounts `initTmaSafeArea()` once (subscribes `--tg-chrome` on :root to
  * Telegram's `safeAreaInset`/`contentSafeAreaInset` + their change events)
  * and tears the subscription down on unmount. Call this once near the app
  * root (app/app/layout-client.tsx) — every other component just reads
- * `var(--tg-top, env(safe-area-inset-top, 0px))` from CSS, no need to call
+ * `var(--tg-chrome, env(safe-area-inset-top, 0px))` from CSS, no need to call
  * this hook again or read window.Telegram directly.
  */
 export function useTmaSafeArea() {

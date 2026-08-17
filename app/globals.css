@@ -60,14 +60,13 @@
     --ring: var(--ink);
 
     /* === Telegram Mini App top safe-area (test/gauntlet, iPhone 14 gauntlet) ===
-       --tg-top is written at runtime by lib/tma/safe-area.ts (hooks/use-tma.ts
-       useTmaSafeArea()) from Telegram's real WebApp.safeAreaInset.top +
-       WebApp.contentSafeAreaInset.top — env(safe-area-inset-top) alone only
+       --tg-chrome is written at runtime by lib/tma/safe-area.ts (hooks/use-tma.ts
+       useTmaSafeArea()) from WebApp.contentSafeAreaInset.top ALONE — env(safe-area-inset-top) alone only
        knows the device notch, not Telegram's own header chrome (Close/⌄/⋯
        pill), which is what was hiding content/toasts under it. It is
        intentionally undeclared here (no value) so every consumer's own
-       `var(--tg-top, env(safe-area-inset-top, 0px))` falls back to the device
-       safe area outside Telegram / on old clients that don't report it.
+       `var(--tg-chrome, 0px)` degrades to zero outside Telegram / on old clients,
+       and env() alone then describes the whole inset.
 
        --tg-nav-content-h / --tg-nav-gap describe the app's own floating
        date/weather/avatar pill (components/top-navigation.tsx) — real,
@@ -80,16 +79,18 @@
     --tg-nav-gap: 12px;
     --tg-nav-content-h: 52px;
 
-    /* Единственная величина, от которой считают ВСЕ потребители верха:
-       инсет Telegram + зазор + сама пилюля = где начинается контент.
-       Раньше каждый считал свою формулу, и пилюля получала marginTop,
-       равный инсету ПЛЮС её собственные 52px — то есть уезжала вниз на
-       свой же рост, стеклянная подложка оставалась выше неё и при скролле
-       читалась как отдельная полупрозрачная плашка, а контент уходил вниз
-       вслед за всем этим. Одна формула — расхождению неоткуда взяться. */
-    --tg-content-top: calc(
-      var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-gap) + var(--tg-nav-content-h)
-    );
+    /* --tg-chrome — ТОЛЬКО шапка самого Telegram, её выставляет
+       lib/tma/safe-area.ts из contentSafeAreaInset.top. Вырез устройства сюда
+       не входит: его считает env(), и складываем мы их сами. Раньше сюда клали
+       сумму выреза и шапки, а вебвью в Telegram и так начинается ниже выреза —
+       он прибавлялся дважды, отсюда лишние ~59 точек сверху на iPhone.
+
+       --tg-safe-top — верх безопасной зоны с учётом обоих слагаемых.
+       --tg-content-top — где начинается контент: безопасный верх + зазор +
+       высота пилюли. От него считают подложка шапки, отступ main и
+       scroll-padding, чтобы формула была одна на всех. */
+    --tg-safe-top: calc(env(safe-area-inset-top, 0px) + var(--tg-chrome, 0px));
+    --tg-content-top: calc(var(--tg-safe-top) + var(--tg-nav-gap) + var(--tg-nav-content-h));
   }
 
   .dark {

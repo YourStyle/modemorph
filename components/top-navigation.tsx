@@ -33,7 +33,7 @@ const TG_HEADER_HEIGHT = "var(--tg-content-top)"
 // А сама пилюля отступает ТОЛЬКО на инсет Telegram плюс зазор — прибавлять сюда
 // ещё и её собственную высоту (как было) значит уронить её на свой же рост вниз
 // и оставить подложку висеть отдельной плашкой над ней.
-const TG_PILL_TOP = "calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-gap))"
+const TG_PILL_TOP = "calc(var(--tg-safe-top) + var(--tg-nav-gap))"
 
 interface WeatherData {
   temperature: number
@@ -301,7 +301,7 @@ export function TopNavigation() {
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
           <div
             className="pointer-events-auto"
-            style={{ marginTop: "calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-gap, 12px))" }}
+            style={{ marginTop: "calc(var(--tg-safe-top) + var(--tg-nav-gap))" }}
           >
             <button
               onClick={handleProfileClick}

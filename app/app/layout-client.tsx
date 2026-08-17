@@ -23,7 +23,7 @@ export default function AppClientLayout({
   const { isOpen, initialPhotos, closeSheet, onAnalysisSuccess } = useAddToCloset()
 
   // Единственное место, где подписываемся на реальные инсеты Telegram —
-  // выставляет --tg-top на :root (hooks/use-tma.ts → lib/tma/safe-area.ts).
+  // выставляет --tg-chrome на :root (hooks/use-tma.ts → lib/tma/safe-area.ts).
   // Все остальные компоненты просто читают этот CSS var.
   useTmaSafeArea()
   // Тот же флаг, что решает, рендерить ли TopNavigation свой плавающий
