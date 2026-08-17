@@ -25,14 +25,9 @@ import { CityPickerSheet } from "@/components/city-picker-sheet"
 import { useTmaMobile } from "@/hooks/use-tma"
 import { cn } from "@/lib/utils"
 
-// Реальный верхний инсет Telegram + высота плавающей шапки — единая формула,
-// используется и для стеклянной подложки, и для отступа самой пилюли, и для
-// тоста про город ниже. Токены объявлены в app/globals.css.
-// Подложка перекрывает всю полосу от края экрана до низа пилюли.
-const TG_HEADER_HEIGHT = "var(--tg-content-top)"
-// А сама пилюля отступает ТОЛЬКО на инсет Telegram плюс зазор — прибавлять сюда
-// ещё и её собственную высоту (как было) значит уронить её на свой же рост вниз
-// и оставить подложку висеть отдельной плашкой над ней.
+// Пилюля отступает ТОЛЬКО на безопасный верх плюс зазор. Прибавлять сюда ещё и
+// её собственную высоту (как было) значит уронить её вниз на свой же рост.
+// Где начинается контент — отдельный токен --tg-content-top в app/globals.css.
 const TG_PILL_TOP = "calc(var(--tg-safe-top) + var(--tg-nav-gap))"
 
 interface WeatherData {
@@ -307,19 +302,18 @@ export function TopNavigation() {
     setIsProfileSheetOpen(true)
   }
 
+  // Подсказку про город прячем сами, как только человек начал скроллить: она
+  // своё отработала, а висеть поверх контента до ручного закрытия ей незачем.
+  useEffect(() => {
+    if (isScrolled && showCityHint) dismissCityHint()
+  }, [isScrolled, showCityHint])
+
   if (isTmaMobile) {
     return (
       <>
-        {/* Стеклянная подложка шапки — смонтирована всегда, backdrop-filter не анимируется:
-            наверху страницы прозрачна, после скролла проявляется через opacity. */}
-        <div
-          aria-hidden="true"
-          className={cn(
-            "glass glass-refract fixed inset-x-0 top-0 z-40 border-b border-line transition-opacity duration-200 ease-[var(--ease-out)] will-change-transform",
-            isScrolled ? "opacity-100" : "opacity-0",
-          )}
-          style={{ height: TG_HEADER_HEIGHT, pointerEvents: "auto" }}
-        />
+        {/* Подложки под пилюлей нет намеренно: она проявлялась при скролле
+            широкой полосой во весь борт и читалась как лишний слой. Пилюля
+            стеклянная сама по себе, этого достаточно. */}
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
           <div
             className="pointer-events-auto"

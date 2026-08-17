@@ -209,7 +209,10 @@ export function StyleProfileCard({ dominantStyle, styleTags, userItemsCount }: S
           showStickyBar ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"
         )}
       >
-        <div className="flex items-center gap-3 px-4 py-2.5 max-w-screen-xl mx-auto rounded-full glass ring-1 ring-line/60">
+        {/* Плотная поверхность, а не .glass: стекло — утилита для хрома поверх
+            контента (таб-бар, шапка), а эта строка стоит в потоке, просвечивать
+            ей нечем. На устройстве читалась как «очень прозрачная». */}
+        <div className="flex items-center gap-3 px-4 py-2.5 max-w-screen-xl mx-auto rounded-full bg-surface ring-1 ring-line shadow-[0_2px_10px_hsl(var(--ink)/0.06)]">
           <PieChart data={styleDistribution} size={28} />
           <div className="flex-1 min-w-0 truncate">
             <span className="text-caption font-semibold text-ink">
