@@ -335,6 +335,16 @@ def _normalize_sections(val) -> list:
 
 async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> list:
     """Enrich AI items with image_url from DB."""
+    # Погода нужна прямо здесь: образы отдаются из кеша, а он переживает смену
+    # погоды. Сгенерированный вчера образ с сандалиями сегодня при +19 обязан
+    # отвалиться на чтении, иначе пользователь увидит его до ночной перегенерации.
+    weather_row = (await db.execute(
+        text("SELECT temperature FROM weather_cache WHERE user_id = :uid "
+             "ORDER BY updated_at DESC LIMIT 1"),
+        {"uid": user_id},
+    )).mappings().first()
+    current_temp = weather_row["temperature"] if weather_row else None
+
     all_ids = set()
     for section in sections:
         for sug in section.get("suggestions", []):
@@ -427,7 +437,7 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
         # Gap-секции — витрина по одному слоту, а не образ: чинить нечего.
         if not is_gap_section:
             for s in section.get("suggestions", []):
-                kept, dropped = repair_outfit(s.get("items") or [])
+                kept, dropped = repair_outfit(s.get("items") or [], current_temp)
                 if dropped:
                     logger.info(
                         "[rec] образ %s: выброшено %d несочетаемых (%s)",

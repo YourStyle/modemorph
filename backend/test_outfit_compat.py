@@ -164,6 +164,62 @@ def test_covers_body_rescues_valid_two_item_outfits():
     assert not covers_body([_item("футболка", "t-shirt"), _item("очки", "верхняя")])
 
 
+def test_is_coherent_requires_current_temperature_inside_the_window():
+    """Кейс с прода 17.08.2026: сандалии в образе при +19.
+
+    Окна: футболка (18..35), спортивные брюки (5..25), сандалии (22..40).
+    Пересечение — (22, 25), ширина ровно 3, то есть «согласовано». Но 19 в это
+    окно не попадает, и образ всё равно уезжал пользователю.
+    """
+    outfit = [_item("футболка", "t-shirt", 18, 35),
+              _item("спортивные брюки", "sporty-pants", 5, 25),
+              _item("сандалии", "sandals", 22, 40)]
+    assert shared_window(outfit) == (22, 25)
+    assert is_coherent(outfit) is True, "без температуры образ считается согласованным"
+    assert is_coherent(outfit, 19) is False, "при +19 образ носить нельзя"
+    assert is_coherent(outfit, 23) is True, "при +23 всё в порядке"
+    # границы окна включительно
+    assert is_coherent(outfit, 22) is True
+    assert is_coherent(outfit, 25) is True
+    assert is_coherent(outfit, 26) is False
+
+
+def test_repair_with_temp_drops_the_out_of_season_item_not_the_trousers():
+    """Метрика «шире окно» тут уводит в другую сторону, и это главный риск правки.
+
+    Выброс брюк даёт (22, 35) шириной 13, выброс сандалий — (18, 25) шириной 7.
+    По ширине победил бы выброс брюк: образ остался бы без низа, зато в
+    сандалиях. Побеждать должно расстояние до текущей температуры.
+    """
+    outfit = [_item("футболка", "t-shirt", 18, 35),
+              _item("спортивные брюки", "sporty-pants", 5, 25),
+              _item("сандалии", "sandals", 22, 40)]
+    kept, dropped = repair_outfit(outfit, 19)
+    assert [d["name"] for d in dropped] == ["сандалии"], dropped
+    assert {k["name"] for k in kept} == {"футболка", "спортивные брюки"}
+    assert is_coherent(kept, 19) is True
+    assert covers_body(kept), "низ обязан остаться на месте"
+
+
+def test_repair_without_temp_keeps_old_behaviour():
+    """Сидер витрины зовёт repair_outfit без температуры — поведение не меняем."""
+    outfit = [_item("футболка", "t-shirt", 18, 35),
+              _item("спортивные брюки", "sporty-pants", 5, 25),
+              _item("сандалии", "sandals", 22, 40)]
+    kept, dropped = repair_outfit(outfit)
+    assert dropped == [], "без температуры образ согласован и чинить нечего"
+    assert kept == outfit
+
+
+def test_repair_with_temp_gives_up_on_hopeless_outfit():
+    """Зимний образ при +25 спасать нечем — выбрасывается целиком."""
+    outfit = [_item("пуховик", "puffer-jacket", -20, 10),
+              _item("свитер", "pullover", 0, 18),
+              _item("ботинки", "boots", -25, 15)]
+    kept, dropped = repair_outfit(outfit, 25)
+    assert kept == [], kept
+
+
 def test_has_bottom_ignores_accessories_and_shoes():
     """Обувь и аксессуары ног не прикрывают."""
     assert not has_bottom([_item("футболка", "t-shirt"), _item("кроссовки", "sneakers")])

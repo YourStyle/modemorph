@@ -116,12 +116,58 @@ def shared_window(items: list) -> tuple[int, int]:
     return (lo, hi)
 
 
-def is_coherent(items: list) -> bool:
-    """True, если у образа есть общее температурное окно шириной от _MIN_WINDOW °C."""
+def is_coherent(items: list, temp=None) -> bool:
+    """True, если образ носибелен: есть общее окно шириной от _MIN_WINDOW °C,
+    и — когда передана `temp` — сегодняшняя температура в это окно попадает.
+
+    Без `temp` проверка отвечает лишь на вопрос «эти вещи вообще сочетаются
+    между собой», и этого мало. Реальный случай с прода: «футболка (18..35) +
+    спортивные брюки (5..25) + сандалии (22..40)» дают общее окно (22, 25) —
+    формально согласовано, ширина ровно 3. Но на улице было 19, и образ с
+    сандалиями всё равно попадал пользователю в ленту.
+
+    `temp=None` оставлено умышленно: сидер витрины (scripts/seed_vibes.py)
+    собирает образы без привязки к погоде конкретного человека, и ему нужна
+    именно проверка «сочетаются в принципе».
+    """
     if not items:
         return False
     lo, hi = shared_window(items)
-    return (hi - lo) >= _MIN_WINDOW
+    if (hi - lo) < _MIN_WINDOW:
+        return False
+    if temp is None:
+        return True
+    try:
+        t = float(temp)
+    except (TypeError, ValueError):
+        return True
+    return lo <= t <= hi
+
+
+def _removal_score(candidate: list, temp) -> tuple:
+    """Насколько хорош остаток после выброса одной вещи. Больше — лучше.
+
+    Без температуры это просто ширина окна, как было раньше. С температурой
+    ширины НЕДОСТАТОЧНО и она уводит в другую сторону: для «футболка +
+    спортивные брюки + сандалии» при +19 выброс брюк даёт окно (22, 35)
+    шириной 13, а выброс сандалий — (18, 25) шириной 7. По ширине победил бы
+    выброс брюк, то есть образ лишился бы низа, а сандалии остались. Поэтому
+    сперва минимизируем расстояние от температуры до окна и лишь при равенстве
+    смотрим на ширину.
+    """
+    lo, hi = shared_window(candidate)
+    width = hi - lo
+    if temp is None:
+        return (0, width)
+    try:
+        t = float(temp)
+    except (TypeError, ValueError):
+        return (0, width)
+    if lo <= t <= hi:
+        distance = 0
+    else:
+        distance = lo - t if t < lo else t - hi
+    return (-distance, width)
 
 
 def _is_base_item(item: dict) -> bool:
@@ -137,10 +183,13 @@ def _is_base_item(item: dict) -> bool:
     return slot_of(item.get("clothing_type"), name) is not None
 
 
-def repair_outfit(items: list) -> tuple[list[dict], list[dict]]:
+def repair_outfit(items: list, temp=None) -> tuple[list[dict], list[dict]]:
     """
     Пытается починить несогласованный образ, выбрасывая по одной вещи —
-    ту, чьё удаление сильнее всего расширяет общее окно.
+    ту, чьё удаление сильнее всего приближает образ к погоде (см. _removal_score).
+
+    `temp` — температура, под которую чинится образ. Без неё поведение прежнее:
+    судим только о сочетаемости вещей между собой.
 
     Уже согласованный образ чинить не нужно: он возвращается как есть,
     без применения порога _MIN_OUTFIT_SIZE (иначе валидная пара вроде
@@ -161,13 +210,13 @@ def repair_outfit(items: list) -> tuple[list[dict], list[dict]]:
     оставшихся не осталось ни одной базовой вещи (одни аксессуары — тоже
     не образ, даже если формально вещей три и больше).
     """
-    if is_coherent(items):
+    if is_coherent(items, temp):
         return list(items), []
 
     remaining = list(items)
     dropped = []
 
-    while remaining and not is_coherent(remaining):
+    while remaining and not is_coherent(remaining, temp):
         # Сначала кандидаты на выброс — аксессуары; если их не осталось,
         # приходится жертвовать базовыми вещами.
         candidate_indices = [i for i, it in enumerate(remaining) if not _is_base_item(it)]
@@ -175,18 +224,22 @@ def repair_outfit(items: list) -> tuple[list[dict], list[dict]]:
             candidate_indices = list(range(len(remaining)))
 
         best_idx = None
-        best_width = None
+        best_score = None
         for idx in candidate_indices:
             candidate = remaining[:idx] + remaining[idx + 1:]
-            lo, hi = shared_window(candidate)
-            width = hi - lo
-            if best_width is None or width > best_width:
-                best_width = width
+            score = _removal_score(candidate, temp)
+            if best_score is None or score > best_score:
+                best_score = score
                 best_idx = idx
         dropped.append(remaining.pop(best_idx))
 
     has_base_item = any(_is_base_item(it) for it in remaining)
-    if len(remaining) < _MIN_OUTFIT_SIZE or not has_base_item:
+    # Порог _MIN_OUTFIT_SIZE не применяем к образу, который и двумя вещами
+    # одевает целиком. Иначе починка «футболка + брюки + сандалии» при +19
+    # правильно выбрасывает сандалии — и тут же убивает оставшуюся пару,
+    # хотя носить её можно. Тот же довод, что и у пары «платье + туфли» выше.
+    too_thin = len(remaining) < _MIN_OUTFIT_SIZE and not covers_body(remaining)
+    if too_thin or not has_base_item:
         return [], list(items)
 
     return remaining, dropped
