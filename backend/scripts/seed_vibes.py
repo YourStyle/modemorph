@@ -29,7 +29,7 @@ import os
 import sys
 
 from clothing_taxonomy import slot_of
-from app.services.outfit_compat import repair_outfit
+from app.services.outfit_compat import covers_body, repair_outfit
 
 AI = os.environ.get("AI_SERVICE_URL", "http://modemorph-ai:8000")
 
@@ -83,8 +83,6 @@ MIN_ITEMS = 3
 # Обувь — самый расходящийся по температуре слот (сандалии vs ботинки), одна
 # неудачная пара не должна убивать годное ядро. Столько кандидатов пробуем.
 SHOE_TRIES = 3
-# Слот, закрывающий тело целиком — платье/юбка/комбинезон или костюм.
-_WHOLE = ("dress", "set")
 
 
 def _slot(it: dict) -> str | None:
@@ -92,21 +90,20 @@ def _slot(it: dict) -> str | None:
 
 
 def is_valid(items: list[dict]) -> bool:
-    """Структурная проверка ПОСЛЕ repair_outfit.
+    """Структурная проверка ПОСЛЕ repair_outfit — тонкая обёртка над covers_body.
 
     repair_outfit судит образ только по температуре и вправе выбросить верх —
     так в первом dry-run 2026-08-17 получилось 42 образа из 71 вида
     «джинсы + кроссовки + кардиган»: низ, обувь и кардиган поверх ничего.
-    Температурно это законно, надеть — нельзя. Поэтому температурную проверку
-    дополняем структурной: тело должно быть закрыто целиком.
+    Температурно это законно, надеть — нельзя.
+
+    Раньше здесь лежала собственная реализация, требовавшая ровно "top", и она
+    расходилась с covers_body в личных рекомендациях: та признавала верхом любой
+    слой и пропускала тот самый кардиган. Теперь определение одно на оба места,
+    а различие между слоями («худи носят на голое тело, кардиган — нет») учтено
+    внутри covers_body.
     """
-    slots = [_slot(it) for it in items]
-    whole = [s for s in slots if s in _WHOLE]
-    if len(whole) > 1:
-        return False                                  # платье + костюм в одном образе
-    if whole:
-        return True                                   # платье/костюм закрывают и верх, и низ
-    return "top" in slots and "bottom" in slots
+    return covers_body(items)
 
 
 def slot_histogram(items: list[dict]) -> dict[str, dict[str, int]]:

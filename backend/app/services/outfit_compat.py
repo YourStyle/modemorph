@@ -20,7 +20,7 @@ outfit_compat.py — проверка сочетаемости образа ЦЕ
 "temp_max": ...}.
 """
 
-from clothing_taxonomy import slot_of
+from clothing_taxonomy import normalize_clothing_type, slot_of
 from app.services.weather_rules import infer_temp_range
 
 # Минимальная ширина общего окна, чтобы образ считался носибельным. Пересечение
@@ -65,23 +65,48 @@ def has_bottom(items: list) -> bool:
     return any(slot_of(it.get("clothing_type")) in _BOTTOM_SLOTS for it in items)
 
 
-# Слоты, которые закрывают верх. 'layer' здесь намеренно: свитшот, худи или
-# джемпер носят на голое тело, рубашка под ними не обязательна.
-_TOP_SLOTS = frozenset({"top", "layer"})
+# Слой слою рознь, и на этом различии держится вся функция ниже.
+# Худи, свитшот, джемпер и водолазку носят на голое тело — они сами закрывают
+# верх. Кардиган, пиджак и жилет — нет: под ними должно быть что-то ещё.
+# Именно на кардигане обжёгся сидер витрины (см. seed_vibes.py): в первом
+# dry-run 17.08.2026 вышло 42 образа из 71 вида «джинсы + кроссовки + кардиган»,
+# то есть низ, обувь и кардиган поверх голого тела.
+_STANDALONE_LAYERS = frozenset({"hoodie", "pullover", "sweatshirt", "turtleneck"})
+
+# Слот, закрывающий тело целиком — платье/юбка-комбинезон или костюм.
+_WHOLE_SLOTS = frozenset({"dress", "set"})
+
+
+def _covers_top(item: dict) -> bool:
+    """True, если вещь сама по себе закрывает верх."""
+    slot = slot_of(item.get("clothing_type"), item.get("name") or item.get("item_name"))
+    if slot == "top":
+        return True
+    if slot == "layer":
+        return normalize_clothing_type(item.get("clothing_type")) in _STANDALONE_LAYERS
+    return False
 
 
 def covers_body(items: list) -> bool:
     """True, если образ одевает человека целиком, пусть даже двумя вещами.
 
-    Нужна как исключение из порога «минимум 3 вещи»: снятие аксессуаров
-    превращает «свитшот + брюки + очки» в «свитшот + брюки», и порог убивал
-    совершенно нормальный образ. Тот же довод уже записан в repair_outfit про
-    пару «платье + туфли».
+    Единственное определение «одет ли человек» на весь проект: им пользуются и
+    личные рекомендации (исключение из порога «минимум 3 вещи», иначе снятие
+    аксессуаров превращало «свитшот + брюки + очки» в пару и убивало её), и
+    сидер витрины. Раньше у них были свои несовместимые проверки: сидер не
+    признавал слой за верх вообще, из-за чего терял «свитшот + брюки», а
+    рекомендации признавали любой слой и пропускали кардиган на голое тело.
     """
-    slots = {slot_of(it.get("clothing_type")) for it in items}
-    if slots & {"dress", "set"}:
-        return True
-    return bool(slots & _BOTTOM_SLOTS) and bool(slots & _TOP_SLOTS)
+    slots = [slot_of(it.get("clothing_type"), it.get("name") or it.get("item_name"))
+             for it in items]
+    whole = [s for s in slots if s in _WHOLE_SLOTS]
+    if len(whole) > 1:
+        return False                      # платье и костюм в одном образе — не образ
+    if whole:
+        return True                       # платье/костюм закрывают и верх, и низ
+    if not any(s in _BOTTOM_SLOTS for s in slots):
+        return False
+    return any(_covers_top(it) for it in items)
 
 
 def item_window(item: dict) -> tuple[int, int]:

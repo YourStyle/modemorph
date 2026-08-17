@@ -149,6 +149,34 @@ def test_has_bottom_accepts_normal_outfits():
     assert has_bottom([_item("костюм", "classic"), _item("туфли", "shoes")])
 
 
+def test_covers_body_distinguishes_layers_that_need_something_underneath():
+    """Слой слою рознь — на этом расходились сидер витрины и рекомендации.
+
+    Кардиган на голое тело — это те самые 42 образа из 71 «джинсы + кроссовки +
+    кардиган» из dry-run сидера 17.08.2026. Свитшот на голое тело — нормально,
+    и требование обязательной рубашки под ним теряло живые образы.
+    """
+    # нужен низ + что-то, что само закрывает верх
+    assert covers_body([_item("джинсы", "jeans"), _item("свитшот", "sweatshirt")])
+    assert covers_body([_item("джинсы", "jeans"), _item("худи", "hoodie")])
+    assert covers_body([_item("брюки", "pants"), _item("водолазка", "turtleneck")])
+    # а эти слои сами верх не закрывают
+    assert not covers_body([_item("джинсы", "jeans"), _item("кроссовки", "sneakers"),
+                            _item("кардиган", "cardigan")])
+    assert not covers_body([_item("брюки", "pants"), _item("пиджак", "suit-jacket")])
+    assert not covers_body([_item("брюки", "pants"), _item("жилет", "vest")])
+    # но с рубашкой под низ — образ полный
+    assert covers_body([_item("брюки", "pants"), _item("пиджак", "suit-jacket"),
+                        _item("рубашка", "shirt")])
+
+
+def test_covers_body_rejects_two_whole_body_garments():
+    """Платье и костюм в одном образе — не образ. Правило пришло из сидера."""
+    assert not covers_body([_item("платье", "dress"), _item("костюм", "classic"),
+                            _item("туфли", "shoes")])
+    assert covers_body([_item("платье", "dress"), _item("туфли", "shoes")])
+
+
 def test_covers_body_rescues_valid_two_item_outfits():
     """Порог «минимум 3 вещи» не должен убивать образ, который одевает целиком.
 
