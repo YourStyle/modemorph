@@ -50,21 +50,29 @@ CURATOR_UUID = "00000000-0000-0000-0000-000000000000"
 # одна фраза про обувь не спрашивала. Отсюда правило: у каждого кружка должна
 # быть фраза на верх, на низ и на обувь. Гистограмма слотов печатается на
 # каждом прогоне (--dry-run), чтобы перекос было видно сразу.
+# Мужские фразы заданы явным «men's ...»: каталог женоцентричный, и без этого у
+# «Франции» и «Кореи» мужского верха было по 2, у «Скандинавии» — 0, то есть
+# мужских образов кружок почти не давал (замер по гистограмме 2026-08-17).
 VIBES: dict[str, list[str]] = {
     "Япония": ["japandi minimal outfit", "oversized muted layering", "earth tone linen",
-               "flat leather shoes neutral"],
+               "flat leather shoes neutral",
+               "men's oversized linen shirt", "men's wide leg trousers neutral"],
     "Франция": ["parisian chic outfit", "breton stripe top", "tailored blazer casual",
-                "straight leg jeans", "ballet flats"],
+                "straight leg jeans", "ballet flats",
+                "men's striped long sleeve shirt", "men's slim dark jeans"],
     "Италия": ["sprezzatura tailoring", "knit polo trousers", "knit polo shirt",
-               "leather loafers"],
+               "leather loafers", "men's knit polo shirt", "men's tailored trousers"],
     "Америка": ["preppy college outfit", "workwear denim", "varsity streetwear",
-                "college cardigan", "white sneakers"],
-    "Корея": ["korean soft minimal", "cropped proportions pastel", "chunky white sneakers"],
+                "college cardigan", "white sneakers",
+                "men's oxford shirt", "men's straight jeans"],
+    "Корея": ["korean soft minimal", "cropped proportions pastel", "chunky white sneakers",
+              "men's boxy t-shirt neutral", "men's relaxed trousers light"],
     # «white knit sweater» ложится в слой (pullover), а не в верх — Скандинавии
     # нужны именно рубашка/лонгслив, иначе female top = 6, male top = 0.
     "Скандинавия": ["scandi minimal monochrome", "neutral oversized coat",
                     "plain white shirt", "black longsleeve top",
-                    "straight trousers neutral", "black ankle boots"],
+                    "straight trousers neutral", "black ankle boots",
+                    "men's plain white shirt", "men's black trousers straight"],
 }
 
 K_PER_PHRASE = 40          # запас: после отсечки по скору и раскладки по слотам останется меньше

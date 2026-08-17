@@ -1348,14 +1348,17 @@ async def generate_outfit_lookbooks(
     force = bool(body.get("force"))
     max_cost = float(body.get("max_cost_usd") or 1.0)
 
-    sql = "SELECT id, gender, vibe, preview_image_url FROM outfits WHERE vibe IS NOT NULL"
+    # Порядок чередует полы. Просто ORDER BY id тратил бы бюджет на первые по id,
+    # а каталог женоцентричный — мужские образы лежат в конце и до них деньги бы
+    # не доехали. row_number по полу + ORDER BY rn даёт ж/м/ж/м...
+    inner = "SELECT id, gender, vibe, preview_image_url, row_number() OVER (PARTITION BY gender ORDER BY id) AS rn FROM outfits WHERE vibe IS NOT NULL"
     binds: dict = {}
     if vibe:
-        sql += " AND vibe = :vibe"
+        inner += " AND vibe = :vibe"
         binds["vibe"] = vibe
     if not force:
-        sql += f" AND (preview_image_url IS NULL OR preview_image_url NOT LIKE '%/{lookbook.S3_FOLDER}/%')"
-    sql += " ORDER BY id LIMIT :lim"
+        inner += f" AND (preview_image_url IS NULL OR preview_image_url NOT LIKE '%/{lookbook.S3_FOLDER}/%')"
+    sql = f"SELECT id, gender, vibe, preview_image_url FROM ({inner}) t ORDER BY rn, gender LIMIT :lim"
     binds["lim"] = limit
 
     targets = (await db.execute(text(sql), binds)).mappings().all()
