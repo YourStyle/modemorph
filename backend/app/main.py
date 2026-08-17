@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     auth, health, wardrobe, wardrobe_user_items, basic_items,
     limits, recommendations, outfits, looks, payments,
-    ai, me, upload, weather, misc, admin, cron, partner,
+    ai, ai_chats, me, upload, weather, misc, admin, cron, partner,
     item_dislikes, rec_events, widget,
 )
 from slowapi import _rate_limit_exceeded_handler
@@ -66,6 +66,7 @@ app.include_router(limits.router, prefix="/api/limits", tags=["limits"])
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["recommendations"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
+app.include_router(ai_chats.router, prefix="/api/ai", tags=["ai-chats"])
 app.include_router(upload.router, prefix="/api", tags=["upload"])
 app.include_router(weather.router, prefix="/api", tags=["weather"])
 app.include_router(misc.router, prefix="/api", tags=["misc"])
