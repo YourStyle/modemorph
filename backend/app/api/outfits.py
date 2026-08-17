@@ -35,9 +35,29 @@ async def get_outfits(
     return {"outfits": items, "data": items}
 
 
+def _inspiration_filter(gender: Optional[str], vibe: Optional[str]) -> tuple[str, dict]:
+    """WHERE для ленты идей. Чистая функция — покрыта test_inspiration_vibe.py.
+
+    Курируемая витрина («кружки по странам», outfits.vibe — миграция 024) НЕ
+    должна течь в общую ленту: у витрины created_at = момент наполнения, то есть
+    она самая свежая и при ORDER BY created_at DESC вытесняет обычные образы за
+    границу LIMIT. Поэтому без параметра vibe отдаём только vibe IS NULL, а
+    курируемое — исключительно по явно выбранному кружку.
+    """
+    if vibe:
+        clauses, binds = ["vibe = :vibe"], {"vibe": vibe}
+    else:
+        clauses, binds = ["vibe IS NULL"], {}
+    if gender:
+        clauses.append("(gender = :g OR gender = 'unisex' OR gender IS NULL)")
+        binds["g"] = gender
+    return " AND ".join(clauses), binds
+
+
 @router.get("/inspiration")
 async def get_inspiration(
     gender: str = Query(None),
+    vibe: str = Query(None, description="кружок витрины, например «Япония»; пусто — обычная лента"),
     limit: int = Query(20, ge=1, le=50),
     cursor: str = Query(None),
     user: dict = Depends(get_current_user),
@@ -48,12 +68,11 @@ async def get_inspiration(
     Returns { outfits: FeedOutfit[], nextCursor: null }
     """
     # Fetch outfits
-    sql = "SELECT id, name, description, preview_image_url, created_at, gender, occasion, season FROM outfits WHERE 1=1"
-    binds = {}
-    if gender:
-        sql += " AND (gender = :g OR gender = 'unisex' OR gender IS NULL)"
-        binds["g"] = gender
-    sql += " ORDER BY created_at DESC LIMIT :lim"
+    where, binds = _inspiration_filter(gender, vibe)
+    sql = (
+        "SELECT id, name, description, preview_image_url, created_at, gender, occasion, season, vibe "
+        f"FROM outfits WHERE {where} ORDER BY created_at DESC LIMIT :lim"
+    )
     binds["lim"] = limit
 
     result = await db.execute(text(sql), binds)
@@ -131,6 +150,7 @@ async def get_inspiration(
             "likes": likes_by_outfit.get(oid, 0),
             "isLiked": oid in liked_by_me,
             "preview_image_url": o["preview_image_url"],
+            "vibe": o["vibe"],
         })
 
     random.shuffle(feed)
