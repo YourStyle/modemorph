@@ -94,6 +94,29 @@ export function TopNavigation() {
   // контент не двигает. Отдаём его реальную высоту в --tg-hint-h — на неё
   // <main> добавляет отступ, пока тост на экране. Меряем, а не заводим
   // константу: текст переносится на второй строке на узких экранах.
+  // Высоту пилюли МЕРЯЕМ, а не берём константой. В globals.css --tg-nav-content-h
+  // задан как 52px, но реальная пилюля (py-1.5, мелкий текст, аватар) заметно
+  // ниже — разница и была лишней полосой сверху на всех экранах, кроме тех двух,
+  // что считают верх сами. Меняется шрифт или содержимое пилюли — отступ
+  // подстроится, расходиться больше нечему.
+  const pillRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = pillRef.current
+    if (!el) return
+    const root = document.documentElement
+    const sync = () => {
+      const h = Math.round(el.getBoundingClientRect().height)
+      if (h > 0) root.style.setProperty("--tg-nav-content-h", `${h}px`)
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.style.removeProperty("--tg-nav-content-h")
+    }
+  }, [isTmaMobile])
+
   const cityHintRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const root = document.documentElement
@@ -316,6 +339,7 @@ export function TopNavigation() {
             стеклянная сама по себе, этого достаточно. */}
         <div className="fixed inset-x-0 top-0 flex justify-center pointer-events-none z-50">
           <div
+            ref={pillRef}
             className="pointer-events-auto"
             style={{ marginTop: "calc(var(--tg-safe-top) + var(--tg-nav-gap))" }}
           >

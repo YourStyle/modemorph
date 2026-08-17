@@ -569,9 +569,13 @@ export default function AIAssistantPage() {
           заголовком поверх контента. Экран выглядит так же, как остальные —
           с общей пилюлей наверху, — просто по бокам от неё появляются два
           входа, которых у пилюли на других экранах нет. */}
+      {/* Кнопки стоят ПОД пилюлей, а не по бокам от неё. Верхние углы в Telegram
+          заняты нативными контролами: слева «Закрыть», справа ⌄ и ⋯. Пилюля по
+          центру между ними проскакивает, а боковые кнопки садились ровно на них
+          — с устройства это и прилетело. Ниже полосы Telegram углы наши. */}
       <div
-        className="pointer-events-none fixed inset-x-0 z-40 flex items-center justify-between px-4"
-        style={{ top: "calc(var(--tg-safe-top) + var(--tg-nav-gap))" }}
+        className="pointer-events-none fixed inset-x-0 z-40 flex items-center justify-end gap-2 px-4"
+        style={{ top: "calc(var(--tg-content-top) + var(--tg-hint-h, 0px) + 8px)" }}
       >
         <button
           onClick={() => setHistoryOpen(true)}
@@ -589,10 +593,11 @@ export default function AIAssistantPage() {
         </button>
       </div>
 
-      {/* Messages */}
+      {/* Messages. Верхний отступ учитывает и ряд кнопок над лентой (44px
+          кнопка + 8px сверху + 8px снизу), иначе первое сообщение уезжает под них. */}
       <div
         className="flex-1 overflow-y-auto p-4 space-y-3 pb-56"
-        style={{ paddingTop: "calc(var(--tg-content-top) + var(--tg-hint-h, 0px) + 12px)" }}
+        style={{ paddingTop: "calc(var(--tg-content-top) + var(--tg-hint-h, 0px) + 60px)" }}
       >
         {isEmptyChat && (
           <div className="animate-fade-up pt-2 pb-1">
