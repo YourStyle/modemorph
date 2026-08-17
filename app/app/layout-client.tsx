@@ -52,7 +52,7 @@ export default function AppClientLayout({
         style={
           isTmaMobile && !hideTopNavigation
             ? {
-                paddingTop: "var(--tg-content-top)",
+                paddingTop: "calc(var(--tg-content-top) + var(--tg-hint-h, 0px))",
               }
             : undefined
         }

@@ -359,7 +359,7 @@ export default function AIAssistantPage() {
           нейтральный значок, единственный акцент экрана зарезервирован под кнопку отправки */}
       <div
         className="glass relative z-10 border-b border-line px-4 pb-3"
-        style={{ paddingTop: "calc(var(--tg-safe-top) + 0.75rem)" }}
+        style={{ paddingTop: "calc(var(--tg-content-top) + var(--tg-hint-h, 0px))" }}
       >
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-full bg-ink">

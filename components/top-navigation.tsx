@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   MapPin,
@@ -94,6 +94,28 @@ export function TopNavigation() {
   const isTmaMobile = useTmaMobile()
   const [cityPickerOpen, setCityPickerOpen] = useState(false)
   const [showCityHint, setShowCityHint] = useState(false)
+
+  // Тост про город фиксирован под пилюлей, поэтому из потока он выпал и сам
+  // контент не двигает. Отдаём его реальную высоту в --tg-hint-h — на неё
+  // <main> добавляет отступ, пока тост на экране. Меряем, а не заводим
+  // константу: текст переносится на второй строке на узких экранах.
+  const cityHintRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const root = document.documentElement
+    const el = cityHintRef.current
+    if (!el) {
+      root.style.removeProperty("--tg-hint-h")
+      return
+    }
+    const sync = () => root.style.setProperty("--tg-hint-h", `${Math.round(el.getBoundingClientRect().height)}px`)
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      root.style.removeProperty("--tg-hint-h")
+    }
+  }, [showCityHint, weather])
 
   useEffect(() => {
     // Дата — не часы (их и так показывает ОС в статус-баре), секундный тик ей не
@@ -348,12 +370,16 @@ export function TopNavigation() {
         </div>
 
         {showCityHint && weather && (
-          // marginTop = та же формула, что у стеклянной подложки/пилюли выше —
-          // без неё тост рисуется в обычном потоке от y=0 и оказывается под
-          // фиксированной пилюлей и родной шапкой Telegram (z-40/z-50).
+          // Тост фиксирован сразу под пилюлей, а не стоит в потоке. В потоке он
+          // отступал на safe-top + gap, и ровно эти же слагаемые ещё раз входили
+          // в padding-top у <main> — двойной счёт плюс высота самого тоста, это
+          // и был оставшийся провал до контента. Его реальную высоту меряем и
+          // отдаём в --tg-hint-h, чтобы контент сдвигался ровно на неё и только
+          // пока тост виден.
           <div
-            className="px-4 py-2 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2"
-            style={{ marginTop: TG_PILL_TOP }}
+            ref={cityHintRef}
+            className="fixed inset-x-0 z-40 px-4 py-2 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2"
+            style={{ top: "var(--tg-content-top)" }}
           >
             <span className="inline-flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
