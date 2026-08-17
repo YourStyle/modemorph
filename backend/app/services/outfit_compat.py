@@ -62,7 +62,10 @@ def has_bottom(items: list) -> bool:
     Верх намеренно НЕ требуется: свитшот или худи с брюками — нормальный образ
     без рубашки под ними, и требование «обязательно top» выбрасывало бы его.
     """
-    return any(slot_of(it.get("clothing_type")) in _BOTTOM_SLOTS for it in items)
+    return any(
+        slot_of(it.get("clothing_type"), it.get("name") or it.get("item_name")) in _BOTTOM_SLOTS
+        for it in items
+    )
 
 
 # Слой слою рознь, и на этом различии держится вся функция ниже.
