@@ -1318,3 +1318,109 @@ async def outfit_scorer_score(request: Request, user: dict = Depends(get_admin_u
     except httpx.HTTPError as e:
         logger.error(f"[admin/outfit-score] AI call failed: {e}")
         raise HTTPException(status_code=502, detail=f"AI service error: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Лукбук витрины: собранный образ -> кадр ИИ-модели в этих вещах
+# ---------------------------------------------------------------------------
+# Превью курируемых образов (outfits.vibe, миграция 024) изначально ставилось
+# как image_url первой вещи — карточка выглядела товаром, а не луком. Здесь
+# вещи образа уходят референсами в Gemini и превью заменяется на кадр модели.
+#
+# Бюджет ограничен жёстко: max_cost_usd проверяется ПЕРЕД каждым следующим
+# кадром по фактической стоимости уже сделанных (OpenRouter /api/v1/generation),
+# а не по оценке. Кадры генерируются последовательно именно поэтому —
+# параллельный gather не даёт остановиться на нужном рубле.
+
+
+@router.post("/outfits/lookbook")
+async def generate_outfit_lookbooks(
+    request: Request,
+    user: dict = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.api.misc import _openrouter_chat, _upload_base64_to_s3
+    from app.services import lookbook
+
+    body = await request.json() if await request.body() else {}
+    vibe = (body.get("vibe") or "").strip() or None
+    limit = max(1, min(int(body.get("limit") or 5), 100))
+    force = bool(body.get("force"))
+    max_cost = float(body.get("max_cost_usd") or 1.0)
+
+    sql = "SELECT id, gender, vibe, preview_image_url FROM outfits WHERE vibe IS NOT NULL"
+    binds: dict = {}
+    if vibe:
+        sql += " AND vibe = :vibe"
+        binds["vibe"] = vibe
+    if not force:
+        sql += f" AND (preview_image_url IS NULL OR preview_image_url NOT LIKE '%/{lookbook.S3_FOLDER}/%')"
+    sql += " ORDER BY id LIMIT :lim"
+    binds["lim"] = limit
+
+    targets = (await db.execute(text(sql), binds)).mappings().all()
+
+    results: list[dict] = []
+    spent = 0.0
+    unpriced = 0
+
+    for row in targets:
+        if spent >= max_cost:
+            results.append({"outfit_id": row["id"], "status": "skipped_budget"})
+            continue
+
+        items = (await db.execute(text("""
+            SELECT wi.item_name AS name, wi.color, wi.clothing_type, wi.image_url
+            FROM outfit_items oi
+            JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
+            WHERE oi.outfit_id = :oid
+              AND COALESCE(wi.is_hidden, false) = false
+              AND COALESCE(wi.is_kids, false) = false
+            ORDER BY oi.position
+        """), {"oid": row["id"]})).mappings().all()
+        items = [dict(i) for i in items]
+        if not items:
+            results.append({"outfit_id": row["id"], "status": "no_items"})
+            continue
+
+        try:
+            data_uri, gen_id = await lookbook.generate(
+                _openrouter_chat, row["vibe"], row["gender"], items, seed=int(row["id"]),
+            )
+        except Exception as e:
+            logger.error(f"[admin/lookbook] outfit {row['id']}: {e}")
+            results.append({"outfit_id": row["id"], "status": "error", "error": str(e)[:200]})
+            continue
+
+        cost = await lookbook.fetch_cost(settings.OPENROUTER_API_KEY, gen_id)
+        if cost is None:
+            unpriced += 1
+        else:
+            spent += cost
+
+        if not data_uri:
+            results.append({"outfit_id": row["id"], "status": "no_image", "cost_usd": cost})
+            continue
+
+        url = await _upload_base64_to_s3(data_uri, folder=lookbook.S3_FOLDER)
+        if url.startswith("data:"):
+            # S3 недоступен — в preview_image_url data-uri класть нельзя, он там
+            # не помещается осмысленно и попадёт в ленту как мусор.
+            results.append({"outfit_id": row["id"], "status": "s3_failed", "cost_usd": cost})
+            continue
+
+        await db.execute(
+            text("UPDATE outfits SET preview_image_url = :u WHERE id = :id"),
+            {"u": url, "id": row["id"]},
+        )
+        await db.commit()
+        results.append({"outfit_id": row["id"], "status": "ok", "url": url, "cost_usd": cost})
+
+    return {
+        "requested": len(targets),
+        "generated": sum(1 for r in results if r["status"] == "ok"),
+        "total_cost_usd": round(spent, 4),
+        "unpriced_generations": unpriced,
+        "budget_usd": max_cost,
+        "results": results,
+    }
