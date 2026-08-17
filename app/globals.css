@@ -79,6 +79,17 @@
        across files derived from this. */
     --tg-nav-gap: 12px;
     --tg-nav-content-h: 52px;
+
+    /* Единственная величина, от которой считают ВСЕ потребители верха:
+       инсет Telegram + зазор + сама пилюля = где начинается контент.
+       Раньше каждый считал свою формулу, и пилюля получала marginTop,
+       равный инсету ПЛЮС её собственные 52px — то есть уезжала вниз на
+       свой же рост, стеклянная подложка оставалась выше неё и при скролле
+       читалась как отдельная полупрозрачная плашка, а контент уходил вниз
+       вслед за всем этим. Одна формула — расхождению неоткуда взяться. */
+    --tg-content-top: calc(
+      var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-gap) + var(--tg-nav-content-h)
+    );
   }
 
   .dark {
@@ -148,7 +159,7 @@
      nothing here needs to fight a layout-shifting outline — the fix is the
      scroll behavior and the tap flash, not the ring. */
   html {
-    scroll-padding-top: calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-content-h, 52px));
+    scroll-padding-top: var(--tg-content-top);
     scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
   }
   html, body {

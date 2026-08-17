@@ -40,10 +40,10 @@ export default function AppClientLayout({
   return (
     <div className="min-h-screen bg-background">
       {!hideTopNavigation && <TopNavigation />}
-      {/* Верхний паддинг = реальный инсет Telegram (--tg-top, с фолбэком на
-          env()) + высота содержимого плавающей шапки (--tg-nav-content-h,
-          токен в app/globals.css) — та же формула, что и у backdrop-подложки
-          в top-navigation.tsx, посчитана, а не угадана числом 70px. */}
+      {/* Верхний паддинг — тот же токен --tg-content-top (app/globals.css), что
+          у стеклянной подложки шапки: инсет Telegram + зазор + высота пилюли.
+          Держим одну величину на всех потребителей: когда формулу считали в
+          каждом файле отдельно, пилюля уезжала вниз на собственную высоту. */}
       <main
         className={cn(
           "pt-0 max-w-7xl m-auto",
@@ -52,8 +52,7 @@ export default function AppClientLayout({
         style={
           isTmaMobile && !hideTopNavigation
             ? {
-                paddingTop:
-                  "calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-content-h, 52px))",
+                paddingTop: "var(--tg-content-top)",
               }
             : undefined
         }

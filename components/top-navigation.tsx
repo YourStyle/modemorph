@@ -28,7 +28,12 @@ import { cn } from "@/lib/utils"
 // Реальный верхний инсет Telegram + высота плавающей шапки — единая формула,
 // используется и для стеклянной подложки, и для отступа самой пилюли, и для
 // тоста про город ниже. Токены объявлены в app/globals.css.
-const TG_HEADER_HEIGHT = "calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-content-h, 52px))"
+// Подложка перекрывает всю полосу от края экрана до низа пилюли.
+const TG_HEADER_HEIGHT = "var(--tg-content-top)"
+// А сама пилюля отступает ТОЛЬКО на инсет Telegram плюс зазор — прибавлять сюда
+// ещё и её собственную высоту (как было) значит уронить её на свой же рост вниз
+// и оставить подложку висеть отдельной плашкой над ней.
+const TG_PILL_TOP = "calc(var(--tg-top, env(safe-area-inset-top, 0px)) + var(--tg-nav-gap))"
 
 interface WeatherData {
   temperature: number
@@ -348,7 +353,7 @@ export function TopNavigation() {
           // фиксированной пилюлей и родной шапкой Telegram (z-40/z-50).
           <div
             className="px-4 py-2 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2"
-            style={{ marginTop: TG_HEADER_HEIGHT }}
+            style={{ marginTop: TG_PILL_TOP }}
           >
             <span className="inline-flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
