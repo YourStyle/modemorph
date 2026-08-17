@@ -94,26 +94,39 @@ export function TopNavigation() {
   // контент не двигает. Отдаём его реальную высоту в --tg-hint-h — на неё
   // <main> добавляет отступ, пока тост на экране. Меряем, а не заводим
   // константу: текст переносится на второй строке на узких экранах.
-  // Высоту пилюли МЕРЯЕМ, а не берём константой. В globals.css --tg-nav-content-h
-  // задан как 52px, но реальная пилюля (py-1.5, мелкий текст, аватар) заметно
-  // ниже — разница и была лишней полосой сверху на всех экранах, кроме тех двух,
-  // что считают верх сами. Меняется шрифт или содержимое пилюли — отступ
-  // подстроится, расходиться больше нечему.
+  // --tg-content-top МЕРЯЕТСЯ по реальной нижней кромке пилюли, а не собирается
+  // арифметикой из env() + инсета Telegram + зазора + высоты.
+  //
+  // Складывать оказалось нельзя: на iOS вебвью заходит под вырез, поэтому env()
+  // ненулевой, а contentSafeAreaInset клиент может вообще не прислать — тогда
+  // --tg-chrome равен нулю, пилюля встаёт на одну линию с шапкой Telegram, а
+  // зарезервированное под неё место считается от других слагаемых и расходится
+  // с тем, где пилюля оказалась на самом деле. На Android env() нулевой, и та же
+  // формула даёт другой результат — отсюда «на айфоне отступ есть, на андроиде
+  // нет». Пилюля fixed, её bottom в координатах вьюпорта стабилен, так что
+  // измерение — единственная величина, которая не может разойтись с реальностью.
+  //
+  // CSS-определение в globals.css остаётся фолбэком: инлайновый стиль на :root
+  // перебивает его, а вне Telegram (когда этот эффект не смонтирован) работает оно.
   const pillRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const el = pillRef.current
     if (!el) return
     const root = document.documentElement
     const sync = () => {
-      const h = Math.round(el.getBoundingClientRect().height)
-      if (h > 0) root.style.setProperty("--tg-nav-content-h", `${h}px`)
+      const bottom = Math.round(el.getBoundingClientRect().bottom)
+      if (bottom > 0) root.style.setProperty("--tg-content-top", `${bottom}px`)
     }
     sync()
     const ro = new ResizeObserver(sync)
     ro.observe(el)
+    window.addEventListener("resize", sync)
+    window.addEventListener("orientationchange", sync)
     return () => {
       ro.disconnect()
-      root.style.removeProperty("--tg-nav-content-h")
+      window.removeEventListener("resize", sync)
+      window.removeEventListener("orientationchange", sync)
+      root.style.removeProperty("--tg-content-top")
     }
   }, [isTmaMobile])
 
