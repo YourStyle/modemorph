@@ -68,8 +68,18 @@ _DEFAULT_BACKDROP = "a seamless light grey studio backdrop with soft even light"
 
 
 def pick_model(gender: str | None, seed: int) -> str:
-    """Типаж модели: детерминированно по id образа, чтобы прогоны совпадали."""
-    variants = MODELS.get((gender or "").strip().lower()) or MODELS["female"]
+    """Типаж модели: детерминированно по id образа, чтобы прогоны совпадали.
+
+    Пол образа 'unisex' означает, что у его вещей пол в каталоге не размечен —
+    таких образов 31 из 72 (замер 2026-08-17). Брать для них женский типаж «по
+    умолчанию» нельзя: витрина молча съехала бы к 57 женским против 15 мужских
+    при формально сбалансированной базе. Такие вещи носибельны любым, поэтому
+    пол модели чередуется по чётности seed — детерминированно, как и типаж.
+    """
+    g = (gender or "").strip().lower()
+    if g not in MODELS:
+        g = "female" if seed % 2 == 0 else "male"
+    variants = MODELS[g]
     return variants[seed % len(variants)]
 
 
@@ -201,10 +211,19 @@ if __name__ == "__main__":
     assert pick_model("male", 0) != pick_model("male", 1)
     assert pick_model("male", 3) == pick_model("male", 0), "ротация должна быть стабильной"
 
-    # Неизвестный кружок и пустой пол не роняют промпт.
+    # Неизвестный кружок не роняет промпт — подставляется нейтральная студия.
     d = build_prompt("Марс", None, items, seed=0)
     assert _DEFAULT_BACKDROP in d, d
-    assert MODELS["female"][0] in d, "без пола берём женский типаж по умолчанию"
+
+    # unisex/пустой пол чередуется по чётности seed, а не молча уходит в женский.
+    assert MODELS["female"][0] in build_prompt(None, "unisex", items, seed=0)
+    assert MODELS["male"][1] in build_prompt(None, "unisex", items, seed=1)
+    assert pick_model("unisex", 2) in MODELS["female"], "чётный seed -> женский"
+    assert pick_model("unisex", 3) in MODELS["male"], "нечётный seed -> мужской"
+    assert pick_model(None, 5) == pick_model("", 5), "пустой и None ведут себя одинаково"
+    # Явный пол чередование не затрагивает.
+    assert pick_model("male", 2) in MODELS["male"]
+    assert pick_model("female", 3) in MODELS["female"]
 
     # Число вещей в тексте всегда совпадает со списком — иначе модель добавляет своё.
     two = build_prompt(None, "female", items[:2], seed=0)
