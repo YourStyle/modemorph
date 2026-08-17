@@ -65,6 +65,25 @@ def has_bottom(items: list) -> bool:
     return any(slot_of(it.get("clothing_type")) in _BOTTOM_SLOTS for it in items)
 
 
+# Слоты, которые закрывают верх. 'layer' здесь намеренно: свитшот, худи или
+# джемпер носят на голое тело, рубашка под ними не обязательна.
+_TOP_SLOTS = frozenset({"top", "layer"})
+
+
+def covers_body(items: list) -> bool:
+    """True, если образ одевает человека целиком, пусть даже двумя вещами.
+
+    Нужна как исключение из порога «минимум 3 вещи»: снятие аксессуаров
+    превращает «свитшот + брюки + очки» в «свитшот + брюки», и порог убивал
+    совершенно нормальный образ. Тот же довод уже записан в repair_outfit про
+    пару «платье + туфли».
+    """
+    slots = {slot_of(it.get("clothing_type")) for it in items}
+    if slots & {"dress", "set"}:
+        return True
+    return bool(slots & _BOTTOM_SLOTS) and bool(slots & _TOP_SLOTS)
+
+
 def item_window(item: dict) -> tuple[int, int]:
     """Температурное окно (min, max) одной вещи образа."""
     tmin = item.get("temp_min")

@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.services.outfit_compat import (  # noqa: E402
-    has_bottom, is_coherent, item_window, repair_outfit, shared_window,
+    covers_body, has_bottom, is_coherent, item_window, repair_outfit, shared_window,
 )
 
 
@@ -147,6 +147,21 @@ def test_has_bottom_accepts_normal_outfits():
     assert has_bottom([_item("платье", "dress"), _item("туфли", "shoes")])
     # костюм тоже — отдельные брюки к нему не нужны
     assert has_bottom([_item("костюм", "classic"), _item("туфли", "shoes")])
+
+
+def test_covers_body_rescues_valid_two_item_outfits():
+    """Порог «минимум 3 вещи» не должен убивать образ, который одевает целиком.
+
+    Кейс с прода: «свитшот + брюки + очки» после снятия аксессуара превращался
+    в двухпредметный и выбрасывался, хотя носить его можно.
+    """
+    assert covers_body([_item("свитшот", "sweatshirt"), _item("брюки", "pants")])
+    assert covers_body([_item("платье", "dress")])
+    assert covers_body([_item("костюм", "classic")])
+    # неполные наборы не спасаем
+    assert not covers_body([_item("рубашка", "shirt"), _item("куртка", "jacket")])
+    assert not covers_body([_item("брюки", "pants"), _item("кроссовки", "sneakers")])
+    assert not covers_body([_item("футболка", "t-shirt"), _item("очки", "верхняя")])
 
 
 def test_has_bottom_ignores_accessories_and_shoes():

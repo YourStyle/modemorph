@@ -22,7 +22,7 @@ from app.core.deps import get_current_user
 from app.services.weather_rules import temp_ok
 from app.services.catalog_filters import gender_ok
 from app.services.capsule import capsule_style_guide
-from app.services.outfit_compat import repair_outfit, item_window, has_bottom
+from app.services.outfit_compat import repair_outfit, item_window, has_bottom, covers_body
 
 logger = logging.getLogger(__name__)
 
@@ -435,8 +435,14 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                         ", ".join(str(d.get("name")) for d in dropped),
                     )
                 s["items"] = kept
-        # Drop suggestions with too few items (post-dedup can drop below 3)
-        section["suggestions"] = [s for s in section.get("suggestions", []) if len(s.get("items") or []) >= 3]
+        # Drop suggestions with too few items (post-dedup can drop below 3).
+        # Исключение — образ, который и двумя вещами одевает целиком: снятие
+        # аксессуаров превращает «свитшот + брюки + очки» в «свитшот + брюки»,
+        # и порог выбрасывал вполне носибельный образ.
+        section["suggestions"] = [
+            s for s in section.get("suggestions", [])
+            if len(s.get("items") or []) >= 3 or covers_body(s.get("items") or [])
+        ]
         # Образ без низа надеть нельзя. Ни температурная проверка, ни дедуп по
         # слотам этого не ловят: «рубашка + куртка» согласована по погоде и не
         # дублирует слоты, но это не образ. Ставим ПОСЛЕ repair_outfit — тот
