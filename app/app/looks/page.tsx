@@ -521,10 +521,9 @@ export default function LooksPage() {
 
   return (
     <div className="px-4 pt-2 pb-6 space-y-8">
-      {/* Header */}
+      {/* Заголовка «Образы» здесь намеренно нет: активный пункт таб-бара внизу
+          уже называет раздел, а H1 повторял ту же подпись и съедал верх экрана. */}
       <div className="space-y-3">
-        <h1 className="text-h1 text-ink">Образы</h1>
-
         <div className="space-y-2">
           <Button onClick={() => setIsCreateLookOpen(true)} variant="signal" size="lg" className="w-full">
             <Plus className="w-5 h-5" />
