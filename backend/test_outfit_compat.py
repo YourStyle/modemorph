@@ -12,7 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.services.outfit_compat import (  # noqa: E402
-    is_coherent, item_window, repair_outfit, shared_window,
+    has_bottom, is_coherent, item_window, repair_outfit, shared_window,
 )
 
 
@@ -127,6 +127,32 @@ def test_item_window_with_only_one_bound():
     assert (lo, hi) == (20, 50), (lo, hi)
     lo, hi = item_window(_item("шорты", "shorts", None, 35))
     assert (lo, hi) == (-50, 35), (lo, hi)
+
+
+def test_has_bottom_rejects_outfit_without_legs():
+    """Реальный образ с прода 17.08.2026: «Прогулка с комфортом» = рубашка +
+    куртка + очки. По температуре согласован, слоты не дублируются, но надеть
+    нельзя — ни is_coherent, ни дедуп по слотам эту дыру не видят."""
+    walk = [_item("льняная рубашка", "shirt"), _item("Куртка-рубашка Fioroni", "jacket")]
+    assert is_coherent(walk), "по температуре образ согласован — ловить должен не temp"
+    assert not has_bottom(walk), "низа нет, образ обязан быть отброшен"
+
+
+def test_has_bottom_accepts_normal_outfits():
+    assert has_bottom([_item("футболка", "t-shirt"), _item("брюки", "pants")])
+    assert has_bottom([_item("рубашка", "shirt"), _item("джинсы", "jeans")])
+    # свитшот с брюками — верха-рубашки нет, и это нормальный образ
+    assert has_bottom([_item("свитшот", "sweatshirt"), _item("брюки", "pants")])
+    # платье самодостаточно
+    assert has_bottom([_item("платье", "dress"), _item("туфли", "shoes")])
+    # костюм тоже — отдельные брюки к нему не нужны
+    assert has_bottom([_item("костюм", "classic"), _item("туфли", "shoes")])
+
+
+def test_has_bottom_ignores_accessories_and_shoes():
+    """Обувь и аксессуары ног не прикрывают."""
+    assert not has_bottom([_item("футболка", "t-shirt"), _item("кроссовки", "sneakers")])
+    assert not has_bottom([_item("Очки", "верхняя"), _item("худи", "hoodie")])
 
 
 if __name__ == "__main__":

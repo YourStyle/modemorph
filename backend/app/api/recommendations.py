@@ -22,7 +22,7 @@ from app.core.deps import get_current_user
 from app.services.weather_rules import temp_ok
 from app.services.catalog_filters import gender_ok
 from app.services.capsule import capsule_style_guide
-from app.services.outfit_compat import repair_outfit, item_window
+from app.services.outfit_compat import repair_outfit, item_window, has_bottom
 
 logger = logging.getLogger(__name__)
 
@@ -414,6 +414,14 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                 # Preserve all items in the slot — that's the whole point of the section.
                 sug["items"] = enriched_items
             else:
+                # Вещи без слота (аксессуары, незаполненное 'верхняя') выкидываем
+                # и на чтении тоже: генерация их больше не отдаёт, но кеш от этого
+                # не лечится, а _dedup_by_slot складывает бесслотовые в passthrough
+                # безусловно — из-за чего одни очки висели в девяти образах разом.
+                enriched_items = [
+                    i for i in enriched_items
+                    if _SLOT_MAP.get(normalize_clothing_type(i.get("clothing_type")) or "")
+                ]
                 # Clean up already-cached outfits with duplicate slots (pre-fix cache).
                 sug["items"] = _dedup_by_slot(enriched_items)
         # Gap-секции — витрина по одному слоту, а не образ: чинить нечего.
@@ -429,6 +437,19 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                 s["items"] = kept
         # Drop suggestions with too few items (post-dedup can drop below 3)
         section["suggestions"] = [s for s in section.get("suggestions", []) if len(s.get("items") or []) >= 3]
+        # Образ без низа надеть нельзя. Ни температурная проверка, ни дедуп по
+        # слотам этого не ловят: «рубашка + куртка» согласована по погоде и не
+        # дублирует слоты, но это не образ. Ставим ПОСЛЕ repair_outfit — тот
+        # выбрасывает несочетаемое и сам может оставить образ без низа.
+        if not is_gap_section:
+            kept_sugs = []
+            for s in section.get("suggestions", []):
+                if has_bottom(s.get("items") or []):
+                    kept_sugs.append(s)
+                else:
+                    logger.info("[rec] образ %s выброшен: нет низа (%s)", s.get("id"),
+                                ", ".join(str(i.get("clothing_type")) for i in s.get("items") or []))
+            section["suggestions"] = kept_sugs
 
     # Drop sections with no suggestions
     return [s for s in sections if s.get("suggestions")]
