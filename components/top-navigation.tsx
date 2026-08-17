@@ -372,7 +372,7 @@ export function TopNavigation() {
           // пока тост виден.
           <div
             ref={cityHintRef}
-            className="fixed inset-x-0 z-40 px-4 py-2 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2"
+            className="fixed inset-x-0 z-40 px-4 py-1.5 bg-amber-50 text-amber-900 text-xs flex items-center justify-between gap-2"
             style={{ top: "var(--tg-content-top)" }}
           >
             <span className="inline-flex items-center gap-1">

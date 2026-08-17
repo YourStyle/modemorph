@@ -76,7 +76,7 @@
        padding, the backdrop, the city toast) must clear. Single definition —
        the two magic 70px/60px hardcoded numbers that used to disagree
        across files derived from this. */
-    --tg-nav-gap: 12px;
+    --tg-nav-gap: 8px;
     --tg-nav-content-h: 52px;
 
     /* --tg-chrome — ТОЛЬКО шапка самого Telegram, её выставляет
