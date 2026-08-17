@@ -17,10 +17,16 @@
     PYTHONPATH=backend python3 backend/app/services/lookbook.py
 """
 
+import asyncio
 import base64
-import hashlib
 
 import httpx
+
+# Замер 2026-08-17: один кадр 3:4 стоил $0.0686 (1120 image-токенов по $0.00006
+# плюс промпт). Используется как оценка, когда фактическую цену прочитать не
+# удалось — сторож бюджета должен ошибаться в сторону перерасхода бюджета
+# ВНИЗ, то есть считать неизвестный кадр платным, а не бесплатным.
+FALLBACK_COST_USD = 0.069
 
 # Папка в S3 — она же признак «превью уже сгенерировано» для админского батча.
 S3_FOLDER = "lookbook"
@@ -147,22 +153,32 @@ async def generate(chat, vibe: str | None, gender: str | None, items: list[dict]
     return images[0].get("image_url", {}).get("url") or None, result.get("id")
 
 
-async def fetch_cost(api_key: str, generation_id: str) -> float | None:
-    """Фактическая стоимость генерации по её id. None, если OpenRouter не ответил."""
+async def fetch_cost(api_key: str, generation_id: str, attempts: int = 4) -> float | None:
+    """Фактическая стоимость генерации по её id, с ретраями.
+
+    Ретраи обязательны: статистика у OpenRouter появляется НЕ сразу — запрос
+    сразу после генерации отдаёт не-200, и первый замер (2026-08-17) вернул
+    None, хотя через несколько секунд по тому же id пришло total_cost 0.0686.
+    Без ретраев сторож бюджета видел бы None на каждом кадре, не накапливал
+    трату и не остановился бы никогда — то есть охранял бы бюджет только на вид.
+    """
     if not generation_id:
         return None
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.get(
-                "https://openrouter.ai/api/v1/generation",
-                params={"id": generation_id},
-                headers={"Authorization": f"Bearer {api_key}"},
-            )
-            if resp.status_code != 200:
-                return None
-            return resp.json().get("data", {}).get("total_cost")
-    except Exception:
-        return None
+    for i in range(attempts):
+        if i:
+            await asyncio.sleep(2 * i)                # 0, 2, 4, 6 c
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                resp = await client.get(
+                    "https://openrouter.ai/api/v1/generation",
+                    params={"id": generation_id},
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+                if resp.status_code == 200:
+                    return resp.json().get("data", {}).get("total_cost")
+        except Exception:
+            pass
+    return None
 
 
 if __name__ == "__main__":

@@ -1394,7 +1394,10 @@ async def generate_outfit_lookbooks(
 
         cost = await lookbook.fetch_cost(settings.OPENROUTER_API_KEY, gen_id)
         if cost is None:
+            # Кадр уже оплачен, даже если статистика недоступна — считаем его по
+            # замеренной цене, иначе сторож бюджета «не видит» траты и не встанет.
             unpriced += 1
+            spent += lookbook.FALLBACK_COST_USD
         else:
             spent += cost
 
