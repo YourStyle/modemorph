@@ -263,9 +263,16 @@ async def write(vibe: str, outfits: list[list[dict]]) -> int:
             })
             oid = row.scalar()
             for pos, it in enumerate(items):
+                # БЕЗ ON CONFLICT DO NOTHING намеренно. Он тут был и замаскировал
+                # реальную поломку: написанный без указания конфликта, он глотал
+                # конфликт по ПЕРВИЧНОМУ ключу (последовательность outfit_items.id
+                # отставала от max(id) — миграция 025), и 11 образов из 72 молча
+                # остались без вещей. build_outfits не переиспользует вещь внутри
+                # образа, так что задуманный конфликт (outfit_id, wardrobe_item_id)
+                # невозможен, а любой другой должен падать громко.
                 await db.execute(text("""
                     INSERT INTO outfit_items (outfit_id, wardrobe_item_id, position)
-                    VALUES (:oid, :iid, :pos) ON CONFLICT DO NOTHING
+                    VALUES (:oid, :iid, :pos)
                 """), {"oid": oid, "iid": it["id"], "pos": pos})
             written += 1
         await db.commit()
