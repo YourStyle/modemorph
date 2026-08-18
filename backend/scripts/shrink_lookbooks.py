@@ -24,11 +24,42 @@ import io
 import sys
 
 FULL_MAX_H = 1200
-THUMB_MAX_H = 240
+# Кружок ретинового телефона — 56pt, то есть до 168 физических пикселей.
+# 240 берём с запасом на планшет: дешевле один раз пережать с запасом.
+THUMB_SIZE = 240
 FULL_QUALITY = 82
 THUMB_QUALITY = 78
-# Кружок ретинового телефона — 56pt, то есть до 168 физических пикселей.
-# 240 берём с запасом на планшет, дешевле пережимать один раз с запасом.
+
+
+def thumb_crop_box(w: int, h: int) -> tuple[int, int, int, int]:
+    """Квадрат «голова + торс» для кружка. Чистая функция.
+
+    Кружок — 56 точек. Полноростовой кадр 3:4, ужатый в такой круг, читается как
+    мелкая фигурка: одежду, ради которой кружок и существует, не разглядеть.
+    Берём квадрат со стороной 55% высоты, отступив 5% сверху — это голова, плечи
+    и корпус примерно до пояса. По горизонтали центрируем: модель в кадре стоит
+    по центру.
+
+    Сторона ограничена шириной кадра — иначе на узком исходнике квадрат вылезет
+    за края и Pillow вернёт чёрные поля.
+    """
+    side = min(int(h * 0.55), w)
+    left = max(0, (w - side) // 2)
+    top = min(int(h * 0.05), max(0, h - side))
+    return (left, top, left + side, top + side)
+
+
+def crop_thumb(data: bytes, size: int, quality: int) -> bytes:
+    """Квадратная миниатюра «голова + торс» для кружка витрины."""
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(data))
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+    img = img.crop(thumb_crop_box(*img.size)).resize((size, size), Image.LANCZOS)
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=quality, optimize=True, progressive=True)
+    return out.getvalue()
 
 
 def resize_jpeg(data: bytes, max_h: int, quality: int) -> bytes:
@@ -49,7 +80,7 @@ def resize_jpeg(data: bytes, max_h: int, quality: int) -> bytes:
     return out.getvalue()
 
 
-async def main(commit: bool) -> None:
+async def main(commit: bool, force: bool) -> None:
     import httpx
     from sqlalchemy import text
     from app.core.database import async_session
@@ -62,7 +93,7 @@ async def main(commit: bool) -> None:
             WHERE preview_image_url LIKE '%/lookbook/%'
               AND (preview_thumb_url IS NULL OR :force)
             ORDER BY id
-        """), {"force": False})).mappings().all()
+        """), {"force": force})).mappings().all()
 
         print(f"[shrink] кадров к обработке: {len(rows)}", file=sys.stderr)
         saved_before = saved_after = 0
@@ -78,7 +109,7 @@ async def main(commit: bool) -> None:
                         continue
                     src = resp.content
                     full = resize_jpeg(src, FULL_MAX_H, FULL_QUALITY)
-                    thumb = resize_jpeg(src, THUMB_MAX_H, THUMB_QUALITY)
+                    thumb = crop_thumb(src, THUMB_SIZE, THUMB_QUALITY)
                 except Exception as e:
                     print(f"[warn] {r['id']}: {e}", file=sys.stderr)
                     continue
@@ -121,9 +152,28 @@ def _self_check() -> None:
         return buf.getvalue()
 
     src = make(900, 1200)
-    thumb = resize_jpeg(src, THUMB_MAX_H, THUMB_QUALITY)
-    assert Image.open(io.BytesIO(thumb)).size == (180, 240), Image.open(io.BytesIO(thumb)).size
+    thumb = crop_thumb(src, THUMB_SIZE, THUMB_QUALITY)
+    assert Image.open(io.BytesIO(thumb)).size == (240, 240), Image.open(io.BytesIO(thumb)).size
     assert len(thumb) < len(src), (len(thumb), len(src))
+
+    # Кроп кружка: квадрат «голова + торс», а не вся фигура.
+    assert thumb_crop_box(900, 1200) == (120, 60, 780, 720), thumb_crop_box(900, 1200)
+    l, t, r, b = thumb_crop_box(900, 1200)
+    assert r - l == b - t, "кроп обязан быть квадратным, иначе кружок исказит пропорции"
+    assert t < 1200 * 0.5, "торс, а не ноги"
+
+    # Узкий кадр: сторона упирается в ширину, квадрат не вылезает за края —
+    # иначе Pillow дорисует чёрные поля.
+    l, t, r, b = thumb_crop_box(300, 1200)
+    assert (l, r) == (0, 300) and r - l == b - t and b <= 1200, (l, t, r, b)
+    # И на таком кадре миниатюра всё ещё квадратная, без чёрных полос.
+    narrow = crop_thumb(make(300, 1200), THUMB_SIZE, THUMB_QUALITY)
+    assert Image.open(io.BytesIO(narrow)).size == (240, 240)
+
+    # Горизонтальный кадр: сторона ограничена высотой, отступ сверху не уводит
+    # квадрат за нижний край.
+    l, t, r, b = thumb_crop_box(1600, 800)
+    assert r - l == b - t and b <= 800, (l, t, r, b)
 
     # Пропорции сохраняются на неквадратном исходнике.
     wide = resize_jpeg(make(1600, 800), 240, THUMB_QUALITY)
@@ -133,10 +183,11 @@ def _self_check() -> None:
     small = make(100, 150)
     assert Image.open(io.BytesIO(resize_jpeg(small, 1200, FULL_QUALITY))).size == (100, 150)
 
-    # PNG с прозрачностью не роняет конвертацию в JPEG.
+    # PNG с прозрачностью не роняет конвертацию в JPEG — ни в одном из путей.
     buf = io.BytesIO()
     Image.new("RGBA", (300, 400), (10, 20, 30, 128)).save(buf, format="PNG")
     assert Image.open(io.BytesIO(resize_jpeg(buf.getvalue(), 240, 78))).size == (180, 240)
+    assert Image.open(io.BytesIO(crop_thumb(buf.getvalue(), 64, 78))).size == (64, 64)
 
     print("shrink_lookbooks self-check OK")
 
@@ -147,4 +198,9 @@ if __name__ == "__main__":
     else:
         ap = argparse.ArgumentParser()
         ap.add_argument("--commit", action="store_true", help="писать в S3 и БД")
-        asyncio.run(main(ap.parse_args().commit))
+        # Осторожно: --force пережимает уже пережатый JPEG заново, то есть каждый
+        # прогон добавляет поколение потерь. Обычный режим пропускает готовые.
+        ap.add_argument("--force", action="store_true",
+                        help="переделать и те, у кого миниатюра уже есть (повторное сжатие JPEG)")
+        a = ap.parse_args()
+        asyncio.run(main(a.commit, a.force))
