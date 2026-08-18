@@ -292,8 +292,13 @@ export function UserProfileSheet({
     }
   }
 
+  // Без title: табы «Обо мне / Аватары / Уведомления» прямо под шапкой уже
+  // говорят, где мы, а заголовок «Профиль» повторял это ещё раз и съедал верх
+  // шторки. Тот же довод, по которому убрали H1 «Гардероб» и «Образы»: экран
+  // не должен называть себя дважды.
+  // backgroundColor не передаём — проп инертный, см. CommonSheetProps.
   return (
-    <CommonSheet isOpen={isOpen} onClose={onClose} title="Профиль" backgroundColor="dark">
+    <CommonSheet isOpen={isOpen} onClose={onClose}>
       {/* min-h-0 критично, чтобы не «съедался» низ и sticky-футер работал корректно */}
       <div className="flex flex-col h-full min-h-0">
         {/* Скроллируемая зона: скролл скрыт, но прокрутка есть; дополнительный нижний паддинг под фикс-футер */}

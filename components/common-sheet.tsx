@@ -127,7 +127,7 @@ export function CommonSheet({
         >
         {/* Стеклянная шапка шита (test/gauntlet/design/LIQUID_GLASS.md, уровень 1) — только
             ручка и заголовок. Тело ниже остаётся плотным холстом, там блюрить нечего. */}
-        <div className="glass relative shrink-0 will-change-transform">
+        <div className="glass-flat relative shrink-0 will-change-transform">
           {/* Drag handle */}
           <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
             <div className="w-10 h-1 rounded-full bg-foreground/15" />
