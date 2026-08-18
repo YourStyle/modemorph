@@ -634,7 +634,7 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
             container's own padding (see common-sheet.tsx), then re-add
             padding plus the safe-area inset so nothing sits flush against
             the iPhone home indicator. */}
-        <div className="sticky bottom-0 -mx-6 -mb-[calc(1.5rem+env(safe-area-inset-bottom))] px-6 pt-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] bg-canvas border-t border-line flex flex-col gap-2">
+        <div className="sticky bottom-0 -mx-4 -mb-[calc(1.5rem+env(safe-area-inset-bottom))] px-4 pt-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] bg-canvas border-t border-line flex flex-col gap-2">
           <Button
             variant="outline"
             className="w-full border-ink text-ink bg-transparent rounded-2xl"

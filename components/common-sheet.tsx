@@ -150,7 +150,7 @@ export function CommonSheet({
               элемент в шапке, который не работает, хуже его отсутствия. */}
 
           {title && (
-            <SheetHeader className="px-6 pb-4">
+            <SheetHeader className="px-4 pb-4">
               <SheetTitle className="text-left text-foreground text-2xl font-semibold tracking-tight">
                 {title}
               </SheetTitle>
@@ -167,7 +167,7 @@ export function CommonSheet({
             pb-6 so content isn't hidden behind the iPhone home indicator. */}
         <div
           className={cn(
-            "flex-1 min-h-0 px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] overflow-y-auto bg-background text-foreground",
+            "flex-1 min-h-0 overflow-x-hidden px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] overflow-y-auto bg-background text-foreground",
             !title && "pt-4"
           )}
         >

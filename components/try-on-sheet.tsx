@@ -916,7 +916,7 @@ export function TryOnSheet() {
                     padding plus the safe-area inset so the button clears
                     the iPhone home indicator instead of sitting flush
                     against it. */}
-                <div className="sticky bottom-0 -mx-6 -mb-[calc(1.5rem+env(safe-area-inset-bottom))] px-6 pt-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] bg-canvas border-t border-line">
+                <div className="sticky bottom-0 -mx-4 -mb-[calc(1.5rem+env(safe-area-inset-bottom))] px-4 pt-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] bg-canvas border-t border-line">
                   <Button variant="signal" className="w-full" onClick={handleConfirm} disabled={isConfirming}>
                     <Sparkles className="w-4 h-4" />
                     {isConfirming ? "Запускаем…" : "Начать примерку"}

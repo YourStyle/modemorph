@@ -308,7 +308,7 @@ export function UserProfileSheet({
             садится на своё место в потоке — и под ним остаётся вся эта подушка.
             Это и есть «висит в воздухе» с отчёта. Резерв не нужен: футер сам
             гасит поля тела шита отрицательными margin. */}
-        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none">
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden scrollbar-none pb-24">
           <div className="space-y-6">
             <Tabs defaultValue="about" className="w-full">
               <TabsList className="grid w-full grid-cols-3 bg-canvas-sunk rounded-full p-1">
@@ -600,24 +600,27 @@ export function UserProfileSheet({
             </Tabs>
           </div>
 
-          {/* Sticky-футер ВНУТРИ скролла: всегда виден и не обрезается.
-              Отрицательные margin гасят поля тела шита (px-6 и
-              pb-[1.5rem+safe-area] из common-sheet.tsx). Без этого футер
-              прилипал к bottom-0 скроллера, под которым оставалась подушка
-              в 24px плюс safe-area, и на айфоне он заметно висел в воздухе.
-              Свой нижний отступ добавляем один раз, здесь же — раньше
-              safe-area прибавлялась дважды. Тот же приём, что в
-              try-on-sheet.tsx и outfit-card.tsx. */}
-          <div className="sticky bottom-0 z-20 -mx-6 -mb-[calc(1.5rem+env(safe-area-inset-bottom))] border-t border-line bg-canvas px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          {/* Футер сделан ровно как в edit-wardrobe-item-sheet: фиксированная
+              полоса на всю ширину экрана, две равные кнопки.
+
+              Раньше он был sticky ВНУТРИ скролл-контейнера и компенсировал
+              поля шита через -mx-6. Но его родитель — внутренний скроллер
+              профиля, у которого своих горизонтальных полей нет: отрицательный
+              margin вытягивал футер на 24px за края, а из-за overflow-y: auto
+              браузер включал и горизонтальную прокрутку. Это и был тот самый
+              горизонтальный скролл в шторке. */}
+          <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-line bg-canvas p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
             {isTMA ? (
-              // В TMA показываем только кнопку "Сохранить"
-              <Button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="w-full bg-ink hover:bg-ink/90 text-signal-ink border-0 rounded-full"
-              >
-                {isSaving ? "Сохранение..." : "Сохранить изменения"}
-              </Button>
+              // Две равные кнопки, как в шторке вещей: слева отмена, справа
+              // основное действие. Раньше здесь была одна кнопка во всю ширину.
+              <div className="flex gap-4">
+                <Button variant="outline" onClick={onClose} className="flex-1">
+                  Отмена
+                </Button>
+                <Button onClick={handleSave} disabled={isSaving} className="flex-1">
+                  {isSaving ? "Сохранение..." : "Сохранить"}
+                </Button>
+              </div>
             ) : (
               // В обычном режиме показываем все кнопки
               <div className="flex gap-4">
