@@ -47,6 +47,53 @@ type ApiResponse = {
 
 type TabKey = "popular" | "liked"
 
+type VibeCircle = { vibe: string; count: number; cover: string | null }
+
+/** Кружок витрины в духе сторис: обложка — кадр образа, активный обведён акцентом. */
+function VibeButton({
+  label,
+  cover,
+  active,
+  onClick,
+}: {
+  label: string
+  cover: string | null
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className="flex shrink-0 flex-col items-center gap-1.5 transition-transform duration-press active:scale-[0.96]"
+    >
+      <span
+        className={cn(
+          "block h-14 w-14 overflow-hidden rounded-full bg-canvas-sunk ring-inset transition-shadow duration-press",
+          active ? "ring-2 ring-signal" : "ring-1 ring-line",
+        )}
+      >
+        {cover ? (
+          // Обложка приходит с бэкенда; alt пуст — подпись рядом дублирует смысл.
+          <img src={cover} alt="" className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center text-caption text-ink-3">
+            Все
+          </span>
+        )}
+      </span>
+      <span
+        className={cn(
+          "max-w-[64px] truncate text-caption transition-colors duration-press",
+          active ? "text-signal font-semibold" : "text-ink-3",
+        )}
+      >
+        {label}
+      </span>
+    </button>
+  )
+}
+
 const WINDOW_SIZE = 10
 const WINDOW_STEP = 3
 const DOWN_TRIGGER = 7 // когда локальный индекс >= 7 — сдвигаем окно вниз
@@ -184,6 +231,12 @@ export default function InspirationPage(): ReactElement {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<TabKey>("popular")
 
+  // Кружки витрины. null — «Все», обычная лента без курируемого (см.
+  // _inspiration_filter в backend/app/api/outfits.py: витрина отдаётся только
+  // по явно выбранному кружку, иначе она вытесняет обычные образы за LIMIT).
+  const [vibes, setVibes] = useState<VibeCircle[]>([])
+  const [activeVibe, setActiveVibe] = useState<string | null>(null)
+
   const [userGender, setUserGender] = useState<string | null>(null)
   const [viewedOutfits, setViewedOutfits] = useState<Set<string>>(() => getViewedOutfits())
 
@@ -292,9 +345,11 @@ export default function InspirationPage(): ReactElement {
       try {
         setLoading(true)
         setError(null)
-        const genderParam = userGender ? `gender=${userGender}` : ""
+        const params = new URLSearchParams()
+        if (userGender) params.set("gender", userGender)
+        if (activeVibe) params.set("vibe", activeVibe)
         const [data, likedData] = await Promise.all([
-          api.get(`/api/outfits/inspiration?${genderParam}`),
+          api.get(`/api/outfits/inspiration?${params.toString()}`),
           api.get("/api/user-likes").catch(() => ({ liked: [] })),
         ])
         const normalized = normalizeOutfits(data.outfits)
@@ -312,13 +367,21 @@ export default function InspirationPage(): ReactElement {
     return () => {
       cancelled = true
     }
-  }, [userGender])
+  }, [userGender, activeVibe])
 
-  // Смена вкладки -> на начало списка
+  // Список кружков — с бэкенда, чтобы кружок не висел после удаления его образов
+  useEffect(() => {
+    api
+      .get("/api/outfits/inspiration/vibes")
+      .then((d) => setVibes(d?.vibes ?? []))
+      .catch(() => setVibes([])) // витрина недоступна — просто нет кружков, лента работает
+  }, [])
+
+  // Смена вкладки или кружка -> на начало списка
   useEffect(() => {
     setIndex(0)
     setWindowStart(0)
-  }, [activeTab])
+  }, [activeTab, activeVibe])
 
   const rendered = useMemo(
     () => filtered.slice(windowStart, Math.min(filtered.length, windowStart + WINDOW_SIZE)),
@@ -336,10 +399,10 @@ export default function InspirationPage(): ReactElement {
     if (!nextCursor || fetchingMore) return
     try {
       setFetchingMore(true)
-      const genderParam = userGender ? `&gender=${userGender}` : ""
-      const data: ApiResponse = await api.get(
-          `/api/outfits/inspiration?cursor=${encodeURIComponent(nextCursor)}${genderParam}`
-      )
+      const params = new URLSearchParams({ cursor: nextCursor })
+      if (userGender) params.set("gender", userGender)
+      if (activeVibe) params.set("vibe", activeVibe)
+      const data: ApiResponse = await api.get(`/api/outfits/inspiration?${params.toString()}`)
       const extra = normalizeOutfits(data.outfits)
       setOutfits((prev) => [...prev, ...extra])
       setNextCursor(data.nextCursor ?? null)
@@ -627,10 +690,42 @@ export default function InspirationPage(): ReactElement {
               {activeTab === "liked" && <div className="h-0.5 mt-1.5 rounded-full bg-signal" />}
             </button>
           </div>
+
+          {/* Кружки витрины — только на «Популярных»: во вкладке лайков лента
+              фильтруется по likedIds локально, и кружок бы с ней спорил. */}
+          {activeTab === "popular" && vibes.length > 0 && (
+            <div
+              className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1 [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: "none" }}
+            >
+              <VibeButton
+                label="Все"
+                cover={null}
+                active={activeVibe === null}
+                onClick={() => setActiveVibe(null)}
+              />
+              {vibes.map((v) => (
+                <VibeButton
+                  key={v.vibe}
+                  label={v.vibe}
+                  cover={v.cover}
+                  active={activeVibe === v.vibe}
+                  onClick={() => setActiveVibe(v.vibe === activeVibe ? null : v.vibe)}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      <main className="absolute left-0 right-0 bottom-0 top-[135px] mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3">
+      {/* Верх ленты идёт за шапкой: с кружками она выше на их ряд (56px кружок +
+          подпись + отступы), иначе первая карточка уезжает под них. */}
+      <main
+        className={cn(
+          "absolute left-0 right-0 bottom-0 mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3",
+          activeTab === "popular" && vibes.length > 0 ? "top-[224px]" : "top-[135px]",
+        )}
+      >
         {/* Контейнер карточек: вертикальный скролл, снап к экрану, плавный скролл */}
         <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-canvas select-none">
           {/* Оверлей лимита */}

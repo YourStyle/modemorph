@@ -54,6 +54,40 @@ def _inspiration_filter(gender: Optional[str], vibe: Optional[str]) -> tuple[str
     return " AND ".join(clauses), binds
 
 
+@router.get("/inspiration/vibes")
+async def get_inspiration_vibes(
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Кружки витрины для ленты идей: подпись, обложка, количество образов.
+
+    Список приходит с бэкенда, а не захардкожен на фронте: иначе кружок
+    продолжал бы висеть после удаления его образов и вёл бы в пустую ленту.
+
+    Пустые образы отсеиваются тем же EXISTS, что и в самой ленте (она пропускает
+    образы без видимых вещей) — кружок не должен обещать больше, чем откроется.
+    Обложка предпочитает кадр ИИ-модели: у части образов превью пока товарное.
+    """
+    rows = (await db.execute(text("""
+        SELECT o.vibe,
+               count(*) AS cnt,
+               (array_agg(o.preview_image_url ORDER BY
+                    (o.preview_image_url LIKE '%/lookbook/%') DESC, o.id))[1] AS cover
+        FROM outfits o
+        WHERE o.vibe IS NOT NULL
+          AND EXISTS (
+              SELECT 1 FROM outfit_items oi
+              JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
+              WHERE oi.outfit_id = o.id
+                AND COALESCE(wi.is_hidden, false) = false
+                AND COALESCE(wi.is_kids, false) = false
+          )
+        GROUP BY o.vibe
+        ORDER BY count(*) DESC, o.vibe
+    """))).mappings().all()
+    return {"vibes": [{"vibe": r["vibe"], "count": r["cnt"], "cover": r["cover"]} for r in rows]}
+
+
 @router.get("/inspiration")
 async def get_inspiration(
     gender: str = Query(None),
