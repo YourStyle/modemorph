@@ -334,7 +334,7 @@ export function UserProfileSheet({
 
                         {/* Единственный акцент экрана — сигнальная кайма плана. Больше --signal
                             в этом шите нигде нет. */}
-                        <div className="p-4 rounded-2xl border-2 border-signal bg-canvas-sunk">
+                        <div className="p-4 rounded-2xl border border-line bg-canvas-sunk">
                           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                             <div>
                               <div className="text-body font-semibold text-ink mb-1">
@@ -352,7 +352,8 @@ export function UserProfileSheet({
 
                             <Button
                               onClick={() => setIsPaywallOpen(true)}
-                              className="w-full md:w-auto bg-ink text-signal-ink border-0 px-6 py-3 rounded-full font-medium text-caption flex items-center justify-center gap-2 hover:bg-ink/90"
+                              variant="signal"
+                              className="w-full md:w-auto border-0 px-6 py-3 rounded-full font-medium text-caption flex items-center justify-center gap-2"
                             >
                               {subscriptionData?.subscription?.status === "active" ? "Управление" : "Оформить подписку"}
                               <ArrowRight className="w-4 h-4" strokeWidth={1.75} />

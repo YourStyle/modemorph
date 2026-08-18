@@ -5,7 +5,7 @@ import { useState, useRef, useEffect } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetPortal } from "@/components/ui/sheet"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { cn } from "@/lib/utils"
-import { X, ChevronDown } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 
 interface CommonSheetProps {
   isOpen: boolean
@@ -100,7 +100,10 @@ export function CommonSheet({
             "fixed z-50 inset-x-0 bottom-0 h-[80vh] rounded-t-[28px] border-0 p-0 bg-background",
             "flex flex-col",
             "transition-all duration-300 overflow-hidden",
-            "shadow-[0_-4px_24px_rgba(0,0,0,0.12),0_-1px_4px_rgba(0,0,0,0.04)]",
+            // Тени сверху нет намеренно: у неё был отрицательный Y
+            // (0 -4px 24px), то есть она рисовалась НАД верхней кромкой шита и
+            // читалась как лишняя полоса над ним. Шит и так отделён от фона
+            // затемнением подложки и скруглением.
             "data-[state=open]:animate-in data-[state=closed]:animate-out",
             "data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom"
           )}
@@ -111,7 +114,16 @@ export function CommonSheet({
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
-          onInteractOutside={(e) => e.preventDefault()}
+          // Раньше здесь стоял голый preventDefault: тап по затемнению не
+          // закрывал шит вообще. Вместе с неработающим крестиком закрыть его
+          // можно было только свайпом за ручку. Теперь первая же попытка
+          // закрыть — тап вне шита — действительно закрывает, а для шитов с
+          // долгой операцией (примерка, анализ) сворачивает в виджет.
+          onInteractOutside={(e) => {
+            e.preventDefault()
+            if (swipeAction === "minimize" && onMinimize) onMinimize()
+            else onClose()
+          }}
         >
         {/* Стеклянная шапка шита (test/gauntlet/design/LIQUID_GLASS.md, уровень 1) — только
             ручка и заголовок. Тело ниже остаётся плотным холстом, там блюрить нечего. */}
@@ -132,12 +144,10 @@ export function CommonSheet({
             </button>
           )}
 
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 rounded-full transition-all duration-200 z-10 text-foreground/60 hover:bg-secondary hover:text-foreground active:scale-95"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {/* Крестика нет: на устройстве тап по нему не срабатывал, а закрытие
+              и так есть двумя привычными способами — свайп вниз за ручку и тап
+              по затемнению вне шита (см. onInteractOutside выше). Лишний
+              элемент в шапке, который не работает, хуже его отсутствия. */}
 
           {title && (
             <SheetHeader className="px-6 pb-4">
