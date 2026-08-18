@@ -21,7 +21,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { UserProfileSheet } from "./user-profile-sheet"
 import { api } from "@/lib/api-client"
 import { getUserCoords } from "@/lib/tma/geo"
-import { CityPickerSheet } from "@/components/city-picker-sheet"
 import { useTmaMobile } from "@/hooks/use-tma"
 import { cn } from "@/lib/utils"
 
@@ -87,8 +86,12 @@ export function TopNavigation() {
   const [weekdayShort, setWeekdayShort] = useState("")
 
   const isTmaMobile = useTmaMobile()
-  const [cityPickerOpen, setCityPickerOpen] = useState(false)
   const [showCityHint, setShowCityHint] = useState(false)
+  // Выбор города теперь живёт инлайн внутри шторки профиля (см.
+  // user-profile-sheet.tsx), а не во второй шторке поверх первой. Этот флаг
+  // просит профиль сразу раскрыть секцию города — используется, когда сюда
+  // пришли по кнопке "Выбрать" из подсказки про город.
+  const [autoExpandCity, setAutoExpandCity] = useState(false)
 
   // Тост про город фиксирован под пилюлей, поэтому из потока он выпал и сам
   // контент не двигает. Отдаём его реальную высоту в --tg-hint-h — на неё
@@ -338,6 +341,11 @@ export function TopNavigation() {
     setIsProfileSheetOpen(true)
   }
 
+  const handleProfileSheetClose = () => {
+    setIsProfileSheetOpen(false)
+    setAutoExpandCity(false)
+  }
+
   // Подсказку про город прячем сами, как только человек начал скроллить: она
   // своё отработала, а висеть поверх контента до ручного закрытия ей незачем.
   useEffect(() => {
@@ -365,17 +373,14 @@ export function TopNavigation() {
                 {weekdayShort}
               </span>
 
-              {/* Компактная погода: тап → выбор города */}
+              {/* Погода — текст с иконкой, не отдельная кликабельная зона.
+                  Вся пилюля целиком открывает профиль; город меняется там же,
+                  внутри его шторки (никакой вложенной <button> тут больше нет). */}
               {hasTemperature && !weatherLoading && (
-                <button
-                  type="button"
-                  onClick={() => setCityPickerOpen(true)}
-                  className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap"
-                  title="Выбрать город"
-                >
+                <span className="inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap">
                   <WeatherIcon condition={weather.condition} className="h-3.5 w-3.5" />
                   <span>{weather.temperature}°C</span>
-                </button>
+                </span>
               )}
 
               {/* Аватар профиля */}
@@ -418,7 +423,14 @@ export function TopNavigation() {
               {weather.country ? `, ${weather.country}` : ""}. Не ваш город?
             </span>
             <span className="flex items-center gap-3 shrink-0">
-              <button onClick={() => { setCityPickerOpen(true); dismissCityHint() }} className="font-semibold underline">
+              <button
+                onClick={() => {
+                  setAutoExpandCity(true)
+                  setIsProfileSheetOpen(true)
+                  dismissCityHint()
+                }}
+                className="font-semibold underline"
+              >
                 Выбрать
               </button>
               <button onClick={dismissCityHint} aria-label="Закрыть" className="opacity-60">
@@ -428,17 +440,16 @@ export function TopNavigation() {
           </div>
         )}
 
-        {/* ВАЖНО: унифицируем пропсы под isOpen/onClose */}
+        {/* ВАЖНО: унифицируем пропсы под isOpen/onClose. Город выбирается
+            прямо здесь, инлайн-секцией внутри профиля — второй шторки
+            (CityPickerSheet) больше нет. */}
         <UserProfileSheet
           isOpen={isProfileSheetOpen}
-          onClose={() => setIsProfileSheetOpen(false)}
-        />
-        <CityPickerSheet
-          isOpen={cityPickerOpen}
-          onClose={() => setCityPickerOpen(false)}
-          onPicked={handleCityPicked}
+          onClose={handleProfileSheetClose}
           currentCity={weather?.location}
           currentCountry={weather?.country}
+          onCityPicked={handleCityPicked}
+          autoExpandCity={autoExpandCity}
         />
       </>
     )
@@ -469,11 +480,14 @@ export function TopNavigation() {
             )}
           </div>
 
-          {/* Полная погода на десктопе — тап → выбор города */}
+          {/* Полная погода на десктопе — тап → профиль, город меняется там же инлайн */}
           {hasTemperature && !weatherLoading && (
             <button
               type="button"
-              onClick={() => setCityPickerOpen(true)}
+              onClick={() => {
+                setAutoExpandCity(true)
+                setIsProfileSheetOpen(true)
+              }}
               className="hidden sm:flex items-center space-x-2 text-caption text-ink-2 hover:text-ink"
               title="Выбрать город"
             >
@@ -532,14 +546,11 @@ export function TopNavigation() {
       </div>
       <UserProfileSheet
         isOpen={isProfileSheetOpen}
-        onClose={() => setIsProfileSheetOpen(false)}
-      />
-      <CityPickerSheet
-        isOpen={cityPickerOpen}
-        onClose={() => setCityPickerOpen(false)}
-        onPicked={handleCityPicked}
+        onClose={handleProfileSheetClose}
         currentCity={weather?.location}
         currentCountry={weather?.country}
+        onCityPicked={handleCityPicked}
+        autoExpandCity={autoExpandCity}
       />
     </header>
   )

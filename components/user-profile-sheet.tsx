@@ -16,7 +16,8 @@ import { SubscriptionSheet } from "./subscription-sheet"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
-import { ArrowRight } from "lucide-react"
+import { ArrowRight, ChevronDown, MapPin } from "lucide-react"
+import { CityPicker } from "@/components/city-picker"
 
 interface UserProfile {
   id: string
@@ -36,6 +37,13 @@ interface UserProfile {
 interface UserProfileSheetProps {
   isOpen: boolean
   onClose: () => void
+  /** Текущий город/страна для отображения в строке "Город" и подсказки поиска. */
+  currentCity?: string
+  currentCountry?: string
+  /** Тот же обработчик, что раньше передавался в CityPickerSheet.onPicked. */
+  onCityPicked?: (weather: any) => void
+  /** Раскрыть секцию "Город" сразу при открытии шита (пришли сюда из подсказки про город). */
+  autoExpandCity?: boolean
 }
 
 const CLOTHING_SIZES = [
@@ -60,7 +68,14 @@ const CLOTHING_SIZES = [
   "60",
 ]
 
-export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
+export function UserProfileSheet({
+  isOpen,
+  onClose,
+  currentCity,
+  currentCountry,
+  onCityPicked,
+  autoExpandCity,
+}: UserProfileSheetProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -69,6 +84,17 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
   const router = useRouter()
   const [isPaywallOpen, setIsPaywallOpen] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
+  // Раскрывающаяся секция выбора города — инлайн, без второй шторки поверх
+  // этой. Раскрывается сама, если сюда пришли по ссылке "Выбрать" из
+  // подсказки про город (autoExpandCity), и сворачивается при закрытии шита.
+  const [cityPanelOpen, setCityPanelOpen] = useState(false)
+  useEffect(() => {
+    if (isOpen) {
+      if (autoExpandCity) setCityPanelOpen(true)
+    } else {
+      setCityPanelOpen(false)
+    }
+  }, [isOpen, autoExpandCity])
 
   // Проверяем, запущено ли приложение в Telegram Mini App
   const isTMA = typeof window !== 'undefined' && window.Telegram?.WebApp?.initData
@@ -271,7 +297,13 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
       {/* min-h-0 критично, чтобы не «съедался» низ и sticky-футер работал корректно */}
       <div className="flex flex-col h-full min-h-0">
         {/* Скроллируемая зона: скролл скрыт, но прокрутка есть; дополнительный нижний паддинг под фикс-футер */}
-        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none pb-40 safe-bottom-padding">
+        {/* Ни pb-40, ни .safe-bottom-padding: раньше под липким футером
+            резервировалось 160 + 48 = 208px «на всякий случай». Пока скроллишь,
+            футер прилипает к низу и всё выглядит нормально, а в конце списка он
+            садится на своё место в потоке — и под ним остаётся вся эта подушка.
+            Это и есть «висит в воздухе» с отчёта. Резерв не нужен: футер сам
+            гасит поля тела шита отрицательными margin. */}
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-none">
           <div className="space-y-6">
             <Tabs defaultValue="about" className="w-full">
               <TabsList className="grid w-full grid-cols-3 bg-canvas-sunk rounded-full p-1">
@@ -329,6 +361,43 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
                         </div>
                       </div>
                     )}
+
+                    {/* Город — тот же выбор, что раньше жил в отдельной CityPickerSheet,
+                        теперь раскрывающейся секцией прямо здесь: без шторки поверх шторки. */}
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => setCityPanelOpen((v) => !v)}
+                        aria-expanded={cityPanelOpen}
+                        className="w-full min-h-11 flex items-center justify-between gap-2 p-3 rounded-2xl bg-canvas-sunk text-left"
+                      >
+                        <span className="flex items-center gap-2 text-body text-ink">
+                          <MapPin className="h-4 w-4 text-ink-3 shrink-0" strokeWidth={1.75} aria-hidden="true" />
+                          Город
+                        </span>
+                        <span className="flex items-center gap-2 text-caption text-ink-2">
+                          <span className="truncate max-w-[9rem]">
+                            {currentCity ? `${currentCity}${currentCountry ? `, ${currentCountry}` : ""}` : "Не выбран"}
+                          </span>
+                          <ChevronDown
+                            className={cn("h-4 w-4 shrink-0 transition-transform duration-press", cityPanelOpen && "rotate-180")}
+                            strokeWidth={1.75}
+                            aria-hidden="true"
+                          />
+                        </span>
+                      </button>
+
+                      {cityPanelOpen && (
+                        <div className="rounded-2xl bg-canvas-sunk p-3">
+                          <CityPicker
+                            onPicked={(w) => {
+                              onCityPicked?.(w)
+                              setCityPanelOpen(false)
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
 
                     <div className="space-y-2">
                       <Label className="text-ink">Email</Label>
@@ -525,8 +594,15 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
             </Tabs>
           </div>
 
-          {/* Sticky-футер ВНУТРИ скролла: всегда виден и не обрезается */}
-          <div className="sticky bottom-0 z-20 border-t border-line bg-canvas px-4 py-3 footer-safe">
+          {/* Sticky-футер ВНУТРИ скролла: всегда виден и не обрезается.
+              Отрицательные margin гасят поля тела шита (px-6 и
+              pb-[1.5rem+safe-area] из common-sheet.tsx). Без этого футер
+              прилипал к bottom-0 скроллера, под которым оставалась подушка
+              в 24px плюс safe-area, и на айфоне он заметно висел в воздухе.
+              Свой нижний отступ добавляем один раз, здесь же — раньше
+              safe-area прибавлялась дважды. Тот же приём, что в
+              try-on-sheet.tsx и outfit-card.tsx. */}
+          <div className="sticky bottom-0 z-20 -mx-6 -mb-[calc(1.5rem+env(safe-area-inset-bottom))] border-t border-line bg-canvas px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
             {isTMA ? (
               // В TMA показываем только кнопку "Сохранить"
               <Button
@@ -576,12 +652,6 @@ export function UserProfileSheet({ isOpen, onClose }: UserProfileSheetProps) {
         scrollbar-width: none; /* скрыть полосу прокрутки */
         -ms-overflow-style: none; /* IE/Edge */
       }
-        .footer-safe {
-          padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
-        }
-        .safe-bottom-padding {
-          padding-bottom: calc(3rem); /* запас под sticky-футер */
-        }
       `}</style>
     </CommonSheet>
   )
