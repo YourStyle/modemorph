@@ -240,7 +240,13 @@ async def _upload_base64_to_s3(data_uri: str, folder: str = "detected") -> str:
         return data_uri
     ext = "jpg" if matches.group(1) == "jpeg" else matches.group(1)
     img_bytes = base64.b64decode(matches.group(2))
-    key = f"{folder}/{int(time.time())}-{hashlib.md5(img_bytes[:100]).hexdigest()[:8]}.{ext}"
+    # Хеш по ВСЕМ байтам, а не по первым 100. Первые 100 байт JPEG — это
+    # заголовок, у картинок одного генератора он совпадает: на 58 кадрах лукбука
+    # получилось всего 3 разных хеша, и уникальность ключа держалась на одной
+    # лишь секундной метке. Любые две записи в одну секунду в одну папку затирали
+    # друг друга — а пакетные вызовы (detect-clothing грузит вещи параллельно,
+    # shrink_lookbooks.py — в тесном цикле) именно так и работают.
+    key = f"{folder}/{int(time.time())}-{hashlib.md5(img_bytes).hexdigest()[:8]}.{ext}"
     try:
         import boto3
         s3 = boto3.client(

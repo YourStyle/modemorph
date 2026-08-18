@@ -66,12 +66,17 @@ async def get_inspiration_vibes(
 
     Пустые образы отсеиваются тем же EXISTS, что и в самой ленте (она пропускает
     образы без видимых вещей) — кружок не должен обещать больше, чем откроется.
-    Обложка предпочитает кадр ИИ-модели: у части образов превью пока товарное.
+
+    Обложка — миниатюра (preview_thumb_url, миграция 026), и только при её
+    отсутствии полный кадр. Замер 2026-08-18: полные кадры весят ~700 КБ, шесть
+    кружков тянули 4,2 МБ на кружки 56x56 — на телефоне они и выглядели пустыми.
+    Среди полных кадр ИИ-модели предпочтительнее товарного фото.
     """
     rows = (await db.execute(text("""
         SELECT o.vibe,
                count(*) AS cnt,
-               (array_agg(o.preview_image_url ORDER BY
+               (array_agg(COALESCE(o.preview_thumb_url, o.preview_image_url) ORDER BY
+                    (o.preview_thumb_url IS NOT NULL) DESC,
                     (o.preview_image_url LIKE '%/lookbook/%') DESC, o.id))[1] AS cover
         FROM outfits o
         WHERE o.vibe IS NOT NULL

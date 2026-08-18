@@ -54,11 +54,13 @@ function VibeButton({
   label,
   cover,
   active,
+  eager,
   onClick,
 }: {
   label: string
   cover: string | null
   active: boolean
+  eager: boolean
   onClick: () => void
 }) {
   return (
@@ -75,7 +77,15 @@ function VibeButton({
       >
         {cover ? (
           // Обложка приходит с бэкенда; alt пуст — подпись рядом дублирует смысл.
-          <img src={cover} alt="" className="h-full w-full object-cover" loading="lazy" />
+          // Первые кружки грузим сразу: они в зоне видимости, а lazy в
+          // горизонтальной прокрутке откладывал их и ряд выглядел пустым.
+          <img
+            src={cover}
+            alt=""
+            className="h-full w-full object-cover"
+            loading={eager ? "eager" : "lazy"}
+            decoding="async"
+          />
         ) : (
           <span className="flex h-full w-full items-center justify-center text-caption text-ink-3">
             Все
@@ -656,6 +666,7 @@ export default function InspirationPage(): ReactElement {
   }
 
   return (
+    <>
     <div
       className="fixed inset-0 z-[1000] bg-canvas text-ink overflow-hidden overscroll-none box-border"
       style={{
@@ -666,7 +677,7 @@ export default function InspirationPage(): ReactElement {
     >
       {/* Верхние вкладки — стеклянный хром (LIQUID_GLASS.md: закреплённая шапка),
           акцент только на активном табе, как «активная дата» из BAR.md */}
-      <div className="glass absolute top-0 left-0 right-0 z-[3000] border-b border-line">
+      <div className="glass glass-flush absolute top-0 left-0 right-0 z-[3000] border-b border-line">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
           <div className="flex justify-center gap-8 pt-[95px] pb-3">
             <button
@@ -702,14 +713,16 @@ export default function InspirationPage(): ReactElement {
                 label="Все"
                 cover={null}
                 active={activeVibe === null}
+                eager
                 onClick={() => setActiveVibe(null)}
               />
-              {vibes.map((v) => (
+              {vibes.map((v, i) => (
                 <VibeButton
                   key={v.vibe}
                   label={v.vibe}
                   cover={v.cover}
                   active={activeVibe === v.vibe}
+                  eager={i < 5}
                   onClick={() => setActiveVibe(v.vibe === activeVibe ? null : v.vibe)}
                 />
               ))}
@@ -943,6 +956,13 @@ export default function InspirationPage(): ReactElement {
         <BottomNavigation />
       </div>
 
+      </div>
+
+      {/* Шторки вынесены ЗА тёмный контейнер намеренно. Внутри него --ink
+          переопределён в почти белый, и любая шторка наследовала это через
+          каскад: у кнопки подписки bg-ink становился белым фоном, а
+          text-signal-ink оставался белым текстом — надпись пропадала. Здесь они
+          получают обычные светлые токены приложения. */}
       <SubscriptionSheet
         isOpen={showPaywall}
         source="limit:ideas_viewed"
@@ -959,7 +979,7 @@ export default function InspirationPage(): ReactElement {
         items={selectedOutfitItems}
         outfitTitle={selectedOutfitTitle}
       />
-    </div>
+    </>
   )
 }
 
