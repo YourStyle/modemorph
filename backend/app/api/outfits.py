@@ -35,6 +35,19 @@ async def get_outfits(
     return {"outfits": items, "data": items}
 
 
+def _gender_filter(gender: Optional[str]) -> tuple[str, dict]:
+    """Условие по полу — одно на ленту и на кружки, чтобы они не разошлись.
+
+    'unisex' у образа витрины означает «пол не определён», а не «подходит всем»:
+    после генерации кадра outfits.gender становится равен полу человека на фото
+    (см. lookbook.model_gender). Оставлен в условии ради старых образов, где
+    кадра нет вовсе.
+    """
+    if not gender:
+        return "TRUE", {}
+    return "(gender = :g OR gender = 'unisex' OR gender IS NULL)", {"g": gender}
+
+
 def _inspiration_filter(gender: Optional[str], vibe: Optional[str]) -> tuple[str, dict]:
     """WHERE для ленты идей. Чистая функция — покрыта test_inspiration_vibe.py.
 
@@ -48,14 +61,16 @@ def _inspiration_filter(gender: Optional[str], vibe: Optional[str]) -> tuple[str
         clauses, binds = ["vibe = :vibe"], {"vibe": vibe}
     else:
         clauses, binds = ["vibe IS NULL"], {}
-    if gender:
-        clauses.append("(gender = :g OR gender = 'unisex' OR gender IS NULL)")
-        binds["g"] = gender
+    gender_clause, gender_binds = _gender_filter(gender)
+    if gender_binds:
+        clauses.append(gender_clause)
+        binds.update(gender_binds)
     return " AND ".join(clauses), binds
 
 
 @router.get("/inspiration/vibes")
 async def get_inspiration_vibes(
+    gender: str = Query(None, description="пол профиля; кружок и обложка считаются по нему"),
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -71,8 +86,14 @@ async def get_inspiration_vibes(
     отсутствии полный кадр. Замер 2026-08-18: полные кадры весят ~700 КБ, шесть
     кружков тянули 4,2 МБ на кружки 56x56 — на телефоне они и выглядели пустыми.
     Среди полных кадр ИИ-модели предпочтительнее товарного фото.
+
+    Пол обязателен к учёту: и счётчик, и обложка считаются по тем же образам,
+    которые человек увидит, открыв кружок. Без этого мужчина видел ряд кружков
+    с женщинами на обложках — жалоба с прода 2026-08-18. Условие берётся из
+    _gender_filter, общего с лентой, чтобы они не разошлись определениями.
     """
-    rows = (await db.execute(text("""
+    gender_clause, gender_binds = _gender_filter(gender)
+    rows = (await db.execute(text(f"""
         SELECT o.vibe,
                count(*) AS cnt,
                (array_agg(COALESCE(o.preview_thumb_url, o.preview_image_url) ORDER BY
@@ -80,6 +101,7 @@ async def get_inspiration_vibes(
                     (o.preview_image_url LIKE '%/lookbook/%') DESC, o.id))[1] AS cover
         FROM outfits o
         WHERE o.vibe IS NOT NULL
+          AND {gender_clause}
           AND EXISTS (
               SELECT 1 FROM outfit_items oi
               JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
@@ -89,7 +111,7 @@ async def get_inspiration_vibes(
           )
         GROUP BY o.vibe
         ORDER BY count(*) DESC, o.vibe
-    """))).mappings().all()
+    """), gender_binds)).mappings().all()
     return {"vibes": [{"vibe": r["vibe"], "count": r["cnt"], "cover": r["cover"]} for r in rows]}
 
 

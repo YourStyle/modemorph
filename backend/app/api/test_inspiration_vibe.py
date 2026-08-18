@@ -12,7 +12,27 @@ Postgres, ни TestClient (ср. test_ai_chats.py, где изоляция по�
 
 import sys
 
-from app.api.outfits import _inspiration_filter
+from app.api.outfits import _gender_filter, _inspiration_filter
+
+
+def test_gender_filter_is_shared_by_feed_and_circles():
+    """Кружок обязан считаться по тем же образам, что откроются при тапе.
+
+    Пока условие было записано отдельно в ленте и отсутствовало у кружков,
+    мужчина видел ряд кружков с женщинами на обложках.
+    """
+    clause, binds = _gender_filter("male")
+    assert binds == {"g": "male"}, binds
+    # То же выражение обязано попасть в фильтр ленты — иначе определения разойдутся.
+    feed_where, _ = _inspiration_filter("male", "Япония")
+    assert clause in feed_where, (clause, feed_where)
+
+
+def test_gender_filter_without_gender_matches_everything():
+    clause, binds = _gender_filter(None)
+    assert clause == "TRUE" and binds == {}, (clause, binds)
+    # Пустая строка ведёт себя как отсутствие пола, а не как пол "".
+    assert _gender_filter("") == ("TRUE", {})
 
 
 def test_default_feed_hides_curated():

@@ -394,13 +394,18 @@ export default function InspirationPage(): ReactElement {
     }
   }, [userGender, activeVibe])
 
-  // Список кружков — с бэкенда, чтобы кружок не висел после удаления его образов
+  // Список кружков — с бэкенда, чтобы кружок не висел после удаления его образов.
+  // Пол передаём: и счётчик, и обложка должны считаться по тем образам, которые
+  // человек увидит, открыв кружок. Ждём загрузки профиля, иначе первый запрос
+  // уйдёт без пола и покажет чужие обложки.
   useEffect(() => {
+    if (userGender === null) return
+    const qs = userGender ? `?gender=${encodeURIComponent(userGender)}` : ""
     api
-      .get("/api/outfits/inspiration/vibes")
+      .get(`/api/outfits/inspiration/vibes${qs}`)
       .then((d) => setVibes(d?.vibes ?? []))
       .catch(() => setVibes([])) // витрина недоступна — просто нет кружков, лента работает
-  }, [])
+  }, [userGender])
 
   // Смена вкладки или кружка -> на начало списка
   useEffect(() => {
