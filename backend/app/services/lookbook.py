@@ -66,20 +66,39 @@ _BACKDROPS: dict[str, str] = {
 }
 _DEFAULT_BACKDROP = "a seamless light grey studio backdrop with soft even light"
 
+_NUMBER_WORDS = ("zero", "one", "two", "three", "four", "five", "six", "seven", "eight")
 
-def pick_model(gender: str | None, seed: int) -> str:
-    """Типаж модели: детерминированно по id образа, чтобы прогоны совпадали.
 
-    Пол образа 'unisex' означает, что у его вещей пол в каталоге не размечен —
-    таких образов 31 из 72 (замер 2026-08-17). Брать для них женский типаж «по
-    умолчанию» нельзя: витрина молча съехала бы к 57 женским против 15 мужских
-    при формально сбалансированной базе. Такие вещи носибельны любым, поэтому
-    пол модели чередуется по чётности seed — детерминированно, как и типаж.
+def _count_words(n: int) -> str:
+    """«3 (three)» — счёт цифрой и словом сразу: на одну цифру модель дорисовывала
+    лишние вещи, дублирование написания заметно снизило это в пробах."""
+    return f"{n} ({_NUMBER_WORDS[n]})" if n < len(_NUMBER_WORDS) else str(n)
+
+
+def model_gender(gender: str | None, seed: int) -> str:
+    """Пол человека, который будет НА КАДРЕ. Единственное определение — им же
+    проставляется outfits.gender после генерации.
+
+    Пол образа 'unisex' означает, что у его вещей пол в каталоге не размечен
+    (там 2718 вещей 'unisex' и 1317 без пола) — таких образов было 26 из 61.
+    Брать для них женский типаж «по умолчанию» нельзя: витрина молча съехала бы
+    к женским кадрам. Такие вещи носибельны любым, поэтому пол модели чередуется
+    по чётности seed — детерминированно, как и типаж.
+
+    ВАЖНО: после генерации кадра outfits.gender обязан стать равным этому
+    значению. Иначе запись описывает вещи, а пользователь смотрит фотографию:
+    образ с 'unisex' проходил фильтр ленты для мужчины, а на кадре была женщина —
+    ровно эта жалоба и пришла с прода 2026-08-18.
     """
     g = (gender or "").strip().lower()
-    if g not in MODELS:
-        g = "female" if seed % 2 == 0 else "male"
-    variants = MODELS[g]
+    if g in MODELS:
+        return g
+    return "female" if seed % 2 == 0 else "male"
+
+
+def pick_model(gender: str | None, seed: int) -> str:
+    """Типаж модели: детерминированно по id образа, чтобы прогоны совпадали."""
+    variants = MODELS[model_gender(gender, seed)]
     return variants[seed % len(variants)]
 
 
@@ -105,9 +124,18 @@ def build_prompt(vibe: str | None, gender: str | None, items: list[dict], seed: 
         "STRICT RULES:\n"
         "- Reproduce each garment faithfully: same colour, same fabric, same cut, "
         "same details as its reference image. Do NOT restyle or recolour.\n"
-        f"- Exactly {len(items)} garments on the person. Do NOT add any clothing "
-        "that is not in the list — no extra jacket, no extra layer, no added "
-        "accessories, no bag, no hat, no jewellery.\n"
+        # Счёт повторяется цифрой и словами, а слоты перечисляются поштучно:
+        # с прода 2026-08-18 пришли кадры, где модель дорисовала вторую майку и
+        # вторые брюки поверх списка. Одной фразы «exactly N» ей не хватило.
+        f"- The person wears {len(items)} garments and NOTHING else. Count them: "
+        f"{_count_words(len(items))}. One single top, one single bottom (or one "
+        "dress instead of both), one single pair of shoes.\n"
+        "- Do NOT add a second shirt, a second pair of trousers, a second layer, "
+        "or any garment absent from the list. No added jacket, bag, hat, scarf, "
+        "belt or jewellery. If a reference shows a garment already worn by the "
+        "person, do NOT duplicate it.\n"
+        f"- The person is {model_gender(gender, seed)}. Every garment, including "
+        "the footwear, must read as clothing for that gender.\n"
         "- One single person, whole body visible from head to feet, face visible, "
         "both feet inside the frame.\n"
         "- Natural anatomy and proportions. Hands and feet fully formed.\n"
@@ -225,9 +253,27 @@ if __name__ == "__main__":
     assert pick_model("male", 2) in MODELS["male"]
     assert pick_model("female", 3) in MODELS["female"]
 
+    # model_gender — единственное определение «кто на кадре»; им же проставляется
+    # outfits.gender, поэтому оно обязано совпадать с выбранным типажом.
+    for g in (None, "", "unisex", "male", "female"):
+        for s in (0, 1, 2, 7):
+            assert pick_model(g, s) in MODELS[model_gender(g, s)], (g, s)
+    assert model_gender("male", 0) == "male" and model_gender("female", 1) == "female"
+    assert {model_gender("unisex", 0), model_gender("unisex", 1)} == {"female", "male"}
+
+    # Пол проговаривается в промпте: без этого модель обувала мужчин в балетки.
+    assert "The person is male." in build_prompt(None, "male", items, seed=0)
+
+    # Счёт вещей — цифрой и словом: одной цифры модели не хватало.
+    assert "3 (three)" in p, p
+    assert "NOTHING else" in p and "second pair of trousers" in p, p
+    assert _count_words(20) == "20", _count_words(20)   # за пределами словаря не падаем
+
     # Число вещей в тексте всегда совпадает со списком — иначе модель добавляет своё.
     two = build_prompt(None, "female", items[:2], seed=0)
-    assert "EXACTLY these 2 garments" in two and "Exactly 2 garments" in two, two
+    assert "EXACTLY these 2 garments" in two, two
+    assert "wears 2 garments and NOTHING else" in two, two
+    assert "2 (two)" in two, two
 
     # Запреты, без которых модель клеит коллажи и лепит логотипы.
     for must in ("NOT a collage", "no logos", "both feet inside the frame"):

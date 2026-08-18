@@ -1415,12 +1415,18 @@ async def generate_outfit_lookbooks(
             results.append({"outfit_id": row["id"], "status": "s3_failed", "cost_usd": cost})
             continue
 
+        # Пол образа = пол человека на кадре. До этого gender описывал разметку
+        # ВЕЩЕЙ и оставался 'unisex', когда она отсутствовала, — а фильтр ленты
+        # пропускает 'unisex' обоим полам, и мужчина получал карточку с женщиной
+        # на фото (жалоба с прода 2026-08-18, таких образов было 12).
+        shot_gender = lookbook.model_gender(row["gender"], int(row["id"]))
         await db.execute(
-            text("UPDATE outfits SET preview_image_url = :u WHERE id = :id"),
-            {"u": url, "id": row["id"]},
+            text("UPDATE outfits SET preview_image_url = :u, gender = :g WHERE id = :id"),
+            {"u": url, "g": shot_gender, "id": row["id"]},
         )
         await db.commit()
-        results.append({"outfit_id": row["id"], "status": "ok", "url": url, "cost_usd": cost})
+        results.append({"outfit_id": row["id"], "status": "ok", "url": url,
+                        "gender": shot_gender, "cost_usd": cost})
 
     return {
         "requested": len(targets),

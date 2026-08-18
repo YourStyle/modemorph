@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactElement } from "react"
 import Image from "next/image"
-import { Bookmark, ChevronDown, ChevronUp, Heart, Loader2, Zap } from "lucide-react"
+import { Bookmark, ChevronDown, ChevronUp, GalleryVerticalEnd, Heart, Loader2, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { SubscriptionSheet } from "@/components/subscription-sheet"
@@ -264,6 +264,21 @@ export default function InspirationPage(): ReactElement {
 
   // Ссылки на скролл-контейнер и карточки
   const scrollerRef = useRef<HTMLDivElement | null>(null)
+
+  // Верх ленты считается тем же CSS, что задаёт высоту шапки, — без замеров.
+  //
+  // Так вышло не от лени: сначала тут стоял ResizeObserver, и зашитый top-[135px]
+  // при шапке в 57px давал зазор в 78 пикселей. Но переменная часть шапки — это
+  // ровно --tg-safe-top и --tg-nav-gap, те же токены, которыми она сама себя
+  // отодвигает, а остальное постоянно. Замер 2026-08-18 при --tg-safe-top = 0 и
+  // --tg-nav-gap = 8px: шапка 57px, то есть фиксированная часть 49px; ряд
+  // кружков добавляет ровно 92px. Значит calc даёт тот же ответ, что наблюдатель,
+  // и не зависит от поддержки ResizeObserver во вьюхе Telegram.
+  const HEADER_FIXED_PX = 49
+  const VIBES_ROW_PX = 92
+  const showVibes = activeTab === "popular" && vibes.length > 0
+  const feedTop =
+    `calc(var(--tg-safe-top) + var(--tg-nav-gap) + ${HEADER_FIXED_PX + (showVibes ? VIBES_ROW_PX : 0)}px)`
 
   const filtered = useMemo(() => {
     if (activeTab === "popular") return outfits
@@ -675,36 +690,47 @@ export default function InspirationPage(): ReactElement {
         ...darkFeedVars,
       }}
     >
-      {/* Верхние вкладки — стеклянный хром (LIQUID_GLASS.md: закреплённая шапка),
-          акцент только на активном табе, как «активная дата» из BAR.md */}
+      {/* Верхние вкладки — стеклянный хром (LIQUID_GLASS.md: закреплённая шапка).
+          Переключатель стоит на линии пилюли остальных экранов: эта страница
+          прячет глобальную навигацию (см. эффект выше), поэтому место свободно, а
+          --tg-safe-top + --tg-nav-gap — те же токены, что у пилюли в
+          components/top-navigation.tsx. Так он попадает между нативными
+          элементами Telegram, а не под них. */}
       <div className="glass glass-flush absolute top-0 left-0 right-0 z-[3000] border-b border-line">
         <div className="mx-auto w-full max-w-[900px] px-4 lg:px-10">
-          <div className="flex justify-center gap-8 pt-[95px] pb-3">
-            <button
-              className={cn(
-                "px-1 pb-1.5 text-body font-semibold tracking-tight transition-colors duration-press",
-                activeTab === "popular" ? "text-signal" : "text-ink-3",
-              )}
-              onClick={() => setActiveTab("popular")}
-            >
-              Популярные
-              {activeTab === "popular" && <div className="h-0.5 mt-1.5 rounded-full bg-signal" />}
-            </button>
-            <button
-              className={cn(
-                "px-1 pb-1.5 text-body font-semibold tracking-tight transition-colors duration-press",
-                activeTab === "liked" ? "text-signal" : "text-ink-3",
-              )}
-              onClick={() => setActiveTab("liked")}
-            >
-              Понравившиеся
-              {activeTab === "liked" && <div className="h-0.5 mt-1.5 rounded-full bg-signal" />}
-            </button>
+          <div
+            className="flex justify-center pb-2"
+            style={{ paddingTop: "calc(var(--tg-safe-top) + var(--tg-nav-gap))" }}
+          >
+            {/* Сегментированный переключатель: подписи заменены иконками, чтобы
+                занять одну строку высоты пилюли и освободить место под кружки. */}
+            <div className="glass flex items-center gap-1 rounded-full p-1">
+              {(
+                [
+                  { key: "popular", Icon: GalleryVerticalEnd, label: "Лента образов" },
+                  { key: "liked", Icon: Heart, label: "Понравившиеся" },
+                ] as const
+              ).map(({ key, Icon, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  aria-label={label}
+                  aria-pressed={activeTab === key}
+                  title={label}
+                  className={cn(
+                    "flex h-8 w-11 items-center justify-center rounded-full transition-colors duration-press active:scale-[0.96]",
+                    activeTab === key ? "bg-signal/15 text-signal" : "text-ink-3",
+                  )}
+                >
+                  <Icon className="h-4 w-4" fill={key === "liked" && activeTab === key ? "currentColor" : "none"} />
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Кружки витрины — только на «Популярных»: во вкладке лайков лента
               фильтруется по likedIds локально, и кружок бы с ней спорил. */}
-          {activeTab === "popular" && vibes.length > 0 && (
+          {showVibes && (
             <div
               className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1 [&::-webkit-scrollbar]:hidden"
               style={{ scrollbarWidth: "none" }}
@@ -731,13 +757,10 @@ export default function InspirationPage(): ReactElement {
         </div>
       </div>
 
-      {/* Верх ленты идёт за шапкой: с кружками она выше на их ряд (56px кружок +
-          подпись + отступы), иначе первая карточка уезжает под них. */}
+      {/* Верх ленты — ровно под шапкой: тот же calc, что задаёт её высоту. */}
       <main
-        className={cn(
-          "absolute left-0 right-0 bottom-0 mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3",
-          activeTab === "popular" && vibes.length > 0 ? "top-[224px]" : "top-[135px]",
-        )}
+        className="absolute left-0 right-0 bottom-0 mx-auto w-full max-w-[900px] px-0 sm:px-4 lg:px-10 pt-0 sm:pt-3"
+        style={{ top: feedTop }}
       >
         {/* Контейнер карточек: вертикальный скролл, снап к экрану, плавный скролл */}
         <section className="relative h-full w-full sm:rounded-2xl overflow-hidden bg-canvas select-none">
