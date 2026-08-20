@@ -1,6 +1,7 @@
 """Miscellaneous endpoints: check-limits, usage/log, spend-credits, pricing, user-subscription, user-likes, detect-clothing, ai-assistant, vton, clip/search."""
 
 import base64
+import hmac
 import io
 import json as json_lib
 import re
@@ -96,6 +97,50 @@ async def check_limits(request: Request, user: dict = Depends(get_current_user),
     else:
         ok, remaining = await _can_use_feature(db, profile_id, feature, count)
         return {"success": True, "canUse": ok, "remaining": remaining}
+
+
+# ── /api/bot/event ──
+
+# Events the bot is allowed to report. Kept as an explicit allowlist so a leaked
+# secret cannot be used to write arbitrary event names into the funnel.
+ALLOWED_BOT_EVENTS = {"bot_start", "bot_blocked", "bot_unblocked"}
+
+
+@router.post("/bot/event")
+async def bot_event(request: Request, db: AsyncSession = Depends(get_db)):
+    """Record a pre-auth Telegram touch (mainly /start).
+
+    The bot lives in a separate compose project and cannot reach the backend over
+    the internal docker network, so it calls this through the public origin and
+    authenticates with a shared secret rather than a user token — at /start time
+    no user exists yet.
+    """
+    secret = settings.BOT_SECRET or settings.CRON_SECRET
+    if not secret or not hmac.compare_digest(request.headers.get("X-Bot-Secret", ""), secret):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    body = await request.json()
+    telegram_id = str(body.get("telegram_id") or "").strip()
+    event_type = str(body.get("event_type") or "").strip()
+
+    if not telegram_id:
+        raise HTTPException(status_code=400, detail="telegram_id is required")
+    if event_type not in ALLOWED_BOT_EVENTS:
+        raise HTTPException(status_code=400, detail=f"Unknown event_type: {event_type!r}")
+
+    await db.execute(
+        text("""
+            INSERT INTO bot_events (telegram_id, event_type, payload)
+            VALUES (:tg, :et, CAST(:payload AS jsonb))
+        """),
+        {
+            "tg": telegram_id,
+            "et": event_type,
+            "payload": json_lib.dumps(body.get("payload") or {}),
+        },
+    )
+    await db.commit()
+    return {"ok": True}
 
 
 # ── /api/usage/log ──

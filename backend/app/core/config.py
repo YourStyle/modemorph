@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # Cron secret
     CRON_SECRET: str = ""
 
+    # Shared secret for the Telegram bot's event calls (POST /api/bot/event).
+    # Falls back to CRON_SECRET when unset so the bot funnel can ship without a
+    # deploy-time secret rotation; set it separately to narrow the blast radius.
+    BOT_SECRET: str = ""
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
