@@ -43,6 +43,80 @@ DATABASE_URL = os.environ.get(
 )
 
 # ---------------------------------------------------------------------------
+# Brand provenance.
+#
+# This is a deliberate copy of the two small pieces of backend/brand.py that this
+# script needs: it runs inside the modemorph-ai container, which does not have
+# backend/ on its path. The canonical module (with the suffix matcher used by the
+# backfill, the reasoning, and the measurements) is backend/brand.py — change both.
+#
+# Monobrand = the feed ships no <vendor> and the retailer sells one house, so the
+# brand is a constant. Verified on the live feeds 2026-08-20: SELA (feed 24700)
+# and 2moodstore (25132, 0/6389 offers with a vendor) carry no <vendor> tag at all.
+# ЦУМ and ElytS are NOT here: they are multi-brand, and writing a constant for them
+# is the "brand = ЦУМ" bug this whole change exists to remove.
+# ---------------------------------------------------------------------------
+MONOBRAND_SOURCES = {
+    "sela": "SELA",
+    "интернет-магазин lacoste": "Lacoste",
+    "lacoste": "Lacoste",
+    "love republic": "LOVE REPUBLIC",
+    "loverepublic": "LOVE REPUBLIC",
+    "2moodstore": "2MOOD",
+}
+
+BRAND_SOURCE_FEED_VENDOR = "feed_vendor"
+BRAND_SOURCE_MONOBRAND = "monobrand"
+
+
+def brand_from_offer(vendor: str, source_name: str):
+    """(brand, brand_source) for one offer; (None, None) when genuinely unknown.
+
+    <vendor> outranks the monobrand constant: a monobrand retailer that starts
+    carrying a second house is right and our table is stale.
+    """
+    vendor = (vendor or "").strip()
+    if vendor:
+        return vendor, BRAND_SOURCE_FEED_VENDOR
+    constant = MONOBRAND_SOURCES.get(" ".join((source_name or "").split()).lower())
+    if constant:
+        return constant, BRAND_SOURCE_MONOBRAND
+    return None, None
+
+
+# ---------------------------------------------------------------------------
+# Which tag is the SKU. Copy of backend/lib_feed_parser.MIN_MODEL_CARDINALITY /
+# _model_is_identifier — this script runs in modemorph-ai and cannot import
+# backend/, same as the MONOBRAND_SOURCES copy above.
+#
+# `source_sku` becomes notes ("<SOURCE>:<SKU>"), which is the dedup key here AND
+# the staleness key in cron.sync-feeds. It was `model or id` unconditionally, and
+# <model> is not an identifier on half the registered feeds (measured on prod
+# 2026-08-20 via wardrobe_items.notes):
+#
+#   SELA         артикул   5155 строк / 4524 разных SKU
+#   ЦУМ          тега нет  ключ и так был id
+#   ElytS        ЦВЕТ      30 из 39 строк: "ElytS:Светло-серый" (×3), "Бежевый"…
+#   2moodstore   РАЗМЕР    585 строк на 12 разных source_sku: "35", "39,5", "27/32"
+#
+# With a colour in the key the importer believes it already has every offer of
+# that colour: 25 distinct <model> across 81616 ElytS offers means 99.95% of the
+# feed can never be imported, and such a row can never go stale either.
+# 0.05 sits between the enumerations (0.0003 / ~0.002) and the article code (0.88).
+# ---------------------------------------------------------------------------
+MIN_MODEL_CARDINALITY = 0.05
+
+
+def _model_is_identifier(offers) -> bool:
+    """Does <model> behave like an identifier ON THIS feed? Measured, not assumed."""
+    present = [(o.findtext("model") or "").strip() for o in offers]
+    present = [v for v in present if v]
+    if not present:
+        return False
+    return len(set(present)) / len(present) >= MIN_MODEL_CARDINALITY
+
+
+# ---------------------------------------------------------------------------
 # Category mapping: YML category names → our clothing_type
 # ---------------------------------------------------------------------------
 
@@ -236,7 +310,14 @@ def parse_feed(feed_path: str, source_override=None) -> list[dict]:
     items = []
     skipped = 0
 
-    for offer in shop.findall(".//offer"):
+    # <model> is only a SKU on a feed where it BEHAVES like one — see
+    # _model_is_identifier. On ElytS it is a colour and on 2moodstore a shoe
+    # size, and `model or id` put those straight into the notes dedup key.
+    offers = shop.findall(".//offer")
+    use_model = _model_is_identifier(offers)
+    logger.info(f"SKU key for this feed: {'<model>' if use_model else 'offer id'}")
+
+    for offer in offers:
         cid = offer.findtext("categoryId", "")
         chain = get_category_chain(cid)
         cat_name = cat_map.get(cid, "")
@@ -263,6 +344,7 @@ def parse_feed(feed_path: str, source_override=None) -> list[dict]:
         price = offer.findtext("price", "0")
         url = offer.findtext("url", "")
         model = offer.findtext("model", "")
+        vendor = (offer.findtext("vendor") or "").strip()
 
         # Collect all pictures — we'll pick the best flat-lay later
         pictures = [p.text for p in offer.findall("picture") if p.text]
@@ -281,6 +363,7 @@ def parse_feed(feed_path: str, source_override=None) -> list[dict]:
         # colour 0/45 -> 31/31 of the offers present in the feed, material 0 -> 31/31,
         # gender 6/45 -> 31/31.
         markup = markup_from_offer(offer, cat_names, cat_parent_ids)
+        brand, brand_source = brand_from_offer(vendor, shop_name)
         gender = markup["gender"]
         color, shade, material = markup["color"], markup["shade"], markup["material"]
         if not color:
@@ -322,8 +405,15 @@ def parse_feed(feed_path: str, source_override=None) -> list[dict]:
             # Kids are hidden, never deleted.
             "is_hidden": bool(markup["is_kids"]),
             "is_basic": False,
+            # The house that made the garment, and how we know. <vendor> was parsed
+            # and thrown away here until 2026-08-20, which is why every consumer
+            # fell back to the retailer name in notes and a Saint Laurent coat came
+            # out labelled "ЦУМ". Multi-brand feeds with no <vendor> stay NULL —
+            # see backend/migrations/030_item_brand.sql.
+            "brand": brand,
+            "brand_source": brand_source,
             "source": shop_name,
-            "source_sku": model or offer.get("id", ""),
+            "source_sku": (model or offer.get("id", "")) if use_model else offer.get("id", ""),
             "price": float(price) if price else None,
         })
 
@@ -336,14 +426,24 @@ async def insert_items(items: list[dict], dry_run: bool = False):
     if dry_run:
         logger.info(f"[DRY RUN] Would insert {len(items)} items")
         total = len(items) or 1
-        for field in ("color", "shade", "material", "gender"):
+        for field in ("color", "shade", "material", "gender", "brand"):
             filled = sum(1 for i in items if i.get(field))
             logger.info(f"  {field:>9} filled on {filled}/{len(items)} ({100 * filled // total}%)")
         logger.info(f"  {'is_kids':>9} true on {sum(1 for i in items if i.get('is_kids'))}/{len(items)}")
+        # Which provenance the brands came from, and how many houses the feed
+        # actually names — 1 distinct brand on a feed we treat as multi-brand
+        # (or 0 on any feed) is the signal that <vendor> went away.
+        by_source = {}
+        for i in items:
+            if i.get("brand_source"):
+                by_source[i["brand_source"]] = by_source.get(i["brand_source"], 0) + 1
+        logger.info(f"  {'brand_src':>9} {by_source or 'none'}")
+        logger.info(f"  {'brands':>9} {len({i['brand'] for i in items if i.get('brand')})} distinct")
         for item in items[:5]:
             logger.info(
                 f"  {item['clothing_type']:>15}  {item['item_name'][:44]:<44} "
-                f"{item['color']}/{item['shade'] or '-'}  {item['gender']}  {item['material'][:34]}"
+                f"{item['color']}/{item['shade'] or '-'}  {item['gender']}  "
+                f"{item['material'][:24]}  {item['brand'] or '-'}"
             )
         return
 
@@ -368,8 +468,10 @@ async def insert_items(items: list[dict], dry_run: bool = False):
                 """INSERT INTO wardrobe_items
                    (item_name, item_name_en, description, description_en,
                     image_url, url, clothing_type, color, shade, material, style,
-                    gender, is_kids, has_print, has_details, is_hidden, is_basic, notes, price)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)""",
+                    gender, is_kids, has_print, has_details, is_hidden, is_basic, notes, price,
+                    brand, brand_source)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
+                           $20,$21)""",
                 item["item_name"], item["item_name_en"],
                 item["description"], item["description_en"],
                 item["image_url"], item["url"],
@@ -381,6 +483,8 @@ async def insert_items(items: list[dict], dry_run: bool = False):
                 item["is_hidden"], item["is_basic"],
                 f"{item['source']}:{item['source_sku']}",  # store in notes for dedup
                 item["price"],  # парсился из фида и терялся — виджету нечего было показать
+                item["brand"],  # <vendor> — тоже парсился и терялся, отсюда «бренд ЦУМ»
+                item["brand_source"],
             )
             inserted += 1
 

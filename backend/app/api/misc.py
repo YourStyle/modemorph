@@ -21,6 +21,9 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.services.capsule import capsule_style_guide
 from clothing_taxonomy import resolve_clothing_type
+# Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand) —
+# see backend/brand.py.
+from brand import BRAND_GUESS_PROMPT_RULE, prompt_brand_field, retailer_from_notes
 
 router = APIRouter()
 
@@ -503,7 +506,11 @@ async def ai_assistant(request: Request, user: dict = Depends(get_current_user),
                 if clip_results:
                     cat_ids = [r["id"] for r in clip_results]
                     cat_result = await db.execute(
-                        text("SELECT id, item_name, color, clothing_type, url, notes, image_url FROM wardrobe_items WHERE id = ANY(:ids)"),
+                        # brand_source travels with brand: the assistant answers in
+                        # free Russian prose, so a house we merely inferred must
+                        # reach the model under a key it is forbidden to print.
+                        text("SELECT id, item_name, color, clothing_type, url, notes, image_url, "
+                             "brand, brand_source FROM wardrobe_items WHERE id = ANY(:ids)"),
                         {"ids": cat_ids},
                     )
                     catalog_items = [dict(r) for r in cat_result.mappings().all()]
@@ -533,14 +540,35 @@ Always respond with JSON array. Use Russian for all text."""
     } for i in wardrobe], ensure_ascii=False)
 
     catalog_json = ""
+    brand_guess_block = ""
     if catalog_items:
-        catalog_json = "\n\nRelevant catalog items (partner brands, user can buy):\n" + json_lib.dumps([{
-            "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
-            "type": i.get("clothing_type"), "url": i.get("url"), "image_url": i.get("image_url"),
-            "brand": (i.get("notes") or "").split(":")[0],
-        } for i in catalog_items], ensure_ascii=False)
+        # "retailer" is the SHOP off notes ("<FEED_SOURCE>:<SKU>"). It shipped to
+        # the assistant as "brand" until 2026-08-20, so the stylist told users a
+        # Saint Laurent coat was by "ЦУМ" for 62% of the catalog.
+        #
+        # The house now ships under "brand" when a merchant named it and under
+        # "brand_guess" when we matched it off the product name. This endpoint
+        # returns free Russian text straight to the user, so it is the site where
+        # printing a guess as fact costs the most — 3239 ЦУМ rows are guesses.
+        # An absent key makes the model say nothing, which is the truth here.
+        _catalog_payload = []
+        has_brand_guess = False
+        for i in catalog_items:
+            brand_key, brand_value = prompt_brand_field(i.get("brand"), i.get("brand_source"))
+            has_brand_guess = has_brand_guess or brand_key == "brand_guess"
+            _catalog_payload.append({
+                "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
+                "type": i.get("clothing_type"), "url": i.get("url"),
+                "image_url": i.get("image_url"),
+                "retailer": retailer_from_notes(i.get("notes")),
+                **({brand_key: brand_value} if brand_key else {}),
+            })
+        catalog_json = ("\n\nRelevant catalog items (from partner shops, user can buy):\n"
+                        + json_lib.dumps(_catalog_payload, ensure_ascii=False))
+        if has_brand_guess:
+            brand_guess_block = f"\n\n{BRAND_GUESS_PROMPT_RULE}"
 
-    user_msg = f"{prompt}\n\nWeather: {weather.get('location', '')}, {weather.get('temperature', '')}°C, {weather.get('description', '')}\n\nWardrobe ({len(wardrobe)} items):\n{wardrobe_json}{catalog_json}"
+    user_msg = f"{prompt}\n\nWeather: {weather.get('location', '')}, {weather.get('temperature', '')}°C, {weather.get('description', '')}\n\nWardrobe ({len(wardrobe)} items):\n{wardrobe_json}{catalog_json}{brand_guess_block}"
 
     result = await _openrouter_chat(
         messages=[

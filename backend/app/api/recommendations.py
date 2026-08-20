@@ -41,6 +41,15 @@ from clothing_taxonomy import (  # noqa: E402
     normalize_clothing_type,
 )
 
+# Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand).
+# See backend/brand.py — conflating the two is what put "ЦУМ" on a Saint Laurent
+# coat, on the card and in the Gemini prompt.
+from brand import (  # noqa: E402
+    BRAND_GUESS_PROMPT_RULE,
+    prompt_brand_field,
+    retailer_from_notes,
+)
+
 
 # Text prompts per slot for CLIP text-retrieval when filling a gap.
 _GAP_PROMPTS = {
@@ -187,7 +196,7 @@ async def _build_gap_section(
             rows = await db.execute(
                 text("""
                     SELECT id, item_name, image_url, clothing_type, color, url, notes,
-                           gender, temp_min, temp_max, price
+                           gender, temp_min, temp_max, price, brand, brand_source
                     FROM wardrobe_items
                     WHERE id = ANY(:ids) AND COALESCE(is_hidden, false) = false
                 """),
@@ -200,7 +209,6 @@ async def _build_gap_section(
                     continue
                 if not gender_ok(row, gender):
                     continue
-                brand = (row.get("notes") or "").split(":")[0] or None
                 items.append({
                     "id": row["id"],
                     "item_source": "catalog",
@@ -209,7 +217,19 @@ async def _build_gap_section(
                     "color": row.get("color"),
                     "clothing_type": row.get("clothing_type"),
                     "url": row.get("url"),
-                    "brand": brand,
+                    # retailer, not brand. notes is "<FEED_SOURCE>:<SKU>" and
+                    # FEED_SOURCE is the shop — 62% of the catalog is ЦУМ, so
+                    # this key used to tell the user that a Saint Laurent coat was
+                    # made by a department store. brand is the real house and
+                    # comes from the column (migration 030); it stays absent while
+                    # NULL rather than falling back to the shop name.
+                    "retailer": retailer_from_notes(row.get("notes")),
+                    "brand": row.get("brand"),
+                    # Провенанс едет на клиент вместе со значением: марка,
+                    # выведенная из названия ('dictionary'), не должна выглядеть
+                    # так же, как та, которую назвал мерчант. Без этого поля
+                    # фронт физически не может их различить.
+                    "brand_source": row.get("brand_source"),
                     # Витрина «чего не хватает» — это список покупок, а не образ:
                     # без цены карточка бесполезна. Заполнена у 36% каталога,
                     # поэтому фронт рендерит блок цены только когда она есть.
@@ -373,7 +393,8 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
 
     catalog_items = await db.execute(
         text(
-            f"SELECT id, image_url, item_name, item_name_en, clothing_type, color, shade, has_print "
+            f"SELECT id, image_url, item_name, item_name_en, clothing_type, color, shade, has_print, "
+            f"notes, brand, brand_source "
             f"FROM wardrobe_items WHERE id IN ({id_csv}) "
             f"AND COALESCE(is_hidden, false) = false AND COALESCE(is_kids, false) = false"
         ),
@@ -412,6 +433,15 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                         item["user_id"] = db_row.get("user_id") or item.get("user_id")
                     else:
                         item["user_id"] = None
+                        # Overwrite, not `or`: main_recommendations rows written
+                        # before 2026-08-20 carry brand="ЦУМ" (the retailer) and
+                        # no retailer key at all, and the GET serves up to 7 days
+                        # of them. Taking the DB as the authority repairs the
+                        # cached sections on read instead of waiting a week for
+                        # the nightly cron to age them out.
+                        item["retailer"] = retailer_from_notes(db_row.get("notes"))
+                        item["brand"] = db_row.get("brand")
+                        item["brand_source"] = db_row.get("brand_source")
                     item["image_url"] = item.get("image_url") or db_row.get("image_url")
                     item["name"] = item.get("name") or db_row.get("item_name") or db_row.get("item_name_en", "")
                     item["color"] = item.get("color") or db_row.get("color")
@@ -641,7 +671,8 @@ async def generate_recommendations(
                             # not selected here.
                             partner_result = await db.execute(text("""
                                 SELECT id, item_name, image_url, clothing_type, color, shade,
-                                       material, url, notes, gender, temp_min, temp_max
+                                       material, url, notes, gender, temp_min, temp_max,
+                                       brand, brand_source
                                 FROM wardrobe_items WHERE id = ANY(:ids) AND COALESCE(is_hidden, false) = false
                             """), {"ids": partner_ids})
                             for r in partner_result.mappings().all():
@@ -650,8 +681,10 @@ async def generate_recommendations(
                                     continue
                                 if not gender_ok(row, gender):
                                     continue
-                                brand = (row.get("notes") or "").split(":")[0] or None
-                                row["brand"] = brand
+                                # `brand` now arrives from the column; `retailer`
+                                # is the shop it is sold by. They are different
+                                # facts and used to share one key.
+                                row["retailer"] = retailer_from_notes(row.get("notes"))
                                 partner_items.append(row)
         except Exception as e:
             logger.warning(f"[Recs POST] CLIP unavailable: {e}")
@@ -675,18 +708,33 @@ async def generate_recommendations(
     } for i in wardrobe_items], ensure_ascii=False)
 
     partner_json = ""
+    has_brand_guess = False
     if partner_items:
         # Same shape as wardrobe_json: shade and material must reach the model.
         # Without them a catalogue item arrives as its hue family only — the
         # merchant's "Бирюзовый" becomes "Голубой" and "Фуксия" becomes "Розовый",
         # and the composition (the thing that decides warmth) is not sent at all.
-        partner_json = json_lib.dumps([{
-            "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
-            "shade": i.get("shade"), "material": i.get("material"),
-            "type": i.get("clothing_type"), "image_url": i.get("image_url"),
-            "temp": list(item_window(i)),
-            "url": i.get("url"), "brand": i.get("brand"),
-        } for i in partner_items[:50]], ensure_ascii=False)
+        # The shop that sells it goes under "retailer". The house that made it
+        # goes under "brand" when a merchant named it and under "brand_guess"
+        # when we matched it off the product name — the model may print the
+        # first and may not print the second (BRAND_GUESS_PROMPT_RULE below).
+        # An absent key says nothing about the designer, which beats "brand":
+        # "ЦУМ" (the old bug, 62% of the catalog) and beats presenting one of
+        # 3239 inferred ЦУМ brands as merchant fact in a user-visible title.
+        _partner_payload = []
+        for i in partner_items[:50]:
+            brand_key, brand_value = prompt_brand_field(i.get("brand"), i.get("brand_source"))
+            has_brand_guess = has_brand_guess or brand_key == "brand_guess"
+            _partner_payload.append({
+                "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
+                "shade": i.get("shade"), "material": i.get("material"),
+                "type": i.get("clothing_type"), "image_url": i.get("image_url"),
+                "temp": list(item_window(i)),
+                "url": i.get("url"),
+                "retailer": i.get("retailer"),
+                **({brand_key: brand_value} if brand_key else {}),
+            })
+        partner_json = json_lib.dumps(_partner_payload, ensure_ascii=False)
 
     # Сводка по слотам: модель должна понимать, ЧЕМ располагает, а не только
     # видеть плоский список. «0 верхней одежды» — сигнал не требовать её.
@@ -779,11 +827,14 @@ Response: JSON array, no markdown.
 
     user_items_block = f"User wardrobe items [USER]:\n{wardrobe_json}"
     partner_items_block = f"\n\nPartner items [PARTNER]:\n{partner_json}" if partner_json else ""
+    # Ships only when a brand_guess key is actually in the payload: a rule about
+    # an absent key is wasted tokens and an invitation to talk about brands.
+    brand_guess_block = f"\n\n{BRAND_GUESS_PROMPT_RULE}" if has_brand_guess else ""
 
     user_message = f"""Gender: {gender or "не указан"}
 Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature', 15)}°C, {weather.get('description', '')}
 
-{user_items_block}{partner_items_block}"""
+{user_items_block}{partner_items_block}{brand_guess_block}"""
 
     logger.info(f"[Recs POST] Calling OpenRouter for user {user['id']}: {len(wardrobe_items)} user items, {len(partner_items)} partner items")
 
@@ -858,7 +909,14 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
             # renders the precise colour when it has one.
             "shade": i.get("shade", ""), "material": i.get("material", ""),
             "clothing_type": i.get("clothing_type", ""),
-            "url": i.get("url"), "brand": i.get("brand"),
+            "url": i.get("url"),
+            # Two separate facts on the card: who sells it, and who made it. The
+            # second is NULL until the backfill runs, and the frontend renders it
+            # only when it is there — it never falls back to the shop name.
+            # brand_source travels with brand so the card can tell a merchant-
+            # stated house from one inferred off the product name.
+            "retailer": i.get("retailer"), "brand": i.get("brand"),
+            "brand_source": i.get("brand_source"),
             # Carry the retrieval session forward so the frontend can post
             # impression / click events with the same identifier the CLIP
             # service used when it inserted the action=NULL baseline row.

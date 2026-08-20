@@ -28,7 +28,21 @@ interface OutfitItem {
   style?: string
   material?: string
   url?: string
+  /** Магазин из notes ("ЦУМ", "SELA"). До 2026-08-20 он приезжал в поле brand,
+   *  и пальто Saint Laurent подписывалось «ЦУМ» — 62% каталога это ЦУМ. */
+  retailer?: string
+  /** Марка вещи (wardrobe_items.brand). Пусто, пока бренд неизвестен: лучше
+   *  ничего, чем чужая марка на карточке. */
   brand?: string
+  /** Откуда взялась марка (wardrobe_items.brand_source):
+   *  feed_vendor — <vendor> из фида магазина, monobrand — константа
+   *  монобрендового магазина, dictionary — ВЫВЕДЕНА из названия товара.
+   *  Последняя категория (3269 позиций каталога по плану бэкфилла на
+   *  2026-08-20; из них 3239 — ЦУМ) не должна выглядеть так же уверенно, как
+   *  11620 позиций, которые назвал сам мерчант. Граница между ними ездит вместе
+   *  с фидом: товар ушёл из продажи — строка переехала из feed_vendor в
+   *  dictionary, вечером того же дня по ЦУМу уже 11494 / 3356. */
+  brand_source?: string | null
   size_type?: string
   has_print?: string
   has_details?: string
@@ -86,6 +100,71 @@ const BRAND_LOGOS: Record<string, { display: string; logoUrl: string }> = {
 function getBrandLogo(brand: string): { display: string; logoUrl: string } | null {
   const key = brand.toLowerCase().replace(/\s+/g, "")
   return BRAND_LOGOS[brand.toLowerCase()] || BRAND_LOGOS[key] || null
+}
+
+// Литералы источника фида из notes. Это МАГАЗИНЫ (и мусор), и ни один из них не
+// может оказаться в бейдже марки. Список нужен из-за кэша: секции в
+// main_recommendations живут до 7 дней, и строки, записанные до 2026-08-20,
+// хранят brand="ЦУМ". _enrich_sections чинит те из них, что ещё есть в каталоге,
+// а этот фильтр — страховка для остальных, чтобы «ЦУМ» не пережил деплой.
+const NOT_A_BRAND = new Set(["цум", "elyts", "unknown", "https", "http"])
+
+// Марка вещи. Отката на магазин НЕТ и быть не должно: 62% каталога продаётся в
+// ЦУМе, и подпись «ЦУМ» под пальто Saint Laurent — это ровно тот баг, ради
+// которого появилась колонка wardrobe_items.brand. Нет марки — нет подписи.
+function brandOf(item: OutfitItem): string | null {
+  const brand = item.brand?.trim()
+  if (!brand || NOT_A_BRAND.has(brand.toLowerCase())) return null
+  return brand
+}
+
+// Магазин, который вещь продаёт. Отдельный факт и отдельное место на карточке.
+// "Unknown" — литерал источника gate31 в notes, показывать его нечего.
+function retailerOf(item: OutfitItem): string | null {
+  const retailer = item.retailer?.trim()
+  if (!retailer) return null
+  const key = retailer.toLowerCase()
+  if (key === "unknown" || key.startsWith("http")) return null
+  return retailer
+}
+
+// Марка, выведенная из названия товара, а не названная мерчантом
+// (brand_source='dictionary', 3356 позиций каталога на 2026-08-20).
+//
+// Показываем: замер на 8910 офферов живого фида ЦУМа, где марку называет сам
+// мерчант, — 8893 совпадения, 17 молчаний, 0 ошибок; в режиме «дом снят с
+// продажи» (leave-one-house-out по тем же офферам) матчер молчит 8898 раз и
+// ошибается 12 — 0.13%, и все 12 промахов это Polo Ralph Lauren → Ralph Lauren
+// и Bound by bond-eye Australia → Bond-eye Australia, то есть суб-марка того же
+// дома. Артефакт: test/gauntlet/ours/brand/MEASUREMENT.json.
+//
+// Но НЕ как подтверждённый факт: без логотипа и с видимым знаком (см. ниже).
+function isInferredBrand(item: OutfitItem): boolean {
+  return item.brand_source === "dictionary"
+}
+
+// Как показать «это наша догадка» человеку с телефоном.
+//
+// Приложение живёт внутри Telegram на тач-экране, а `title` на тач-устройствах
+// не срабатывает вообще. Пока провенанс держался только на нём, на оттенке
+// серого (#6B7280 против #4B5563) и на толщине шрифта, пользователь не видел
+// РОВНО НИЧЕГО: выведенная марка читалась как марка, точка. Это тот же дефект,
+// что и подпись «ЦУМ», только промах теперь правдоподобный и потому незаметнее.
+//
+// Поэтому знак видимый и стоит в самом тексте, а не в оформлении: он переживает
+// truncate (обрезается хвост названия, а не префикс), копируется вместе с
+// текстом и виден на любом фоне. Цвет и вес остаются, но уже как подкрепление,
+// а не как единственный носитель смысла.
+//
+// Плитка тесная — там знак «≈». В шторке «Весь образ» места больше, и там то же
+// самое написано словами: шторка открывается по тапу на ту же вещь и объясняет
+// знак, который пользователь только что видел на плитке.
+const INFERRED_BRAND_MARK = "≈"
+const INFERRED_BRAND_WORDS = "похоже на"
+const INFERRED_BRAND_HINT = "Марку мы определили по названию товара — магазин её не указывал"
+
+function inferredBrandA11y(label: string) {
+  return { title: INFERRED_BRAND_HINT, "aria-label": `${label} — ${INFERRED_BRAND_HINT}` }
 }
 
 // Один нейтральный вид бейджа источника независимо от секции — раньше тут
@@ -421,11 +500,19 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
                       <CircleOff className="w-3.5 h-3.5" />
                     </button>
 
-                    {/* Brand badge */}
-                    {item.brand && item.brand.toLowerCase() !== "unknown" && (() => {
-                      const brandLogo = getBrandLogo(item.brand!)
+                    {/* Бейдж марки — ТОЛЬКО марка. Магазин живёт в шторке
+                        «Весь образ» отдельной строкой, а не здесь. */}
+                    {brandOf(item) && (() => {
+                      const label = brandOf(item)!
+                      const inferred = isInferredBrand(item)
+                      // Логотип — это утверждение «это точно они». Для марки,
+                      // выведенной из названия, его не рисуем.
+                      const brandLogo = inferred ? null : getBrandLogo(label)
                       return (
-                        <div className="absolute bottom-2 left-2 bg-white/90 rounded px-1.5 py-0.5 flex items-center">
+                        // max-w + truncate: раньше тут стояло короткое название
+                        // магазина («ЦУМ»), а марки бывают длинные («Philosophy
+                        // di Lorenzo Serafini») и вылезли бы за плитку.
+                        <div className="absolute bottom-2 left-2 max-w-[calc(100%-2.75rem)] bg-white/90 rounded px-1.5 py-0.5 flex items-center">
                           {brandLogo ? (
                             <img
                               src={brandLogo.logoUrl}
@@ -435,15 +522,21 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
                                 const el = e.currentTarget
                                 el.style.display = "none"
                                 const span = el.nextElementSibling as HTMLElement | null
-                                if (span) span.style.display = "inline"
+                                if (span) span.style.display = "inline-block"
                               }}
                             />
                           ) : null}
                           <span
-                            className="text-xs font-semibold tracking-wide"
-                            style={{ color: "#4B5563", display: brandLogo ? "none" : "inline" }}
+                            className={`text-xs tracking-wide truncate max-w-full ${inferred ? "" : "font-semibold"}`}
+                            {...(inferred ? inferredBrandA11y(label) : { title: label })}
+                            style={{
+                              color: inferred ? "#6B7280" : "#4B5563",
+                              display: brandLogo ? "none" : "inline-block",
+                            }}
                           >
-                            {item.brand}
+                            {/* Знак в тексте, а не в оформлении: truncate съедает
+                                хвост названия, а «≈» остаётся видимым. */}
+                            {inferred ? `${INFERRED_BRAND_MARK} ${label}` : label}
                           </span>
                         </div>
                       )
@@ -601,8 +694,28 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
                     <span className="text-xs px-2 py-1 rounded-md text-signal-ink font-medium bg-ink">
                       {isUserItem(item) ? "Ваше" : "Рекомендуем"}
                     </span>
-                    {item.brand && item.brand.toLowerCase() !== "unknown" && (
-                      <span className="text-xs text-gray-500 font-medium">{item.brand}</span>
+                    {/* Марка и магазин — два разных факта и два разных вида.
+                        Марка тёмная и полужирная, магазин — приглушённый
+                        предлог «в ЦУМ» рядом с кнопкой «В магазин». Одной
+                        строкой они были до 2026-08-20, и в ней всегда стоял
+                        магазин. */}
+                    {brandOf(item) && (() => {
+                      const label = brandOf(item)!
+                      const inferred = isInferredBrand(item)
+                      return (
+                        <span
+                          className={`text-xs text-gray-500 ${inferred ? "" : "font-medium"}`}
+                          {...(inferred ? inferredBrandA11y(label) : {})}
+                        >
+                          {/* Здесь места хватает, поэтому догадка названа словами
+                              — и заодно объясняет «≈» с плитки, откуда сюда
+                              попадают по тапу на ту же вещь. */}
+                          {inferred ? `${INFERRED_BRAND_WORDS} ${label}` : label}
+                        </span>
+                      )
+                    })()}
+                    {!isUserItem(item) && retailerOf(item) && (
+                      <span className="text-xs text-gray-400">в {retailerOf(item)}</span>
                     )}
                   </div>
                   {item.url && (

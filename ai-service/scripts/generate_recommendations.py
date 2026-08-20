@@ -21,6 +21,38 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 CLIP_URL = "http://127.0.0.1:8000"
 OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 
+# --- brand provenance at the prompt boundary --------------------------------
+# Copy of backend/brand.py's prompt_brand_field / BRAND_GUESS_PROMPT_RULE. This
+# script runs in the modemorph-ai container, which does not mount backend/, so it
+# cannot import it — same arrangement as import_catalog.py's copy of
+# MONOBRAND_SOURCES. Keep the two in sync by hand; they are ten lines.
+#
+# The point: wardrobe_items.brand_source says whether a merchant named the house
+# ('feed_vendor' / 'monobrand') or whether we matched it off the product name
+# ('dictionary'). Emitting both as `brand=` tells Gemini a guess is fact, and
+# Gemini writes the titles the user reads. A row with a brand but no provenance
+# (written before migration 030) counts as inferred — unknown provenance is not
+# merchant data.
+_BRAND_STATED_SOURCES = ("feed_vendor", "monobrand")
+
+_BRAND_GUESS_PROMPT_RULE = (
+    "- brand_guess — НАША догадка о марке по названию товара, а не слова магазина. "
+    "Она нужна только чтобы не собирать образ из двух вещей одного дома. "
+    "НИКОГДА не пиши значение brand_guess в тексте — ни в названии образа, ни в "
+    "описании, ни в ответе пользователю. Называть марку вслух можно только из brand."
+)
+
+
+def _prompt_brand_field(brand, brand_source):
+    """(key, value) under which this brand may enter a prompt; (None, None) if none."""
+    value = (brand or "").strip()
+    if not value:
+        return None, None
+    if (brand_source or "").strip() in _BRAND_STATED_SOURCES:
+        return "brand", value
+    return "brand_guess", value
+
+
 TYPE_GROUPS = {
     # both spellings: prod still stores 346 rows as "lonsleeve" (typo)
     "top": ["t-shirt", "shirt", "blouse", "longsleeve", "lonsleeve", "tank-top", "pullover", "cardigan", "hoodie", "sweatshirt", "turtleneck"],
@@ -90,12 +122,26 @@ async def gemini_name_and_organize(user_items, partner_items, weather, gender, s
         user_desc.append(f"[USER id={i['id']}] {name} ({ct}, {color})")
 
     partner_desc = []
+    has_brand_guess = False
     for i in partner_items[:30]:
         name = i.get("name") or i.get("item_name", "?")
         ct = i.get("clothing_type", "")
         color = i.get("color", "")
-        brand = i.get("brand", "")
-        partner_desc.append(f"[PARTNER id={i['id']} brand={brand}] {name} ({ct}, {color})")
+        # `brand=` used to carry the RETAILER, so this prompt told Gemini that a
+        # Saint Laurent coat was designed by a department store. The shop is now
+        # `retailer=`, and the house ships under a key that states its provenance:
+        # `brand=` when a merchant named it, `brand_guess=` when we matched it off
+        # the product name. Gemini writes the section and outfit titles the user
+        # reads, and 3239 of the ЦУМ rows are guesses.
+        retailer = i.get("retailer") or ""
+        brand_key, brand_value = _prompt_brand_field(i.get("brand"), i.get("brand_source"))
+        brand_part = f" {brand_key}={brand_value}" if brand_key else ""
+        has_brand_guess = has_brand_guess or brand_key == "brand_guess"
+        partner_desc.append(
+            f"[PARTNER id={i['id']} retailer={retailer}{brand_part}] {name} ({ct}, {color})"
+        )
+    # Ships only when the list actually contains a guess.
+    brand_guess_block = f"\n{_BRAND_GUESS_PROMPT_RULE}" if has_brand_guess else ""
 
     all_items = "\n".join(user_desc + partner_desc)
 
@@ -115,7 +161,7 @@ async def gemini_name_and_organize(user_items, partner_items, weather, gender, s
 5. ОБЯЗАТЕЛЬНО учитывай погоду: если холодно — куртку/пальто, если жарко — лёгкие вещи.
 6. Придумай стильное короткое название (3-5 слов)
 7. Учитывай пол: не предлагай платья мужчинам
-
+{brand_guess_block}
 JSON формат:
 [
   {{
@@ -227,7 +273,7 @@ async def main():
                     async with pool.acquire() as conn:
                         partner_rows = await conn.fetch(
                             "SELECT id, item_name, image_url, clothing_type, color, url, "
-                            "notes, gender, temp_min, temp_max "
+                            "notes, gender, temp_min, temp_max, brand, brand_source "
                             "FROM wardrobe_items WHERE id = ANY($1)",
                             partner_ids,
                         )
@@ -246,7 +292,11 @@ async def main():
                         # Gender filter
                         if gender and db.get("gender") and db["gender"] != gender:
                             continue
-                        brand = (db.get("notes") or "").split(":")[0] or None
+                        # notes is "<FEED_SOURCE>:<SKU>" and FEED_SOURCE is the
+                        # SHOP. Handing it over as "brand" is what labelled a
+                        # Saint Laurent coat "ЦУМ" for 62% of the catalog. The
+                        # designer comes from wardrobe_items.brand (migration 030)
+                        # and stays None until the feed or the backfill names one.
                         partner_items.append({
                             "id": db["id"],
                             "name": db["item_name"],
@@ -254,7 +304,9 @@ async def main():
                             "clothing_type": db.get("clothing_type", ""),
                             "color": db.get("color", ""),
                             "url": db.get("url"),
-                            "brand": brand,
+                            "retailer": (db.get("notes") or "").split(":")[0] or None,
+                            "brand": db.get("brand"),
+                            "brand_source": db.get("brand_source"),
                             "score": r["score"],
                         })
                 else:
@@ -282,7 +334,14 @@ async def main():
                         "color": i.get("color", ""),
                         "clothing_type": i.get("clothing_type", ""),
                         "url": i.get("url"),
+                        # Two separate facts on the card: who sells it, who made it.
+                        # brand_source rides along so the card can draw a brand we
+                        # inferred from the product name differently from one the
+                        # merchant stated. These rows are cached for days, so a
+                        # missing key here is a missing key on the user's screen.
+                        "retailer": i.get("retailer"),
                         "brand": i.get("brand"),
+                        "brand_source": i.get("brand_source"),
                     }
 
                 gemini_sections = await gemini_name_and_organize(
