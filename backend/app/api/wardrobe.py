@@ -10,7 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_admin_user, get_current_user
 from app.api.wardrobe_user_items import _coerce_bool, _normalize_fields
 
 router = APIRouter()
@@ -82,7 +82,7 @@ async def get_wardrobe_types(db: AsyncSession = Depends(get_db)):
 @router.get("/visibility")
 async def get_visibility(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Admin: get item visibility."""
@@ -101,7 +101,7 @@ async def get_visibility(
 @router.post("/visibility")
 async def set_visibility(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(get_admin_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Admin: bulk hide/show items."""

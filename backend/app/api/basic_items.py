@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import get_current_user
+from app.core.deps import get_admin_user, get_current_user
 
 router = APIRouter()
 
@@ -88,7 +88,7 @@ async def get_basic_item(item_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/basic-items")
-async def create_basic_item(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_basic_item(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     result = await db.execute(
         text("""INSERT INTO basic_wardrobe_items (name_ru, name_en, description, clothing_type, image_url, gender)
@@ -102,7 +102,7 @@ async def create_basic_item(request: Request, user: dict = Depends(get_current_u
 
 
 @router.put("/basic-items/{item_id}")
-async def update_basic_item(item_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def update_basic_item(item_id: int, request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     allowed = ["name_ru", "name_en", "description", "clothing_type", "image_url", "gender"]
     updates = {k: body[k] for k in allowed if k in body}
@@ -119,7 +119,7 @@ async def update_basic_item(item_id: int, request: Request, user: dict = Depends
 
 
 @router.delete("/basic-items/{item_id}")
-async def delete_basic_item(item_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def delete_basic_item(item_id: int, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     await db.execute(text("DELETE FROM basic_item_materials WHERE basic_item_id = :id"), {"id": item_id})
     result = await db.execute(text("DELETE FROM basic_wardrobe_items WHERE id = :id RETURNING id"), {"id": item_id})
     if not result.first():
@@ -129,7 +129,7 @@ async def delete_basic_item(item_id: int, user: dict = Depends(get_current_user)
 
 
 @router.post("/basic-items/{item_id}/materials")
-async def set_basic_item_materials(item_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def set_basic_item_materials(item_id: int, request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     material_ids = body.get("material_ids", [])
     await db.execute(text("DELETE FROM basic_item_materials WHERE basic_item_id = :id"), {"id": item_id})
@@ -165,7 +165,7 @@ async def get_combinations(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/combinations")
-async def create_combination(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_combination(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     result = await db.execute(
         text("INSERT INTO combinations (name, description, combination_type) VALUES (:name, :desc, :ctype) RETURNING *"),
@@ -183,7 +183,7 @@ async def create_combination(request: Request, user: dict = Depends(get_current_
 
 
 @router.put("/combinations/{combo_id}")
-async def update_combination(combo_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def update_combination(combo_id: int, request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     allowed = ["name", "description", "combination_type"]
     updates = {k: body[k] for k in allowed if k in body}
@@ -204,7 +204,7 @@ async def update_combination(combo_id: int, request: Request, user: dict = Depen
 
 
 @router.delete("/combinations/{combo_id}")
-async def delete_combination(combo_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def delete_combination(combo_id: int, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     await db.execute(text("DELETE FROM combination_elements WHERE combination_id = :id"), {"id": combo_id})
     await db.execute(text("DELETE FROM combinations WHERE id = :id"), {"id": combo_id})
     await db.commit()
@@ -212,7 +212,7 @@ async def delete_combination(combo_id: int, user: dict = Depends(get_current_use
 
 
 @router.post("/basic-items/copy")
-async def copy_basic_item(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def copy_basic_item(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     basic_item_id = body.get("basic_item_id") or body.get("id")
     if not basic_item_id:
@@ -248,7 +248,7 @@ async def get_basic_materials(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/basic-materials")
-async def create_basic_material(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_basic_material(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     result = await db.execute(
         text("INSERT INTO basic_materials (name_ru, name_en, description, properties) VALUES (:name_ru, :name_en, :desc, :props) RETURNING *"),
@@ -259,7 +259,7 @@ async def create_basic_material(request: Request, user: dict = Depends(get_curre
 
 
 @router.put("/basic-materials/{material_id}")
-async def update_basic_material(material_id: int, request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def update_basic_material(material_id: int, request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     allowed = ["name_ru", "name_en", "description", "properties"]
     updates = {k: body[k] for k in allowed if k in body}
@@ -274,7 +274,7 @@ async def update_basic_material(material_id: int, request: Request, user: dict =
 
 
 @router.delete("/basic-materials/{material_id}")
-async def delete_basic_material(material_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def delete_basic_material(material_id: int, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     await db.execute(text("DELETE FROM basic_item_materials WHERE basic_material_id = :id"), {"id": material_id})
     await db.execute(text("DELETE FROM basic_materials WHERE id = :id"), {"id": material_id})
     await db.commit()

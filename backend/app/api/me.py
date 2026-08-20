@@ -15,6 +15,21 @@ from app.core.deps import get_current_user
 router = APIRouter()
 
 
+def _measure(value, field: str, as_int: bool):
+    """Parse a height/weight the user typed, tolerating decimals and commas.
+
+    `int("163.5")` raises ValueError, which used to escape as a 500 and block the
+    last step of registration (prod, 2026-08-19). Height is an INTEGER column, so
+    a decimal entry is rounded rather than rejected; anything genuinely unparseable
+    is the caller's mistake and gets a 400, not a 500.
+    """
+    try:
+        number = float(str(value).replace(",", "."))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"Invalid {field}: {value!r}")
+    return round(number) if as_int else number
+
+
 @router.get("")
 async def get_me(
     user: dict = Depends(get_current_user),
@@ -132,9 +147,9 @@ async def update_profile_session(
                 val = body[field]
                 if val not in (None, ""):
                     if field == "height":
-                        val = int(val)
+                        val = _measure(val, "height", as_int=True)
                     elif field == "weight":
-                        val = float(val)
+                        val = _measure(val, "weight", as_int=False)
                 updates[field] = val if val not in (None, "") else None
 
         # If avatar_url changed, save previous avatar to user_avatars history
@@ -185,8 +200,8 @@ async def update_profile_session(
             "user_id": user["id"],
             "full_name": body.get("full_name"),
             "gender": body.get("gender"),
-            "height": int(body["height"]) if body.get("height") else None,
-            "weight": float(body["weight"]) if body.get("weight") else None,
+            "height": _measure(body["height"], "height", as_int=True) if body.get("height") else None,
+            "weight": _measure(body["weight"], "weight", as_int=False) if body.get("weight") else None,
             "top_size": body.get("top_size"),
             "bottom_size": body.get("bottom_size"),
             "shoe_size": body.get("shoe_size") or None,

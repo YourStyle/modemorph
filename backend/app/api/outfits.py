@@ -281,6 +281,13 @@ async def update_outfit(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    owned = await db.execute(
+        text("SELECT 1 FROM outfits WHERE id = :oid AND user_id = :uid"),
+        {"oid": outfit_id, "uid": user["id"]},
+    )
+    if not owned.first():
+        raise HTTPException(status_code=404, detail="Outfit not found")
+
     body = await request.json()
     allowed = ["name", "description", "preview_image_url", "gender"]
     updates = {}
