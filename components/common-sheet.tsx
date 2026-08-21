@@ -42,9 +42,13 @@ export function CommonSheet({
   const contentRef = useRef<HTMLDivElement>(null)
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    // Начинаем отслеживать только если касание на drag handle
+    // Тянуть можно за всю шапку, а не только за саму полоску. Полоска —
+    // 40x4px, попасть в неё пальцем на ходу почти нереально, поэтому свайп
+    // «не работал» на устройстве. Шапка целиком — цель нормального размера.
     const target = e.target as HTMLElement
-    if (!target.closest('.drag-handle')) return
+    if (!target.closest('.sheet-drag-zone')) return
+    // Кнопки внутри шапки (свернуть) тянуть не должны.
+    if (target.closest('button')) return
 
     startYRef.current = e.touches[0].clientY
     setIsDragging(true)
@@ -127,9 +131,9 @@ export function CommonSheet({
         >
         {/* Стеклянная шапка шита (test/gauntlet/design/LIQUID_GLASS.md, уровень 1) — только
             ручка и заголовок. Тело ниже остаётся плотным холстом, там блюрить нечего. */}
-        <div className="glass-flat relative shrink-0 will-change-transform">
+        <div className="sheet-drag-zone glass-flat relative shrink-0 will-change-transform">
           {/* Drag handle */}
-          <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
+          <div className="flex justify-center py-3 cursor-grab active:cursor-grabbing">
             <div className="w-10 h-1 rounded-full bg-foreground/15" />
           </div>
 

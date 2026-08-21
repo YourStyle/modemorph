@@ -1,3 +1,5 @@
+import { sessionAuth } from "@/lib/tma/session-auth"
+
 // Client-side image export with a ModeMorph watermark.
 //
 // Two entry points:
@@ -8,9 +10,19 @@
 // long-press → "Save to Photos" (the only path that reliably works inside the
 // Telegram in-app webview, where <a download> is silently ignored).
 
-const BRAND_FROM = "#EC9DE2"
-const BRAND_TO = "#89AEFF"
+// Должен совпадать с токеном --signal в app/globals.css (hsl(12 100% 55%)).
+// Canvas не понимает CSS-переменные, поэтому значение продублировано здесь —
+// читаем его из :root, а это только запасной вариант, если переменной нет.
+const SIGNAL_FALLBACK = "#FF4D1F"
 const FONT = "ui-sans-serif, system-ui, -apple-system, 'Manrope', sans-serif"
+
+/** Цвет знака — тот же сигнальный, что и во всём интерфейсе. */
+function signalColor(): string {
+  if (typeof window === "undefined") return SIGNAL_FALLBACK
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--signal").trim()
+  // Токен хранится как "12 100% 55%" — без обёртки hsl().
+  return raw ? `hsl(${raw})` : SIGNAL_FALLBACK
+}
 
 /** Route remote images through the same-origin proxy so canvas isn't tainted. */
 function proxied(url: string): string {
@@ -19,14 +31,43 @@ function proxied(url: string): string {
   return `/api/proxy-image?url=${encodeURIComponent(url)}`
 }
 
-function loadImage(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    img.crossOrigin = "anonymous"
-    img.onload = () => resolve(img)
-    img.onerror = () => reject(new Error(`Failed to load image: ${url}`))
-    img.src = proxied(url)
-  })
+/**
+ * Грузим картинку авторизованным fetch'ем, а не через <img src>.
+ *
+ * Почему: proxied() отдаёт /api/proxy-image, а в проде Caddy направляет весь
+ * /api/* в FastAPI (Caddyfile), где этот роут ТРЕБУЕТ авторизации и без токена
+ * отвечает 401. Тег <img> заголовок Authorization отправить не может, а токен
+ * у нас лежит в sessionStorage (lib/tma/session-auth.ts), не в куках — поэтому
+ * картинка молча не грузилась и экспорт примерки падал.
+ *
+ * fetch через api-client добавляет Bearer сам; дальше подставляем blob-URL,
+ * который тот же origin, так что canvas не пачкается и toBlob работает.
+ */
+async function loadImage(url: string): Promise<HTMLImageElement> {
+  const src = proxied(url)
+  let objectUrl: string | null = null
+
+  if (src.startsWith("/api/")) {
+    const token = sessionAuth.getAccessToken()
+    const res = await fetch(src, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    })
+    if (!res.ok) throw new Error(`Прокси картинок ответил ${res.status}`)
+    objectUrl = URL.createObjectURL(await res.blob())
+  }
+
+  try {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image()
+      img.crossOrigin = "anonymous"
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error(`Не удалось загрузить изображение: ${url}`))
+      img.src = objectUrl || src
+    })
+  } finally {
+    // Освобождаем после decode: к моменту onload картинка уже в памяти.
+    if (objectUrl) URL.revokeObjectURL(objectUrl)
+  }
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -59,12 +100,11 @@ function drawWatermark(ctx: CanvasRenderingContext2D, w: number, h: number, onPh
     ctx.fillRect(0, h - scrimH, w, scrimH)
   }
 
-  // Gradient logo mark with a white "M".
-  const grad = ctx.createLinearGradient(mx, my, mx + mark, my + mark)
-  grad.addColorStop(0, BRAND_FROM)
-  grad.addColorStop(1, BRAND_TO)
+  // Плашка знака — плоский сигнальный цвет. Был градиент из лавандово-розовой
+  // пары (#EC9DE2 → #89AEFF), которую из приложения вычистили целиком; знак
+  // оставался последним местом, где она жила.
   roundRect(ctx, mx, my, mark, mark, mark * 0.28)
-  ctx.fillStyle = grad
+  ctx.fillStyle = signalColor()
   ctx.fill()
   ctx.fillStyle = "#ffffff"
   ctx.font = `800 ${Math.round(mark * 0.62)}px ${FONT}`
