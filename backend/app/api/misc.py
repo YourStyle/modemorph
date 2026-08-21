@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.services.capsule import capsule_style_guide
+from app.services.usage import record_usage_event
 from clothing_taxonomy import resolve_clothing_type
 # Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand) —
 # see backend/brand.py.
@@ -150,46 +151,27 @@ async def bot_event(request: Request, db: AsyncSession = Depends(get_db)):
 
 @router.post("/usage/log")
 async def log_usage(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Client-side event sink.
+
+    This used to carry its own copy of the insert — profile lookup, subscriber
+    and credit enrichment, activity bump — which drifted from the shared one in
+    services/usage.py and, worse, repeated its `if not profile: return` early
+    exit. That exit is why registration-step events could not exist: the profile
+    is created by the LAST of three registration steps, so every event fired by
+    someone still inside the form was silently dropped, and the biggest drop in
+    the product (160 of 457 accounts) had no observable interior.
+
+    Delegating means the pre-profile path is fixed once, for both callers.
+    """
     body = await request.json()
-    feature = body.get("key") or body.get("feature")
-    action = body.get("action", "view")
-    meta = body.get("meta", {})
-
-    profile_result = await db.execute(text("SELECT id FROM user_profiles WHERE user_id = :uid"), {"uid": user["id"]})
-    profile = profile_result.first()
-    if not profile:
-        return {"success": True}
-
-    pid = profile[0]
-
-    # Check subscriber/credits status for usage_events enrichment
-    is_sub = await db.execute(text(
-        "SELECT EXISTS(SELECT 1 FROM user_subscriptions WHERE user_profile_id = :pid AND status = 'active' AND expires_at > NOW())"
-    ), {"pid": pid})
-    has_sub = is_sub.scalar() or False
-
-    has_cred = await db.execute(text(
-        "SELECT EXISTS(SELECT 1 FROM credit_transactions WHERE user_profile_id = :pid AND reason = 'purchase')"
-    ), {"pid": pid})
-    has_bought = has_cred.scalar() or False
-
-    await db.execute(
-        text("""INSERT INTO usage_events
-                (user_profile_id, user_anon_id, feature, action, count,
-                 is_subscriber, has_bought_credits,
-                 page_path, item_id, request_id, metadata, occurred_at)
-                VALUES (:pid, :anon, :feat, :act, :cnt,
-                        :is_sub, :has_bought,
-                        :page, :item, :req, CAST(:meta AS jsonb), NOW())"""),
-        {"pid": pid, "anon": str(pid), "feat": feature, "act": action, "cnt": body.get("count", 1),
-         "is_sub": has_sub, "has_bought": has_bought,
-         "page": meta.get("pagePath"), "item": meta.get("itemId"),
-         "req": meta.get("requestId"), "meta": json_lib.dumps(meta) if meta else "{}"},
+    await record_usage_event(
+        db,
+        user_id=user["id"],
+        feature=body.get("key") or body.get("feature"),
+        action=body.get("action", "view"),
+        count=body.get("count", 1),
+        meta=body.get("meta", {}),
     )
-
-    # Record daily activity for DAU/MAU tracking
-    await db.execute(text("SELECT record_user_activity(:pid)"), {"pid": pid})
-
     await db.commit()
     return {"success": True}
 

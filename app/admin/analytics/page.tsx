@@ -183,6 +183,22 @@ interface AnalyticsData {
     excluded_stages: string[]
     excluded_reason: string
   }
+  /** The interior of the biggest drop in the funnel. See admin.py registration_steps. */
+  registration_steps: {
+    instrumented_since: string
+    /** False until the events exist. Absence of data is NOT zero drop-off. */
+    has_data: boolean
+    steps: Array<{
+      step: number
+      label: string
+      reached: Num
+      completed: Num
+      went_back: Num
+      submitted: Num
+      failed: Num
+      drop_pct: Num
+    }>
+  }
   timeline: Array<{
     date: string
     items_added: number
@@ -1496,6 +1512,75 @@ export default function AnalyticsPage() {
             Этап «Онбординг завершён» удалён: он читал колонку с DEFAULT true, где 296 из 297
             значений — умолчание, а не действие пользователя.
           </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Inside the biggest drop: the three registration steps ────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Внутри регистрации</CardTitle>
+          <CardDescription>
+            «Профиль заполнен» — самый большой отвал воронки. Профиль пишется только третьим
+            шагом из трёх, поэтому до появления этих событий было видно, что люди уходят, но не
+            видно, откуда.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!data.registration_steps.has_data ? (
+            // Zero rows means the events do not exist yet, NOT a form nobody
+            // abandons. Drawing 0% here would claim a perfect funnel on the
+            // strength of missing instrumentation.
+            <p className="text-sm text-muted-foreground">
+              Событий пока нет — сбор включён {data.registration_steps.instrumented_since}. Данные
+              появятся после первых регистраций с этой версией. Отвал за прошлые периоды
+              восстановить нельзя: шаги 1 и 2 не оставляли следов.
+            </p>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Шаг</TableHead>
+                    <TableHead className="text-center">Дошли</TableHead>
+                    <TableHead className="text-center">Прошли дальше</TableHead>
+                    <TableHead className="text-center">Вернулись назад</TableHead>
+                    <TableHead className="text-center">Ошибка сохранения</TableHead>
+                    <TableHead className="text-right">Отвал</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.registration_steps.steps.map((s) => (
+                    <TableRow key={s.step}>
+                      <TableCell className="font-medium">
+                        {s.step}. {s.label}
+                      </TableCell>
+                      <TableCell className="text-center">{n(s.reached)}</TableCell>
+                      <TableCell className="text-center">
+                        {n(s.step === 3 ? s.submitted : s.completed)}
+                      </TableCell>
+                      <TableCell className="text-center text-muted-foreground">
+                        {(s.went_back ?? 0) > 0 ? n(s.went_back) : EM_DASH}
+                      </TableCell>
+                      {/* A failed submit is us breaking it, not them leaving. */}
+                      <TableCell className="text-center">
+                        {(s.failed ?? 0) > 0 ? (
+                          <span className="text-red-600 font-medium">{n(s.failed)}</span>
+                        ) : (
+                          EM_DASH
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">{pct(s.drop_pct)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <p className="text-xs text-muted-foreground mt-3">
+                «Ошибка сохранения» отделяет наш сбой от решения пользователя: 19.08 прод отдавал
+                500 на росте с десятичной долей и полностью блокировал регистрацию — в метриках
+                это выглядело как обычный уход.
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
 

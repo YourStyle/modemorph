@@ -59,21 +59,51 @@ export default function MiniRegistrationPage() {
     }
   }
 
+  // ── registration_step instrumentation ──
+  // The profile row is only written by the LAST of these three steps, so until
+  // now every person who abandoned the form left no trace anywhere: 160 of 457
+  // accounts on prod, 25–62% every month since launch, on both the Telegram and
+  // the web channel, with zero rows in every downstream table. The funnel could
+  // show that they were lost but never where. These events give the form an
+  // interior. Fire-and-forget — instrumentation must never block registration,
+  // which is the one flow where a tracking hiccup would be most expensive.
+  const logStep = (step: number, action: string) => {
+    void api
+      .post("/api/usage/log", {
+        feature: "registration_step",
+        action,
+        meta: { step, pagePath: "/auth/mini-registration" },
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    if (showForm) logStep(currentStep, "view")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showForm, currentStep])
+
   const updateFormData = (field: keyof FormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
   const nextStep = () => {
-    if (currentStep < 3) setCurrentStep(currentStep + 1)
+    if (currentStep < 3) {
+      logStep(currentStep, "complete")
+      setCurrentStep(currentStep + 1)
+    }
   }
 
   const prevStep = () => {
-    if (currentStep > 1) setCurrentStep(currentStep - 1)
+    if (currentStep > 1) {
+      logStep(currentStep, "back")
+      setCurrentStep(currentStep - 1)
+    }
   }
 
   const handleSubmit = async () => {
     if (isSubmitting) return
     setIsSubmitting(true)
+    logStep(3, "submit")
 
     try {
       await api.post("/api/me/profile-session", {
@@ -90,6 +120,11 @@ export default function MiniRegistrationPage() {
       router.replace("/app")
     } catch (e) {
       console.error("[onboarding] profile save failed", e)
+      // A failed submit is the difference between "changed their mind" and "we
+      // broke it" — prod served a 500 here on 2026-08-19 for a height typed as
+      // "163.5", which blocked registration outright and was invisible in every
+      // metric. Record it so the two causes stop looking identical.
+      logStep(3, "submit_failed")
       const detail = e instanceof Error ? e.message : ""
       setSubmitError(
         detail

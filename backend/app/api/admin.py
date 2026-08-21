@@ -845,6 +845,52 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
                 ),
             })
 
+    # ── Inside the registration form ─────────────────────────────────────────
+    # «Профиль заполнен» is the single biggest drop in the funnel above, and on
+    # its own it says nothing actionable: the form has three steps and the
+    # profile row is written only by the third, so an abandoned registration
+    # left no trace at all. registration_step events (shipped 2026-08-21) give
+    # it an interior.
+    #
+    # Keyed on user_anon_id, not user_profile_id: the whole point is the people
+    # who never got a profile, and for them user_profile_id is NULL.
+    #
+    # `failed` separates "changed their mind" from "we broke it" — prod returned
+    # a 500 on this submit for a height typed with a decimal, which blocked
+    # registration outright while looking identical to voluntary abandonment.
+    reg_step_rows = await rows(
+        "registration_steps",
+        """
+        SELECT (metadata->>'step')::int AS step,
+               count(DISTINCT user_anon_id) FILTER (WHERE action = 'view')          AS reached,
+               count(DISTINCT user_anon_id) FILTER (WHERE action = 'complete')      AS completed,
+               count(DISTINCT user_anon_id) FILTER (WHERE action = 'back')          AS went_back,
+               count(DISTINCT user_anon_id) FILTER (WHERE action = 'submit')        AS submitted,
+               count(DISTINCT user_anon_id) FILTER (WHERE action = 'submit_failed') AS failed
+        FROM usage_events
+        WHERE feature = 'registration_step' AND metadata->>'step' IS NOT NULL
+        GROUP BY 1 ORDER BY 1
+        """,
+    )
+    _STEP_LABELS = {1: "Пол, рост, вес", 2: "Размеры", 3: "Как узнали о нас"}
+    registration_steps = {
+        # No rows is not zero drop-off: it means the events did not exist yet.
+        # Rendering 0% here would claim a perfect form on the strength of
+        # missing instrumentation — exactly the failure this rebuild removed.
+        "instrumented_since": "2026-08-21",
+        "has_data": bool(reg_step_rows),
+        "steps": [{
+            "step": r["step"],
+            "label": _STEP_LABELS.get(r["step"], f"Шаг {r['step']}"),
+            "reached": r["reached"],
+            "completed": r["completed"],
+            "went_back": r["went_back"],
+            "submitted": r["submitted"],
+            "failed": r["failed"],
+            "drop_pct": _pct(r["reached"] - (r["completed"] + r["submitted"]), r["reached"]),
+        } for r in reg_step_rows],
+    }
+
     # AI adoption is a feature-usage rate over all registered users, NOT a
     # funnel stage. The cross-tab with outfit-saving is reported as a plain
     # overlap so nobody has to infer an ordering from a bar length.
@@ -1192,6 +1238,7 @@ async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Dep
         "revenue": revenue,
         "revenueGate": revenue_gate,
         "funnel": funnel,
+        "registration_steps": registration_steps,
         "funnelMeta": {
             # The shape contract, in the payload, so the chart cannot be
             # re-mis-composed without the description going stale visibly.
