@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # OpenWeather
     OPENWEATHER_API_KEY: str = ""
 
+    # Admitad product-feed export. Kept out of the source: these were hardcoded
+    # into cron.py in a public repository until 2026-08-22, so whatever was there
+    # must be considered published and worth reissuing.
+    ADMITAD_WEBSITE_ID: str = ""
+    ADMITAD_USER: str = ""
+    ADMITAD_CODE: str = ""
+
     # Cron secret
     CRON_SECRET: str = ""
 
@@ -63,6 +70,14 @@ def validate_settings():
         errors.append("JWT_SECRET is not set or too short (min 32 chars)")
     if not settings.TELEGRAM_PEPPER:
         errors.append("TELEGRAM_PEPPER is empty — Telegram auth is insecure")
+    if not (settings.ADMITAD_USER and settings.ADMITAD_CODE and settings.ADMITAD_WEBSITE_ID):
+        # Not fatal — the app runs fine without feeds. But silent is the wrong
+        # failure mode: the export URL would still build, just without a login,
+        # so every feed fetch returns an error page that parses to zero offers.
+        # sync-feeds skips empty feeds rather than hiding the catalog (cron.py
+        # guards that), so nothing breaks loudly — imports simply stop, and the
+        # catalog quietly goes stale until someone notices.
+        errors.append("ADMITAD_* is incomplete — product feeds will not import")
     if errors:
         for e in errors:
             print(f"WARNING: {e}", file=sys.stderr)

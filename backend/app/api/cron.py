@@ -961,9 +961,26 @@ async def cron_refresh_weather(request: Request, db: AsyncSession = Depends(get_
 #             ElytS from dominating the catalog and bounds per-run encode cost).
 #   - import: set False to track a feed for staleness sync but NOT import it yet.
 #
-# Account: dzerassa_katsanovaddede / webmaster 2942906
-# (migrated from anton_chukseev9c1e2 / 2883898 on 2026-06-15).
-_ADMITAD_BASE = "http://export.admitad.com/ru/webmaster/websites/2942906/products/export_adv_products/?user=dzerassa_katsanovaddede&code=sk83nsm45c&feed_id={feed_id}&format=xml"
+# Account: the "dzerassa" webmaster (migrated from the previous one 2026-06-15).
+# The login itself now lives in ADMITAD_USER — naming it here would put half the
+# credential back into the file this change exists to clean.
+#
+# Credentials come from the environment. They used to be written into this line
+# verbatim — in a PUBLIC repository, and over plain http, so the export login and
+# code were both readable in the source and sent in clear text on every fetch.
+# Treat any value that was ever committed here as compromised: it was public for
+# as long as it was in the file, and rewriting git history does not un-publish it.
+#
+# https, not http: the credentials travel in the query string, which is exactly
+# the part a passive observer reads first.
+_ADMITAD_BASE = (
+    "https://export.admitad.com/ru/webmaster/websites/{website}/products/"
+    "export_adv_products/?user={user}&code={code}&feed_id={{feed_id}}&format=xml"
+).format(
+    website=settings.ADMITAD_WEBSITE_ID,
+    user=settings.ADMITAD_USER,
+    code=settings.ADMITAD_CODE,
+)
 ADMITAD_FEEDS = {
     "SELA":       {"url": _ADMITAD_BASE.format(feed_id=24700), "limit": 5000},
     "ElytS":      {"url": _ADMITAD_BASE.format(feed_id=24625), "limit": 5000},
