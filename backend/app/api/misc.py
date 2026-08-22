@@ -237,6 +237,31 @@ async def get_user_likes(user: dict = Depends(get_current_user), db: AsyncSessio
     return {"liked": [str(r[0]) for r in result.all()]}
 
 
+# Accessories the outfit generator has no slot for and silently drops, so paying
+# to generate a product image for them is money spent on something no user can
+# ever see in an outfit. Bags, hats and scarves are deliberately NOT here — they
+# are plausible outfit elements once slots exist for them.
+_IGNORED_ACCESSORY_RE = re.compile(
+    r"очк|оправ|солнцезащ|часы|наручн|"
+    r"ожерель|серьг|серёж|брасл|кольцо|цепочк|подвеск|брошь|украшени|"
+    r"ремен|\bпояс\b|"
+    r"glass|sunglass|eyewear|watch|jewel|ring|earring|necklace|bracelet|belt",
+    re.IGNORECASE,
+)
+
+
+def _is_ignored_accessory(item: dict) -> bool:
+    """True when the detected item is an accessory we deliberately skip.
+
+    Matches the type and the name only, never the description: a t-shirt whose
+    description reads "с принтом в виде очков" is a t-shirt. Dropping a real
+    garment is the more expensive mistake — the user loses an item they
+    photographed, while a watch that slips through costs one generation.
+    """
+    haystack = " ".join(str(item.get(k) or "") for k in ("clothing_item", "item_name"))
+    return bool(_IGNORED_ACCESSORY_RE.search(haystack))
+
+
 # ── /api/detect-clothing (OpenRouter — detection + image generation) ──
 
 
@@ -351,7 +376,14 @@ async def detect_clothing(
     clean_b64 = await _remove_bg_via_ai_service(raw_bytes, ct) or img_b64
 
     # --- Step 1: Detect clothing items ---
-    detection_prompt = """Analyze this photo and detect ALL clothing items and accessories the person is wearing.
+    detection_prompt = """Analyze this photo and detect the clothing items the person is wearing.
+
+SKIP entirely — do not return an object for these: eyewear (glasses, sunglasses),
+watches, jewellery (rings, earrings, necklaces, bracelets), belts. They are not
+clothing for our purposes: the outfit generator has no slot for them and drops
+them, so a generated product image for a pair of sunglasses is paid for and then
+thrown away. Bags, hats and scarves are still returned.
+
 For each item return a JSON object with these fields:
 - clothing_item: item type in English, ONE of: t-shirt, shirt, blouse, longsleeve,
   tank-top, pullover, cardigan, hoodie, sweatshirt, turtleneck, vest, suit-jacket,
@@ -359,7 +391,7 @@ For each item return a JSON object with these fields:
   puffer-jacket, fur-coat, sheepskin-coat, shoes, boots, sneakers, sandals.
   Use "jacket" for any ordinary jacket (denim/leather/bomber/windbreaker),
   "puffer-jacket" only for a down puffer, "coat" only for a long coat/trench.
-  For a bag, hat, scarf, belt or jewellery answer with the plain English noun.
+  For a bag, hat or scarf answer with the plain English noun.
 - part: one of 'upper', 'lower', 'dress', 'footwear', 'accessories'
 - description: brief description in Russian
 - description_en: detailed description in English including color, material, texture, pattern. This will be used to generate a product image.
@@ -387,6 +419,30 @@ Return ONLY a valid JSON array. No markdown."""
 
     if not items:
         return [{"acceptable": False, "reason": "Не найдено предметов одежды на фото"}]
+
+    # Belt-and-braces for the prompt rule above: a model instruction is a request,
+    # not a guarantee, and every item that slips through costs a paid generation
+    # for something _SLOT_MAP will discard anyway (recommendations.py:457).
+    detected_total = len(items)
+    items = [i for i in items if not _is_ignored_accessory(i)]
+    dropped_accessories = detected_total - len(items)
+
+    if not items:
+        return [{"acceptable": False, "reason": "На фото не нашлось одежды — только аксессуары"}]
+
+    # How many items one photo yields has never been recorded anywhere, which is
+    # why the cost of a photo could only ever be given as a range: generations are
+    # billed per detected item, and only the SAVED ones (1.23 per photo) were
+    # observable after the fact. Logged here at the only point where the real
+    # number exists.
+    await record_usage_event(
+        db, user_id=user["id"], feature="photo_detection", action="detected",
+        count=len(items),
+        meta={"detected": detected_total, "kept": len(items),
+              "dropped_accessories": dropped_accessories,
+              "generations": len(items)},
+    )
+    await db.commit()
 
     # --- Step 2: Generate flat-lay product images in parallel ---
     async def gen_image(item: dict) -> str | None:
