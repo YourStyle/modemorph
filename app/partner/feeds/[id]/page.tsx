@@ -62,22 +62,22 @@ export default function FeedDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-3" />
       </div>
     )
   }
 
   if (!data) {
-    return <div className="text-center py-20 text-gray-500">Фид не найден</div>
+    return <div className="text-center py-20 text-ink-2">Фид не найден</div>
   }
 
   const { feed, items_in_db } = data
 
   const statusConfig: Record<string, { label: string; color: string; icon: typeof Clock }> = {
-    pending: { label: "Ожидает обработки", color: "text-yellow-600", icon: Clock },
-    processing: { label: "Обрабатывается...", color: "text-blue-600", icon: RefreshCw },
+    pending: { label: "Ожидает обработки", color: "text-ink-3", icon: Clock },
+    processing: { label: "Обрабатывается...", color: "text-ink-2", icon: RefreshCw },
     completed: { label: "Завершён", color: "text-green-600", icon: CheckCircle2 },
-    failed: { label: "Ошибка", color: "text-red-600", icon: XCircle },
+    failed: { label: "Ошибка", color: "text-destructive", icon: XCircle },
   }
 
   const cfg = statusConfig[feed.status] || statusConfig.pending
@@ -90,7 +90,7 @@ export default function FeedDetailPage() {
           <ArrowLeft className="h-4 w-4 mr-1" /> Назад
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
             <FileText className="h-6 w-6" />
             {feed.file_name}
           </h1>
@@ -105,7 +105,7 @@ export default function FeedDetailPage() {
               <StatusIcon className={`h-5 w-5 ${feed.status === "processing" ? "animate-spin" : ""}`} />
               {cfg.label}
             </div>
-            <div className="text-sm text-gray-500 space-y-1">
+            <div className="text-sm text-ink-2 space-y-1">
               <div>Загружен: {format(new Date(feed.created_at), "dd.MM.yyyy HH:mm", { locale: ru })}</div>
               {feed.completed_at && (
                 <div>Завершён: {format(new Date(feed.completed_at), "dd.MM.yyyy HH:mm", { locale: ru })}</div>
@@ -120,20 +120,20 @@ export default function FeedDetailPage() {
             {feed.status === "completed" ? (
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-2xl font-bold text-gray-900">{feed.items_imported}</div>
-                  <div className="text-sm text-gray-500">Импортировано</div>
+                  <div className="text-2xl font-bold text-ink">{feed.items_imported}</div>
+                  <div className="text-sm text-ink-2">Импортировано</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-gray-500">{feed.items_skipped}</div>
-                  <div className="text-sm text-gray-500">Пропущено</div>
+                  <div className="text-2xl font-bold text-ink-2">{feed.items_skipped}</div>
+                  <div className="text-sm text-ink-2">Пропущено</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-gray-900">{feed.items_total}</div>
-                  <div className="text-sm text-gray-500">Всего в фиде</div>
+                  <div className="text-2xl font-bold text-ink">{feed.items_total}</div>
+                  <div className="text-sm text-ink-2">Всего в фиде</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-blue-600">{items_in_db}</div>
-                  <div className="text-sm text-gray-500">В базе данных</div>
+                  <div className="text-2xl font-bold text-ink">{items_in_db}</div>
+                  <div className="text-sm text-ink-2">В базе данных</div>
                 </div>
               </div>
             ) : feed.status === "failed" ? (
@@ -141,7 +141,7 @@ export default function FeedDetailPage() {
                 {feed.error_log || "Неизвестная ошибка"}
               </div>
             ) : (
-              <div className="text-sm text-gray-500">
+              <div className="text-sm text-ink-2">
                 Результаты появятся после обработки фида
               </div>
             )}
@@ -153,7 +153,7 @@ export default function FeedDetailPage() {
         <Card>
           <CardHeader><CardTitle className="text-sm text-red-600">Лог ошибок</CardTitle></CardHeader>
           <CardContent>
-            <pre className="bg-gray-900 text-gray-100 rounded-xl p-4 text-sm overflow-x-auto whitespace-pre-wrap">
+            <pre className="bg-ink text-signal-ink rounded-xl p-4 text-sm overflow-x-auto whitespace-pre-wrap">
               {feed.error_log}
             </pre>
           </CardContent>

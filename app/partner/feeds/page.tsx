@@ -98,11 +98,11 @@ export default function PartnerFeedsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
             <FileUp className="h-6 w-6" />
             XML фиды
           </h1>
-          <p className="text-gray-500 mt-1">Загрузите каталог товаров в формате YML</p>
+          <p className="text-ink-2 mt-1">Загрузите каталог товаров в формате YML</p>
         </div>
         <div>
           <input
@@ -115,7 +115,7 @@ export default function PartnerFeedsPage() {
           <Button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white"
+            className="bg-ink text-signal-ink hover:bg-ink/90 border-0"
           >
             {uploading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -130,14 +130,14 @@ export default function PartnerFeedsPage() {
       {/* Info card */}
       <Card>
         <CardContent className="pt-6">
-          <h3 className="font-medium text-gray-900 mb-2">Формат фида</h3>
-          <p className="text-sm text-gray-500 mb-3">
+          <h3 className="font-medium text-ink mb-2">Формат фида</h3>
+          <p className="text-sm text-ink-2 mb-3">
             Поддерживается формат Yandex Market Language (YML). Фид должен содержать элементы{" "}
-            <code className="bg-gray-100 px-1 rounded">offer</code> с категориями, названиями, изображениями и ценами.
+            <code className="bg-canvas-sunk px-1 rounded">offer</code> с категориями, названиями, изображениями и ценами.
           </p>
           <div className="flex gap-4 text-sm">
-            <div className="text-gray-500">Макс. размер: <span className="font-medium text-gray-900">50 МБ</span></div>
-            <div className="text-gray-500">Формат: <span className="font-medium text-gray-900">XML/YML</span></div>
+            <div className="text-ink-2">Макс. размер: <span className="font-medium text-ink">50 МБ</span></div>
+            <div className="text-ink-2">Формат: <span className="font-medium text-ink">XML/YML</span></div>
           </div>
         </CardContent>
       </Card>
@@ -147,11 +147,11 @@ export default function PartnerFeedsPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-ink-3" />
             </div>
           ) : feeds.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <FileUp className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+            <div className="text-center py-12 text-ink-2">
+              <FileUp className="h-12 w-12 mx-auto mb-3 text-ink-3" />
               <p>Нет загруженных фидов</p>
             </div>
           ) : (
@@ -185,7 +185,7 @@ export default function PartnerFeedsPage() {
                       <TableCell className="text-sm">
                         {feed.status === "completed" ? feed.items_skipped : "—"}
                       </TableCell>
-                      <TableCell className="text-sm text-gray-500">
+                      <TableCell className="text-sm text-ink-2">
                         {format(new Date(feed.created_at), "dd.MM.yyyy HH:mm", { locale: ru })}
                       </TableCell>
                       <TableCell>
@@ -203,7 +203,7 @@ export default function PartnerFeedsPage() {
       </Card>
 
       {hasProcessing && (
-        <p className="text-sm text-gray-500 text-center">
+        <p className="text-sm text-ink-2 text-center">
           <RefreshCw className="h-3.5 w-3.5 inline mr-1 animate-spin" />
           Статус обновляется автоматически
         </p>

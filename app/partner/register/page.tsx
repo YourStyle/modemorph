@@ -96,18 +96,17 @@ export default function PartnerRegisterPage() {
 
   if (step === "success") {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
         <div className="w-full max-w-sm text-center">
-          <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center mx-auto mb-4">
+          <div className="h-16 w-16 rounded-2xl bg-canvas-sunk text-ink flex items-center justify-center mx-auto mb-4">
             <CheckCircle2 className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Заявка отправлена!</h1>
-          <p className="text-gray-600 mb-6">
+          <h1 className="text-2xl font-bold text-ink mb-2">Заявка отправлена!</h1>
+          <p className="text-ink-2 mb-6">
             Ваша заявка на партнёрство отправлена на рассмотрение. Мы уведомим вас по электронной почте после одобрения.
           </p>
           <Button
             onClick={() => router.push("/partner")}
-            style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
             className="text-white border-0"
           >
             Перейти в кабинет
@@ -118,19 +117,19 @@ export default function PartnerRegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#EC9DE2] to-[#89AEFF] flex items-center justify-center mx-auto mb-4">
+          <div className="h-14 w-14 rounded-2xl bg-ink text-signal-ink flex items-center justify-center mx-auto mb-4">
             <Building2 className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Стать партнёром</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-ink tracking-tight">Стать партнёром</h1>
+          <p className="text-ink-2 mt-1">
             Получите доступ к API виртуальной примерки
           </p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-line p-6">
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
@@ -140,11 +139,11 @@ export default function PartnerRegisterPage() {
 
             {/* Account section */}
             <div className="space-y-4">
-              <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+              <h2 className="text-sm font-semibold text-ink uppercase tracking-wider">
                 Аккаунт
               </h2>
               <div className="space-y-2">
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="email" className="block text-sm font-medium text-ink-2">
                   Электронная почта *
                 </label>
                 <Input
@@ -158,7 +157,7 @@ export default function PartnerRegisterPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="password" className="block text-sm font-medium text-ink-2">
                   Пароль *
                 </label>
                 <Input
@@ -174,15 +173,15 @@ export default function PartnerRegisterPage() {
               </div>
             </div>
 
-            <hr className="border-gray-200" />
+            <hr className="border-line" />
 
             {/* Company section */}
             <div className="space-y-4">
-              <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wider">
+              <h2 className="text-sm font-semibold text-ink uppercase tracking-wider">
                 О компании
               </h2>
               <div className="space-y-2">
-                <label htmlFor="company" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="company" className="block text-sm font-medium text-ink-2">
                   Название компании *
                 </label>
                 <Input
@@ -196,7 +195,7 @@ export default function PartnerRegisterPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="contact" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="contact" className="block text-sm font-medium text-ink-2">
                   Контактное лицо *
                 </label>
                 <Input
@@ -210,7 +209,7 @@ export default function PartnerRegisterPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="website" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="website" className="block text-sm font-medium text-ink-2">
                   Веб-сайт
                 </label>
                 <Input
@@ -224,7 +223,7 @@ export default function PartnerRegisterPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="desc" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="desc" className="block text-sm font-medium text-ink-2">
                   Описание бизнеса
                 </label>
                 <textarea
@@ -234,7 +233,7 @@ export default function PartnerRegisterPage() {
                   disabled={isLoading}
                   placeholder="Расскажите, как планируете использовать API"
                   rows={3}
-                  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-base focus:border-blue-500 focus:ring-blue-500 resize-none"
+                  className="w-full rounded-xl border border-line px-3 py-2 text-base focus:border-line focus:ring-ink/15 resize-none"
                 />
               </div>
             </div>
@@ -243,7 +242,6 @@ export default function PartnerRegisterPage() {
               type="submit"
               disabled={isLoading}
               className="w-full text-white py-3 text-base font-medium rounded-xl h-12 border-0"
-              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
             >
               {isLoading ? (
                 <>
@@ -257,7 +255,7 @@ export default function PartnerRegisterPage() {
           </form>
         </div>
 
-        <p className="text-center text-sm text-gray-500 mt-4">
+        <p className="text-center text-sm text-ink-2 mt-4">
           Уже есть аккаунт?{" "}
           <Link href="/partner/login" className="text-[#B97DC6] hover:underline font-medium">
             Войти

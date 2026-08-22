@@ -127,13 +127,13 @@ export default function PartnerTokensPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
             <Key className="h-6 w-6" />
             API токены
           </h1>
-          <p className="text-gray-500 mt-1">Управление ключами доступа к API</p>
+          <p className="text-ink-2 mt-1">Управление ключами доступа к API</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white">
+        <Button onClick={() => setCreateOpen(true)} className="bg-ink text-signal-ink hover:bg-ink/90 border-0">
           <Plus className="h-4 w-4 mr-2" />
           Создать токен
         </Button>
@@ -143,11 +143,11 @@ export default function PartnerTokensPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-ink-3" />
             </div>
           ) : tokens.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <Key className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+            <div className="text-center py-12 text-ink-2">
+              <Key className="h-12 w-12 mx-auto mb-3 text-ink-3" />
               <p>У вас пока нет токенов</p>
               <p className="text-sm">Создайте токен для доступа к API</p>
             </div>
@@ -167,7 +167,7 @@ export default function PartnerTokensPage() {
                 {tokens.map((token) => (
                   <TableRow key={token.id}>
                     <TableCell className="font-medium">{token.name}</TableCell>
-                    <TableCell className="font-mono text-sm text-gray-500">
+                    <TableCell className="font-mono text-sm text-ink-2">
                       {token.token_prefix}...
                     </TableCell>
                     <TableCell>
@@ -191,14 +191,14 @@ export default function PartnerTokensPage() {
                       ) : (
                         <button
                           onClick={() => { if (token.is_active) { setEditingLimit(token.id); setLimitValue(String(token.rate_limit_per_minute)) } }}
-                          className={`${token.is_active ? "hover:bg-gray-100 cursor-pointer" : ""} rounded px-2 py-0.5`}
+                          className={`${token.is_active ? "hover:bg-canvas-sunk cursor-pointer" : ""} rounded px-2 py-0.5`}
                           title={token.is_active ? "Нажмите для изменения" : undefined}
                         >
                           {token.rate_limit_per_minute}/мин
                         </button>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-gray-500">
+                    <TableCell className="text-sm text-ink-2">
                       {token.last_used_at
                         ? formatDistanceToNow(new Date(token.last_used_at), { addSuffix: true, locale: ru })
                         : "Не использовался"}
@@ -255,7 +255,7 @@ export default function PartnerTokensPage() {
                     Сохраните этот токен в надёжном месте. После закрытия окна вы не сможете его увидеть снова.
                   </p>
                 </div>
-                <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm text-green-400 break-all">
+                <div className="bg-ink rounded-xl p-4 font-mono text-sm text-green-400 break-all">
                   {createdKey}
                 </div>
                 <Button onClick={handleCopy} className="w-full" variant="outline">
@@ -299,7 +299,7 @@ export default function PartnerTokensPage() {
                 <Button
                   onClick={handleCreate}
                   disabled={!newTokenName.trim() || creating}
-                  className="bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white"
+                  className="bg-ink text-signal-ink hover:bg-ink/90 border-0"
                 >
                   {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   Создать

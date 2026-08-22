@@ -53,7 +53,7 @@ export default function PartnerStatsPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-ink-3" />
       </div>
     )
   }
@@ -63,18 +63,18 @@ export default function PartnerStatsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
           <BarChart3 className="h-6 w-6" />
           Статистика
         </h1>
-        <p className="text-gray-500 mt-1">Аналитика использования API за 30 дней</p>
+        <p className="text-ink-2 mt-1">Аналитика использования API за 30 дней</p>
       </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <SummaryCard title="Сегодня" value={stats.api_calls_today} icon={Activity} iconColor="text-[#B97DC6]" />
-        <SummaryCard title="Всего" value={stats.api_calls_total} icon={BarChart3} iconColor="text-[#89AEFF]" />
-        <SummaryCard title="Успешных" value={`${stats.success_rate}%`} icon={CheckCircle2} iconColor="text-emerald-500" />
+        <SummaryCard title="Всего" value={stats.api_calls_total} icon={BarChart3} iconColor="text-ink-2" />
+        <SummaryCard title="Успешных" value={`${stats.success_rate}%`} icon={CheckCircle2} iconColor="text-ink-2" />
         <SummaryCard
           title="Ср. время (мс)"
           value={
@@ -101,14 +101,14 @@ export default function PartnerStatsPage() {
                 const errorPct = (day.errors / maxTotal) * 100
                 return (
                   <div key={day.date} className="flex items-center gap-3">
-                    <div className="text-xs text-gray-500 w-20 shrink-0">
+                    <div className="text-xs text-ink-2 w-20 shrink-0">
                       {day.date.slice(5)} {/* MM-DD */}
                     </div>
-                    <div className="flex-1 flex h-5 rounded-full overflow-hidden bg-gray-100">
+                    <div className="flex-1 flex h-5 rounded-full overflow-hidden bg-canvas-sunk">
                       {successPct > 0 && (
                         <div
-                          className="transition-all"
-                          style={{ width: `${successPct}%`, background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
+                          className="h-full bg-signal transition-all"
+                          style={{ width: `${successPct}%` }}
                         />
                       )}
                       {errorPct > 0 && (
@@ -118,16 +118,16 @@ export default function PartnerStatsPage() {
                         />
                       )}
                     </div>
-                    <div className="text-xs text-gray-600 w-12 text-right shrink-0">
+                    <div className="text-xs text-ink-2 w-12 text-right shrink-0">
                       {day.total}
                     </div>
                   </div>
                 )
               })}
             </div>
-            <div className="flex gap-4 mt-4 text-xs text-gray-500">
+            <div className="flex gap-4 mt-4 text-xs text-ink-2">
               <div className="flex items-center gap-1">
-                <div className="w-3 h-3 rounded-full bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF]" /> Успешные
+                <div className="w-3 h-3 rounded-full bg-signal" /> Успешные
               </div>
               <div className="flex items-center gap-1">
                 <div className="w-3 h-3 rounded-full bg-red-400" /> Ошибки
@@ -156,11 +156,11 @@ export default function PartnerStatsPage() {
                       <Badge variant="outline" className="font-mono text-xs">
                         {code}
                       </Badge>
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-ink-2">
                         {ERROR_LABELS[code] || code}
                       </span>
                     </div>
-                    <span className="text-sm font-medium text-gray-900">{count}</span>
+                    <span className="text-sm font-medium text-ink">{count}</span>
                   </div>
                 ))}
             </div>
@@ -170,8 +170,8 @@ export default function PartnerStatsPage() {
 
       {stats.daily.length === 0 && (
         <Card>
-          <CardContent className="py-12 text-center text-gray-500">
-            <BarChart3 className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+          <CardContent className="py-12 text-center text-ink-2">
+            <BarChart3 className="h-12 w-12 mx-auto mb-3 text-ink-3" />
             <p>Пока нет данных</p>
             <p className="text-sm">Статистика появится после первых вызовов API</p>
           </CardContent>
@@ -185,7 +185,7 @@ function SummaryCard({
   title,
   value,
   icon: Icon,
-  iconColor = "text-gray-600",
+  iconColor = "text-ink-2",
 }: {
   title: string
   value: string | number
@@ -195,11 +195,11 @@ function SummaryCard({
   return (
     <Card>
       <CardContent className="pt-6">
-        <div className="p-2 bg-gradient-to-br from-[#EC9DE2]/10 to-[#89AEFF]/10 rounded-xl w-fit mb-3">
+        <div className="p-2 bg-canvas-sunk rounded-xl w-fit mb-3">
           <Icon className={`h-5 w-5 ${iconColor}`} />
         </div>
-        <div className="text-2xl font-bold text-gray-900">{value}</div>
-        <div className="text-sm text-gray-500">{title}</div>
+        <div className="text-2xl font-bold text-ink">{value}</div>
+        <div className="text-sm text-ink-2">{title}</div>
       </CardContent>
     </Card>
   )
