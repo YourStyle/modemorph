@@ -18,7 +18,12 @@ import io
 
 from PIL import Image
 
-from app.api.misc import _GRID_CELLS, _build_grid_prompt, _split_grid
+from app.api.misc import (
+    _GRID_CELLS,
+    _build_grid_prompt,
+    _nearest_aspect_ratio,
+    _split_grid,
+)
 
 
 def _grid_uri(colours, size=64):
@@ -70,6 +75,32 @@ def test_prompt_names_every_quadrant():
     for cell in _GRID_CELLS:
         assert cell in prompt, f"{cell} unnamed — the model will invent something for it"
     assert prompt.count("completely empty") == 3
+
+
+def _solid_uri(w, h):
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), (1, 2, 3)).save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def test_try_on_keeps_the_photos_own_shape():
+    """A phone photo must not come back squashed.
+
+    Reported 2026-08-22: a 719x1280 portrait returned as 3:4. The try-on call
+    passed no image_config and asked for the framing in the prompt instead, so
+    the model used its own default.
+    """
+    for w, h, want in ((719, 1280, "9:16"), (1080, 1920, "9:16"), (3024, 4032, "3:4"),
+                       (1000, 1000, "1:1"), (1920, 1080, "16:9"), (1600, 1200, "4:3"),
+                       (2000, 3000, "2:3"), (880, 1176, "3:4")):
+        got = _nearest_aspect_ratio(_solid_uri(w, h))
+        assert got == want, f"{w}x{h} -> {got}, expected {want}"
+
+
+def test_unreadable_image_falls_back_instead_of_crashing():
+    """Try-on has already been paid for by the time we look at the frame."""
+    for bad in ("", None, "not-a-data-uri", "data:image/png;base64,%%%"):
+        assert _nearest_aspect_ratio(bad) == "3:4"
 
 
 if __name__ == "__main__":

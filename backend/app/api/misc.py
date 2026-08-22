@@ -3,6 +3,7 @@
 import base64
 import hmac
 import io
+import math
 import json as json_lib
 import re
 import time
@@ -304,6 +305,42 @@ def _build_flatlay_prompt(item: dict) -> str:
     if part == "footwear":
         return f"Studio-quality flat-lay of a matched pair of {clothing}. {desc} Two shoes mirror-symmetric; toes pointing up, heels down. {COMMON}"
     return f"Studio-quality flat-lay of a single {clothing}. {desc} Item laid perfectly flat with all parts visible. {COMMON}"
+
+
+# Aspect ratios the image models accept. Anything else is silently coerced.
+_SUPPORTED_RATIOS = (
+    ("21:9", 21 / 9), ("16:9", 16 / 9), ("3:2", 3 / 2), ("4:3", 4 / 3), ("5:4", 5 / 4),
+    ("1:1", 1.0),
+    ("4:5", 4 / 5), ("3:4", 3 / 4), ("2:3", 2 / 3), ("9:16", 9 / 16),
+)
+
+
+def _nearest_aspect_ratio(data_uri: str, fallback: str = "3:4") -> str:
+    """Closest supported aspect ratio to the given image.
+
+    Try-on used to pass no image_config at all and instead ASK for the right
+    framing in the prompt ("MATCH the aspect ratio ... do NOT stretch or squash").
+    A prompt is a request, not a constraint: with the parameter absent the model
+    fell back to its own default, so a 9:16 phone photo came back as 3:4 — the
+    squashed result reported 2026-08-22.
+
+    Ratio is compared in log space so that being off by a factor is penalised the
+    same whether the image is tall or wide; a linear distance would quietly prefer
+    the wide end of the list for every portrait photo.
+    """
+    match = re.match(r"data:image/(\w+);base64,(.+)", data_uri or "", re.DOTALL)
+    if not match:
+        return fallback
+    try:
+        with Image.open(io.BytesIO(base64.b64decode(match.group(2)))) as img:
+            width, height = img.size
+        if not width or not height:
+            return fallback
+        actual = width / height
+        return min(_SUPPORTED_RATIOS, key=lambda r: abs(math.log(r[1] / actual)))[0]
+    except Exception as e:
+        print(f"[vton] aspect detect failed, falling back to {fallback}: {e}")
+        return fallback
 
 
 _GRID_CELLS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -790,9 +827,16 @@ _VTON_ECHO_HAMMING_THRESHOLD = 6
 
 async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
     """Send original avatar + generated result, ask model to correct the face
-    so it matches the reference photo exactly. Purely visual — no text description."""
+    so it matches the reference photo exactly. Purely visual — no text description.
+
+    Frame is locked to the DRAFT, not the reference: pass 1 has already settled the
+    framing, and this pass must only repaint the face. Without the lock it re-crops
+    on its own and undoes pass 1's geometry — the same squashing this parameter was
+    added to stop, one step later in the pipeline.
+    """
     try:
         result = await _openrouter_chat(
+            image_config={"aspect_ratio": _nearest_aspect_ratio(generated_b64)},
             messages=[{"role": "user", "content": [
                 {"type": "text", "text": (
                     "FACE CORRECTION TASK.\n\n"
@@ -916,6 +960,11 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
 
     avatar_img = {"type": "image_url", "image_url": {"url": avatar_b64}}
 
+    # Lock the output frame to the person's photo. The prompt already asks for it
+    # in words, and words were not enough: without this parameter the model used
+    # its own default and returned a 9:16 phone photo squashed into 3:4.
+    vton_ratio = _nearest_aspect_ratio(avatar_b64)
+
     async def _run_pass1() -> str | None:
         result = await _openrouter_chat(
             messages=[{"role": "user", "content": [
@@ -923,6 +972,7 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
                 avatar_img,           # Reference: beginning (primacy)
                 *image_contents,      # Clothing items — last image so model focuses on garments
             ]}],
+            image_config={"aspect_ratio": vton_ratio},
             # Deliberately NOT FLATLAY_MODEL. The lite model was measured on
             # flat-lay generation only; try-on is a different job — it has to
             # keep a real person's face and body intact, and nothing here has
