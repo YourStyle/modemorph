@@ -61,17 +61,17 @@ export default function PartnerLoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#EC9DE2] to-[#89AEFF] flex items-center justify-center mx-auto mb-4">
+          <div className="h-14 w-14 rounded-2xl bg-ink text-signal-ink flex items-center justify-center mx-auto mb-4">
             <Building2 className="h-7 w-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Кабинет партнёра</h1>
-          <p className="text-gray-500 mt-1">Войдите в партнёрский аккаунт</p>
+          <h1 className="text-2xl font-bold text-ink tracking-tight">Кабинет партнёра</h1>
+          <p className="text-ink-2 mt-1">Войдите в партнёрский аккаунт</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <div className="bg-white rounded-2xl shadow-sm border border-line p-6">
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm">
@@ -81,7 +81,7 @@ export default function PartnerLoginPage() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="email" className="block text-sm font-medium text-ink-2">
                   Электронная почта
                 </label>
                 <Input
@@ -96,7 +96,7 @@ export default function PartnerLoginPage() {
                 />
               </div>
               <div className="space-y-2">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="password" className="block text-sm font-medium text-ink-2">
                   Пароль
                 </label>
                 <Input
@@ -115,7 +115,6 @@ export default function PartnerLoginPage() {
               type="submit"
               disabled={isLoading}
               className="w-full text-white py-3 text-base font-medium rounded-xl h-12"
-              style={{ background: "linear-gradient(to right, #EC9DE2, #89AEFF)" }}
             >
               {isLoading ? (
                 <>
@@ -129,7 +128,7 @@ export default function PartnerLoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-sm text-gray-500 mt-4">
+        <p className="text-center text-sm text-ink-2 mt-4">
           Нет аккаунта?{" "}
           <Link href="/partner/register" className="text-[#B97DC6] hover:underline font-medium">
             Стать партнёром

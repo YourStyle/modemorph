@@ -36,6 +36,54 @@ const itemHasPrint = (val: any): boolean => {
 
 const GENDER_OPTIONS = ["male", "female", "unisex"] as const
 
+/** Ответ GET /api/admin/catalog/brands — состав каталога по маркам с провенансом.
+ *
+ * Два блока и два ЗНАМЕНАТЕЛЯ, и их нельзя смешивать: `coverage` считает позиции
+ * каталога, `served` — выборки CLIP. На проде 2026-08-20 они расходятся не на
+ * проценты, а в разы: 92% по каталогу против 56.5% по выдаче, потому что 61.9%
+ * каталога (ЦУМ + ElytS) — это 2.2% выборок, а строки, у которых марки не будет
+ * никогда, — 6.2% каталога и 43.5% выдачи. Показывать здесь одну цифру «марка
+ * известна у 92%» значит отвечать на вопрос, которого никто не задавал.
+ */
+interface BrandCoverage {
+    total: number
+    with_brand: number
+    with_brand_pct: number | null
+    unknown: number
+    merchant_named: number
+    feed_vendor: number
+    monobrand: number
+    dictionary: number
+    distinct_brands: number
+    /** Что именно стоит в знаменателе — приходит с бэкенда и печатается как есть. */
+    denominator: string
+}
+
+interface BrandStats {
+    coverage: BrandCoverage
+    /** То же по выборкам CLIP (recommendation_logs.action IS NULL). Это НЕ показы. */
+    served: BrandCoverage & {
+        /** Сколько РАЗНЫХ позиций каталога движок доставал хоть раз (5432 из 24643). */
+        distinct_items: number
+        /** Размер каталога рядом, чтобы distinct_items было с чем сравнить. */
+        catalog_items: number
+    }
+    brands: {
+        brand: string
+        items: number
+        visible: number
+        /** Марку назвал сам магазин (<vendor> в фиде) или магазин монобрендовый. */
+        merchant_named: number
+        /** Марка выведена из названия товара. Это догадка, и она считается отдельно. */
+        inferred: number
+        /** Сколько раз позиции этой марки попадали в выборку CLIP. */
+        served: number
+        /** Доля выборок. null, если выборок нет вовсе — «—», а не уверенный 0%. */
+        served_pct: number | null
+        retailers: string | null
+    }[]
+}
+
 const PAGE_SIZE = 100
 
 export default function WardrobePage() {
@@ -320,6 +368,31 @@ export default function WardrobePage() {
         }
     }, [editParam])
 
+    // Состав каталога по маркам. Колонка brand появилась в миграции 030, и до
+    // этого блока её не было видно нигде: значение лежало в базе, а на вопрос
+    // «сколько у нас Saint Laurent и откуда мы это знаем» ответить было нечем.
+    // Два числа принципиально разведены: марку назвал мерчант или её вывел из
+    // названия наш матчер.
+    const [brandStats, setBrandStats] = useState<BrandStats | null>(null)
+    const [brandStatsError, setBrandStatsError] = useState<string | null>(null)
+    const [showAllBrands, setShowAllBrands] = useState(false)
+
+    useEffect(() => {
+        if (authLoading) return
+        let cancelled = false
+        void (async () => {
+            try {
+                const data = await api.get("/api/admin/catalog/brands?limit=200")
+                if (!cancelled) setBrandStats(data)
+            } catch (e) {
+                if (!cancelled) setBrandStatsError(e instanceof Error ? e.message : "Ошибка")
+            }
+        })()
+        return () => {
+            cancelled = true
+        }
+    }, [authLoading])
+
     const filteredAndSortedItems = useMemo(() => {
         let arr = [...items]
 
@@ -446,6 +519,147 @@ export default function WardrobePage() {
                             )}
                         </div>
                     </div>
+
+                    {/* Марки каталога. Единственное место, где видно и значение
+                        wardrobe_items.brand, и то, откуда оно взялось. «Назвал
+                        мерчант» и «вывели из названия» показаны разными
+                        числами — сумма из них скрыла бы ровно ту разницу, ради
+                        которой заведена колонка brand_source. */}
+                    {brandStats && (
+                        <div className="bg-white rounded-2xl shadow-sm p-4 md:p-6 mb-8">
+                            <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+                                <h2 className="text-lg font-semibold text-gray-900">Марки в каталоге</h2>
+                                <p className="text-sm text-gray-600">
+                                    марка известна у {brandStats.coverage.with_brand} из {brandStats.coverage.total}
+                                    {brandStats.coverage.with_brand_pct != null && ` (${brandStats.coverage.with_brand_pct}%)`}
+                                    {" · "}
+                                    {brandStats.coverage.distinct_brands} марок
+                                </p>
+                            </div>
+
+                            {/* Полнота по каталогу и полнота по ВЫДАЧЕ — два разных
+                                числа, и второе гораздо хуже. Каталог на 62% состоит
+                                из ЦУМа, но CLIP достаёт оттуда 2.2% выборок; зато
+                                43.5% выборок приходятся на строки, у которых марки
+                                не будет никогда (gate31 без фида и строки без
+                                notes). Одна цифра «92%» тут отвечала бы на вопрос
+                                «сколько строк подписано», а не на вопрос «увидит ли
+                                человек марку», и разошлась бы с ним почти вдвое.
+                                Знаменатель у каждой плашки написан словами. */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+                                <div className="rounded-xl border p-3">
+                                    <p className="text-xs text-gray-500">Марка известна — по каталогу</p>
+                                    <p className="text-2xl font-semibold">
+                                        {brandStats.coverage.with_brand_pct != null
+                                            ? `${brandStats.coverage.with_brand_pct}%`
+                                            : "—"}
+                                    </p>
+                                    <p className="text-xs text-gray-400">
+                                        {brandStats.coverage.with_brand} из {brandStats.coverage.total}
+                                        {" · "}знаменатель: {brandStats.coverage.denominator}
+                                    </p>
+                                </div>
+                                <div className="rounded-xl border border-sky-300 bg-sky-50 p-3">
+                                    <p className="text-xs text-sky-800">Марка известна — по выдаче</p>
+                                    <p className="text-2xl font-semibold text-sky-900">
+                                        {brandStats.served.with_brand_pct != null
+                                            ? `${brandStats.served.with_brand_pct}%`
+                                            : "—"}
+                                    </p>
+                                    <p className="text-xs text-sky-700">
+                                        {brandStats.served.with_brand} из {brandStats.served.total}
+                                        {" · "}знаменатель: {brandStats.served.denominator}
+                                    </p>
+                                    <p className="text-xs text-sky-700 mt-1">
+                                        Это серверные выборки CLIP, а НЕ показы человеку. Движок за всю
+                                        историю доставал {brandStats.served.distinct_items} разных позиций
+                                        из {brandStats.served.catalog_items}.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <p className="text-xs text-gray-500 mb-2">
+                                Откуда взялась марка — по позициям каталога:
+                            </p>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+                                <div className="rounded-xl border p-3">
+                                    <p className="text-xs text-gray-500">из фида магазина</p>
+                                    <p className="text-xl font-semibold">{brandStats.coverage.feed_vendor}</p>
+                                    <p className="text-xs text-gray-400">&lt;vendor&gt;, слова мерчанта</p>
+                                </div>
+                                <div className="rounded-xl border p-3">
+                                    <p className="text-xs text-gray-500">монобренд-магазин</p>
+                                    <p className="text-xl font-semibold">{brandStats.coverage.monobrand}</p>
+                                    <p className="text-xs text-gray-400">константа: SELA, Lacoste…</p>
+                                </div>
+                                <div className="rounded-xl border border-amber-300 bg-amber-50 p-3">
+                                    <p className="text-xs text-amber-800">выведено из названия</p>
+                                    <p className="text-xl font-semibold text-amber-900">{brandStats.coverage.dictionary}</p>
+                                    <p className="text-xs text-amber-700">догадка — не для партнёрского отчёта</p>
+                                </div>
+                                <div className="rounded-xl border p-3">
+                                    <p className="text-xs text-gray-500">марка неизвестна</p>
+                                    <p className="text-xl font-semibold">{brandStats.coverage.unknown}</p>
+                                    <p className="text-xs text-gray-400">осознанно NULL, не «ЦУМ»</p>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                    <tr className="text-left text-gray-500">
+                                        <th className="py-1 pr-3 font-medium">Марка</th>
+                                        <th className="py-1 pr-3 font-medium">Позиций</th>
+                                        <th className="py-1 pr-3 font-medium">Видимых</th>
+                                        <th className="py-1 pr-3 font-medium">Назвал мерчант</th>
+                                        <th className="py-1 pr-3 font-medium">Выведено</th>
+                                        {/* Позиций и Выдач расходятся на порядки: 15243
+                                            позиции ЦУМа дают 2.25% выборок, 5155 позиций
+                                            SELA — 49.6%. Решать по одному «Позиций»
+                                            значит оптимизировать не тот каталог. */}
+                                        <th className="py-1 pr-3 font-medium">Выдач CLIP</th>
+                                        <th className="py-1 pr-3 font-medium">Доля выдачи</th>
+                                        <th className="py-1 font-medium">Магазины</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    {brandStats.brands.slice(0, showAllBrands ? undefined : 12).map((b) => (
+                                        <tr key={b.brand} className="border-t">
+                                            <td className="py-1 pr-3 font-medium text-gray-900">{b.brand}</td>
+                                            <td className="py-1 pr-3">{b.items}</td>
+                                            <td className="py-1 pr-3 text-gray-600">{b.visible}</td>
+                                            <td className="py-1 pr-3">{b.merchant_named}</td>
+                                            <td className={cn("py-1 pr-3", b.inferred > 0 && "text-amber-700")}>
+                                                {b.inferred}
+                                            </td>
+                                            <td className="py-1 pr-3">{b.served}</td>
+                                            <td className="py-1 pr-3 text-gray-600">
+                                                {/* «—», а не «0%», когда выборок нет вовсе:
+                                                    ноль тут читался бы как измеренный. */}
+                                                {b.served_pct != null ? `${b.served_pct}%` : "—"}
+                                            </td>
+                                            <td className="py-1 text-gray-500">{b.retailers ?? "—"}</td>
+                                        </tr>
+                                    ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {brandStats.brands.length > 12 && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="mt-2"
+                                    onClick={() => setShowAllBrands((v) => !v)}
+                                >
+                                    {showAllBrands ? "Свернуть" : `Показать все ${brandStats.brands.length}`}
+                                </Button>
+                            )}
+                        </div>
+                    )}
+                    {brandStatsError && (
+                        <div className="bg-white rounded-2xl shadow-sm p-4 mb-8 text-sm text-gray-500">
+                            Состав по маркам не загрузился: {brandStatsError}
+                        </div>
+                    )}
 
                     {/* Filters */}
                     <div className="bg-white rounded-2xl shadow-sm p-4 md:p-6 mb-8">

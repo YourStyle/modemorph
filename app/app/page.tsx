@@ -27,7 +27,14 @@ interface OutfitItem {
   notes?: string
   user_id?: string
   url?: string
+  /** Магазин (notes) и марка (wardrobe_items.brand) — разные вещи; до
+   *  2026-08-20 бэкенд слал магазин под именем brand. */
+  retailer?: string
   brand?: string
+  /** feed_vendor / monobrand — марку назвал мерчант; dictionary — она выведена
+   *  из названия. Карточки рендерят эти два случая по-разному. */
+  brand_source?: string | null
+  price?: number | null
 }
 
 interface OutfitSuggestion {

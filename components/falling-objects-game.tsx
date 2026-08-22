@@ -181,7 +181,6 @@ export default function FallingObjectsGame({
   const [gameStarted, setGameStarted] = useState(false)
   const [gameOver, setGameOver] = useState(false)
   const [showFinishOverlay, setShowFinishOverlay] = useState(false)
-  const [basketX, setBasketX] = useState(50)
   const [fallingObjects, setFallingObjects] = useState<FallingObject[]>([])
   const [effects, setEffects] = useState<CollectedEffect[]>([])
   const [lives, setLives] = useState(MAX_LIVES)
@@ -210,6 +209,9 @@ export default function FallingObjectsGame({
   const objectIdRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
   const basketXRef = useRef<number>(50)
+  // Ссылки на саму корзину и её тень: позицию пишем в них напрямую, минуя React.
+  const basketElRef = useRef<HTMLDivElement | null>(null)
+  const basketShadowRef = useRef<HTMLDivElement | null>(null)
   const fallSpeedRef = useRef<number>(BASE_FALL_SPEED)
   const comboRef = useRef<number>(0)
   const comboTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -298,14 +300,38 @@ export default function FallingObjectsGame({
   // Input handlers
   // ---------------------------------------------------------------------------
 
+  // Корзина двигается ПРЯМОЙ записью transform в DOM, без состояния React.
+  //
+  // Раньше здесь был setBasketX на каждое движение пальца — то есть полная
+  // перерисовка тысячестрочного компонента на каждое событие touchmove, а их
+  // прилетает под сотню в секунду. React не успевал, кадры проседали, и корзина
+  // ехала рывками. Позиция и так уже хранится в basketXRef (игровой цикл читает
+  // именно его для коллизий), так что состояние тут было лишним звеном.
+  const applyBasketTransform = useCallback((xPercent: number, widthPx: number) => {
+    const tx = (xPercent / 100) * widthPx
+    const value = `translate3d(${tx}px, 0, 0) translate(-50%, 0)`
+    if (basketElRef.current) basketElRef.current.style.transform = value
+    if (basketShadowRef.current) basketShadowRef.current.style.transform = value
+  }, [])
+
+  // Первичная установка позиции и восстановление после ресайза/рестарта.
+  // Inline-стиля у корзины больше нет намеренно: игровой цикл каждый кадр
+  // вызывает setFallingObjects, то есть компонент перерисовывается постоянно —
+  // и React на каждом рендере затирал бы прямую запись transform значением из
+  // пропа style. Позиция живёт только в basketXRef и только в DOM.
+  useEffect(() => {
+    if (!gameAreaRef.current) return
+    applyBasketTransform(basketXRef.current, gameAreaRef.current.getBoundingClientRect().width)
+  }, [gameStarted, gameOver, dims.w, applyBasketTransform])
+
   const handleMove = useCallback((clientX: number) => {
     if (!gameAreaRef.current) return
     const rect = gameAreaRef.current.getBoundingClientRect()
     const x = ((clientX - rect.left) / rect.width) * 100
     const clampedX = Math.max(5, Math.min(95, x))
     basketXRef.current = clampedX
-    setBasketX(clampedX)
-  }, [])
+    applyBasketTransform(clampedX, rect.width)
+  }, [applyBasketTransform])
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!gameStarted || gameOver) return
@@ -666,7 +692,6 @@ export default function FallingObjectsGame({
     setCombo(0)
     setFallSpeed(BASE_FALL_SPEED)
     setLevel(1)
-    setBasketX(50)
     setSlowActive(false)
     setMagnetActive(false)
     setShieldActive(false)
@@ -908,14 +933,14 @@ export default function FallingObjectsGame({
               ellipse, only its position transform is recomputed each frame
               (same pattern as the basket itself), never transitioned. */}
           <div
+            ref={basketShadowRef}
             className="absolute left-0 bottom-2.5 h-1.5 w-7 rounded-full bg-ink/10 blur-[2px] will-change-transform"
-            style={{ transform: `translate3d(${px(basketX, "w")}px, 0, 0) translate(-50%, 0)` }}
           />
 
           {/* Basket */}
           <div
+            ref={basketElRef}
             className="absolute left-0 bottom-3 will-change-transform"
-            style={{ transform: `translate3d(${px(basketX, "w")}px, 0, 0) translate(-50%, 0)` }}
           >
             <span
               key={popKey}

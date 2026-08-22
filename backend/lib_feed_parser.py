@@ -15,6 +15,7 @@ same values for the same offer.
 import xml.etree.ElementTree as ET
 from typing import Optional
 
+from brand import brand_from_offer
 from feed_params import build_category_index, markup_from_offer
 from kids_detect import detect_kids
 
@@ -217,6 +218,86 @@ def _extract_color(name: str) -> str:
     return ""
 
 
+# Минимальная доля РАЗНЫХ значений <model> среди офферов, где тег есть, чтобы
+# <model> вообще годился в SKU. Идентификатор почти уникален (доля около 1),
+# перечисление — нет.
+#
+# Зачем это здесь, а не «просто берём model, раз попросили». <model> у разных
+# мерчантов означает разное, и на двух из четырёх фидов это НЕ идентификатор:
+#
+#   магазин      что лежит в <model>   что видно в проде (wardrobe_items.notes)
+#   SELA         артикул (SL6808010224)  5155 строк / 4524 разных SKU = 0.88
+#   ЦУМ          тега нет вовсе          15204 строки, SKU = атрибут id, всё ок
+#   ElytS        ЦВЕТ                    39 строк, у 30 в SKU «Бежевый»,
+#                                        «Светло-серый» (×3), «Темно-серый» (×3)
+#   2moodstore   РАЗМЕР                  585 строк / 12 разных source_sku:
+#                                        «35», «37», «39,5», «27/32»
+#
+# (замерено на проде 2026-08-20; ElytS-строки перечислены поштучно, у
+#  2moodstore на 585 строк всего 100 разных url — это 12 товаров в 585 копиях).
+#
+# Цена ошибки — не косметическая. notes = "<МАГАЗИН>:<SKU>" это ключ дедупликации
+# импортёра И ключ проверки на устаревание в sync-feeds. Когда в SKU лежит цвет,
+# импортёр считает, что все офферы этого цвета у него уже есть: у ElytS 25
+# разных <model> на 81616 офферов, то есть 99.95% фида недостижимо, а строки с
+# цветом в ключе не могут устареть никогда — цвет из фида не исчезает.
+#
+# 0.05 стоит между перечислениями (ElytS 25/81616 = 0.0003, 2moodstore ≈ 0.002 по
+# 12 значениям) и артикулом (SELA 0.88): ×25 запаса до ближайшего перечисления
+# снизу и ×17 до артикула сверху. То же значение и по той же причине, что
+# MIN_KEY_CARDINALITY в
+# backend/scripts/backfill_brand.py — там этот тест защищает ЧТЕНИЕ (джойн ради
+# бренда), здесь ЗАПИСЬ (ключ, который ляжет в notes).
+MIN_MODEL_CARDINALITY = 0.05
+
+
+def _model_is_identifier(offers) -> bool:
+    """Ведёт ли <model> себя как идентификатор НА ЭТОМ фиде.
+
+    Меряется каждый прогон по самому фиду, а не берётся из таблицы магазинов:
+    захардкоженный список рано или поздно разойдётся с фидом, а разошедшийся
+    список — это цвет в ключе дедупликации.
+    """
+    values = [(o.findtext("model") or "").strip() for o in offers]
+    present = [v for v in values if v]
+    if not present:
+        return False
+    return len(set(present)) / len(present) >= MIN_MODEL_CARDINALITY
+
+
+def feed_sku_candidates(xml_bytes) -> set:
+    """Every value any importer could have written into notes for this feed.
+
+    Used by the sync-feeds staleness check, which answers ONE question — "is this
+    offer still in the feed?" — where a wrong answer HIDES a live product. So the
+    set is deliberately PERMISSIVE: the union of id, group_id, <vendorCode> and
+    <model>, not just the one key today's importer writes.
+
+    Why the union. The SKU scheme changes (see MIN_MODEL_CARDINALITY: <model> is
+    a colour at ElytS and a shoe size at 2moodstore, so those feeds key on the
+    offer id), and prod holds rows written under the old one — 30 of 39 ElytS
+    rows read "ElytS:Светло-серый", all 585 2moodstore rows are keyed by size.
+    Under a strict set every one of those is "missing from the feed": 100% stale,
+    far past cron.STALE_THRESHOLD_PCT, and one sync run would hide 615 live rows.
+
+    The opposite risk — an old key colliding with something still in the feed and
+    masking a real removal — is the cheap direction to be wrong in: one stale card
+    survives an extra day, versus 615 products vanishing at once.
+    """
+    root = ET.fromstring(xml_bytes)
+    shop = root.find("shop")
+    if shop is None:
+        return set()
+    skus = set()
+    for offer in shop.findall(".//offer"):
+        for value in (offer.get("id"), offer.get("group_id"),
+                      offer.findtext("vendorCode"), offer.findtext("model")):
+            value = (value or "").strip()
+            if value:
+                skus.add(value)
+    return skus
+
+
 def parse_yml_feed(xml_string: str, source_override: Optional[str] = None,
                    sku_prefer_model: bool = False) -> dict:
     """Parse YML XML string.
@@ -229,9 +310,13 @@ def parse_yml_feed(xml_string: str, source_override: Optional[str] = None,
     for dedup and sync). Pass it for registered Admitad feeds so it matches the
     ADMITAD_FEEDS key — partner <shop><name> values are unreliable.
 
-    sku_prefer_model selects the SKU exactly like import_catalog.py / sync-feeds
-    (`<model> or id`) instead of the default (`id or group_id`). The Admitad import
-    path MUST set this so dedup matches the model-based notes already in the DB.
+    sku_prefer_model asks for the SKU import_catalog.py / sync-feeds have always
+    written (`<model> or id`) instead of the default (`id or group_id`), so dedup
+    keeps matching the model-based notes already in the DB. It is a PREFERENCE,
+    honoured only when <model> behaves like an identifier on this feed — see
+    MIN_MODEL_CARDINALITY for the two feeds where it does not, and for what a
+    colour or a shoe size in the dedup key costs. The chosen scheme is reported
+    back as `skuKey` ("model" or "id") so the caller can log it.
     """
     root = ET.fromstring(xml_string)
     shop = root.find("shop")
@@ -260,6 +345,10 @@ def parse_yml_feed(xml_string: str, source_override: Optional[str] = None,
     skipped_img = 0
     skipped_kids = 0
     offers = shop.findall(".//offer")
+
+    # sku_prefer_model is the CALLER's preference, not a licence. <model> is only
+    # a SKU on a feed where it BEHAVES like one — see MIN_MODEL_CARDINALITY.
+    use_model = sku_prefer_model and _model_is_identifier(offers)
 
     for offer in offers:
         cat_id = offer.findtext("categoryId", "")
@@ -299,6 +388,16 @@ def parse_yml_feed(xml_string: str, source_override: Optional[str] = None,
         # plus the merchant's own category tree. See feed_params.py for why the
         # tree beats param Пол and why colour is split into color + shade.
         markup = markup_from_offer(offer, cat_map, cat_parents)
+
+        # The house that made the garment. <vendor> is present on 100% of the ЦУМ
+        # (387 distinct brands / 8964 offers) and ElytS (416 / 81616) offers and was
+        # being parsed by nobody, which is why every consumer fell back to the
+        # retailer name in notes. SELA / 2moodstore ship no <vendor> at all: those
+        # are monobrand, so brand.py answers with a constant. A multi-brand feed
+        # with no vendor gets (None, None) — an unknown brand, not the shop's name.
+        item_brand, item_brand_source = brand_from_offer(
+            offer.findtext("vendor") or "", shop_name
+        )
 
         # Skip children's items. The keyword scan over name+chain is the old rule
         # and stays (it is the only one that works on a feed with no kids root);
@@ -341,10 +440,12 @@ def parse_yml_feed(xml_string: str, source_override: Optional[str] = None,
             # for a feed whose root category name resolve_gender does not know.
             "gender": markup["gender"] or detect_gender(cat_id),
             "is_kids": markup["is_kids"],
+            "brand": item_brand,
+            "brand_source": item_brand_source,
             "source": shop_name,
             "source_sku": (
                 (offer.findtext("model") or offer.get("id") or offer.get("group_id") or "")
-                if sku_prefer_model
+                if use_model
                 else (offer.get("id") or offer.get("group_id") or "")
             ),
             "price": float(offer.findtext("price") or 0) or None,
@@ -353,6 +454,7 @@ def parse_yml_feed(xml_string: str, source_override: Optional[str] = None,
     return {
         "items": items,
         "shopName": shop_name,
+        "skuKey": "model" if use_model else "id",
         "totalOffers": len(offers),
         "skippedCategories": skipped_cat,
         "skippedKids": skipped_kids,

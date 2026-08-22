@@ -24,6 +24,9 @@ from app.services.weather_rules import TEMP_RANGES, temp_ok
 from app.services.catalog_filters import gender_ok
 from kids_detect import is_kids_item
 from app.services.capsule import capsule_style_guide
+# Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand) —
+# see backend/brand.py.
+from brand import BRAND_GUESS_PROMPT_RULE, prompt_brand_field, retailer_from_notes
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +125,7 @@ async def _gemini_organize(
         )
 
     partner_desc = []
+    has_brand_guess = False
     for i in partner_items[:50]:
         name = i.get("item_name") or i.get("name", "?")
         ct = i.get("clothing_type", "")
@@ -129,7 +133,20 @@ async def _gemini_organize(
         # family, so on its own it turns "Бирюзовый" into "Голубой" and "Фуксия"
         # into "Розовый" before the model ever sees the item.
         color = i.get("shade") or i.get("color", "")
-        brand = i.get("brand", "")
+        # `brand=` here used to be the RETAILER off notes, so this prompt told
+        # Gemini that 62% of the catalog was designed by a department store —
+        # and Gemini writes the outfit copy the user reads.
+        #
+        # Now the shop is `retailer=`, and the house is emitted under a key that
+        # says where it came from: `brand=` when a merchant named it,
+        # `brand_guess=` when we matched it off the product name. Same value,
+        # different licence — the model may print the first and may not print the
+        # second (BRAND_GUESS_PROMPT_RULE, added to the rules below). 3239 ЦУМ
+        # rows are inferred, and this prompt's output is user-visible copy.
+        retailer = i.get("retailer") or ""
+        brand_key, brand_value = prompt_brand_field(i.get("brand"), i.get("brand_source"))
+        brand_part = f" {brand_key}={brand_value}" if brand_key else ""
+        has_brand_guess = has_brand_guess or brand_key == "brand_guess"
         material = (i.get("material") or "").strip()
         material_part = f", состав: {material}" if material else ""
         season = ""
@@ -137,7 +154,8 @@ async def _gemini_organize(
         if tmin is not None or tmax is not None:
             season = f", сезон: {tmin or '?'}..{tmax or '?'}°C"
         partner_desc.append(
-            f"[PARTNER id={i['id']} brand={brand}] {name} ({ct}, {color}{material_part}{season})"
+            f"[PARTNER id={i['id']} retailer={retailer}{brand_part}] "
+            f"{name} ({ct}, {color}{material_part}{season})"
         )
 
     all_items = "\n".join(user_desc + partner_desc)
@@ -176,6 +194,10 @@ async def _gemini_organize(
 - "user_only" — образы из вещей пользователя [USER]. Создай все разделы этого типа."""
 
     capsule_block = f"\n{capsule_guide}\n" if capsule_guide else ""
+    # Печатается только когда в списке действительно есть brand_guess: правило
+    # про ключ, которого в промпте нет, — это лишние токены и лишний повод
+    # для модели заговорить о марках.
+    brand_guess_block = f"\n{BRAND_GUESS_PROMPT_RULE}" if has_brand_guess else ""
 
     prompt = f"""Ты - топ-стилист. Составь МНОГО тематических разделов с образами.
 
@@ -192,7 +214,7 @@ async def _gemini_organize(
 - "На каждый день", "В офис", "На свидание", "На прогулку", "Выходной день", "Спорт и активный отдых", "Вечерний выход", "Уютный день дома", "На встречу с друзьями"
 
 {section_types_block}
-{mix_rules}
+{mix_rules}{brand_guess_block}
 {capsule_block}
 ОБЯЗАТЕЛЬНЫЕ ПРАВИЛА ДЛЯ КАЖДОГО ОБРАЗА:
 1. Каждый образ = СТРОГО 4-6 вещей, покрывающих ВСЁ тело:
@@ -400,7 +422,8 @@ async def cron_generate_recommendations(
                     # only the hue family and no composition at all.
                     partner_result = await db.execute(text("""
                         SELECT id, item_name, image_url, clothing_type, color, shade,
-                               material, url, notes, gender, temp_min, temp_max, is_kids
+                               material, url, notes, gender, temp_min, temp_max, is_kids,
+                               brand, brand_source
                         FROM wardrobe_items WHERE id = ANY(:ids)
                         AND COALESCE(is_hidden, false) = false
                         AND COALESCE(is_kids, false) = false
@@ -409,8 +432,10 @@ async def cron_generate_recommendations(
                         row = dict(r)
                         if not _is_partner_compatible(row, gender, temp, disliked_ids):
                             continue
-                        brand = (row.get("notes") or "").split(":")[0] or None
-                        row["brand"] = brand
+                        # notes gives the SHOP, not the designer. `brand` comes
+                        # from the column now (migration 030) and stays NULL when
+                        # the feed never named a house.
+                        row["retailer"] = retailer_from_notes(row.get("notes"))
                         partner_items.append(row)
 
             # Fallback: if CLIP returned too few usable partners, query catalog directly
@@ -424,7 +449,8 @@ async def cron_generate_recommendations(
                 existing_ids = {p["id"] for p in partner_items} | {i["id"] for i in user_items}
                 fallback_result = await db.execute(text(f"""
                     SELECT id, item_name, image_url, clothing_type, color, shade,
-                           material, url, notes, gender, temp_min, temp_max, is_kids
+                           material, url, notes, gender, temp_min, temp_max, is_kids,
+                           brand, brand_source
                     FROM wardrobe_items
                     WHERE COALESCE(is_hidden, false) = false
                     AND COALESCE(is_kids, false) = false
@@ -441,8 +467,7 @@ async def cron_generate_recommendations(
                         continue
                     if not _is_partner_compatible(row, gender, temp, disliked_ids):
                         continue
-                    brand = (row.get("notes") or "").split(":")[0] or None
-                    row["brand"] = brand
+                    row["retailer"] = retailer_from_notes(row.get("notes"))
                     partner_items.append(row)
 
             if not user_items and not partner_items:
@@ -480,7 +505,14 @@ async def cron_generate_recommendations(
                     "material": i.get("material", ""),
                     "clothing_type": i.get("clothing_type", ""),
                     "url": i.get("url"),
+                    # Who sells it and who made it are separate facts on the card.
+                    # `brand` is NULL until the backfill runs; the frontend
+                    # renders it only when it is there and never substitutes the
+                    # shop. brand_source rides along so an inferred house can be
+                    # drawn differently from one the merchant named.
+                    "retailer": i.get("retailer"),
                     "brand": i.get("brand"),
+                    "brand_source": i.get("brand_source"),
                     "rec_session_id": rec_session_id,
                 }
 
@@ -948,17 +980,16 @@ STALE_THRESHOLD_PCT = 10
 
 
 def _parse_feed_skus(xml_bytes: bytes) -> set[str]:
-    """Extract all offer IDs/models from YML feed XML."""
-    root = ET.fromstring(xml_bytes)
-    shop = root.find("shop")
-    if not shop:
-        return set()
-    skus = set()
-    for offer in shop.findall(".//offer"):
-        model = offer.findtext("model", "")
-        oid = offer.get("id", "")
-        skus.add(model or oid)
-    return skus
+    """Feed SKUs for the staleness check — see lib_feed_parser.feed_sku_candidates.
+
+    It used to be `model or id` here, which is the key today's importer writes and
+    NOT the key every row in the DB carries: rows written before <model> was found
+    to be a colour (ElytS) / a shoe size (2moodstore) would all read as "gone from
+    the feed" and 615 live rows would be hidden in one run. The parser module owns
+    the rule now, so read and write cannot drift apart.
+    """
+    from lib_feed_parser import feed_sku_candidates
+    return feed_sku_candidates(xml_bytes)
 
 
 @router.post("/sync-feeds")
@@ -1057,8 +1088,9 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
             continue
         limit = int(cfg.get("limit") or 0)
         try:
-            # 1. Download + parse (pin source to the key; model-first SKU to match
-            #    the notes already in the DB).
+            # 1. Download + parse (pin source to the key; ask for the model-first
+            #    SKU so dedup matches the notes already in the DB — parse_yml_feed
+            #    overrides that on a feed where <model> is not an identifier).
             async with httpx.AsyncClient(timeout=300.0, follow_redirects=True) as client:
                 resp = await client.get(cfg["url"])
                 resp.raise_for_status()
@@ -1070,6 +1102,19 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
                 {"p": f"{source_name}:%"},
             )
             existing = {r[0].split(":", 1)[1] for r in rows.all() if ":" in (r[0] or "")}
+
+            # Rows keyed under a SKU scheme this feed no longer uses. Not fatal
+            # and not silently swallowed: at ElytS and 2moodstore <model> turned
+            # out to be a colour and a shoe size, so parse_yml_feed now keys those
+            # feeds on the offer id (lib_feed_parser.MIN_MODEL_CARDINALITY). The
+            # rows already in the DB under the old key cannot be matched to an
+            # offer, so the first run after the switch re-imports those products
+            # under their real id and leaves the old rows as duplicates. There are
+            # ~615 of them in prod; the number is reported so an operator sees the
+            # one-off duplication instead of discovering it on a card.
+            feed_skus = {i["source_sku"] for i in parsed["items"] if i.get("source_sku")}
+            legacy_keyed = len(existing - feed_skus)
+
             new_items = []
             for item in parsed["items"]:
                 if not item.get("source_sku") or item["source_sku"] in existing:
@@ -1101,12 +1146,18 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
             # 4. Insert.
             imported = 0
             for item in new_items:
+                # brand/brand_source come from parse_yml_feed -> brand.brand_from_offer:
+                # the offer's own <vendor> where the feed has one, the monobrand
+                # constant for SELA/Lacoste/2moodstore/LOVE REPUBLIC, otherwise NULL.
+                # NULL is the deliberate resting state — the retailer name lives in
+                # notes and must never be copied here (see migration 030).
                 await db.execute(text("""
                     INSERT INTO wardrobe_items
                         (item_name, description, image_url, url, clothing_type, color,
-                         shade, material, gender, is_hidden, is_basic, notes, source_sku, price)
+                         shade, material, gender, is_hidden, is_basic, notes, source_sku, price,
+                         brand, brand_source)
                     VALUES (:name, :desc, :img, :url, :ct, :color, :shade, :material, :gender,
-                            :hidden, false, :notes, :sku, :price)
+                            :hidden, false, :notes, :sku, :price, :brand, :brand_source)
                 """), {
                     "name": item["item_name"], "desc": item["description"],
                     "img": item["image_url"], "url": item["url"],
@@ -1115,16 +1166,31 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
                     "gender": item["gender"], "hidden": bool(item.get("has_person")),
                     "notes": f"{source_name}:{item['source_sku']}",
                     "sku": item["source_sku"], "price": item["price"],
+                    "brand": item.get("brand"), "brand_source": item.get("brand_source"),
                 })
                 imported += 1
             await db.commit()
             total_imported += imported
+            # with_brand is the coverage check: a multi-brand feed that suddenly
+            # imports 0 branded rows means the merchant dropped <vendor>, and the
+            # catalog is silently going back to brandless.
+            with_brand = sum(1 for i in new_items if i.get("brand"))
             results[source_name] = {
                 "feed_items": len(parsed["items"]), "new": len(new_items),
                 "imported": imported, "flagged_person": flagged,
                 "skipped_kids": parsed["skippedKids"],
+                "with_brand": with_brand,
+                # Which tag ended up as the dedup key, and how many DB rows are
+                # keyed under an older one. Both were invisible before, and the
+                # first is what silently capped ElytS at ~25 importable rows.
+                "sku_key": parsed["skuKey"],
+                "legacy_keyed": legacy_keyed,
             }
-            logger.info(f"[import-feeds] {source_name}: feed={len(parsed['items'])} imported={imported} flagged={flagged}")
+            logger.info(
+                f"[import-feeds] {source_name}: feed={len(parsed['items'])} imported={imported} "
+                f"flagged={flagged} with_brand={with_brand} sku_key={parsed['skuKey']} "
+                f"legacy_keyed={legacy_keyed}"
+            )
         except Exception as e:
             await db.rollback()
             results[source_name] = {"error": str(e)}

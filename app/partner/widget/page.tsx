@@ -141,17 +141,17 @@ export default function PartnerWidgetPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-ink flex items-center gap-2">
             <Code2 className="h-6 w-6" />
             Виджет подбора образов
           </h1>
-          <p className="text-gray-500 mt-1">
+          <p className="text-ink-2 mt-1">
             Встройте подбор образов по корзине на свой сайт. Ключ привязан к вашим доменам.
           </p>
         </div>
         <Button
           onClick={() => setCreateOpen(true)}
-          className="bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white"
+          className="bg-ink text-signal-ink hover:bg-ink/90 border-0"
         >
           <Plus className="h-4 w-4 mr-2" />
           Создать ключ
@@ -174,9 +174,9 @@ export default function PartnerWidgetPage() {
                 { label: "CTR", value: `${stats.ctr}%` },
                 { label: "Конверсия", value: `${stats.conversion}%` },
               ].map((m) => (
-                <div key={m.label} className="rounded-xl border border-gray-100 bg-gray-50/60 p-3">
-                  <div className="text-2xl font-bold text-gray-900 tabular-nums">{m.value}</div>
-                  <div className="text-xs text-gray-500 mt-0.5">{m.label}</div>
+                <div key={m.label} className="rounded-xl border border-line bg-canvas/60 p-3">
+                  <div className="text-2xl font-bold text-ink tabular-nums">{m.value}</div>
+                  <div className="text-xs text-ink-2 mt-0.5">{m.label}</div>
                 </div>
               ))}
             </div>
@@ -190,48 +190,48 @@ export default function PartnerWidgetPage() {
           <CardTitle className="text-base">Как встроить</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-2">
             Вставьте сниппет в карточку товара или корзину. Подставьте артикулы (SKU) товаров
             из текущей корзины — виджет соберёт образы из вашего каталога:
           </p>
           <div className="relative">
-            <pre className="bg-gray-900 rounded-xl p-4 text-xs text-green-300 overflow-x-auto whitespace-pre">
+            <pre className="bg-ink rounded-xl p-4 text-xs text-green-300 overflow-x-auto whitespace-pre">
 {snippet("ВАШ_КЛЮЧ")}
             </pre>
             <Button
               size="sm" variant="ghost"
-              className="absolute top-2 right-2 text-gray-400 hover:text-white"
+              className="absolute top-2 right-2 text-ink-3 hover:text-white"
               onClick={() => copy(snippet("ВАШ_КЛЮЧ"), "snippet-template")}
             >
               {copied === "snippet-template" ? <CheckCircle2 className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-ink-2">
             Для динамической корзины вызывайте JS-API при её изменении:
           </p>
-          <pre className="bg-gray-100 rounded-xl p-3 text-xs text-gray-700 overflow-x-auto whitespace-pre">
+          <pre className="bg-canvas-sunk rounded-xl p-3 text-xs text-ink-2 overflow-x-auto whitespace-pre">
 {`window.ModeMorph.render({
   cart: [{ sku: "ABC123" }, { sku: "DEF456" }],
   mount: "#modemorph-widget"
 })`}
           </pre>
 
-          <p className="text-sm text-gray-600 pt-2">
+          <p className="text-sm text-ink-2 pt-2">
             А на карточке товара достаточно одного SKU — виджет покажет блок «С этим носят»:
           </p>
           <div className="relative">
-            <pre className="bg-gray-900 rounded-xl p-4 text-xs text-green-300 overflow-x-auto whitespace-pre">
+            <pre className="bg-ink rounded-xl p-4 text-xs text-green-300 overflow-x-auto whitespace-pre">
 {productSnippet("ВАШ_КЛЮЧ")}
             </pre>
             <Button
               size="sm" variant="ghost"
-              className="absolute top-2 right-2 text-gray-400 hover:text-white"
+              className="absolute top-2 right-2 text-ink-3 hover:text-white"
               onClick={() => copy(productSnippet("ВАШ_КЛЮЧ"), "product-snippet-template")}
             >
               {copied === "product-snippet-template" ? <CheckCircle2 className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>
-          <pre className="bg-gray-100 rounded-xl p-3 text-xs text-gray-700 overflow-x-auto whitespace-pre">
+          <pre className="bg-canvas-sunk rounded-xl p-3 text-xs text-ink-2 overflow-x-auto whitespace-pre">
 {`window.ModeMorph.render({
   mode: "product",
   sku: "ABC123",
@@ -246,11 +246,11 @@ export default function PartnerWidgetPage() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-ink-3" />
             </div>
           ) : keys.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <Code2 className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+            <div className="text-center py-12 text-ink-2">
+              <Code2 className="h-12 w-12 mx-auto mb-3 text-ink-3" />
               <p>У вас пока нет виджет-ключей</p>
               <p className="text-sm">Создайте ключ и привяжите его к домену вашего магазина</p>
             </div>
@@ -270,7 +270,7 @@ export default function PartnerWidgetPage() {
                 {keys.map((k) => (
                   <TableRow key={k.id}>
                     <TableCell className="font-medium">{k.name}</TableCell>
-                    <TableCell className="font-mono text-sm text-gray-500">{k.key_prefix}…</TableCell>
+                    <TableCell className="font-mono text-sm text-ink-2">{k.key_prefix}…</TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1 max-w-[260px]">
                         {(k.allowed_origins || []).map((o) => (
@@ -332,7 +332,7 @@ export default function PartnerWidgetPage() {
                     указанными доменами.
                   </p>
                 </div>
-                <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm text-green-400 break-all">
+                <div className="bg-ink rounded-xl p-4 font-mono text-sm text-green-400 break-all">
                   {created}
                 </div>
                 <Button variant="outline" className="w-full" onClick={() => copy(created, "key")}>
@@ -341,12 +341,12 @@ export default function PartnerWidgetPage() {
                     : <><Copy className="h-4 w-4 mr-2" />Скопировать ключ</>}
                 </Button>
                 <div className="relative">
-                  <pre className="bg-gray-900 rounded-xl p-4 text-xs text-green-300 overflow-x-auto whitespace-pre">
+                  <pre className="bg-ink rounded-xl p-4 text-xs text-green-300 overflow-x-auto whitespace-pre">
 {snippet(created)}
                   </pre>
                   <Button
                     size="sm" variant="ghost"
-                    className="absolute top-2 right-2 text-gray-400 hover:text-white"
+                    className="absolute top-2 right-2 text-ink-3 hover:text-white"
                     onClick={() => copy(snippet(created), "snippet")}
                   >
                     {copied === "snippet" ? <CheckCircle2 className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
@@ -377,7 +377,7 @@ export default function PartnerWidgetPage() {
                     value={origins}
                     onChange={(e) => setOrigins(e.target.value)}
                   />
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-ink-3 mt-1">
                     Домены через запятую или с новой строки. Только точные origin (схема + хост), без пути.
                   </p>
                   {parsedOrigins.length > 0 && (
@@ -394,7 +394,7 @@ export default function PartnerWidgetPage() {
                 <Button
                   onClick={handleCreate}
                   disabled={!name.trim() || creating}
-                  className="bg-gradient-to-r from-[#EC9DE2] to-[#89AEFF] hover:opacity-90 border-0 text-white"
+                  className="bg-ink text-signal-ink hover:bg-ink/90 border-0"
                 >
                   {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   Создать

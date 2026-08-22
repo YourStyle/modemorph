@@ -3,6 +3,7 @@
 import base64
 import hmac
 import io
+import math
 import json as json_lib
 import re
 import time
@@ -20,11 +21,33 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.services.capsule import capsule_style_guide
+from app.services.usage import record_usage_event
 from clothing_taxonomy import resolve_clothing_type
+# Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand) —
+# see backend/brand.py.
+from brand import BRAND_GUESS_PROMPT_RULE, prompt_brand_field, retailer_from_notes
 
 router = APIRouter()
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Flat-lay generator. Switched off gemini-3.1-flash-image-preview on 2026-08-22
+# after a side-by-side run on 15 real garments spanning tweed, lace, denim,
+# suede, silk, knit and printed silk.
+#
+# The lite model is 2.2x cheaper (1278 vs 1402 completion tokens at half the
+# per-token price: 3.25 RUB vs 7.05 RUB per image) and was not worse. On the one
+# garment where they clearly diverged it was BETTER: a navy blouse with sheer
+# sleeves and a sheer yoke came back from the expensive model as opaque satin —
+# it had invented a sheen and removed the transparency that defines the piece.
+# The lite model kept both. The expensive model is not more accurate here, it is
+# more flattering, which is right for a storefront and wrong for a wardrobe where
+# the owner has to recognise their own clothes.
+#
+# gpt-5-image-mini was measured too and rejected: 4983 completion tokens (not the
+# ~1120 the pricing page implies), 47 s against 5-11 s, HTTP 400 on two of three
+# inputs, and on the one that worked it cropped the garment out of frame.
+FLATLAY_MODEL = "google/gemini-3.1-flash-lite-image"
 
 
 async def _openrouter_chat(messages: list, model: str = "google/gemini-2.5-flash-lite",
@@ -147,46 +170,27 @@ async def bot_event(request: Request, db: AsyncSession = Depends(get_db)):
 
 @router.post("/usage/log")
 async def log_usage(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Client-side event sink.
+
+    This used to carry its own copy of the insert — profile lookup, subscriber
+    and credit enrichment, activity bump — which drifted from the shared one in
+    services/usage.py and, worse, repeated its `if not profile: return` early
+    exit. That exit is why registration-step events could not exist: the profile
+    is created by the LAST of three registration steps, so every event fired by
+    someone still inside the form was silently dropped, and the biggest drop in
+    the product (160 of 457 accounts) had no observable interior.
+
+    Delegating means the pre-profile path is fixed once, for both callers.
+    """
     body = await request.json()
-    feature = body.get("key") or body.get("feature")
-    action = body.get("action", "view")
-    meta = body.get("meta", {})
-
-    profile_result = await db.execute(text("SELECT id FROM user_profiles WHERE user_id = :uid"), {"uid": user["id"]})
-    profile = profile_result.first()
-    if not profile:
-        return {"success": True}
-
-    pid = profile[0]
-
-    # Check subscriber/credits status for usage_events enrichment
-    is_sub = await db.execute(text(
-        "SELECT EXISTS(SELECT 1 FROM user_subscriptions WHERE user_profile_id = :pid AND status = 'active' AND expires_at > NOW())"
-    ), {"pid": pid})
-    has_sub = is_sub.scalar() or False
-
-    has_cred = await db.execute(text(
-        "SELECT EXISTS(SELECT 1 FROM credit_transactions WHERE user_profile_id = :pid AND reason = 'purchase')"
-    ), {"pid": pid})
-    has_bought = has_cred.scalar() or False
-
-    await db.execute(
-        text("""INSERT INTO usage_events
-                (user_profile_id, user_anon_id, feature, action, count,
-                 is_subscriber, has_bought_credits,
-                 page_path, item_id, request_id, metadata, occurred_at)
-                VALUES (:pid, :anon, :feat, :act, :cnt,
-                        :is_sub, :has_bought,
-                        :page, :item, :req, CAST(:meta AS jsonb), NOW())"""),
-        {"pid": pid, "anon": str(pid), "feat": feature, "act": action, "cnt": body.get("count", 1),
-         "is_sub": has_sub, "has_bought": has_bought,
-         "page": meta.get("pagePath"), "item": meta.get("itemId"),
-         "req": meta.get("requestId"), "meta": json_lib.dumps(meta) if meta else "{}"},
+    await record_usage_event(
+        db,
+        user_id=user["id"],
+        feature=body.get("key") or body.get("feature"),
+        action=body.get("action", "view"),
+        count=body.get("count", 1),
+        meta=body.get("meta", {}),
     )
-
-    # Record daily activity for DAU/MAU tracking
-    await db.execute(text("SELECT record_user_activity(:pid)"), {"pid": pid})
-
     await db.commit()
     return {"success": True}
 
@@ -252,6 +256,31 @@ async def get_user_likes(user: dict = Depends(get_current_user), db: AsyncSessio
     return {"liked": [str(r[0]) for r in result.all()]}
 
 
+# Accessories the outfit generator has no slot for and silently drops, so paying
+# to generate a product image for them is money spent on something no user can
+# ever see in an outfit. Bags, hats and scarves are deliberately NOT here — they
+# are plausible outfit elements once slots exist for them.
+_IGNORED_ACCESSORY_RE = re.compile(
+    r"очк|оправ|солнцезащ|часы|наручн|"
+    r"ожерель|серьг|серёж|брасл|кольцо|цепочк|подвеск|брошь|украшени|"
+    r"ремен|\bпояс\b|"
+    r"glass|sunglass|eyewear|watch|jewel|ring|earring|necklace|bracelet|belt",
+    re.IGNORECASE,
+)
+
+
+def _is_ignored_accessory(item: dict) -> bool:
+    """True when the detected item is an accessory we deliberately skip.
+
+    Matches the type and the name only, never the description: a t-shirt whose
+    description reads "с принтом в виде очков" is a t-shirt. Dropping a real
+    garment is the more expensive mistake — the user loses an item they
+    photographed, while a watch that slips through costs one generation.
+    """
+    haystack = " ".join(str(item.get(k) or "") for k in ("clothing_item", "item_name"))
+    return bool(_IGNORED_ACCESSORY_RE.search(haystack))
+
+
 # ── /api/detect-clothing (OpenRouter — detection + image generation) ──
 
 
@@ -276,6 +305,103 @@ def _build_flatlay_prompt(item: dict) -> str:
     if part == "footwear":
         return f"Studio-quality flat-lay of a matched pair of {clothing}. {desc} Two shoes mirror-symmetric; toes pointing up, heels down. {COMMON}"
     return f"Studio-quality flat-lay of a single {clothing}. {desc} Item laid perfectly flat with all parts visible. {COMMON}"
+
+
+# Aspect ratios the image models accept. Anything else is silently coerced.
+_SUPPORTED_RATIOS = (
+    ("21:9", 21 / 9), ("16:9", 16 / 9), ("3:2", 3 / 2), ("4:3", 4 / 3), ("5:4", 5 / 4),
+    ("1:1", 1.0),
+    ("4:5", 4 / 5), ("3:4", 3 / 4), ("2:3", 2 / 3), ("9:16", 9 / 16),
+)
+
+
+def _nearest_aspect_ratio(data_uri: str, fallback: str = "3:4") -> str:
+    """Closest supported aspect ratio to the given image.
+
+    Try-on used to pass no image_config at all and instead ASK for the right
+    framing in the prompt ("MATCH the aspect ratio ... do NOT stretch or squash").
+    A prompt is a request, not a constraint: with the parameter absent the model
+    fell back to its own default, so a 9:16 phone photo came back as 3:4 — the
+    squashed result reported 2026-08-22.
+
+    Ratio is compared in log space so that being off by a factor is penalised the
+    same whether the image is tall or wide; a linear distance would quietly prefer
+    the wide end of the list for every portrait photo.
+    """
+    match = re.match(r"data:image/(\w+);base64,(.+)", data_uri or "", re.DOTALL)
+    if not match:
+        return fallback
+    try:
+        with Image.open(io.BytesIO(base64.b64decode(match.group(2)))) as img:
+            width, height = img.size
+        if not width or not height:
+            return fallback
+        actual = width / height
+        return min(_SUPPORTED_RATIOS, key=lambda r: abs(math.log(r[1] / actual)))[0]
+    except Exception as e:
+        print(f"[vton] aspect detect failed, falling back to {fallback}: {e}")
+        return fallback
+
+
+_GRID_CELLS = ("top-left", "top-right", "bottom-left", "bottom-right")
+
+
+def _build_grid_prompt(chunk: list) -> str:
+    """One prompt that lays up to four garments out in a 2x2 grid.
+
+    Empty quadrants are named explicitly. Left unmentioned, the model fills them
+    by inventing a fourth garment that was never on the photo — and an invented
+    item is worse than a missing one, because it lands in someone's wardrobe.
+    """
+    lines = []
+    for i, item in enumerate(chunk[:4]):
+        desc = item.get("description_en") or item.get("description") or item.get("item_name", "")
+        lines.append(f"- {_GRID_CELLS[i]} quadrant: a single {item.get('clothing_item', 'item')}. {desc}")
+    for i in range(len(chunk), 4):
+        lines.append(f"- {_GRID_CELLS[i]} quadrant: completely empty, plain background only.")
+
+    return (
+        "One square image divided into a strict 2x2 grid of four equal quadrants, "
+        "separated by thin straight lines of the same neutral light-grey background.\n"
+        "Place exactly one garment per quadrant, centred, fully inside its own quadrant, "
+        "never crossing into another. Same scale logic, same lighting, same background in all four.\n\n"
+        + "\n".join(lines) +
+        "\n\nEach garment: top-down studio flat-lay, laid perfectly flat and symmetrical, "
+        "all parts visible. No model, mannequin, props, logos, tags, or text. "
+        "Render exact described colors and material texture under soft, even lighting. "
+        "High resolution, crisp edges, no strong shadows."
+    )
+
+
+def _split_grid(data_uri: str, count: int) -> list:
+    """Slice a 2x2 grid data URI into `count` separate data URIs.
+
+    Cuts on the exact halves rather than hunting for the separator: the prompt
+    asks for four equal quadrants and the model delivers them, so edge detection
+    would be a second thing to get wrong for no gain.
+
+    A failure here must not lose the whole photo — the caller has already paid
+    for the generation — so an unparseable image degrades to "no picture" and the
+    detected item still reaches the user with its text fields intact.
+    """
+    match = re.match(r"data:image/(\w+);base64,(.+)", data_uri or "", re.DOTALL)
+    if not match:
+        return [None] * count
+    try:
+        grid = Image.open(io.BytesIO(base64.b64decode(match.group(2)))).convert("RGB")
+    except Exception as e:
+        print(f"[detect-clothing] grid split failed: {e}")
+        return [None] * count
+
+    w, h = grid.size
+    boxes = ((0, 0, w // 2, h // 2), (w // 2, 0, w, h // 2),
+             (0, h // 2, w // 2, h), (w // 2, h // 2, w, h))
+    out = []
+    for box in boxes[:count]:
+        buf = io.BytesIO()
+        grid.crop(box).save(buf, format="PNG", optimize=True)
+        out.append("data:image/png;base64," + base64.b64encode(buf.getvalue()).decode())
+    return out
 
 
 async def _upload_base64_to_s3(data_uri: str, folder: str = "detected") -> str:
@@ -366,7 +492,14 @@ async def detect_clothing(
     clean_b64 = await _remove_bg_via_ai_service(raw_bytes, ct) or img_b64
 
     # --- Step 1: Detect clothing items ---
-    detection_prompt = """Analyze this photo and detect ALL clothing items and accessories the person is wearing.
+    detection_prompt = """Analyze this photo and detect the clothing items the person is wearing.
+
+SKIP entirely — do not return an object for these: eyewear (glasses, sunglasses),
+watches, jewellery (rings, earrings, necklaces, bracelets), belts. They are not
+clothing for our purposes: the outfit generator has no slot for them and drops
+them, so a generated product image for a pair of sunglasses is paid for and then
+thrown away. Bags, hats and scarves are still returned.
+
 For each item return a JSON object with these fields:
 - clothing_item: item type in English, ONE of: t-shirt, shirt, blouse, longsleeve,
   tank-top, pullover, cardigan, hoodie, sweatshirt, turtleneck, vest, suit-jacket,
@@ -374,7 +507,7 @@ For each item return a JSON object with these fields:
   puffer-jacket, fur-coat, sheepskin-coat, shoes, boots, sneakers, sandals.
   Use "jacket" for any ordinary jacket (denim/leather/bomber/windbreaker),
   "puffer-jacket" only for a down puffer, "coat" only for a long coat/trench.
-  For a bag, hat, scarf, belt or jewellery answer with the plain English noun.
+  For a bag, hat or scarf answer with the plain English noun.
 - part: one of 'upper', 'lower', 'dress', 'footwear', 'accessories'
 - description: brief description in Russian
 - description_en: detailed description in English including color, material, texture, pattern. This will be used to generate a product image.
@@ -403,32 +536,75 @@ Return ONLY a valid JSON array. No markdown."""
     if not items:
         return [{"acceptable": False, "reason": "Не найдено предметов одежды на фото"}]
 
-    # --- Step 2: Generate flat-lay product images in parallel ---
-    async def gen_image(item: dict) -> str | None:
+    # Belt-and-braces for the prompt rule above: a model instruction is a request,
+    # not a guarantee, and every item that slips through costs a paid generation
+    # for something _SLOT_MAP will discard anyway (recommendations.py:457).
+    detected_total = len(items)
+    items = [i for i in items if not _is_ignored_accessory(i)]
+    dropped_accessories = detected_total - len(items)
+
+    if not items:
+        return [{"acceptable": False, "reason": "На фото не нашлось одежды — только аксессуары"}]
+
+    # How many items one photo yields has never been recorded anywhere, which is
+    # why the cost of a photo could only ever be given as a range: generations are
+    # billed per detected item, and only the SAVED ones (1.23 per photo) were
+    # observable after the fact. Logged here at the only point where the real
+    # number exists.
+    await record_usage_event(
+        db, user_id=user["id"], feature="photo_detection", action="detected",
+        count=len(items),
+        meta={"detected": detected_total, "kept": len(items),
+              "dropped_accessories": dropped_accessories,
+              "generations": len(items)},
+    )
+    await db.commit()
+
+    # --- Step 2: Generate flat-lay product images ---
+    #
+    # One generation covers up to FOUR items by asking for a 2x2 grid and slicing
+    # it, instead of one paid call per item.
+    #
+    # Measured 2026-08-22 on a real three-garment lookbook photo:
+    #   per-item : 3 calls, 3800 completion tokens, 23 s
+    #   2x2 grid : 1 call,  1120 completion tokens,  6 s      -> 3.4x cheaper
+    # The image-token price does not scale with content or aspect ratio — a
+    # generation costs the same whether it draws one garment or four — so the
+    # per-item fan-out was paying full price for each quarter of the same picture.
+    #
+    # Quality was compared side by side, not assumed: the tank top and shorts are
+    # indistinguishable from their single-call versions, and the SHOES came out
+    # better in the grid. Footwear is the known weak spot of the per-item prompt
+    # (it asks for a mirror-symmetric pair seen from above, a viewpoint absent
+    # from the source photo, and the model invents one — two of two footwear items
+    # in the 15-garment run came out deformed). Inside a grid the model has three
+    # neighbours establishing a consistent top-down plane, and it stops inventing.
+    async def gen_grid(chunk: list[dict]) -> list[str | None]:
+        """Generate one 2x2 grid for up to 4 items; return one data URI each."""
         try:
-            prompt = _build_flatlay_prompt(item)
             img_result = await _openrouter_chat(
                 messages=[{"role": "user", "content": [
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": _build_grid_prompt(chunk)},
                     {"type": "image_url", "image_url": {"url": clean_b64}},
                 ]}],
-                model="google/gemini-3.1-flash-image-preview",
+                model=FLATLAY_MODEL,
                 temperature=0.8,
                 modalities=["image", "text"],
                 image_config={"aspect_ratio": "1:1"},
             )
             images = img_result.get("choices", [{}])[0].get("message", {}).get("images", [])
             if not images:
-                return None
+                return [None] * len(chunk)
             data_uri = images[0].get("image_url", {}).get("url", "")
-            # Return base64 data URI directly — fast preview for user.
-            # S3 upload happens later when user clicks "save item".
-            return data_uri or None
+            return _split_grid(data_uri, len(chunk))
         except Exception as e:
-            print(f"[detect-clothing] Image gen failed: {e}")
-            return None
+            print(f"[detect-clothing] Grid gen failed: {e}")
+            return [None] * len(chunk)
 
-    image_urls = await asyncio.gather(*(gen_image(item) for item in items))
+    # Chunks of 4 run concurrently, so a 9-item photo is 3 calls, not 9.
+    chunks = [items[i:i + 4] for i in range(0, len(items), 4)]
+    image_urls = [uri for group in await asyncio.gather(*(gen_grid(c) for c in chunks))
+                  for uri in group]
 
     # --- Step 3: Build response ---
     response_items = []
@@ -503,7 +679,11 @@ async def ai_assistant(request: Request, user: dict = Depends(get_current_user),
                 if clip_results:
                     cat_ids = [r["id"] for r in clip_results]
                     cat_result = await db.execute(
-                        text("SELECT id, item_name, color, clothing_type, url, notes, image_url FROM wardrobe_items WHERE id = ANY(:ids)"),
+                        # brand_source travels with brand: the assistant answers in
+                        # free Russian prose, so a house we merely inferred must
+                        # reach the model under a key it is forbidden to print.
+                        text("SELECT id, item_name, color, clothing_type, url, notes, image_url, "
+                             "brand, brand_source FROM wardrobe_items WHERE id = ANY(:ids)"),
                         {"ids": cat_ids},
                     )
                     catalog_items = [dict(r) for r in cat_result.mappings().all()]
@@ -533,14 +713,35 @@ Always respond with JSON array. Use Russian for all text."""
     } for i in wardrobe], ensure_ascii=False)
 
     catalog_json = ""
+    brand_guess_block = ""
     if catalog_items:
-        catalog_json = "\n\nRelevant catalog items (partner brands, user can buy):\n" + json_lib.dumps([{
-            "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
-            "type": i.get("clothing_type"), "url": i.get("url"), "image_url": i.get("image_url"),
-            "brand": (i.get("notes") or "").split(":")[0],
-        } for i in catalog_items], ensure_ascii=False)
+        # "retailer" is the SHOP off notes ("<FEED_SOURCE>:<SKU>"). It shipped to
+        # the assistant as "brand" until 2026-08-20, so the stylist told users a
+        # Saint Laurent coat was by "ЦУМ" for 62% of the catalog.
+        #
+        # The house now ships under "brand" when a merchant named it and under
+        # "brand_guess" when we matched it off the product name. This endpoint
+        # returns free Russian text straight to the user, so it is the site where
+        # printing a guess as fact costs the most — 3239 ЦУМ rows are guesses.
+        # An absent key makes the model say nothing, which is the truth here.
+        _catalog_payload = []
+        has_brand_guess = False
+        for i in catalog_items:
+            brand_key, brand_value = prompt_brand_field(i.get("brand"), i.get("brand_source"))
+            has_brand_guess = has_brand_guess or brand_key == "brand_guess"
+            _catalog_payload.append({
+                "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
+                "type": i.get("clothing_type"), "url": i.get("url"),
+                "image_url": i.get("image_url"),
+                "retailer": retailer_from_notes(i.get("notes")),
+                **({brand_key: brand_value} if brand_key else {}),
+            })
+        catalog_json = ("\n\nRelevant catalog items (from partner shops, user can buy):\n"
+                        + json_lib.dumps(_catalog_payload, ensure_ascii=False))
+        if has_brand_guess:
+            brand_guess_block = f"\n\n{BRAND_GUESS_PROMPT_RULE}"
 
-    user_msg = f"{prompt}\n\nWeather: {weather.get('location', '')}, {weather.get('temperature', '')}°C, {weather.get('description', '')}\n\nWardrobe ({len(wardrobe)} items):\n{wardrobe_json}{catalog_json}"
+    user_msg = f"{prompt}\n\nWeather: {weather.get('location', '')}, {weather.get('temperature', '')}°C, {weather.get('description', '')}\n\nWardrobe ({len(wardrobe)} items):\n{wardrobe_json}{catalog_json}{brand_guess_block}"
 
     result = await _openrouter_chat(
         messages=[
@@ -626,9 +827,16 @@ _VTON_ECHO_HAMMING_THRESHOLD = 6
 
 async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
     """Send original avatar + generated result, ask model to correct the face
-    so it matches the reference photo exactly. Purely visual — no text description."""
+    so it matches the reference photo exactly. Purely visual — no text description.
+
+    Frame is locked to the DRAFT, not the reference: pass 1 has already settled the
+    framing, and this pass must only repaint the face. Without the lock it re-crops
+    on its own and undoes pass 1's geometry — the same squashing this parameter was
+    added to stop, one step later in the pipeline.
+    """
     try:
         result = await _openrouter_chat(
+            image_config={"aspect_ratio": _nearest_aspect_ratio(generated_b64)},
             messages=[{"role": "user", "content": [
                 {"type": "text", "text": (
                     "FACE CORRECTION TASK.\n\n"
@@ -646,6 +854,12 @@ async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
                 {"type": "image_url", "image_url": {"url": avatar_b64}},
                 {"type": "image_url", "image_url": {"url": generated_b64}},
             ]}],
+            # Deliberately NOT FLATLAY_MODEL. The lite model was measured on
+            # flat-lay generation only; try-on is a different job — it has to
+            # keep a real person's face and body intact, and nothing here has
+            # been tested for that. Switching it on the strength of a garment
+            # benchmark would be the same unverified leap this comment exists
+            # to prevent. Measure faces first, then decide.
             model="google/gemini-3.1-flash-image-preview",
             temperature=0.15,
             modalities=["image", "text"],
@@ -746,6 +960,11 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
 
     avatar_img = {"type": "image_url", "image_url": {"url": avatar_b64}}
 
+    # Lock the output frame to the person's photo. The prompt already asks for it
+    # in words, and words were not enough: without this parameter the model used
+    # its own default and returned a 9:16 phone photo squashed into 3:4.
+    vton_ratio = _nearest_aspect_ratio(avatar_b64)
+
     async def _run_pass1() -> str | None:
         result = await _openrouter_chat(
             messages=[{"role": "user", "content": [
@@ -753,6 +972,13 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
                 avatar_img,           # Reference: beginning (primacy)
                 *image_contents,      # Clothing items — last image so model focuses on garments
             ]}],
+            image_config={"aspect_ratio": vton_ratio},
+            # Deliberately NOT FLATLAY_MODEL. The lite model was measured on
+            # flat-lay generation only; try-on is a different job — it has to
+            # keep a real person's face and body intact, and nothing here has
+            # been tested for that. Switching it on the strength of a garment
+            # benchmark would be the same unverified leap this comment exists
+            # to prevent. Measure faces first, then decide.
             model="google/gemini-3.1-flash-image-preview",
             temperature=0.2,
             modalities=["image", "text"],
