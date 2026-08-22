@@ -12,6 +12,7 @@ from app.api import (
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from app.core.audit import AdminAuditMiddleware
 from app.core.config import validate_settings
 
 
@@ -52,6 +53,11 @@ app.add_middleware(
 # CORSMiddleware so it wraps it (most-recently-added middleware is outermost) and
 # can answer the OPTIONS preflight with the partner's own origin.
 app.add_middleware(widget.WidgetCORSMiddleware)
+
+# Records every non-GET /api/admin/* call, including the ones that get 403'd.
+# Middleware rather than per-endpoint decorators: the route someone forgets to
+# decorate is the one worth auditing.
+app.add_middleware(AdminAuditMiddleware)
 
 # ── Core routes ──
 app.include_router(health.router, tags=["health"])

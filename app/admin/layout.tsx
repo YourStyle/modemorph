@@ -24,6 +24,7 @@ import {
   Building2,
   Brain,
   Code2,
+  ScrollText,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -33,6 +34,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   const pathname = usePathname()
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
+  const [role, setRole] = useState<string>("user")
   const [isLoading, setIsLoading] = useState(true)
   const [collapsed, setCollapsed] = useState(false)
 
@@ -52,7 +54,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         if (!res.ok) { router.replace("/auth/login"); return }
         const data = await res.json()
-        if (!data.profile?.is_admin) { router.replace("/auth/login"); return }
+        // Analyst gets in too, and sees a smaller panel. The gate below is
+        // convenience only — every endpoint checks the role server-side, so a
+        // hidden nav entry is never what keeps anyone out.
+        const r = data.profile?.role ?? (data.profile?.is_admin ? "admin" : "user")
+        if (r !== "admin" && r !== "analyst") { router.replace("/auth/login"); return }
+        setRole(r)
         setIsAdmin(true)
       } catch {
         router.replace("/auth/login")
@@ -73,11 +80,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   if (!isAdmin) return null
 
-  const nav = [
+  // Аналитик видит меньше продуктовых данных и больше статистики: аналитика,
+  // бренды. Пользователи, платежи, кредиты, рассылки, цены и журнал аудита —
+  // только у админа. Список ниже лишь рисует ссылки; доступ решает сервер.
+  const nav = role === "analyst" ? [
+    { group: "Аналитика", items: [
+      { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
+      { href: "/admin/brands", label: "Бренды", icon: Building2 },
+    ]},
+  ] : [
     { group: "Управление", items: [
       { href: "/admin", label: "Обзор", icon: Home },
       { href: "/admin/users", label: "Пользователи", icon: UserCheck },
       { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
+      { href: "/admin/brands", label: "Бренды", icon: Building2 },
       { href: "/admin/partners", label: "Партнёры", icon: Building2 },
       { href: "/admin/widget-keys", label: "Виджет-ключи", icon: Code2 },
     ]},
@@ -94,6 +110,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/admin/feature-costs", label: "Тарификация", icon: DollarSign },
       { href: "/admin/broadcasts", label: "Рассылки", icon: Send },
       { href: "/admin/reminders", label: "Напоминания", icon: Bell },
+      { href: "/admin/audit-log", label: "Журнал действий", icon: ScrollText },
       { href: "/admin/settings", label: "Настройки", icon: Settings },
     ]},
   ]

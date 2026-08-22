@@ -96,22 +96,12 @@ def require_role(*allowed: str):
     return _guard
 
 
-async def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
-    """Require admin.
-
-    Deliberately still reads `is_admin` rather than `require_role("admin")`, even
-    though migration 032 makes the two equivalent. The roles feature is half
-    built — the audit middleware that fills admin_audit_log and the analyst
-    surfaces do not exist yet — and there is no reason for a half-finished
-    feature to move the live authentication path on the same deploy that
-    introduces its column. Every existing call site keeps its exact current
-    behaviour, and the 9 paths covered by test_admin_gating stay covered.
-
-    Flip this to require_role("admin") when the analyst role actually ships.
-    """
-    if not user.get("is_admin"):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required")
-    return user
+# Full admin. Now that the audit middleware and the analyst surfaces exist, this
+# reads the role rather than the legacy boolean. Migration 032 keeps is_admin a
+# trigger-maintained mirror of (role = 'admin'), so every call site that still
+# branches on is_admin keeps its exact meaning and an analyst can never trip the
+# four handlers that use it to WIDEN visible data.
+get_admin_user = require_role("admin")
 
 # Analyst OR admin. For read-only analytics and the brand pipeline the analyst
 # owns. Deliberately NOT used on anything that moves money, messages users or

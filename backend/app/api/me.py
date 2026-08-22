@@ -39,7 +39,7 @@ async def get_me(
     result = await db.execute(
         text("""
             SELECT u.id, u.email, u.raw_user_meta_data,
-                   up.id as profile_id, up.is_admin, up.created_at
+                   up.id as profile_id, up.is_admin, up.role, up.created_at
             FROM users u
             LEFT JOIN user_profiles up ON up.user_id = u.id
             WHERE u.id = :uid
@@ -61,6 +61,10 @@ async def get_me(
         "profile": {
             "id": str(row["profile_id"]) if row["profile_id"] else None,
             "is_admin": row["is_admin"] or False,
+            # The admin shell reads this to decide which nav entries to draw.
+            # It is a display hint only — every endpoint enforces the role
+            # server-side, so hiding a link is convenience, never protection.
+            "role": row["role"] or "user",
         },
     }
 

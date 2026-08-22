@@ -7,11 +7,12 @@ from typing import List, Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.deps import get_admin_user
+from app.core.deps import get_admin_user, get_staff_user, require_role
 from app.services.telegram import send_bot_message
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ def _ratio(num, den, digits: int = 1):
 
 
 @router.get("/analytics")
-async def analytics(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+async def analytics(user: dict = Depends(get_staff_user), db: AsyncSession = Depends(get_db)):
     """Product analytics — onboarding, aha-moment, value, engagement, retention,
     payment funnel, timeline.
 
@@ -2379,7 +2380,7 @@ async def generate_outfit_lookbooks(
 @router.get("/catalog/brands")
 async def catalog_brands(
     limit: int = Query(200, ge=1, le=1000),
-    user: dict = Depends(get_admin_user),
+    user: dict = Depends(get_staff_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Что за марки лежат в каталоге и НАСКОЛЬКО МЫ В ЭТОМ УВЕРЕНЫ.
@@ -2524,3 +2525,195 @@ async def catalog_brands(
         ],
         "limit": limit,
     }
+
+
+# ── /api/admin/audit-log ─────────────────────────────────────────────────────
+
+@router.get("/audit-log")
+async def audit_log(
+    limit: int = Query(100, ge=1, le=500),
+    actor: str = Query(None, description="фильтр по email"),
+    only_denied: bool = Query(False, description="только отказы — 4xx/5xx"),
+    user: dict = Depends(require_role("admin")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Who did what under /api/admin/*.
+
+    Admin only, deliberately: the point of the log is that the super admin can
+    see what the analyst has been doing, which stops being true the moment the
+    analyst can read — or filter — it herself.
+
+    Denied attempts are included and are the interesting half. A 403 on
+    grant-credits is the only visible sign of someone probing the boundary.
+    """
+    where, binds = ["TRUE"], {"lim": limit}
+    if actor:
+        where.append("a.actor_email ILIKE :actor")
+        binds["actor"] = f"%{actor}%"
+    if only_denied:
+        where.append("a.status_code >= 400")
+
+    rows = (await db.execute(
+        text(f"""
+            SELECT a.occurred_at, a.actor_email, a.actor_role, a.method,
+                   a.path, a.status_code, a.body, a.ip
+            FROM admin_audit_log a
+            WHERE {' AND '.join(where)}
+            ORDER BY a.occurred_at DESC
+            LIMIT :lim
+        """),
+        binds,
+    )).mappings().all()
+
+    return {
+        "entries": [{
+            "occurred_at": r["occurred_at"].isoformat() if r["occurred_at"] else None,
+            "actor": r["actor_email"] or "(неизвестен)",
+            "role": r["actor_role"] or "user",
+            "method": r["method"],
+            "path": r["path"],
+            "status": r["status_code"],
+            "denied": (r["status_code"] or 0) >= 400,
+            "body": r["body"],
+            "ip": r["ip"],
+        } for r in rows],
+        # Absence of rows is not absence of activity: the log starts when the
+        # middleware ships, and says so rather than implying a clean history.
+        "recording_since": "2026-08-22",
+        "limit": limit,
+    }
+
+
+# ── /api/admin/brand-leads ───────────────────────────────────────────────────
+#
+# The pipeline the analyst used to keep in «Бренды_mode morph.xlsx». Open to the
+# analyst as well as the admin: this block is hers, and every write lands in
+# admin_audit_log via the middleware, so the super admin sees what she changed
+# without her needing anyone's permission to change it.
+#
+# The reason this is worth moving off a spreadsheet is the `stats` field below.
+# «Показатели» was a column she filled in by hand; for any brand we already carry
+# it is a query over data we already have.
+
+_LEAD_FIELDS = [
+    "name", "segment", "styles", "contact", "phone", "contact_person",
+    "status", "last_touch_at", "offer_type", "notes",
+    "test_start", "test_end", "test_status", "test_notes", "catalog_brand",
+]
+
+
+@router.get("/brand-leads")
+async def list_brand_leads(
+    user: dict = Depends(get_staff_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every lead, with live catalogue numbers for the ones we already carry.
+
+    served — how many times our recommender pulled the brand's items. Reported
+    as-is and never divided by anything: 421930 of the recommendation_logs rows
+    are server-side retrievals, not impressions a person saw, so a CTR built on
+    them would be wrong by roughly a factor of a thousand. Confirmed impressions
+    and clicks exist (422 and 18 in the product's whole history) and are counted
+    separately, which is also why no rate is offered here — three clicks do not
+    make a percentage.
+    """
+    rows = (await db.execute(text("""
+        SELECT l.*,
+               s.items, s.distinct_products, s.served, s.impressions, s.clicks
+        FROM brand_leads l
+        LEFT JOIN LATERAL (
+            SELECT count(*)                          AS items,
+                   count(DISTINCT w.notes)           AS distinct_products,
+                   (SELECT count(*) FROM recommendation_logs r
+                     WHERE r.item_id = ANY(array_agg(w.id)) AND r.action IS NULL)      AS served,
+                   (SELECT count(*) FROM recommendation_logs r
+                     WHERE r.item_id = ANY(array_agg(w.id)) AND r.action = 'impression') AS impressions,
+                   (SELECT count(*) FROM recommendation_logs r
+                     WHERE r.item_id = ANY(array_agg(w.id)) AND r.action = 'click')      AS clicks
+            FROM wardrobe_items w
+            WHERE l.catalog_brand IS NOT NULL AND lower(w.brand) = lower(l.catalog_brand)
+        ) s ON TRUE
+        ORDER BY l.last_touch_at DESC NULLS LAST, lower(l.name)
+    """))).mappings().all()
+
+    return {"leads": [{
+        **{f: (r[f].isoformat() if hasattr(r[f], "isoformat") else r[f]) for f in _LEAD_FIELDS},
+        "id": r["id"],
+        "updated_at": r["updated_at"].isoformat() if r["updated_at"] else None,
+        # Absent, not zero: a brand we do not carry has no numbers, which is a
+        # different statement from "we carry it and nobody looked".
+        "stats": None if not r["catalog_brand"] or not r["items"] else {
+            "items": r["items"],
+            "distinct_products": r["distinct_products"],
+            "served": r["served"],
+            "impressions": r["impressions"],
+            "clicks": r["clicks"],
+        },
+    } for r in rows]}
+
+
+@router.post("/brand-leads")
+async def create_brand_lead(
+    request: Request,
+    user: dict = Depends(get_staff_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название бренда обязательно")
+
+    data = {f: (body.get(f) or None) for f in _LEAD_FIELDS}
+    data["name"] = name
+    data["status"] = body.get("status") or "Не начинали"
+    cols = ", ".join(_LEAD_FIELDS)
+    vals = ", ".join(f":{f}" for f in _LEAD_FIELDS)
+    try:
+        row = (await db.execute(
+            text(f"INSERT INTO brand_leads ({cols}, updated_by) "
+                 f"VALUES ({vals}, CAST(:actor AS uuid)) RETURNING id"),
+            {**data, "actor": user["id"]},
+        )).first()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail=f"Бренд «{name}» уже есть в списке")
+    await db.commit()
+    return {"id": row[0]}
+
+
+@router.patch("/brand-leads/{lead_id}")
+async def update_brand_lead(
+    lead_id: int,
+    request: Request,
+    user: dict = Depends(get_staff_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    updates = {f: body[f] or None for f in _LEAD_FIELDS if f in body}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Нечего обновлять")
+
+    sets = ", ".join(f'"{f}" = :{f}' for f in updates)
+    result = await db.execute(
+        text(f"UPDATE brand_leads SET {sets}, updated_at = NOW(), "
+             f"updated_by = CAST(:actor AS uuid) WHERE id = :id RETURNING id"),
+        {**updates, "id": lead_id, "actor": user["id"]},
+    )
+    if not result.first():
+        raise HTTPException(status_code=404, detail="Бренд не найден")
+    await db.commit()
+    return {"success": True}
+
+
+@router.delete("/brand-leads/{lead_id}")
+async def delete_brand_lead(
+    lead_id: int,
+    user: dict = Depends(get_staff_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        text("DELETE FROM brand_leads WHERE id = :id RETURNING id"), {"id": lead_id})
+    if not result.first():
+        raise HTTPException(status_code=404, detail="Бренд не найден")
+    await db.commit()
+    return {"success": True}
