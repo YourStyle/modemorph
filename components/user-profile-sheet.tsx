@@ -347,11 +347,18 @@ export function UserProfileSheet({
                               </div>
                               <div className="text-caption text-ink-2">
                                 {subscriptionData?.subscription?.status === "active"
-                                  ? "40 кредитов каждый месяц"
-                                  : "30 кредитов каждый месяц"}
+                                  ? "40 кредитов в месяц по подписке"
+                                  : "Бесплатные попытки по каждой функции"}
                               </div>
+                              {/* Остаток читается как ЧИСЛО. Бэкенд отдаёт
+                                  {"credits": 35}, а здесь стояло
+                                  credits?.credits_balance — обращение к полю
+                                  числа даёт undefined, и `|| 0` превращало это
+                                  в уверенный ноль. Пользователь с 35 кредитами
+                                  на счету видел «0 кредитов доступно» (баг с
+                                  прода 19.08). */}
                               <div className="text-micro text-ink-3 mt-2">
-                                {subscriptionData?.credits?.credits_balance || 0} кредитов доступно
+                                {subscriptionData?.credits ?? 0} кредитов доступно
                               </div>
                             </div>
 

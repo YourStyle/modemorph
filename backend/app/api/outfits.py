@@ -274,6 +274,34 @@ async def create_outfit(
     return {"outfit": outfit, "success": True}
 
 
+async def _require_can_edit(db: AsyncSession, outfit_id: int, user: dict) -> None:
+    """Владелец образа — или админ. Иначе 404.
+
+    Админ обязан быть исключением, а не любезностью: все view-образы витрины
+    принадлежат синтетическому пользователю 00000000-0000-0000-0000-000000000000,
+    у которого нет ни профиля, ни возможности войти. Проверка «только владелец»
+    означает, что курируемый образ не может отредактировать или удалить вообще
+    никто, и админка отвечает «Outfit not found» на свой же образ (жалоба
+    24.08). Тот же приём уже используется в этом файле в GET.
+
+    404, а не 403: посторонний не должен по коду ответа узнать, что образ с таким
+    id существует.
+    """
+    if user.get("is_admin"):
+        exists = await db.execute(
+            text("SELECT 1 FROM outfits WHERE id = :oid"), {"oid": outfit_id})
+        if not exists.first():
+            raise HTTPException(status_code=404, detail="Outfit not found")
+        return
+
+    owned = await db.execute(
+        text("SELECT 1 FROM outfits WHERE id = :oid AND user_id = :uid"),
+        {"oid": outfit_id, "uid": user["id"]},
+    )
+    if not owned.first():
+        raise HTTPException(status_code=404, detail="Outfit not found")
+
+
 @router.put("/{outfit_id}")
 async def update_outfit(
     outfit_id: int,
@@ -281,12 +309,7 @@ async def update_outfit(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    owned = await db.execute(
-        text("SELECT 1 FROM outfits WHERE id = :oid AND user_id = :uid"),
-        {"oid": outfit_id, "uid": user["id"]},
-    )
-    if not owned.first():
-        raise HTTPException(status_code=404, detail="Outfit not found")
+    await _require_can_edit(db, outfit_id, user)
 
     body = await request.json()
     allowed = ["name", "description", "preview_image_url", "gender"]
@@ -329,15 +352,14 @@ async def delete_outfit(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    owned = await db.execute(
-        text("SELECT 1 FROM outfits WHERE id = :oid AND user_id = :uid"),
-        {"oid": outfit_id, "uid": user["id"]},
-    )
-    if not owned.first():
-        raise HTTPException(status_code=404, detail="Outfit not found")
+    await _require_can_edit(db, outfit_id, user)
 
     await db.execute(text("DELETE FROM outfit_items WHERE outfit_id = :oid"), {"oid": outfit_id})
-    await db.execute(text("DELETE FROM outfits WHERE id = :oid AND user_id = :uid"), {"oid": outfit_id, "uid": user["id"]})
+    # Условие по владельцу снято из самого DELETE: право уже проверено выше, а
+    # оставлять его здесь значит, что у админа запрос отработает «успешно»,
+    # удалив ноль строк, — образ останется, а интерфейс отрапортует удаление.
+    # Ровно так витрина и не удалялась: 404 у одних образов, тихий no-op у других.
+    await db.execute(text("DELETE FROM outfits WHERE id = :oid"), {"oid": outfit_id})
     await db.commit()
     return {"success": True}
 
