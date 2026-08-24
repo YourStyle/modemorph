@@ -345,10 +345,16 @@ export function UserProfileSheet({
                               <div className="text-body font-semibold text-ink mb-1">
                                 {subscriptionData?.subscription?.status === "active" ? "Pro" : "Бесплатно"}
                               </div>
+                              {/* Бесплатный план не перечисляет свои лимиты.
+                                  Список «3 анализа, 3 запроса, 1 примерка»
+                                  читается как отказ ещё до того, как человек
+                                  что-то попробовал, — и это первое, что он
+                                  видит в профиле. Границу он встретит в момент,
+                                  когда она наступит, и там она объяснена. */}
                               <div className="text-caption text-ink-2">
                                 {subscriptionData?.subscription?.status === "active"
-                                  ? "40 кредитов в месяц по подписке"
-                                  : "Бесплатные попытки по каждой функции"}
+                                  ? "40 кредитов каждый месяц"
+                                  : "Все функции открыты — попробуйте каждую"}
                               </div>
                               {/* Остаток читается как ЧИСЛО. Бэкенд отдаёт
                                   {"credits": 35}, а здесь стояло
@@ -356,10 +362,16 @@ export function UserProfileSheet({
                                   числа даёт undefined, и `|| 0` превращало это
                                   в уверенный ноль. Пользователь с 35 кредитами
                                   на счету видел «0 кредитов доступно» (баг с
-                                  прода 19.08). */}
-                              <div className="text-micro text-ink-3 mt-2">
-                                {subscriptionData?.credits ?? 0} кредитов доступно
-                              </div>
+                                  прода 19.08).
+
+                                  Ноль не пишем вовсе: «0 кредитов доступно» у
+                                  того, кто ничего не покупал, — не факт о счёте,
+                                  а сообщение, что он тут лишний. */}
+                              {(subscriptionData?.credits ?? 0) > 0 && (
+                                <div className="text-micro text-ink-3 mt-2">
+                                  {subscriptionData.credits} кредитов на счету
+                                </div>
+                              )}
                             </div>
 
                             <Button
