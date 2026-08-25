@@ -77,8 +77,8 @@ export default function ModernSignupForm() {
 
         <p className="text-center text-micro leading-relaxed text-ink-3">
           Регистрируясь, вы соглашаетесь с{" "}
-          <Link href="/terms" className="text-ink-2 hover:text-ink hover:underline">
-            условиями
+          <Link href="/public_offer" className="text-ink-2 hover:text-ink hover:underline">
+            публичной офертой
           </Link>{" "}
           и{" "}
           <Link href="/privacy" className="text-ink-2 hover:text-ink hover:underline">

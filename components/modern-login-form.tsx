@@ -147,13 +147,13 @@ export default function ModernLoginForm() {
           </Link>
         </p>
 
-        {/* Разбито на две строки нарочно — с одним <p> ссылки на "условиями" и
+        {/* Разбито на две строки нарочно — с одним <p> ссылки на "публичной офертой" и
             "политикой конфиденциальности" оказывались на соседних строках без
             зазора (line-height не оставляет межстрочного отступа сам по себе). */}
         <p className="text-center text-micro leading-relaxed text-ink-3">
           Входя, вы соглашаетесь с{" "}
-          <Link href="/terms" className="text-ink-2 hover:text-ink hover:underline">
-            условиями
+          <Link href="/public_offer" className="text-ink-2 hover:text-ink hover:underline">
+            публичной офертой
           </Link>
         </p>
         <p className="mt-3 text-center text-micro leading-relaxed text-ink-3">
