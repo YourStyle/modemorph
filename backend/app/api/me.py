@@ -226,8 +226,20 @@ async def update_profile_session(
         )
         pid = new_profile.scalar()
         if pid:
+            # Бесплатный тариф, вариант A (решение владельца 24.08.2026).
+            # Было 3 / 3 / 10 / 3 / 1.
+            #
+            # Текст роздан щедро, потому что он ничего не стоит: просмотр идеи,
+            # сохранение образа и запрос к стилисту обходятся в 4 копейки.
+            # Прежние 10 идей экономили 40 копеек, а ограничение человек
+            # чувствовал — платили ощущением отказа за сумму меньше рубля.
+            #
+            # Картинки подняты умеренно: фото 3→5, примерка 1→2. Это 96% всей
+            # стоимости бесплатного тарифа. Пяти фото хватает собрать первый
+            # образ и увидеть смысл, но не хватает оцифровать гардероб — а это
+            # и есть повод оформить подписку. Десять фото убрали бы этот повод.
             await db.execute(
-                text("INSERT INTO limits (user_profile_id, wardrobe_items_anlyzed, ai_requests, ideas_viewed, outfits_saved, vton_used) VALUES (:pid, 3, 3, 10, 3, 1) ON CONFLICT DO NOTHING"),
+                text("INSERT INTO limits (user_profile_id, wardrobe_items_anlyzed, ai_requests, ideas_viewed, outfits_saved, vton_used) VALUES (:pid, 5, 25, 100, 25, 2) ON CONFLICT DO NOTHING"),
                 {"pid": int(pid)},
             )
             await db.execute(
