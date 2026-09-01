@@ -1100,6 +1100,49 @@ async def clip_search(request: Request, user: dict = Depends(get_current_user)):
 
 # ── /api/style-check — "Will this item fit my wardrobe?" ──
 
+# Веса и якоря шкалы. Не подобраны на глаз — посчитаны 01.09.2026 на всех 1090
+# вещах с эмбеддингами (109 гардеробов, 91 из них с двумя вещами и больше).
+#
+# Методика: для каждой вещи считаем её близость к ОСТАЛЬНОМУ своему гардеробу
+# (leave-one-out) — это ровно та задача, которую решает style-check для новой
+# вещи. Контроль — та же вещь против случайного ЧУЖОГО гардероба, то есть
+# эталон ответа «не ваш стиль».
+#
+# Что показал замер:
+#   близость к ближайшей своей вещи  — медиана 0.745, у чужого гардероба 0.602;
+#   близость ко всему гардеробу      — медиана 0.541, у чужого 0.496.
+# Разрыв по максимуму втрое больше, чем по среднему, поэтому максимум и весит
+# 0.7: ключ к «моё» — есть ли в гардеробе хоть одна близкая вещь, а не средняя
+# температура по шкафу. Итоговая метрика разделяет своё и чужое с AUC 0.748.
+#
+# Якоря шкалы — измеренные квантили этой метрики:
+#   0.573 = медиана ЧУЖОГО гардероба -> 40 баллов («не ваш стиль»)
+#   0.686 = медиана СВОЕГО            -> 70 («хорошо дополнит»)
+#   0.796 = p95 СВОЕГО                -> 95 («отлично подходит»)
+# Края 0.35 и 0.95 — технические границы косинуса на этих данных.
+_FIT_W_MAX = 0.7
+_FIT_W_MEAN = 0.3
+_FIT_ANCHORS = [(0.35, 0), (0.573, 40), (0.686, 70), (0.796, 95), (0.95, 100)]
+
+
+def _wardrobe_fit_score(mean: float | None, max_sim: float | None) -> int | None:
+    """Косинусная близость -> балл 0-100 по измеренным якорям.
+
+    Возвращает None, когда сравнивать не с чем — это честнее выдуманного числа.
+    """
+    if mean is None or max_sim is None:
+        return None
+
+    fit = _FIT_W_MAX * max_sim + _FIT_W_MEAN * mean
+
+    # Кусочно-линейная интерполяция по якорям; за краями — зажим.
+    if fit <= _FIT_ANCHORS[0][0]:
+        return _FIT_ANCHORS[0][1]
+    for (x0, y0), (x1, y1) in zip(_FIT_ANCHORS, _FIT_ANCHORS[1:]):
+        if fit <= x1:
+            return round(y0 + (y1 - y0) * (fit - x0) / (x1 - x0))
+    return _FIT_ANCHORS[-1][1]
+
 @router.post("/style-check")
 async def style_check(
     image: UploadFile = File(...),
@@ -1136,14 +1179,24 @@ async def style_check(
             "verdict": "На фото не удалось распознать одежду. Попробуйте загрузить фото вещи крупнее.",
         }
 
-    # 2. Search for similar items in user's wardrobe via CLIP
+    # 2. Насколько вещь близка к ГАРДЕРОБУ пользователя.
+    #
+    # Раньше здесь звался /clip/search с параметрами k и user_id, которых у него
+    # нет в сигнатуре (ai-service/clip/routes.py: search берёт только image и
+    # хардкодит k=20). Он молча отдавал 20 вещей КАТАЛОГА, бонус min(30, 20*6)
+    # всегда упирался в потолок, и балл был константой: 100 при совпадении
+    # стиля, иначе 70. /clip/wardrobe-fit считает настоящий косинус к вещам
+    # именно этого пользователя.
+    fit = {}
     async with httpx.AsyncClient(timeout=20.0) as client:
-        search_resp = await client.post(
-            f"{ai_service}/clip/search",
+        fit_resp = await client.post(
+            f"{ai_service}/clip/wardrobe-fit",
             files={"image": ("item.jpg", content, "image/jpeg")},
-            data={"k": "5", "user_id": user["id"]},
+            data={"user_id": user["id"]},
         )
-        similar = search_resp.json().get("results", []) if search_resp.status_code == 200 else []
+        if fit_resp.status_code == 200:
+            fit = fit_resp.json()
+    similar = fit.get("nearest", [])
 
     # 3. Get user's dominant style
     style_result = await db.execute(
@@ -1158,10 +1211,27 @@ async def style_check(
     item_primary_style = item_styles[0] if item_styles else "casual"
     style_match = item_primary_style == dominant_style
 
-    # Score: 0-100 based on style match + similar items found
-    base_score = 70 if style_match else 40
-    similar_bonus = min(30, len(similar) * 6)  # up to 30 points for similar items
-    score = min(100, base_score + similar_bonus)
+    # 5. Балл — из измеренной близости, а не из строкового равенства стилей.
+    #
+    # style_match намеренно НЕ входит в балл: dominant_style агрегируется по
+    # сырому свободному тексту (cron.py), поэтому равенство строк здесь —
+    # ненадёжный сигнал. Он остаётся в ответе как справка.
+    score = _wardrobe_fit_score(fit.get("mean"), fit.get("max"))
+    if score is None:
+        # Сравнивать не с чем: гардероб пуст или вещам ещё не проставили
+        # эмбеддинги. Врать числом не будем — фронт покажет объяснение.
+        return {
+            "score": None,
+            "item_style": item_primary_style,
+            "item_color": classification.get("color", ""),
+            "item_type": classification.get("clothing_type")
+            or classification.get("non_garment")
+            or "",
+            "user_style": dominant_style,
+            "style_match": style_match,
+            "similar_items": 0,
+            "verdict": "Пока не с чем сравнить — добавьте несколько вещей в гардероб.",
+        }
 
     return {
         "score": score,

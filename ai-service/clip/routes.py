@@ -5,7 +5,7 @@ import json
 import logging
 import threading
 import numpy as np
-from fastapi import APIRouter, File, UploadFile, HTTPException, Request
+from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -365,6 +365,49 @@ async def recommend(request: Request, body: RecommendRequest):
     except Exception as e:
         logger.warning(f"[recommend] Failed to fetch dislikes: {e}")
 
+    # 2b. Fetch LIKED item embeddings (positive signal).
+    #
+    # До этой правки лайк не влиял на выдачу ничем: запросом было чистое среднее
+    # гардероба, а user_likes читала только витрина. Берём сигнал из двух мест
+    # сразу, потому что по отдельности каждого мало (замер прода 28.08.2026:
+    # 11 строк в user_likes против 36 действий click/save/try_on):
+    #   - user_likes -> outfit_items: вещи из образов, которые человек лайкнул;
+    #   - recommendation_logs: вещи, по которым он кликнул, сохранил или примерил.
+    # Оба источника указывают на каталог (wardrobe_items), поэтому эмбеддинг
+    # берётся оттуда — так мы не ловим коллизию id с wardrobe_user_items.
+    like_embeddings = []
+    try:
+        async with pool.acquire() as conn:
+            like_rows = await conn.fetch("""
+                SELECT DISTINCT wi.embedding
+                FROM wardrobe_items wi
+                WHERE wi.embedding IS NOT NULL AND wi.id IN (
+                    SELECT oi.wardrobe_item_id
+                    FROM user_likes ul
+                    JOIN outfit_items oi ON oi.outfit_id = ul.outfit_id
+                    WHERE ul.user_id = $1 AND ul.outfit_id IS NOT NULL
+                    UNION
+                    SELECT rl.item_id
+                    FROM recommendation_logs rl
+                    WHERE rl.user_id = $1
+                      AND rl.action IN ('click', 'save', 'try_on')
+                      AND rl.item_id IS NOT NULL
+                )
+                LIMIT 200
+            """, body.user_id)
+
+        for lr in like_rows:
+            if lr['embedding']:
+                try:
+                    like_embeddings.append([float(x) for x in lr['embedding']])
+                except (ValueError, TypeError):
+                    continue
+    except Exception as e:
+        logger.warning(f"[recommend] Failed to fetch likes: {e}")
+
+    if like_embeddings:
+        logger.info(f"[recommend] user={body.user_id[:8]} likes={len(like_embeddings)} shifting query")
+
     # 3. Get collaborative dislike signal from user's cluster
     cluster_dislike_emb = None
     user_cluster = cluster_service.get_user_cluster(body.user_id)
@@ -414,9 +457,13 @@ async def recommend(request: Request, body: RecommendRequest):
             cluster_dislike_emb=cluster_dislike_emb,
             exclude_ids=exclude_ids if exclude_ids else None,
             k=clamped_k,
+            like_embeddings=like_embeddings if like_embeddings else None,
         )
     else:
-        results = rec.recommend_for_user(embeddings, k=clamped_k)
+        results = rec.recommend_for_user(
+            embeddings, k=clamped_k,
+            like_embeddings=like_embeddings if like_embeddings else None,
+        )
 
     # 5. Blend in cluster-popular items ("users like you also liked X").
     #    This breaks the filter bubble: CLIP nearest-neighbors alone would
@@ -1034,6 +1081,160 @@ async def encode_text(request: Request, body: EncodeTextRequest):
     encoder, _ = _get_services(request)
     emb = encoder.encode_text(body.text)
     return {'embedding': emb.tolist(), 'dim': len(emb)}
+
+
+# ---------------------------------------------------------------------------
+# /clip/encode-user-items — добить эмбеддинги вещам пользователей
+# ---------------------------------------------------------------------------
+
+class EncodeUserItemsRequest(BaseModel):
+    limit: int = 200
+
+
+@router.post('/encode-user-items')
+async def encode_user_items(request: Request, body: EncodeUserItemsRequest):
+    """Проставляет embedding вещам wardrobe_user_items, у которых его нет.
+
+    История, из-за которой это здесь. Эмбеддинг юзерским вещам писал ровно один
+    fire-and-forget вызов из app/api/wardrobe-user-items/route.ts. При переезде
+    на FastAPI (коммиты d005cd2 и 84d4b19, 10-13.04.2026) роут удалили вместе с
+    89 другими, а замена в backend/app/api/wardrobe_user_items.py про поле
+    embedding не знает. Границы видно по данным: последняя вещь с вектором
+    создана 09.04 16:16 UTC, первая без — 13.04 14:57 UTC. За май-август
+    накопился 171 предмет без вектора, и их владельцы каждую ночь падали в
+    cold-start — выдачу по одному тексту «стильный женский образ одежда»,
+    одинаковую для всех.
+
+    Почему добивка кроном, а не хук на создание вещи: хук чинит только новые
+    вещи и молча теряет их, когда AI-сервис лежит, — а он лежал 53 дня
+    (15.06-07.08.2026). Догоняющий проход чинит и новые, и накопленный долг, и
+    сам восстанавливается после любого простоя. Один механизм вместо двух.
+    """
+    import httpx
+
+    encoder, _ = _get_services(request)
+    pool = _get_db(request)
+    limit = max(1, min(body.limit, 1000))
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT id, image_url FROM wardrobe_user_items
+            WHERE embedding IS NULL
+              AND image_url IS NOT NULL AND image_url <> ''
+              AND COALESCE(is_hidden, false) = false
+            ORDER BY created_at DESC
+            LIMIT $1
+        """, limit)
+
+    stats = {'scanned': len(rows), 'encoded': 0, 'fetch_failed': 0, 'encode_failed': 0}
+    if not rows:
+        return stats
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        for row in rows:
+            try:
+                resp = await client.get(row['image_url'])
+                if resp.status_code != 200:
+                    stats['fetch_failed'] += 1
+                    continue
+                img = _validate_image(resp.content)
+            except Exception:
+                stats['fetch_failed'] += 1
+                continue
+
+            try:
+                emb = encoder.encode_image(img)
+                async with pool.acquire() as conn:
+                    # embedding — TEXT[], поэтому список строк, а не литерал '{...}':
+                    # asyncpg отдал бы литерал как одну строку в массиве из одного
+                    # элемента, и чтение [float(x) for x in raw] развалилось бы.
+                    await conn.execute(
+                        "UPDATE wardrobe_user_items SET embedding = $1 WHERE id = $2",
+                        [repr(float(x)) for x in emb],
+                        row['id'],
+                    )
+                stats['encoded'] += 1
+            except Exception as e:
+                stats['encode_failed'] += 1
+                logger.warning(f"[encode-user-items] id={row['id']}: {type(e).__name__}: {e}")
+
+    logger.info(f"[encode-user-items] {stats}")
+    return stats
+
+
+# ---------------------------------------------------------------------------
+# /clip/wardrobe-fit — насколько вещь с фото похожа на ГАРДЕРОБ ПОЛЬЗОВАТЕЛЯ
+# ---------------------------------------------------------------------------
+
+@router.post('/wardrobe-fit')
+async def wardrobe_fit(
+    request: Request,
+    image: UploadFile = File(...),
+    user_id: str = Form(...),
+):
+    """Косинусная близость загруженной вещи к вещам конкретного пользователя.
+
+    Существует потому, что /api/style-check звал /clip/search с параметрами
+    k и user_id, которых у того эндпоинта нет в сигнатуре: он молча отдавал
+    20 вещей КАТАЛОГА. Дальше балл считался как min(30, len(similar) * 6) —
+    при 20 результатах бонус всегда упирался в потолок 30, и итог был ровно
+    100 (если совпал стиль) или 70. Константа на все случаи.
+
+    Здесь считается то, что docstring style_check обещал с самого начала:
+    сравнение с гардеробом человека, а не с витриной.
+    """
+    encoder, _ = _get_services(request)
+    pool = _get_db(request)
+
+    data = await image.read()
+    img = _validate_image(data)
+    emb = np.asarray(encoder.encode_image(img), dtype=np.float32)
+
+    # Нормируем оба конца сами: полагаться на то, что энкодер вернул единичный
+    # вектор, — молчаливое допущение, из-за которого «косинус» легко становится
+    # просто скалярным произведением с непонятным масштабом.
+    norm = np.linalg.norm(emb)
+    if norm > 0:
+        emb = emb / norm
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT id, item_name, clothing_type, embedding
+            FROM wardrobe_user_items
+            WHERE user_id = $1 AND embedding IS NOT NULL
+              AND COALESCE(is_hidden, false) = false
+        """, user_id)
+
+    sims = []
+    for row in rows:
+        try:
+            vec = np.asarray([float(x) for x in row['embedding']], dtype=np.float32)
+        except (ValueError, TypeError):
+            continue
+        if vec.shape != emb.shape:
+            continue
+        n = np.linalg.norm(vec)
+        if n == 0:
+            continue
+        sims.append((float(np.dot(emb, vec / n)), row['id'], row['item_name'], row['clothing_type']))
+
+    if not sims:
+        # Гардероб пуст ИЛИ вещам ещё не проставили эмбеддинги (см.
+        # /clip/encode-user-items). Честно говорим «не знаем» вместо того,
+        # чтобы вернуть выдуманное число — вызывающий сам решит, что показать.
+        return {'wardrobe_items': 0, 'mean': None, 'max': None, 'nearest': []}
+
+    sims.sort(reverse=True)
+    values = [s[0] for s in sims]
+    return {
+        'wardrobe_items': len(sims),
+        'mean': float(np.mean(values)),
+        'max': float(values[0]),
+        'nearest': [
+            {'id': i, 'item_name': n, 'clothing_type': t, 'similarity': round(s, 4)}
+            for s, i, n, t in sims[:5]
+        ],
+    }
 
 
 if __name__ == "__main__":

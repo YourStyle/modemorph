@@ -11,7 +11,7 @@ import logging
 import random
 import uuid
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -34,6 +34,14 @@ router = APIRouter()
 
 # Probability of using CLIP model vs Gemini-only for a given user
 CLIP_PROBABILITY = 0.6
+
+
+# Сколько прошлых дней считать «недавно показанным» при анти-повторе.
+# Три дня, а не тридцать: каталог в FAISS-индексе достижим не весь (реально
+# ~2400 позиций на всех), и слишком длинное окно оставило бы генератор без
+# кандидатов вообще. Гардеробные вещи под это правило не попадают — их у
+# половины пользователей меньше шести, там повтор неизбежен и нормален.
+RECENT_DAYS = 3
 
 
 def _verify_cron_auth(request: Request):
@@ -207,7 +215,8 @@ async def _gemini_organize(
 Доступные вещи:
 {all_items}
 
-ЗАДАЧА: Создай 5-7 тематических разделов, в каждом по 3-4 образа. Итого 15-25 образов.
+ЗАДАЧА: Создай {sections_count} тематических разделов, в каждом по 4-5 образов. Итого {sections_count * 4}-{sections_count * 5} образов.
+Это НИЖНЯЯ граница, а не верхняя: если вещей хватает на большее число осмысленных сочетаний — делай больше.
 {"У пользователя мало своих вещей — активно используй рекомендованные [PARTNER] вещи для полных комплектов!" if small_wardrobe and has_partners else ""}
 
 ТЕМЫ РАЗДЕЛОВ (примеры, выбирай подходящие по погоде и гардеробу):
@@ -251,8 +260,11 @@ JSON: [{{"title":"Название раздела","section_type":"user_only|mix
                     "messages": [{"role": "user", "content": prompt}],
                     "temperature": 0.85,
                     # Cap max_tokens so a budget-limited OpenRouter key doesn't 402
-                    # on the uncapped ~65535 default. 16k covers the sections JSON.
-                    "max_tokens": 16384,
+                    # on the uncapped ~65535 default. Подняли с 16k: разделов
+                    # теперь до 10 по 4-5 образов, и на верхней границе ответ в
+                    # 16k обрывался посреди JSON — json.loads падал, ветка
+                    # уходила в except и человек оставался вообще без ленты.
+                    "max_tokens": 32768,
                 },
             )
             data = resp.json()
@@ -285,6 +297,28 @@ async def cron_generate_recommendations(
     _verify_cron_auth(request)
 
     today = date.today()
+
+    # Догнать эмбеддинги ПЕРЕД генерацией: без вектора вещь не участвует в
+    # подборе каталога, и её владелец уходит в cold-start — один фиксированный
+    # текстовый запрос на весь пол, одинаковый для всех. Запись этих векторов
+    # умерла при переезде на FastAPI 10-13.04.2026 и лежала четыре месяца.
+    # Проход догоняющий, а не хук на создание вещи: он чинит и новые вещи, и
+    # накопленный долг, и сам восстанавливается после простоя AI-сервиса
+    # (в 2026 году тот лежал 53 дня подряд).
+    if settings.AI_SERVICE_URL:
+        try:
+            async with httpx.AsyncClient(timeout=180.0) as client:
+                enc = await client.post(
+                    f"{settings.AI_SERVICE_URL}/clip/encode-user-items",
+                    json={"limit": 300},
+                )
+                if enc.status_code == 200:
+                    logger.info(f"[Cron Recs] embeddings backfill: {enc.json()}")
+                else:
+                    logger.warning(f"[Cron Recs] embeddings backfill HTTP {enc.status_code}")
+        except Exception as e:
+            # Ночная лента важнее добивки: считаем без неё, догоним завтра.
+            logger.warning(f"[Cron Recs] embeddings backfill failed: {e}")
 
     # Find users eligible for recommendation refresh.
     # Logic: skip users who haven't logged in recently AND already have fresh recs.
@@ -402,7 +436,34 @@ async def cron_generate_recommendations(
                 "temperature": weather_row["temperature"] if weather_row else moscow_weather["temperature"],
                 "description": weather_row["description"] if weather_row else moscow_weather["description"],
             }
-            temp = weather["temperature"] or 20
+            # `or 20` здесь читал ровно 0 °C как +20 °C (0 — ложное значение в
+            # Python) и вырезал из гардероба всю тёплую одежду в самый мороз.
+            # Подменять нужно только отсутствующее значение, а не ложное.
+            temp = weather["temperature"] if weather["temperature"] is not None else 20
+
+            # Что этому человеку уже показывали за последние дни. Анти-повтора в
+            # генерации не было вообще: ни один запрос не читал вчерашнюю выдачу,
+            # из-за чего 18,7% пар (юзер, вещь) повторялись между днями, а одну
+            # вещь одному человеку показали в 41 разный день (замер 28.08.2026).
+            recent_catalog_ids = set()
+            try:
+                recent_rows = await db.execute(text("""
+                    SELECT DISTINCT (it->>'id')::bigint AS item_id
+                    FROM main_recommendations m,
+                         jsonb_array_elements(m.look_sections::jsonb) sec,
+                         jsonb_array_elements(sec->'suggestions') sug,
+                         jsonb_array_elements(sug->'items') it
+                    WHERE m.user_id = :uid
+                      AND m.run_date >= :since
+                      AND it->>'item_source' = 'catalog'
+                      AND it->>'id' ~ '^[0-9]+$'
+                """), {"uid": user_id, "since": today - timedelta(days=RECENT_DAYS)})
+                recent_catalog_ids = {r[0] for r in recent_rows.all()}
+            except Exception as e:
+                # Не критично: без этого множества выдача просто снова может
+                # повториться, а падать из-за анти-повтора ночной прогон не должен.
+                logger.warning(f"[Cron Recs] recent-items lookup failed: {e}")
+                await db.rollback()
 
             # Filter user items by weather (remove winter coats at +20°C, shorts at 0°C).
             # temp_ok() also infers warmth from type/name when temp_min/max is NULL.
@@ -416,7 +477,17 @@ async def cron_generate_recommendations(
             if use_clip:
                 clip_results, clip_rec_session_id = await _clip_recommend(user_id, k=clip_k)
                 if clip_results:
-                    partner_ids = [r["id"] for r in clip_results]
+                    # Отбрасываем то, что уже показывали за RECENT_DAYS. Если
+                    # после этого не осталось совсем ничего — берём исходный
+                    # список: пустая лента хуже повторной. Недобор до 15 позиций
+                    # всё равно дотянет фолбэк ниже, уже с тем же исключением.
+                    fresh_ids = [r["id"] for r in clip_results if r["id"] not in recent_catalog_ids]
+                    partner_ids = fresh_ids or [r["id"] for r in clip_results]
+                    if len(fresh_ids) < len(clip_results):
+                        logger.info(
+                            f"[Cron Recs] User {user_id[:8]}... anti-repeat dropped "
+                            f"{len(clip_results) - len(fresh_ids)}/{len(clip_results)} CLIP candidates"
+                        )
                     # shade + material are what the feed backfill fills on these
                     # rows; not selecting them is what made the nightly prompt see
                     # only the hue family and no composition at all.
@@ -441,12 +512,25 @@ async def cron_generate_recommendations(
             # Fallback: if CLIP returned too few usable partners, query catalog directly
             if len(partner_items) < 15:
                 gender_filter = ""
-                binds = {"temp": temp, "lim": 60 - len(partner_items)}
+                binds = {
+                    "temp": temp,
+                    "lim": 60 - len(partner_items),
+                    # В SQL, а не в Python после выборки: LIMIT отрабатывает до
+                    # питоновского фильтра, поэтому отсев недавних «съедал» бы
+                    # часть добора и возвращал меньше вещей, чем просили.
+                    "recent": list(recent_catalog_ids) or [0],
+                }
                 if gender == "male":
                     gender_filter = "AND (gender IS NULL OR gender = '' OR gender = 'male' OR gender = 'unisex')"
                 elif gender == "female":
                     gender_filter = "AND (gender IS NULL OR gender = '' OR gender = 'female' OR gender = 'unisex')"
-                existing_ids = {p["id"] for p in partner_items} | {i["id"] for i in user_items}
+                # recent_catalog_ids здесь тоже: без этого фолбэк спокойно
+                # возвращал вчерашние вещи обратно, обнуляя фильтр выше.
+                existing_ids = (
+                    {p["id"] for p in partner_items}
+                    | {i["id"] for i in user_items}
+                    | recent_catalog_ids
+                )
                 fallback_result = await db.execute(text(f"""
                     SELECT id, item_name, image_url, clothing_type, color, shade,
                            material, url, notes, gender, temp_min, temp_max, is_kids,
@@ -458,6 +542,7 @@ async def cron_generate_recommendations(
                     AND (temp_min IS NULL OR temp_min <= :temp)
                     AND (temp_max IS NULL OR temp_max >= :temp)
                     AND image_url IS NOT NULL
+                    AND NOT (id = ANY(:recent))
                     ORDER BY random()
                     LIMIT :lim
                 """), binds)
@@ -518,7 +603,16 @@ async def cron_generate_recommendations(
 
             # Ask Gemini to organize. Feed the curated capsule as style exemplars
             # (cached per gender — cheap even inside this per-user loop).
-            n_sections = min(7, max(3, len(user_items) // 3 + 1))
+            # Число разделов теперь реально доезжает до промпта: параметр
+            # sections_count у _gemini_organize существовал с самого начала, но
+            # нигде не использовался — промпт жёстко просил «5-7 разделов», и
+            # этот расчёт ни на что не влиял.
+            #
+            # Границы подняты с 3-7 до 5-10, а образов в разделе с 3-4 до 4-5:
+            # при медианном гардеробе в 6-14 вещей старая формула давала 3-5
+            # разделов, то есть 9-20 образов на ночь. Партнёрских кандидатов в
+            # пуле 60-100, материала на большее хватает.
+            n_sections = min(10, max(5, len(user_items) // 2 + 3))
             capsule_guide = await capsule_style_guide(db, gender)
             gemini_sections = await _gemini_organize(
                 user_items, partner_items, weather, gender, dominant_style, n_sections, capsule_guide,

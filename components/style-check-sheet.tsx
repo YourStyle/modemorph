@@ -7,7 +7,7 @@ import { api } from "@/lib/api-client"
 import { STYLE_LABELS, CLOTHING_TYPE_LABELS } from "@/lib/labels"
 
 interface StyleCheckResult {
-  score: number
+  score: number | null
   item_style: string
   item_color: string
   item_type: string
@@ -108,22 +108,27 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
           </>
         ) : (
           <>
-            {/* Score circle — единственный акцент (--signal), без градиента и без палитры "светофор" */}
+            {/* Score circle — единственный акцент (--signal), без градиента и без палитры "светофор".
+                score приходит null, когда сравнивать не с чем: гардероб пуст или
+                вещам ещё не проставили эмбеддинги. Тогда кольца нет вовсе —
+                рисовать 0% значило бы выдать «нечего сравнить» за «не подходит». */}
             <div className="flex flex-col items-center">
-              <div className="relative w-28 h-28 mb-3">
-                <svg className="w-28 h-28 -rotate-90" viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="50" fill="none" stroke="hsl(var(--canvas-sunk))" strokeWidth="10" />
-                  <circle
-                    cx="60" cy="60" r="50" fill="none"
-                    stroke="hsl(var(--signal))" strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeDasharray={`${(result.score / 100) * 314} 314`}
-                  />
-                </svg>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-h2 text-ink">{result.score}%</span>
+              {result.score !== null && (
+                <div className="relative w-28 h-28 mb-3">
+                  <svg className="w-28 h-28 -rotate-90" viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="50" fill="none" stroke="hsl(var(--canvas-sunk))" strokeWidth="10" />
+                    <circle
+                      cx="60" cy="60" r="50" fill="none"
+                      stroke="hsl(var(--signal))" strokeWidth="10"
+                      strokeLinecap="round"
+                      strokeDasharray={`${(result.score / 100) * 314} 314`}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-h2 text-ink">{result.score}%</span>
+                  </div>
                 </div>
-              </div>
+              )}
               <p className="text-body font-semibold text-ink">{result.verdict}</p>
             </div>
 

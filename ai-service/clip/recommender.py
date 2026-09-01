@@ -14,13 +14,55 @@ class CLIPRecommenderService:
         self.index = index
         self.profiler = StyleProfileService()
 
-    def recommend_for_user(self, user_embeddings: list, k: int = 20) -> list:
+    def recommend_for_user(
+        self, user_embeddings: list, k: int = 20, like_embeddings: list | None = None,
+    ) -> list:
         if not user_embeddings:
             return []
-        mean_emb = self.profiler.mean_embedding(user_embeddings)
+        mean_emb = self._query_vector(user_embeddings, like_embeddings)
         if mean_emb is None:
             return []
         return self.index.search(mean_emb, k=k)
+
+    # Насколько сильно лайки сдвигают запрос относительно гардероба.
+    # 0.5 — лайки весят вдвое меньше гардероба: гардероб описывает, что человек
+    # носит, лайк — что он хочет. Полный вес (1.0) на 1-2 лайках увёл бы всю
+    # выдачу в одну вещь, нулевой — это то, что было до этой правки.
+    LIKE_WEIGHT = 0.5
+
+    def _query_vector(self, user_embeddings: list, like_embeddings: list | None):
+        """Вектор запроса: гардероб, сдвинутый в сторону лайков (Rocchio).
+
+        Зачем сдвиг вообще: раньше запросом было ЧИСТОЕ среднее гардероба, и
+        замер прода 28.08.2026 показал, к чему это приводит — средние векторы
+        разных людей лежат в тесном конусе, поэтому у всех выигрывают одни и те
+        же глобальные соседи (вещь id=362 попадала в top-80 у 82 из 109
+        пользователей, а сам top-80 по всей базе покрывал 3,8% каталога).
+        Лайк — единственный сигнал, который у нас есть и который двигает
+        человека ИЗ этого конуса, потому что он про него, а не про склад.
+
+        Дизлайки здесь не участвуют: они уже вычитаются на этапе поиска в
+        index.search_with_penalties(), и вычитать их дважды значило бы менять
+        калибровку dislike_weight вслепую.
+        """
+        mean_emb = self.profiler.mean_embedding(user_embeddings)
+        if mean_emb is None:
+            return None
+        if not like_embeddings:
+            return mean_emb
+
+        liked = self.profiler.mean_embedding(like_embeddings)
+        if liked is None:
+            return mean_emb
+
+        # Оба слагаемых уже единичной длины (mean_embedding нормирует), поэтому
+        # сумма — это честная интерполяция направлений, а не перекос в сторону
+        # того, у кого длиннее вектор. Нормируем результат: FAISS IndexFlatIP
+        # считает скалярное произведение, и без нормировки это перестанет быть
+        # косинусом.
+        blended = mean_emb + self.LIKE_WEIGHT * liked
+        norm = np.linalg.norm(blended)
+        return (blended / norm).astype(np.float32) if norm > 0 else mean_emb
 
     def recommend_for_user_with_dislikes(
         self,
@@ -31,6 +73,7 @@ class CLIPRecommenderService:
         k: int = 20,
         dislike_weight: float = 0.3,
         cluster_weight: float = 0.15,
+        like_embeddings: list | None = None,
     ) -> list:
         """Recommend items with anti-preference penalties.
 
@@ -42,10 +85,11 @@ class CLIPRecommenderService:
             k: Number of results
             dislike_weight: Weight for personal dislike penalty (α)
             cluster_weight: Weight for cluster dislike penalty (β)
+            like_embeddings: List of liked item embeddings (positive signal, Rocchio)
         """
         if not user_embeddings:
             return []
-        mean_emb = self.profiler.mean_embedding(user_embeddings)
+        mean_emb = self._query_vector(user_embeddings, like_embeddings)
         if mean_emb is None:
             return []
 
@@ -116,3 +160,33 @@ class CLIPRecommenderService:
     def outfit_complements(self, item_embedding: list, k: int = 10) -> list:
         emb = np.array(item_embedding, dtype=np.float32)
         return self.index.search(emb, k=k + 1)[1:]  # skip self
+
+
+if __name__ == "__main__":
+    # Проверка сдвига запроса лайками. Гоняется как `python -m clip.recommender`
+    # и не требует ни модели, ни индекса — _query_vector это чистая арифметика.
+    rec = CLIPRecommenderService.__new__(CLIPRecommenderService)
+    rec.profiler = StyleProfileService()
+
+    wardrobe = [[1.0, 0.0, 0.0]]
+    liked = [[0.0, 1.0, 0.0]]
+
+    # Без лайков запрос равен гардеробу.
+    q0 = rec._query_vector(wardrobe, None)
+    assert np.allclose(q0, [1.0, 0.0, 0.0]), q0
+
+    # С лайком запрос уезжает в их сторону, но НЕ доезжает до самого лайка:
+    # гардероб всё ещё весит больше (LIKE_WEIGHT = 0.5).
+    q1 = rec._query_vector(wardrobe, liked)
+    assert np.isclose(np.linalg.norm(q1), 1.0), f"запрос обязан быть единичным: {np.linalg.norm(q1)}"
+    assert q1[1] > 0, "лайк не сдвинул запрос"
+    assert q1[0] > q1[1], "лайк перевесил гардероб — проверь LIKE_WEIGHT"
+
+    # Лайк того, что уже в гардеробе, направление не меняет.
+    q2 = rec._query_vector(wardrobe, wardrobe)
+    assert np.allclose(q2, q0), q2
+
+    # Пустой гардероб — не наша ветка, отвечает cold-start.
+    assert rec._query_vector([], liked) is None
+
+    print("OK: лайки сдвигают запрос, гардероб остаётся тяжелее, вектор единичный")
