@@ -414,37 +414,32 @@ export default function FeatureCostsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor={`regular-${feature.id}`}>Стоимость для обычных пользователей (кредиты)</Label>
-                  <Input
-                    id={`regular-${feature.id}`}
-                    type="number"
-                    min="0"
-                    value={feature.cost_credits}
-                    onChange={(e) =>
-                      updateFeatureCost(feature.id, {
-                        cost_credits: Number.parseInt(e.target.value) || 0,
-                      })
-                    }
-                    disabled={saving}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`subscription-${feature.id}`}>Стоимость для подписчиков (кредиты)</Label>
-                  <Input
-                    id={`subscription-${feature.id}`}
-                    type="number"
-                    min="0"
-                    value={feature.cost_subscription_credits}
-                    onChange={(e) =>
-                      updateFeatureCost(feature.id, {
-                        cost_subscription_credits: Number.parseInt(e.target.value) || 0,
-                      })
-                    }
-                    disabled={saving}
-                  />
-                </div>
+              {/* Поле «Стоимость для подписчиков» убрано: подписчик не тратит
+                  кредиты вообще — _is_subscriber() пропускает его мимо
+                  тарификации. Число в этом поле никогда ни на что не влияло, а
+                  выглядело как рычаг. Ровно из-за таких полей и появился баг,
+                  который эта страница чинит. */}
+              <div className="space-y-2">
+                <Label htmlFor={`regular-${feature.id}`}>Стоимость (кредиты)</Label>
+                <Input
+                  id={`regular-${feature.id}`}
+                  type="number"
+                  min="0"
+                  value={feature.cost_credits}
+                  onChange={(e) =>
+                    updateFeatureCost(feature.id, {
+                      cost_credits: Number.parseInt(e.target.value) || 0,
+                    })
+                  }
+                  disabled={saving}
+                />
+                <p className="text-sm text-muted-foreground">
+                  {feature.is_active
+                    ? feature.cost_credits === 0
+                      ? "Бесплатно для всех."
+                      : "Списывается только у тех, кто без подписки и уже израсходовал бесплатный лимит. Подписчик не платит кредитами."
+                    : "Тарификация выключена — функция бесплатна."}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor={`description-${feature.id}`}>Описание</Label>

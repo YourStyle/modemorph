@@ -253,7 +253,6 @@ export default function InspirationPage(): ReactElement {
   const [dailyViewsUsed, setDailyViewsUsed] = useState(0)
   const [showPaywall, setShowPaywall] = useState(false)
   const [isBlurred, setIsBlurred] = useState(false)
-  const [userCredits, setUserCredits] = useState(0)
 
   const [showOutfitItems, setShowOutfitItems] = useState(false)
   const [selectedOutfitItems, setSelectedOutfitItems] = useState<OutfitItem[]>([])
@@ -603,21 +602,11 @@ export default function InspirationPage(): ReactElement {
     }
   }
 
-  async function handleBuyMoreViews() {
-    try {
-      const data = await api.post("/api/spend-credits", {
-        amount: 2,
-        reason: "ideas_viewed",
-        description: "Купить 5 дополнительных просмотров идей",
-        usageType: "ideas_viewed",
-      })
-      setUserCredits(data.newBalance)
-      setIsBlurred(false)
-      setDailyViewsUsed((prev) => Math.max(0, prev - 5))
-    } catch (_) {
-      setShowPaywall(true)
-    }
-  }
+  // handleBuyMoreViews удалён вместе с /api/spend-credits. Просмотр идей стоит
+  // ноль кредитов (миграция 037), поэтому оверлей ниже больше не может
+  // появиться — сервер всегда отвечает canUse. Кнопка предлагала докупить
+  // просмотры за 2 кредита по цене, зашитой в фронт мимо таблицы тарифов, и
+  // читала из ответа поле newBalance, которого бэкенд никогда не отдавал.
 
   const handleItemClick = useCallback((outfit: FeedOutfit) => {
     setSelectedOutfitItems(outfit.items || [])
@@ -778,23 +767,18 @@ export default function InspirationPage(): ReactElement {
                 </div>
                 <h3 className="text-h2 text-ink mb-2">Дневной лимит исчерпан</h3>
                 <p className="text-body text-ink-2 mb-5">
-                  Вы просмотрели {dailyViewsUsed} образов сегодня. Купите дополнительные просмотры или оформите
-                  подписку Pro.
+                  Вы просмотрели {dailyViewsUsed} образов сегодня. Оформите подписку Pro, чтобы смотреть без
+                  ограничений.
                 </p>
-                <div className="space-y-2.5">
-                  <button
-                    onClick={handleBuyMoreViews}
-                    className="h-11 w-full rounded-full bg-signal text-body font-semibold text-signal-ink transition-transform duration-press active:scale-[0.98]"
-                  >
-                    Купить 5 просмотров за 2 токена
-                  </button>
-                  <button
-                    onClick={() => setShowPaywall(true)}
-                    className="h-11 w-full rounded-full border border-line text-body font-medium text-ink transition-transform duration-press active:scale-[0.98]"
-                  >
-                    Оформить подписку Pro
-                  </button>
-                </div>
+                {/* Оверлей оставлен, хотя сейчас недостижим: он реагирует на
+                    ответ сервера, а не на зашитое число. Вернут идеям цену —
+                    он заработает сам, без правок здесь. */}
+                <button
+                  onClick={() => setShowPaywall(true)}
+                  className="h-11 w-full rounded-full bg-signal text-body font-semibold text-signal-ink transition-transform duration-press active:scale-[0.98]"
+                >
+                  Оформить подписку Pro
+                </button>
               </div>
             </div>
           )}

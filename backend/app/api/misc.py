@@ -1,4 +1,4 @@
-"""Miscellaneous endpoints: check-limits, usage/log, spend-credits, pricing, user-subscription, user-likes, detect-clothing, ai-assistant, vton, clip/search."""
+"""Miscellaneous endpoints: check-limits, usage/log, pricing, user-subscription, user-likes, detect-clothing, ai-assistant, vton, clip/search."""
 
 import base64
 import hmac
@@ -195,37 +195,11 @@ async def log_usage(request: Request, user: dict = Depends(get_current_user), db
     return {"success": True}
 
 
-# ── /api/spend-credits ──
-
-@router.post("/spend-credits")
-async def spend_credits(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    body = await request.json()
-    amount = body.get("amount", 1)
-    reason = body.get("reason", "usage")
-    description = body.get("description", "")
-
-    if not isinstance(amount, int) or amount <= 0:
-        raise HTTPException(status_code=400, detail="amount must be a positive integer")
-
-    profile_result = await db.execute(text("SELECT id FROM user_profiles WHERE user_id = :uid"), {"uid": user["id"]})
-    profile = profile_result.first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
-    result = await db.execute(
-        text("UPDATE user_credits SET credits_balance = credits_balance - :amt WHERE user_profile_id = :pid AND credits_balance >= :amt RETURNING credits_balance"),
-        {"amt": amount, "pid": profile[0]},
-    )
-    row = result.first()
-    if not row:
-        raise HTTPException(status_code=402, detail="Insufficient credits")
-
-    await db.execute(
-        text("INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at) VALUES (:pid, 'spend', :amt, :reason, :desc, NOW())"),
-        {"pid": profile[0], "amt": -amount, "reason": reason, "desc": description},
-    )
-    await db.commit()
-    return {"success": True, "remaining": row[0]}
+# /api/spend-credits удалён вместе с кнопкой «Купить 5 просмотров за 2 токена»,
+# которая была его единственным вызовом. Сумму и назначение списания диктовал
+# клиент: цена жила в JSX мимо feature_costs, а `reason` попадал в журнал
+# кредитов свободным текстом. Теперь цену на любую функцию знает ровно одна
+# таблица, и списывает её ровно один код — _use_feature().
 
 
 # ── /api/pricing ──
@@ -700,6 +674,12 @@ RULES:
 2. If general fashion question → respond: [{{"content": "answer in Russian"}}]
 3. If outfit recommendation → build from user's wardrobe items + optionally recommend catalog items
 4. When recommending catalog items, include their shop URL so user can buy them
+5. Whenever a "content" answer talks about SPECIFIC items (wardrobe analysis,
+   "what to buy", "what doesn't match"), also attach them:
+   [{{"content": "...", "items": [{{"id": item_id, "name": "name", "user_id": "uid", "image_url": "url", "color": "color", "url": "shop url or null"}}]}}]
+   The app renders them as photo cards under your text, so the user SEES the
+   garment instead of reading its number. Attach only items you actually
+   discussed, at most 6, and keep referring to them in prose by name.
 
 For outfits return JSON array:
 [{{"id": "unique_id", "title": "Russian title", "description": "Russian desc", "items": [{{"id": item_id, "name": "name", "user_id": "uid", "image_url": "url", "color": "color"}}], "suggested_items_count": N}}]
@@ -1130,14 +1110,24 @@ async def style_check(
             "verdict": "На фото не удалось распознать одежду. Попробуйте загрузить фото вещи крупнее.",
         }
 
-    # 2. Search for similar items in user's wardrobe via CLIP
+    # 2. Насколько вещь близка к ГАРДЕРОБУ пользователя.
+    #
+    # Раньше здесь звался /clip/search с параметрами k и user_id, которых у него
+    # нет в сигнатуре (ai-service/clip/routes.py: search берёт только image и
+    # хардкодит k=20). Он молча отдавал 20 вещей КАТАЛОГА, бонус min(30, 20*6)
+    # всегда упирался в потолок, и балл был константой: 100 при совпадении
+    # стиля, иначе 70. /clip/wardrobe-fit считает настоящий косинус к вещам
+    # именно этого пользователя.
+    fit = {}
     async with httpx.AsyncClient(timeout=20.0) as client:
-        search_resp = await client.post(
-            f"{ai_service}/clip/search",
+        fit_resp = await client.post(
+            f"{ai_service}/clip/wardrobe-fit",
             files={"image": ("item.jpg", content, "image/jpeg")},
-            data={"k": "5", "user_id": user["id"]},
+            data={"user_id": user["id"]},
         )
-        similar = search_resp.json().get("results", []) if search_resp.status_code == 200 else []
+        if fit_resp.status_code == 200:
+            fit = fit_resp.json()
+    similar = fit.get("nearest", [])
 
     # 3. Get user's dominant style
     style_result = await db.execute(

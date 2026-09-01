@@ -51,11 +51,21 @@ async def _is_subscriber(db: AsyncSession, profile_id) -> bool:
 
 async def _get_feature_cost(db: AsyncSession, feature: str) -> int:
     result = await db.execute(
-        text("SELECT cost_credits FROM feature_costs WHERE feature_name = :f"),
+        text("SELECT cost_credits, is_active FROM feature_costs WHERE feature_name = :f"),
         {"f": feature},
     )
     row = result.first()
-    return row[0] if row else 1
+    if not row:
+        # Ключа нет — таблица цен разошлась с ALLOWED_FEATURES. Ровно это и было
+        # сломано до миграции 037: имена не совпадали ни в одной строке, и этот
+        # fallback молча делал любую функцию стоящей один кредит, что бы ни было
+        # выставлено в админке. Оставляем минимум, а не ноль: бесплатность
+        # должна быть выставлена явно, а не получиться из опечатки в ключе.
+        # Сходимость ключей стережёт test_feature_costs.py.
+        return 1
+    # Выключенный тумблер в админке = функция не тарифицируется. Раньше он не
+    # значил ничего — это была вторая неправда на том же экране.
+    return row[0] if row[1] else 0
 
 
 async def _can_use_feature(db: AsyncSession, profile_id, feature: str, count: int) -> tuple[bool, int]:
@@ -114,6 +124,13 @@ async def _use_feature(db: AsyncSession, profile_id, feature: str, count: int) -
     # Try atomic top-up from credits
     cost = await _get_feature_cost(db, feature)
     total_cost = cost * count
+
+    # Цена ноль — функция бесплатная, кредиты не трогаем вовсе. Без этой ветки
+    # UPDATE ... credits_balance - 0 WHERE credits_balance >= 0 проходит всегда,
+    # и на каждый просмотр идеи в журнал ложится транзакция на −0. Журнал должен
+    # отвечать на вопрос «за что списали», а не хранить сотни строк ни о чём.
+    if total_cost == 0:
+        return True, 0
 
     credit_result = await db.execute(
         text("""
