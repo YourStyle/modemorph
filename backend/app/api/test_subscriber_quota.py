@@ -81,8 +81,28 @@ class _FakeDB:
         return any(needle in s for s in self.sql)
 
 
-def test_try_on_is_capped_for_subscribers():
+def test_the_two_paid_features_are_capped():
+    """Примерка и оцифровка — единственные функции, которые стоят реальных
+    денег (14,10 ₽ и 2,90 ₽). Остальные — 4 копейки, им лимит не нужен."""
     assert SUBSCRIBER_MONTHLY_CAPS.get("vton_used"), "примерка снова безлимитна по подписке"
+    assert SUBSCRIBER_MONTHLY_CAPS.get("wardrobe_items_anlyzed"), "оцифровка снова безлимитна"
+
+
+def test_included_cost_stays_under_the_cheapest_plan():
+    """Годовой тариф — 249 ₽ в месяц. Включённое не должно стоить дороже, иначе
+    подписка убыточна не в хвосте, а по замыслу."""
+    rub = {"vton_used": 14.10, "wardrobe_items_anlyzed": 2.90}
+    total = sum(SUBSCRIBER_MONTHLY_CAPS[f] * rub[f] for f in SUBSCRIBER_MONTHLY_CAPS)
+    assert total <= 260, f"включённое стоит {total:.0f} ₽ при выручке 249 ₽ с годового тарифа"
+
+
+def test_photo_batch_respects_the_cap():
+    """Оцифровка приходит пачкой: count = число фото. Лимит должен считать
+    штуки, а не запросы, иначе пачка из сорока пройдёт как одна."""
+    cap = SUBSCRIBER_MONTHLY_CAPS["wardrobe_items_anlyzed"]
+    db = _FakeDB(subscriber=True, quota_used=cap - 2, credits=0)
+    ok, _ = asyncio.run(_use_feature(db, 1, "wardrobe_items_anlyzed", 5))
+    assert not ok, "пачка из пяти прошла при двух оставшихся"
 
 
 def test_subscriber_within_cap_is_free():
