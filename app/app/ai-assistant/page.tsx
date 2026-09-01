@@ -39,6 +39,7 @@ import { getUserCoords } from "@/lib/tma/geo"
 import { useTryOn } from "@/contexts/try-on-context"
 import { AiChatHistorySheet } from "@/components/ai-chat-history-sheet"
 import { AiChatItemPickerSheet, type AttachableWardrobeItem } from "@/components/ai-chat-item-picker-sheet"
+import { AiChatMarkdown } from "@/components/ai-chat-markdown"
 import {
   createChat,
   getChat,
@@ -358,13 +359,17 @@ export default function AIAssistantPage() {
       return
     }
 
-    if (messageToSend.length > 2000) {
+    // Лимит был 2000 символов и отказывал на развёрнутых вопросах — а именно
+    // такие вопросы стилисту и задают («разбери гардероб, вот контекст…»).
+    // Модель принимает на порядок больше, ограничение было нашим собственным.
+    // Оставляем потолок только как защиту от вставки простыни на мегабайт.
+    if (messageToSend.length > 12000) {
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
           content:
-            "Ваш запрос слишком длинный (максимум 2000 символов). Попробуйте сократить его, сохранив основную суть! ✂️",
+            "Вопрос очень длинный — уберите лишнее, оставьте главное, и я отвечу.",
         },
       ])
       return
@@ -665,7 +670,16 @@ export default function AIAssistantPage() {
                       </span>
                     </div>
                   )}
-                  <p className="text-body whitespace-pre-wrap">{message.content}</p>
+                  {/* Ответ модели — лёгкий markdown, а не сырой текст. Раньше
+                      здесь стоял <p> с whitespace-pre-wrap, и на экране были
+                      видны звёздочки: «**Вещи, которые сложно сочетать:**».
+                      Компонент заодно вычищает внутренние (ID: 1590), если
+                      модель их всё-таки напишет. */}
+                  {isUser ? (
+                    <p className="text-body whitespace-pre-wrap">{message.content}</p>
+                  ) : (
+                    <AiChatMarkdown text={String(message.content ?? "")} className="text-body" />
+                  )}
                   {message.outfit && (
                     <div className="mt-3 border-t border-line/60 pt-3">
                       <div className="mb-2 flex items-center justify-between gap-2">

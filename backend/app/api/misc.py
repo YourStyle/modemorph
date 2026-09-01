@@ -704,6 +704,19 @@ RULES:
 For outfits return JSON array:
 [{{"id": "unique_id", "title": "Russian title", "description": "Russian desc", "items": [{{"id": item_id, "name": "name", "user_id": "uid", "image_url": "url", "color": "color"}}], "suggested_items_count": N}}]
 
+NEVER show internal ids to the user. The "id" fields exist only so you can put
+items into the "items" array — they are database keys, meaningless to a human.
+Writing things like "Серые леггинсы (ID: 1590)" in prose is a bug: refer to an
+item by its name and colour only ("серые леггинсы", "рваный вязаный свитер").
+The same goes for user_id and image_url — never mention them in text.
+
+Formatting of the "content" text (it is rendered as light markdown):
+- Short paragraphs, one thought each, separated by a blank line.
+- **bold** for the few words that matter; do not bold whole sentences.
+- "- " for bullets, "1. " for numbered lists. Nothing else: no headings, no
+  tables, no code blocks — they are not rendered and read as raw symbols.
+- Answer the question first, details after. Do not pad.
+
 Always respond with JSON array. Use Russian for all text."""
 
     wardrobe_json = json_lib.dumps([{
