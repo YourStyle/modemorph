@@ -16,7 +16,6 @@ import {
   Sun,
   ShoppingBag,
   CalendarDays,
-  ExternalLink,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -41,6 +40,12 @@ import { AiChatHistorySheet } from "@/components/ai-chat-history-sheet"
 import { AiChatItemPickerSheet, type AttachableWardrobeItem } from "@/components/ai-chat-item-picker-sheet"
 import { AiChatMarkdown } from "@/components/ai-chat-markdown"
 import {
+  AiChatItemCards,
+  toRecommendationItems,
+  type ApiRecommendationItem,
+  type RecommendationItem,
+} from "@/components/ai-chat-item-cards"
+import {
   createChat,
   getChat,
   migrateLocalHistoryOnce,
@@ -61,6 +66,8 @@ interface Message {
   role: "user" | "assistant"
   content: string
   outfit?: UserRecommendation
+  /** Вещи, о которых идёт речь в тексте, — показываем карточками, а не номерами. */
+  items?: RecommendationItem[]
   attachedItem?: AttachedItem | null
 }
 
@@ -71,16 +78,6 @@ interface UserRecommendation {
   items: RecommendationItem[]
 }
 
-interface RecommendationItem {
-  type: "clothing"
-  id: number
-  name: string
-  image_url: string
-  color: string
-  url?: string | null
-  isUserItem: boolean
-}
-
 // Типы ответов от AI API
 interface TrashResponse {
   type: "trash"
@@ -88,6 +85,8 @@ interface TrashResponse {
 
 interface ContentResponse {
   content: string
+  /** Вещи, упомянутые в ответе. Необязательно: старые ответы их не присылали. */
+  items?: ApiRecommendationItem[]
 }
 
 interface OutfitResponse {
@@ -291,7 +290,13 @@ export default function AIAssistantPage() {
       })
       return
     }
-    const loaded = res.messages.map(fromApiMessage) as Message[]
+    // items из истории приходит как unknown (JSONB) — прогоняем через тот же
+    // нормализатор, что и свежий ответ, иначе мусор в старой записи уронит рендер.
+    const loaded = res.messages.map((m) => {
+      const local = fromApiMessage(m)
+      const items = toRecommendationItems(local.items as ApiRecommendationItem[] | undefined)
+      return { ...local, items: items.length ? items : undefined } as Message
+    })
     setMessages(loaded.length > 0 ? loaded : [GREETING])
     setCurrentChatId(String(res.chat.id))
     setAttachedItem(null)
@@ -441,21 +446,20 @@ export default function AIAssistantPage() {
             "Извините, но я не могу помочь с этим запросом. Попробуйте задать вопрос о стиле, моде или гардеробе! 👗✨",
         }
       } else if ("content" in firstResponse) {
-        assistantMessage = { role: "assistant", content: firstResponse.content }
+        // Обычный ответ тоже может нести вещи — тогда вместо "серые леггинсы
+        // (ID: 1590)" в тексте пользователь видит карточку с фотографией.
+        const mentioned = toRecommendationItems(firstResponse.items)
+        assistantMessage = {
+          role: "assistant",
+          content: firstResponse.content,
+          ...(mentioned.length ? { items: mentioned } : {}),
+        }
       } else if ("id" in firstResponse && "title" in firstResponse && "items" in firstResponse) {
         const outfitRecommendation: UserRecommendation = {
           id: firstResponse.id,
           title: firstResponse.title,
           description: firstResponse.description,
-          items: firstResponse.items.map((item) => ({
-            type: "clothing",
-            id: Number.parseInt(item.id),
-            name: item.name,
-            image_url: item.image_url,
-            color: item.color || "unknown",
-            url: item.url || null,
-            isUserItem: !!item.user_id,
-          })),
+          items: toRecommendationItems(firstResponse.items),
         }
 
         assistantMessage = {
@@ -470,7 +474,12 @@ export default function AIAssistantPage() {
       setMessages((prev) => [...prev, assistantMessage])
       void mirrorTurn([
         { role: "user", content: userVisibleText, attachedItem: pendingAttachment },
-        { role: "assistant", content: assistantMessage.content, outfit: assistantMessage.outfit },
+        {
+          role: "assistant",
+          content: assistantMessage.content,
+          outfit: assistantMessage.outfit,
+          items: assistantMessage.items,
+        },
       ])
 
       const bill = await consume("ai_requests", { pagePath: "/app/ai-assistant", requestId }, 1)
@@ -680,47 +689,21 @@ export default function AIAssistantPage() {
                   ) : (
                     <AiChatMarkdown text={String(message.content ?? "")} className="text-body" />
                   )}
+                  {/* Вещи, о которых модель говорит в тексте. Не образ — просто
+                      то, на что она ссылается, показанное картинкой вместо
+                      номера в скобках. */}
+                  {!!message.items?.length && (
+                    <div className="mt-3 border-t border-line/60 pt-3">
+                      <AiChatItemCards items={message.items} />
+                    </div>
+                  )}
                   {message.outfit && (
                     <div className="mt-3 border-t border-line/60 pt-3">
                       <div className="mb-2 flex items-center justify-between gap-2">
                         <h4 className="text-caption font-semibold text-ink">{message.outfit.title}</h4>
                       </div>
                       <p className="mb-3 text-caption text-ink-2">{message.outfit.description}</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {message.outfit.items.map((item) => (
-                          <div key={item.id} className="text-left">
-                            <div className="relative mb-1 aspect-square overflow-hidden rounded-xl bg-canvas">
-                              <img
-                                src={item.image_url || "/placeholder.svg"}
-                                alt={item.name}
-                                className="h-full w-full object-cover"
-                                onError={(e) => {
-                                  const target = e.target as HTMLImageElement
-                                  target.src = "/placeholder.svg?height=150&width=150"
-                                }}
-                              />
-                              {/* Покупки из каталога: вещь не из гардероба пользователя —
-                                  подписываем и (если есть) даём партнёрскую ссылку. */}
-                              {!item.isUserItem && (
-                                <span className="absolute left-1 top-1 rounded-md bg-ink/85 px-1.5 py-0.5 text-[10px] font-medium text-signal-ink">
-                                  Купить
-                                </span>
-                              )}
-                            </div>
-                            <p className="truncate text-[11px] text-ink-2">{item.name}</p>
-                            {!item.isUserItem && item.url && (
-                              <a
-                                href={item.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-signal"
-                              >
-                                <ExternalLink className="h-2.5 w-2.5" strokeWidth={2} />В магазин
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                      <AiChatItemCards items={message.outfit.items} />
                       {/* Собрать образ и сохранить / отправить на примерку — оба пути
                           переиспользуют существующие механизмы (POST /api/user-looks,
                           общий useTryOn), ничего нового не изобретаем. */}

@@ -25,6 +25,8 @@ export interface AiChatSummary {
 export interface AiChatMessageContent {
   text?: string
   outfit?: unknown
+  /** Карточки вещей, упомянутых в ответе (не образ). content — JSONB, миграция не нужна. */
+  items?: unknown
   attachedItem?: { id: string | number; name: string; image_url?: string | null } | null
 }
 
@@ -47,6 +49,7 @@ export interface LocalMessage {
   role: "user" | "assistant"
   content: string
   outfit?: unknown
+  items?: unknown
   attachedItem?: { id: string | number; name: string; image_url?: string | null } | null
 }
 
@@ -101,6 +104,7 @@ export function toApiContent(m: LocalMessage): AiChatMessageContent {
   return {
     text: m.content,
     ...(m.outfit ? { outfit: m.outfit } : {}),
+    ...(m.items ? { items: m.items } : {}),
     ...(m.attachedItem ? { attachedItem: m.attachedItem } : {}),
   }
 }
@@ -114,6 +118,7 @@ export function fromApiMessage(m: AiChatMessage): LocalMessage {
     role: m.role,
     content: c?.text ?? "",
     outfit: c?.outfit,
+    items: c?.items,
     attachedItem: c?.attachedItem ?? undefined,
   }
 }
