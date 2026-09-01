@@ -32,8 +32,13 @@ const DESKTOP_LOOKS: FanLook[] = [
 export function AnimatedLanding() {
   const { isTMA, isLoading } = useTMA()
 
+  // 100dvh, а не 100vh (min-h-screen): внутри вебвью Telegram и в Safari на iOS
+  // 100vh — это ВЫСОКИЙ вьюпорт, без шапки клиента. Экран считался на 812px,
+  // хотя видно было ~720, и кнопка «Попробовать» оказывалась ниже границы —
+  // причём не двигалась, потому что раскладка была прибита к невидимой высоте.
+  // pb с safe-area — чтобы кнопка не села в полосу home indicator.
   return (
-    <div className="min-h-screen bg-canvas flex flex-col">
+    <div className="min-h-[100dvh] bg-canvas flex flex-col pb-[env(safe-area-inset-bottom,0px)]">
       {/* Навигация */}
       <nav className="flex justify-end p-4 lg:p-6 animate-fade-in-down">
         <div className="flex items-center gap-2">
@@ -69,8 +74,14 @@ export function AnimatedLanding() {
           {/* Карточки с фотографиями в веерном стиле */}
           <div className="relative py-4 lg:py-20 animate-fade-in-up animation-delay-300">
             {/* Мобильная версия — 3 карточки веером */}
+            {/* h-56 (224px), а не h-72 (288px): сам веер занимает 197px — три
+                карточки 112×160 и 128×176 с поворотом до 20°. Замерено, не
+                прикинуто. Лишние 64px пустоты и выталкивали кнопку за нижний
+                край на коротком вьюпорте. Ровно 197px не ставим: боковые
+                карточки сдвинуты вниз на 15px, из-за чего веер висит в своём
+                боксе несимметрично и при впритык подрезался бы снизу. */}
             <div className="block lg:hidden overflow-hidden">
-              <div className="relative w-full h-72 mx-auto flex items-center justify-center">
+              <div className="relative w-full h-56 mx-auto flex items-center justify-center">
                 {MOBILE_LOOKS.map((look) => (
                   <div
                     key={look.alt}
