@@ -62,10 +62,39 @@ function readChromeInset(): number | null {
   return chrome
 }
 
-function applyTopInset(): void {
+/**
+ * Нижний отступ устройства (полоса home indicator) — БЕЗ хрома Telegram:
+ * снизу Telegram ничего не рисует, поэтому здесь нужен safeAreaInset, а не
+ * contentSafeAreaInset. Это зеркало ситуации сверху, но по другой причине.
+ *
+ * Зачем вообще: внутри вебвью Telegram на iOS env(safe-area-inset-bottom)
+ * отдаёт 0, хотя вебвью физически доходит до низа экрана. Нижняя пилюля
+ * навигации из-за этого садилась в полосу home indicator, где тапы забирает
+ * система: видно, нажать нельзя (жалоба с iPhone 17).
+ *
+ * Складывать с env() НЕЛЬЗЯ — это тот же двойной счёт, на котором обожглись
+ * сверху. Потребители берут max() из двух величин (см. --sab в globals.css).
+ */
+function readDeviceBottomInset(): number | null {
+  const tg = getWebApp()
+  if (!tg) return null
+
+  const bottom: number | undefined = tg.safeAreaInset?.bottom
+  if (typeof bottom !== "number") return null
+
+  return bottom
+}
+
+function applyInsets(): void {
   const chrome = readChromeInset()
-  if (chrome === null) return
-  document.documentElement.style.setProperty("--tg-chrome", `${chrome}px`)
+  if (chrome !== null) {
+    document.documentElement.style.setProperty("--tg-chrome", `${chrome}px`)
+  }
+
+  const bottom = readDeviceBottomInset()
+  if (bottom !== null) {
+    document.documentElement.style.setProperty("--tg-safe-bottom", `${bottom}px`)
+  }
 }
 
 /**
@@ -80,12 +109,12 @@ function applyTopInset(): void {
 export function initTmaSafeArea(): () => void {
   if (typeof window === "undefined") return () => {}
 
-  applyTopInset()
+  applyInsets()
 
   const tg = getWebApp()
   if (!tg?.onEvent) return () => {}
 
-  const handler = () => applyTopInset()
+  const handler = () => applyInsets()
   tg.onEvent("safeAreaChanged", handler)
   tg.onEvent("contentSafeAreaChanged", handler)
 

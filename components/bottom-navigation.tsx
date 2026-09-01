@@ -22,7 +22,13 @@ const ICON_STROKE = 1.75
 // при смене активного пункта; сейчас каждая ячейка сама центрирует свой контент
 // внутри одной и той же высоты, так что пилюля не "дышит" при навигации.
 const PILL_HEIGHT = 64
-// Зазор между низом пилюли и краем экрана, ДО env(safe-area-inset-bottom).
+// Зазор между низом пилюли и краем БЕЗОПАСНОЙ зоны, а не экрана.
+//
+// Раньше здесь стоял голый env(safe-area-inset-bottom), и внутри вебвью
+// Telegram на iOS он отдаёт 0 — пилюля садилась в 12px от физического низа,
+// то есть внутрь полосы home indicator, где тапы забирает система. Пилюля
+// была видна и не нажималась (жалоба с iPhone 17). Считаем от --sab
+// (app/globals.css), который берёт max() из env() и WebApp.safeAreaInset.bottom.
 const PILL_BOTTOM_GAP = 12
 
 export function BottomNavigation() {
@@ -44,7 +50,7 @@ export function BottomNavigation() {
             aria-label="Основная навигация"
             className="glass-strong glass-refract fixed inset-x-4 z-50 rounded-full will-change-transform"
             style={{
-                bottom: `calc(env(safe-area-inset-bottom, 0px) + ${PILL_BOTTOM_GAP}px)`,
+                bottom: `calc(var(--sab, env(safe-area-inset-bottom, 0px)) + ${PILL_BOTTOM_GAP}px)`,
                 background: "hsl(var(--ink) / 0.86)",
             }}
         >

@@ -91,6 +91,19 @@
        scroll-padding, чтобы формула была одна на всех. */
     --tg-safe-top: calc(env(safe-area-inset-top, 0px) + var(--tg-chrome, 0px));
     --tg-content-top: calc(var(--tg-safe-top) + var(--tg-nav-gap) + var(--tg-nav-content-h));
+
+    /* --sab — низ безопасной зоны, единственный источник правды для всего,
+       что прижато к нижнему краю. Имя уже читали в app/app/inspiration/page.tsx,
+       но нигде не объявляли, поэтому оно всегда проваливалось в env().
+
+       Почему max(), а не сумма: снизу величины НЕ складываются, они описывают
+       одно и то же расстояние с двух сторон. Вне Telegram работает env()
+       (viewport-fit=cover в app/layout.tsx), а --tg-safe-bottom не выставлен.
+       Внутри вебвью Telegram на iOS наоборот: env() отдаёт 0, хотя вебвью
+       доходит до физического низа, и правду знает только
+       WebApp.safeAreaInset.bottom (его пишет lib/tma/safe-area.ts). Сумма
+       здесь дала бы тот же двойной счёт, что когда-то дала сверху. */
+    --sab: max(env(safe-area-inset-bottom, 0px), var(--tg-safe-bottom, 0px));
   }
 
   .dark {
@@ -161,7 +174,7 @@
      scroll behavior and the tap flash, not the ring. */
   html {
     scroll-padding-top: var(--tg-content-top);
-    scroll-padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 96px);
+    scroll-padding-bottom: calc(var(--sab, env(safe-area-inset-bottom, 0px)) + 96px);
   }
   html, body {
     -webkit-tap-highlight-color: transparent;

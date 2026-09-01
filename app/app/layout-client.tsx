@@ -47,7 +47,7 @@ export default function AppClientLayout({
       <main
         className={cn(
           "pt-0 max-w-7xl m-auto",
-          isAssistant ? "pb-0" : "pb-[calc(env(safe-area-inset-bottom,0px)+96px)]",
+          isAssistant ? "pb-0" : "pb-[calc(var(--sab,env(safe-area-inset-bottom,0px))+96px)]",
         )}
         style={
           isTmaMobile && !hideTopNavigation
