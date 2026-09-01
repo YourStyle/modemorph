@@ -1980,10 +1980,97 @@ async def get_subscription_pricing(user: dict = Depends(get_admin_user), db: Asy
     return {"data": [dict(r) for r in result.mappings().all()]}
 
 
+_PLAN_MONTHS = {"monthly": 1, "yearly": 12}
+
+
+def feature_economics(features: list[dict], credit_price_min, credit_price_max,
+                      plans: list[dict], caps: dict) -> tuple[list[dict], list[dict]]:
+    """Досчитать маржу к строкам тарификации. Чистая функция — вся арифметика
+    раздела «Тарификация» живёт здесь и проверяется test_pricing_economics.
+
+    Считается на бэкенде, а не в JSX, по той же причине, по которой цена
+    считается в одном месте: экран, который сам себе считает выручку, однажды
+    начнёт расходиться с тем, что списывает код, и никто этого не заметит.
+
+    Маржа даётся ВИЛКОЙ, а не одним числом. Кредит стоит человеку от 5,00 ₽
+    (пак 200/999) до 15,80 ₽ (Мини 5/79) — оба пака активны одновременно, и
+    разброс втрое. Одна усреднённая цифра тут была бы красивее и неправдивее:
+    нижняя граница — то, что мы зарабатываем в худшем случае, и решать надо
+    по ней.
+
+    Пустая себестоимость означает «не замеряли». Тогда маржа — None, а не ноль:
+    ноль выглядит как ответ.
+    """
+    out_features = []
+    for f in features:
+        cost = float(f["unit_cost_rub"]) if f.get("unit_cost_rub") is not None else None
+        credits = f.get("cost_credits") or 0
+        billed = bool(f.get("is_active")) and credits > 0
+
+        row = dict(f)
+        row["unit_cost_rub"] = cost
+        row["included_monthly"] = caps.get(f["feature_name"])
+        row["is_free"] = not billed
+        row["revenue_rub_min"] = round(credits * float(credit_price_min), 2) if billed and credit_price_min else None
+        row["revenue_rub_max"] = round(credits * float(credit_price_max), 2) if billed and credit_price_max else None
+
+        for bound in ("min", "max"):
+            rev = row[f"revenue_rub_{bound}"]
+            row[f"margin_pct_{bound}"] = (
+                round((rev - cost) / rev * 100, 1) if rev and cost is not None else None
+            )
+        out_features.append(row)
+
+    unit_cost = {
+        f["feature_name"]: float(f["unit_cost_rub"])
+        for f in features if f.get("unit_cost_rub") is not None
+    }
+    # Стоимость включённого в подписку: то, что мы дарим подписчику каждый
+    # месяц. Функция без лимита в caps безлимитна — её сюда не посчитать, и
+    # честнее показать это отдельным списком, чем занулить.
+    included_cost = round(sum(n * unit_cost.get(feat, 0) for feat, n in caps.items()), 2)
+    uncapped = sorted(feat for feat in unit_cost if feat not in caps)
+
+    out_plans = []
+    for p in plans:
+        months = _PLAN_MONTHS.get(p.get("plan_type"), 1)
+        monthly = round(float(p["price_rub"]) / months, 2)
+        out_plans.append({
+            "plan_type": p.get("plan_type"),
+            "display_name": p.get("display_name"),
+            "price_rub": float(p["price_rub"]),
+            "monthly_rub": monthly,
+            "included_cost_rub": included_cost,
+            "margin_pct": round((monthly - included_cost) / monthly * 100, 1) if monthly else None,
+        })
+
+    return out_features, out_plans
+
+
 @router.get("/feature-costs")
 async def get_feature_costs(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(text("SELECT * FROM feature_costs ORDER BY feature_name"))
-    return {"data": [dict(r) for r in result.mappings().all()]}
+    from app.api.limits import SUBSCRIBER_MONTHLY_CAPS
+
+    features = [dict(r) for r in (
+        await db.execute(text("SELECT * FROM feature_costs ORDER BY feature_name"))
+    ).mappings().all()]
+    packs = [dict(r) for r in (
+        await db.execute(text("SELECT credits, price_rub FROM credit_packs WHERE is_active = true AND credits > 0"))
+    ).mappings().all()]
+    plans = [dict(r) for r in (
+        await db.execute(text("SELECT * FROM subscription_pricing WHERE is_active = true ORDER BY price_rub"))
+    ).mappings().all()]
+
+    per_credit = sorted(float(p["price_rub"]) / p["credits"] for p in packs) or [0]
+    enriched, plan_economics = feature_economics(
+        features, per_credit[0], per_credit[-1], plans, SUBSCRIBER_MONTHLY_CAPS
+    )
+
+    return {
+        "data": enriched,
+        "credit_price": {"min": round(per_credit[0], 2), "max": round(per_credit[-1], 2)},
+        "subscription": plan_economics,
+    }
 
 
 @router.patch("/feature-costs")
@@ -1993,7 +2080,10 @@ async def update_feature_cost(request: Request, user: dict = Depends(get_admin_u
     updates = body.get("updates", {})
     if not cost_id:
         raise HTTPException(status_code=400, detail="id required")
-    allowed = ["cost_credits", "display_name", "description", "is_active"]
+    # unit_cost_rub редактируется отсюда же: при смене модели себестоимость
+    # меняется, и требовать ради одного числа деплой — способ гарантировать,
+    # что его не обновят и маржа на экране станет враньём.
+    allowed = ["cost_credits", "display_name", "description", "is_active", "unit_cost_rub"]
     set_parts = [f'"{k}" = :{k}' for k in updates if k in allowed]
     if not set_parts:
         return {"success": True}
