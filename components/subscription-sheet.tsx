@@ -108,16 +108,27 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
     return subscriptionPlans.find(p => p.plan_type === selectedPlan)
   }
 
-  const title = variant === "limitReached"
-    ? "У тебя закончились лимиты"
-    : "Открой для себя безлимитные возможности"
-  const subtitle = variant === "limitReached"
-    ? "Открой безграничные возможности"
-    : "Выбери подходящий план"
-
   // Is the user already subscribed? (so we say "Продлить", not "Получить доступ")
   const subActive = !!currentSub && currentSub.status === "active" &&
     (!currentSub.expires_at || new Date(currentSub.expires_at) > new Date())
+
+  const title = variant !== "limitReached"
+    ? "Открой для себя безлимитные возможности"
+    : subActive
+      ? "Включённое в подписку закончилось"
+      : "У тебя закончились лимиты"
+  const subtitle = variant !== "limitReached"
+    ? "Выбери подходящий план"
+    : subActive
+      ? "Можно продолжить за кредиты — по обычной цене"
+      : "Открой безграничные возможности"
+
+  // Подписчику, упёршемуся в лимит, нельзя показывать экран «оформи подписку»:
+  // она у него уже есть, а продление не добавит примерок в текущем месяце.
+  // Единственное, что ему сейчас поможет, — кредиты, поэтому открываем сразу их.
+  useEffect(() => {
+    if (isOpen && subActive && variant === "limitReached") setCurrentView("credits")
+  }, [isOpen, subActive, variant])
   const subExpiresLabel = currentSub?.expires_at
     ? new Date(currentSub.expires_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
     : ""

@@ -14,6 +14,23 @@ router = APIRouter()
 
 ALLOWED_FEATURES = {"wardrobe_items_anlyzed", "ai_requests", "ideas_viewed", "outfits_saved", "vton_used"}
 
+# Что включено в подписку помесячно. Функции, которых тут нет, остаются
+# безлимитными — они стоят копейки, и считать их дороже, чем отдать.
+#
+# Примерка — 14,10 ₽ за штуку: две генерации на дорогой модели, одежда и лицо.
+# Годовой тариф даёт 249 ₽ в месяц (2 990 / 12), и на нём пятеро из восьми
+# активных подписчиков. Десять примерок — это 141 ₽, то есть 57% выручки с
+# годового тарифа и 35% с месячного; остального хватает на оцифровку.
+#
+# Это не отсечка, а граница включённого: всё сверх лимита продолжает работать
+# по обычной цене за кредиты. Человека не выключают — ему перестают дарить
+# самую дорогую операцию в продукте.
+#
+# По живым данным за 12 месяцев планку перешагнул бы один профиль (1554: до 43
+# примерок в месяц при себестоимости 621 ₽ против 249 ₽ выручки) и ещё двое —
+# по разу.
+SUBSCRIBER_MONTHLY_CAPS = {"vton_used": 10}
+
 
 def _validate_feature(feature: str) -> str:
     if feature not in ALLOWED_FEATURES:
@@ -68,11 +85,79 @@ async def _get_feature_cost(db: AsyncSession, feature: str) -> int:
     return row[0] if row[1] else 0
 
 
+async def _subscriber_used(db: AsyncSession, profile_id, feature: str) -> int:
+    """Сколько из включённого в подписку израсходовано в текущем месяце.
+
+    Период, который уже истёк, читается как ноль: сброс ленивый, его делает
+    _claim_subscriber_quota при следующем списании. Проверка не должна ничего
+    писать — иначе GET-подобный вызов начнёт менять состояние.
+    """
+    result = await db.execute(
+        text("""
+            SELECT used FROM subscription_usage
+            WHERE user_profile_id = :pid AND feature = :f
+              AND NOW() < period_started_at + INTERVAL '1 month'
+        """),
+        {"pid": profile_id, "f": feature},
+    )
+    row = result.first()
+    return row[0] if row else 0
+
+
+async def _claim_subscriber_quota(db: AsyncSession, profile_id, feature: str, count: int, cap: int) -> int | None:
+    """Занять count единиц включённого в подписку. Возвращает остаток или None,
+    если включённое кончилось.
+
+    Два запроса вместо одного, потому что ленивый сброс и атомарный захват — это
+    разные вещи, и слитые в один ON CONFLICT они читаются как ребус. Захват всё
+    равно атомарен: условие «не превысить cap» живёт внутри UPDATE, поэтому две
+    параллельные примерки не могут обе пройти последнюю единицу.
+    """
+    if count > cap:
+        return None
+
+    await db.execute(
+        text("""
+            UPDATE subscription_usage SET used = 0, period_started_at = NOW()
+            WHERE user_profile_id = :pid AND feature = :f
+              AND NOW() >= period_started_at + INTERVAL '1 month'
+        """),
+        {"pid": profile_id, "f": feature},
+    )
+
+    result = await db.execute(
+        text("""
+            INSERT INTO subscription_usage (user_profile_id, feature, used, period_started_at)
+            VALUES (:pid, :f, :cnt, NOW())
+            ON CONFLICT (user_profile_id, feature) DO UPDATE
+                SET used = subscription_usage.used + :cnt
+                WHERE subscription_usage.used + :cnt <= :cap
+            RETURNING used
+        """),
+        {"pid": profile_id, "f": feature, "cnt": count, "cap": cap},
+    )
+    row = result.first()
+    return (cap - row[0]) if row else None
+
+
 async def _can_use_feature(db: AsyncSession, profile_id, feature: str, count: int) -> tuple[bool, int]:
     feature = _validate_feature(feature)
 
     if await _is_subscriber(db, profile_id):
-        return True, 999
+        cap = SUBSCRIBER_MONTHLY_CAPS.get(feature)
+        if cap is None:
+            return True, 999
+        used = await _subscriber_used(db, profile_id, feature)
+        if used + count <= cap:
+            return True, cap - used
+        # Включённое кончилось — дальше подписчик платит кредитами, как все.
+        # Бесплатный тариф ему не полагается: он уже заплатил за месяц.
+        credits_row = (await db.execute(
+            text("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid"),
+            {"pid": profile_id},
+        )).first()
+        credits = credits_row[0] if credits_row else 0
+        return credits >= await _get_feature_cost(db, feature) * count, 0
 
     result = await db.execute(
         text(f'SELECT "{feature}" FROM limits WHERE user_profile_id = :pid'),
@@ -106,20 +191,27 @@ async def _use_feature(db: AsyncSession, profile_id, feature: str, count: int) -
         raise HTTPException(status_code=400, detail="count must be positive")
 
     if await _is_subscriber(db, profile_id):
-        return True, 999
-
-    # Atomic deduct from limits — only if sufficient
-    result = await db.execute(
-        text(f"""
-            UPDATE limits SET "{feature}" = "{feature}" - :cnt
-            WHERE user_profile_id = :pid AND "{feature}" >= :cnt
-            RETURNING "{feature}"
-        """),
-        {"cnt": count, "pid": profile_id},
-    )
-    row = result.first()
-    if row:
-        return True, row[0]
+        cap = SUBSCRIBER_MONTHLY_CAPS.get(feature)
+        if cap is None:
+            return True, 999
+        left = await _claim_subscriber_quota(db, profile_id, feature, count, cap)
+        if left is not None:
+            return True, left
+        # Включённое в подписку кончилось. Не трогаем бесплатный тариф — он для
+        # тех, кто не платит; списываем сразу с кредитов, ниже по общей ветке.
+    else:
+        # Atomic deduct from limits — only if sufficient
+        result = await db.execute(
+            text(f"""
+                UPDATE limits SET "{feature}" = "{feature}" - :cnt
+                WHERE user_profile_id = :pid AND "{feature}" >= :cnt
+                RETURNING "{feature}"
+            """),
+            {"cnt": count, "pid": profile_id},
+        )
+        row = result.first()
+        if row:
+            return True, row[0]
 
     # Try atomic top-up from credits
     cost = await _get_feature_cost(db, feature)

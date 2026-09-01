@@ -1,4 +1,4 @@
-"""Miscellaneous endpoints: check-limits, usage/log, spend-credits, pricing, user-subscription, user-likes, detect-clothing, ai-assistant, vton, clip/search."""
+"""Miscellaneous endpoints: check-limits, usage/log, pricing, user-subscription, user-likes, detect-clothing, ai-assistant, vton, clip/search."""
 
 import base64
 import hmac
@@ -195,37 +195,11 @@ async def log_usage(request: Request, user: dict = Depends(get_current_user), db
     return {"success": True}
 
 
-# ── /api/spend-credits ──
-
-@router.post("/spend-credits")
-async def spend_credits(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    body = await request.json()
-    amount = body.get("amount", 1)
-    reason = body.get("reason", "usage")
-    description = body.get("description", "")
-
-    if not isinstance(amount, int) or amount <= 0:
-        raise HTTPException(status_code=400, detail="amount must be a positive integer")
-
-    profile_result = await db.execute(text("SELECT id FROM user_profiles WHERE user_id = :uid"), {"uid": user["id"]})
-    profile = profile_result.first()
-    if not profile:
-        raise HTTPException(status_code=404, detail="Profile not found")
-
-    result = await db.execute(
-        text("UPDATE user_credits SET credits_balance = credits_balance - :amt WHERE user_profile_id = :pid AND credits_balance >= :amt RETURNING credits_balance"),
-        {"amt": amount, "pid": profile[0]},
-    )
-    row = result.first()
-    if not row:
-        raise HTTPException(status_code=402, detail="Insufficient credits")
-
-    await db.execute(
-        text("INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at) VALUES (:pid, 'spend', :amt, :reason, :desc, NOW())"),
-        {"pid": profile[0], "amt": -amount, "reason": reason, "desc": description},
-    )
-    await db.commit()
-    return {"success": True, "remaining": row[0]}
+# /api/spend-credits удалён вместе с кнопкой «Купить 5 просмотров за 2 токена»,
+# которая была его единственным вызовом. Сумму и назначение списания диктовал
+# клиент: цена жила в JSX мимо feature_costs, а `reason` попадал в журнал
+# кредитов свободным текстом. Теперь цену на любую функцию знает ровно одна
+# таблица, и списывает её ровно один код — _use_feature().
 
 
 # ── /api/pricing ──
@@ -903,6 +877,25 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     items = body.get("items", [])
     if not items:
         raise HTTPException(status_code=400, detail="Items are required")
+
+    # Право на примерку проверяется ДО генерации.
+    #
+    # Списание живёт на клиенте, в handleTryOnSuccess, и происходит после того,
+    # как картинка уже готова. То есть до сих пор сервер генерировал всегда, а
+    # 402 приходил постфактум — деньги потрачены, отказ показан. В журнале это
+    # видно: 50 событий vton_used/consume_fail, то есть примерно 705 ₽ роздано
+    # тем, у кого не было на неё права.
+    #
+    # Проверка только читает: счётчик двигает списание после успеха, чтобы за
+    # упавшую генерацию человек не платил. Гонку это не закрывает полностью
+    # (десять одновременных запросов пройдут все десять), но интерфейс делает
+    # одну примерку за раз, а стоимость ошибки здесь — одна картинка, не сотня.
+    from app.api.limits import _get_profile_id, _can_use_feature
+
+    vton_profile_id = await _get_profile_id(db, user["id"])
+    allowed, _ = await _can_use_feature(db, vton_profile_id, "vton_used", 1)
+    if not allowed:
+        raise HTTPException(status_code=402, detail="payment_required")
 
     # Use avatar_url from request body if provided, otherwise fall back to profile
     avatar_url = body.get("avatar_url")
