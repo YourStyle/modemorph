@@ -438,6 +438,7 @@ async def detect_clothing(
     image: UploadFile = File(None),
     request: Request = None,
     user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """Detect clothing from uploaded image + generate flat-lay product photos."""
     import asyncio
