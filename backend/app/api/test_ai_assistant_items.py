@@ -11,7 +11,7 @@ Run it:  python3 -m app.api.test_ai_assistant_items     (from backend/)
 ponytail: plain asserts, no pytest — pytest is not installed and CI runs no tests.
 """
 
-from app.api.misc import _hydrate_items, _parse_ai_json
+from app.api.misc import _hydrate_items, _ids_out_of_prose, _parse_ai_json
 
 WARDROBE = [
     {"id": 458, "item_name": "джинсы прямого кроя", "color": "индиго",
@@ -52,5 +52,21 @@ assert _hydrate_items(outfit, WARDROBE, CATALOG)[1] == {"type": "trash"}
 prose = "Чтобы расширить гардероб, вам стоит:\n\n1. **Обувь**: кеды"
 assert _parse_ai_json(prose) == []
 assert _parse_ai_json('```json\n[{"content": "ok"}]\n```') == [{"content": "ok"}]
+
+# Ids written into the prose become items (and vanish from the text); two
+# content entries collapse into one so the frontend does not drop the second.
+prose_answer = [
+    {"content": "- **Серые леггинсы** (ID: 1590): спорт.\n- **Джинсы** (id: 458, цвет: индиго) ок."},
+    {"content": "Пример: **ботинки** [ID 1000018560] к джинсам (ID: 458)."},
+    {"type": "trash"},
+]
+out = _ids_out_of_prose(prose_answer)
+assert len(out) == 2 and out[1] == {"type": "trash"}, out
+assert "ID" not in out[0]["content"] and "(id" not in out[0]["content"], out[0]["content"]
+assert out[0]["content"].startswith("- **Серые леггинсы**: спорт.")
+assert [i["id"] for i in out[0]["items"]] == [1590, 458, 1000018560], out[0]["items"]
+hydrated = _hydrate_items(out, WARDROBE, CATALOG)[0]["items"]
+assert [i["id"] for i in hydrated] == [458, 1000018560]        # 1590 unknown -> dropped
+assert _ids_out_of_prose([{"content": "чистый текст", "items": [{"id": 1}]}])[0]["items"] == [{"id": 1}]
 
 print("test_ai_assistant_items: OK")

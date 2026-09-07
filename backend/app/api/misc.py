@@ -144,6 +144,56 @@ def _hydrate_items(parsed: list, wardrobe: list, catalog: list) -> list:
     return parsed
 
 
+_PROSE_ID = re.compile(r"\s*[(\[]\s*(?:ID|id|Id)\s*[:=]?\s*(\d+)[^)\]]*[)\]]")
+
+
+def _ids_out_of_prose(parsed: list, cap: int = 9) -> list:
+    """Turn "(ID: 1590)" / "(id: 1000018560, цвет: Черный)" in a content answer
+    into `items` and strip them from the text.
+
+    Even in JSON mode the model skips the items array for "разбери гардероб" /
+    "что купить" and writes the ids into the prose instead (prod run
+    2026-09-07: 0 items, 7 ids in text). The ids are exactly the signal we
+    need — the cards come from them, the reader never sees the numbers.
+    Several content entries are merged into one: the frontend renders only
+    the first, and the second one (example outfits) was silently dropped.
+    """
+    merged, rest = [], []
+    for e in parsed:
+        if not isinstance(e, dict) or not isinstance(e.get("content"), str):
+            rest.append(e)
+            continue
+        text = e["content"]
+        ids = [int(m) for m in _PROSE_ID.findall(text)]
+        e["content"] = _PROSE_ID.sub("", text).strip()
+        items = [i for i in (e.get("items") or []) if isinstance(i, dict)]
+        seen = set()
+        for i in items:
+            try:
+                seen.add(int(i.get("id")))
+            except (TypeError, ValueError):
+                pass
+        for iid in ids:
+            if iid not in seen:
+                seen.add(iid)
+                items.append({"id": iid})
+        e["items"] = items
+        merged.append(e)
+    if not merged:
+        return parsed
+    head = merged[0]
+    for e in merged[1:]:
+        head["content"] = f"{head['content']}\n\n{e['content']}".strip()
+        head["items"].extend(e["items"])
+    uniq, seen = [], set()
+    for i in head["items"]:
+        if i.get("id") not in seen:
+            seen.add(i.get("id"))
+            uniq.append(i)
+    head["items"] = uniq[:cap]
+    return [head, *rest]
+
+
 # ── /api/check-limits ──
 
 @router.post("/check-limits")
@@ -824,7 +874,7 @@ Always respond with JSON array. Use Russian for all text."""
             # my wardrobe". The prose IS the answer; the frontend turned [] into
             # "Произошла ошибка". Wrap it instead.
             parsed = [{"content": content.strip()}]
-    return _hydrate_items(parsed, wardrobe, catalog_items)
+    return _hydrate_items(_ids_out_of_prose(parsed), wardrobe, catalog_items)
 
 
 # ── /api/vton helpers ──
