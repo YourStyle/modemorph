@@ -96,6 +96,18 @@ def model_gender(gender: str | None, seed: int) -> str:
     return "female" if seed % 2 == 0 else "male"
 
 
+def items_gender(items: list[dict]) -> str | None:
+    """Пол образа ПО ВЕЩАМ: единственный пол среди размеченных (male/female).
+    None — если размеченных нет или они спорят. Унисекс/NULL не голосуют.
+
+    Нужен потому, что outfits.gender ставится при посеве, а разметка вещей
+    доезжает позже (крон classify-gender): 9 образов витрины стояли как
+    'unisex' → аватар по чётности id → женщина в мужских челси.
+    """
+    gs = {(i.get("gender") or "").strip().lower() for i in items} & {"male", "female"}
+    return next(iter(gs)) if len(gs) == 1 else None
+
+
 def pick_model(gender: str | None, seed: int) -> str:
     """Типаж модели: детерминированно по id образа, чтобы прогоны совпадали."""
     variants = MODELS[model_gender(gender, seed)]
@@ -260,6 +272,9 @@ if __name__ == "__main__":
             assert pick_model(g, s) in MODELS[model_gender(g, s)], (g, s)
     assert model_gender("male", 0) == "male" and model_gender("female", 1) == "female"
     assert {model_gender("unisex", 0), model_gender("unisex", 1)} == {"female", "male"}
+    assert items_gender([{"gender": "male"}, {"gender": "unisex"}, {"gender": None}]) == "male"
+    assert items_gender([{"gender": "male"}, {"gender": "female"}]) is None
+    assert items_gender([{"gender": "unisex"}, {}]) is None
 
     # Пол проговаривается в промпте: без этого модель обувала мужчин в балетки.
     assert "The person is male." in build_prompt(None, "male", items, seed=0)

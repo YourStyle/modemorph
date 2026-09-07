@@ -2385,6 +2385,9 @@ async def generate_outfit_lookbooks(
     vibe = (body.get("vibe") or "").strip() or None
     limit = max(1, min(int(body.get("limit") or 5), 100))
     force = bool(body.get("force"))
+    # Точечная перегенерация: ids подразумевает force (кадр уже есть, но не тот).
+    ids = [int(i) for i in (body.get("ids") or [])]
+    force = force or bool(ids)
     max_cost = float(body.get("max_cost_usd") or 1.0)
 
     # Порядок чередует полы. Просто ORDER BY id тратил бы бюджет на первые по id,
@@ -2395,6 +2398,9 @@ async def generate_outfit_lookbooks(
     if vibe:
         inner += " AND vibe = :vibe"
         binds["vibe"] = vibe
+    if ids:
+        inner += " AND id = ANY(:ids)"
+        binds["ids"] = ids
     if not force:
         inner += f" AND (preview_image_url IS NULL OR preview_image_url NOT LIKE '%/{lookbook.S3_FOLDER}/%')"
     sql = f"SELECT id, gender, vibe, preview_image_url FROM ({inner}) t ORDER BY rn, gender LIMIT :lim"
@@ -2412,7 +2418,7 @@ async def generate_outfit_lookbooks(
             continue
 
         items = (await db.execute(text("""
-            SELECT wi.item_name AS name, wi.color, wi.clothing_type, wi.image_url
+            SELECT wi.item_name AS name, wi.color, wi.clothing_type, wi.image_url, wi.gender
             FROM outfit_items oi
             JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
             WHERE oi.outfit_id = :oid
@@ -2425,9 +2431,19 @@ async def generate_outfit_lookbooks(
             results.append({"outfit_id": row["id"], "status": "no_items"})
             continue
 
+        # Пол человека на кадре — по вещам СЕЙЧАС, не по outfits.gender с посева:
+        # разметка вещей доезжает кроном позже, и 9 образов витрины получили
+        # аватар не того пола (2026-09-07). Спорящие вещи — кадр не делаем,
+        # такой образ надо пересобрать, а не дорисовать.
+        shot_gender = lookbook.items_gender(items)
+        if shot_gender is None and any((i.get("gender") or "").lower() in ("male", "female") for i in items):
+            results.append({"outfit_id": row["id"], "status": "mixed_gender"})
+            continue
+        shot_gender = shot_gender or lookbook.model_gender(row["gender"], int(row["id"]))
+
         try:
             data_uri, gen_id = await lookbook.generate(
-                _openrouter_chat, row["vibe"], row["gender"], items, seed=int(row["id"]),
+                _openrouter_chat, row["vibe"], shot_gender, items, seed=int(row["id"]),
             )
         except Exception as e:
             logger.error(f"[admin/lookbook] outfit {row['id']}: {e}")
@@ -2454,11 +2470,10 @@ async def generate_outfit_lookbooks(
             results.append({"outfit_id": row["id"], "status": "s3_failed", "cost_usd": cost})
             continue
 
-        # Пол образа = пол человека на кадре. До этого gender описывал разметку
-        # ВЕЩЕЙ и оставался 'unisex', когда она отсутствовала, — а фильтр ленты
-        # пропускает 'unisex' обоим полам, и мужчина получал карточку с женщиной
-        # на фото (жалоба с прода 2026-08-18, таких образов было 12).
-        shot_gender = lookbook.model_gender(row["gender"], int(row["id"]))
+        # Пол образа = пол человека на кадре (он же — пол вещей, см. выше). До
+        # этого gender описывал разметку ВЕЩЕЙ и оставался 'unisex', когда она
+        # отсутствовала, — а фильтр ленты пропускает 'unisex' обоим полам, и
+        # мужчина получал карточку с женщиной на фото (жалоба 2026-08-18).
         await db.execute(
             text("UPDATE outfits SET preview_image_url = :u, gender = :g WHERE id = :id"),
             {"u": url, "g": shot_gender, "id": row["id"]},

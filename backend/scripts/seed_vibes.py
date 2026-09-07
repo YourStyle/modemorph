@@ -149,8 +149,11 @@ def build_outfits(items: list[dict], limit: int) -> list[list[dict]]:
     """Чистая сборка: вещи одной эстетики -> список комплектов. Без I/O.
 
     Вещь не переиспользуется между образами внутри одного кружка — иначе лента
-    выглядит как один и тот же лук в разных ракурсах. Пол не смешивается:
-    unisex-вещи (gender пустой) годятся в оба.
+    выглядит как один и тот же лук в разных ракурсах. Пол не смешивается, и
+    вещи без пола ('unisex' / NULL) в витрину не идут вовсе: они «годились в
+    оба», образ получал gender='unisex', аватар выбирался по чётности id, а
+    когда крон дорасмечал вещи, выходило «женский аватар в мужских челси» —
+    9 из 61 образов витрины на проде 2026-09-07 (Скандинавия · образ 9 и др.).
     """
     by_gender: dict[str, dict[str, list[dict]]] = {}
     for it in items:
@@ -160,9 +163,9 @@ def build_outfits(items: list[dict], limit: int) -> list[list[dict]]:
         if not s:
             continue                                  # аксессуары как основу не берём
         g = (it.get("gender") or "").strip().lower()
-        targets = ["female", "male"] if g not in ("female", "male") else [g]
-        for t in targets:
-            by_gender.setdefault(t, {}).setdefault(s, []).append(it)
+        if g not in ("female", "male"):
+            continue                                  # унисекс/без пола — мимо витрины
+        by_gender.setdefault(g, {}).setdefault(s, []).append(it)
 
     for slots in by_gender.values():
         for lst in slots.values():
@@ -336,21 +339,24 @@ def _self_check() -> None:
 
     # Пол не смешивается, вещи не переиспользуются, а конфликтующая обувь (id 5,
     # у неё нарочно самый высокий скор — берётся первой) не убивает годное ядро:
-    # сборка обязана перебрать следующего кандидата.
+    # сборка обязана перебрать следующего кандидата. Унисекс-кеды (id 8) не
+    # попадают никуда, даже когда без них образ был бы полнее.
     mixed = build_outfits([it(1, "t-shirt", "female", 15, 30), it(2, "jeans", "female", 5, 28),
                            it(3, "shirt", "male", 15, 30), it(4, "pants", "male", 5, 28),
-                           it(5, "boots", "", -5, 10, sc=0.40),
-                           it(6, "sneakers", "", 0, 30), it(7, "sandals", "", 0, 30)], 4)
+                           it(5, "boots", "female", -5, 10, sc=0.40),
+                           it(6, "sneakers", "female", 0, 30), it(7, "sandals", "male", 0, 30),
+                           it(8, "sneakers", "", 0, 30, sc=0.90)], 4)
     seen = set()
     for o in mixed:
-        gs = {i["gender"] for i in o} - {""}
-        assert len(gs) <= 1, o
+        gs = {i["gender"] for i in o}
+        assert len(gs) == 1 and "" not in gs, o
         assert len(o) >= MIN_ITEMS, o
         for i in o:
             assert i["id"] not in seen, f"вещь {i['id']} переиспользована"
             seen.add(i["id"])
     assert len(mixed) == 2, mixed
     assert 5 not in seen, "конфликтующие ботинки не должны попасть в образ"
+    assert 8 not in seen, "унисекс-вещь не должна попасть в витрину"
 
     # Пустой пул и пул без низа не роняют сборку и не зацикливают её.
     assert build_outfits([], 10) == []
