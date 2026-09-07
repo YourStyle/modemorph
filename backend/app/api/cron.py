@@ -1430,14 +1430,16 @@ _MALE_NAME_PATTERNS = [
 
 @router.post("/classify-gender")
 async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
-    """Classify gender for catalog items whose gender is NULL/empty — or 'unisex'.
+    """Classify gender for catalog items that have NULL/empty gender.
 
-    'unisex' is re-checked on purpose: until 2026-09-07 the CLIP branch read the
-    STYLE tags of /clip/classify (the labels form field was ignored), found no
-    "мужск"/"женск" in "casual" and stamped 'unisex' on every item it touched —
-    2801 rows, 8 of 8 wrong on the ЦУМ truth sample. The classifier now returns
-    a real verdict with a "cannot tell" band, so 'unisex' becomes honest.
-    Name rules first, then CLIP for what is left."""
+    Until 2026-09-07 the CLIP branch read the STYLE tags of /clip/classify (the
+    labels form field was ignored), found no "мужск"/"женск" in "casual" and
+    stamped 'unisex' on every item it touched — 2801 rows, 8 of 8 wrong on the
+    ЦУМ truth sample. The classifier now returns a real verdict with a "cannot
+    tell" band, so a 'unisex' written from here on is honest. The old defaults
+    were re-checked once by a one-off script the same day; this endpoint keeps
+    handling only NULL/empty so the daily run never re-spends CLIP on items it
+    already judged. Name rules first, then CLIP for what is left."""
     _verify_cron_auth(request)
 
     # 1. Name-based classification (fast, no API calls)
@@ -1447,11 +1449,10 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
     # "на ребенке представлен размер 140" on children's cards.
     result = await db.execute(text("""
         SELECT id, item_name, url, description FROM wardrobe_items
-        WHERE (gender IS NULL OR gender = '' OR gender = 'unisex') AND item_name IS NOT NULL
-          AND COALESCE(is_hidden, false) = false
+        WHERE (gender IS NULL OR gender = '') AND item_name IS NOT NULL
     """))
     items = result.all()
-    logger.info(f"[classify-gender] {len(items)} items without a trusted gender")
+    logger.info(f"[classify-gender] {len(items)} items without gender")
 
     name_classified = 0
     kids_flagged = 0
