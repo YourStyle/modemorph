@@ -33,7 +33,34 @@ interface Timeline {
   credits: number
   payments: Array<{ amount: number; status: string; action: string | null; type: string | null; created_at: string }>
   activity: Array<{ date: string; count: number }>
-  events: Array<{ at: string; feature: string; action: string; count: number }>
+  events: Array<{ at: string; feature: string; action: string; count: number; meta?: Record<string, any> }>
+}
+
+type Ev = Timeline["events"][number]
+
+// Что человек на самом деле сделал, а не имя счётчика. Ключ — feature·action,
+// значение — строка или функция от события (когда важны детали из meta).
+const EVENT_LABELS: Record<string, string | ((e: Ev) => string)> = {
+  "wardrobe_items_anlyzed·click": "Оцифровка: отправил фото на распознавание",
+  "photo_detection·detected": (e) => `Оцифровка: распознано ${e.meta?.kept ?? e.count} вещ.`,
+  "wardrobe_item_added·save": (e) => `Добавил в гардероб: ${e.meta?.item_name || "вещь"}`,
+  "ai_requests·attempt": "Ассистент: отправил запрос",
+  "ai_assistant_used·track": "Ассистент: начал диалог",
+  "paywall_shown·view": (e) => `Увидел пейвол${e.meta?.source ? ` (${String(e.meta.source).replace("limit:", "лимит ")})` : ""}`,
+  "vton_used·click": (e) => `Примерка: запустил${e.meta?.itemIds?.length ? ` (${e.meta.itemIds.length} вещ.)` : ""}`,
+  "outfit_created·create": (e) => `Собрал образ${e.meta?.itemsCount ? ` из ${e.meta.itemsCount} вещ.` : ""}`,
+  "outfits_saved·attempt": "Сохранил образ",
+  "ideas_viewed·track": "Смотрел идеи",
+  "registration_step·view": (e) => `Регистрация: открыл шаг ${e.meta?.step ?? ""}`,
+  "registration_step·submit": (e) => `Регистрация: отправил шаг ${e.meta?.step ?? ""}`,
+  "registration_step·complete": "Регистрация: завершена",
+}
+
+function eventLabel(e: Ev): string {
+  const l = EVENT_LABELS[`${e.feature}·${e.action}`]
+  if (typeof l === "function") return l(e)
+  if (l) return l
+  return `${e.feature}${e.action && e.action !== "track" ? ` · ${e.action}` : ""}`
 }
 
 function fmt(dt: string | null): string {
@@ -177,10 +204,7 @@ export default function UserTimelinePage() {
           <ul className="space-y-1 max-h-80 overflow-auto text-sm">
             {data.events.map((e, i) => (
               <li key={i} className="flex justify-between gap-3">
-                <span>
-                  {e.feature}
-                  {e.action && e.action !== "track" ? ` · ${e.action}` : ""}
-                </span>
+                <span title={`${e.feature} · ${e.action}`}>{eventLabel(e)}</span>
                 <span className="text-muted-foreground tabular-nums">{fmt(e.at)}</span>
               </li>
             ))}

@@ -71,11 +71,21 @@ async def _openrouter_chat(messages: list, model: str = "google/gemini-2.5-flash
         payload["image_config"] = image_config
 
     async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            OPENROUTER_URL,
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}"},
-            json=payload,
-        )
+        for attempt in (1, 2):
+            try:
+                resp = await client.post(
+                    OPENROUTER_URL,
+                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {settings.OPENROUTER_API_KEY}"},
+                    json=payload,
+                )
+                break
+            except httpx.TransportError:
+                # ponytail: one retry. Gemini goes out through the hysteria proxy
+                # (see memory: OpenRouter blocks the prod IP) and it answers
+                # "502 Bad Gateway" now and then — prod 2026-09-04 20:16, the user
+                # saw a 500. A second try lands; a dead proxy still raises.
+                if attempt == 2:
+                    raise
         if resp.status_code != 200:
             raise HTTPException(status_code=502, detail=f"AI error: {resp.text[:200]}")
         return resp.json()
@@ -91,6 +101,44 @@ def _parse_ai_json(content: str) -> list:
         return parsed if isinstance(parsed, list) else [parsed]
     except json_lib.JSONDecodeError:
         return []
+
+
+def _hydrate_items(parsed: list, wardrobe: list, catalog: list) -> list:
+    """Fill every `items[]` entry of the assistant answer from the DB rows by id.
+
+    The model is asked for ids (plus name/colour for its prose); image_url, shop
+    url and ownership come from the rows this request already loaded. Until
+    2026-09-07 the prompt asked the model to echo image_url/url back, and
+    gemini-2.5-flash-lite returned "" / null for every item — every card in
+    every prod chat rendered as the grey placeholder (checked ai_chat_messages).
+    An id we never sent the model is an invention: the entry is dropped.
+    """
+    own = {int(r["id"]): r for r in wardrobe}
+    shop = {int(r["id"]): r for r in catalog}
+    for entry in parsed:
+        if not isinstance(entry, dict) or not isinstance(entry.get("items"), list):
+            continue
+        out = []
+        for it in entry["items"]:
+            if not isinstance(it, dict):
+                continue
+            try:
+                iid = int(it.get("id"))
+            except (TypeError, ValueError):
+                continue
+            row, is_own = (own.get(iid), True) if iid in own else (shop.get(iid), False)
+            if row is None:
+                continue
+            out.append({
+                "id": iid,
+                "name": it.get("name") or row.get("item_name") or "",
+                "color": it.get("color") or row.get("color"),
+                "user_id": str(row["user_id"]) if is_own and row.get("user_id") else None,
+                "image_url": row.get("image_url"),
+                "url": None if is_own else row.get("url"),
+            })
+        entry["items"] = out
+    return parsed
 
 
 # ── /api/check-limits ──
@@ -674,22 +722,23 @@ RULES:
 1. If NOT about fashion/clothing/style → respond: [{{"type": "trash"}}]
 2. If general fashion question → respond: [{{"content": "answer in Russian"}}]
 3. If outfit recommendation → build from user's wardrobe items + optionally recommend catalog items
-4. When recommending catalog items, include their shop URL so user can buy them
+4. Catalog items you recommend go into "items" by id — the app shows a
+   "buy" button on the card itself. Never paste shop URLs or markdown links
+   into the text.
 5. Whenever a "content" answer talks about SPECIFIC items (wardrobe analysis,
    "what to buy", "what doesn't match"), also attach them:
-   [{{"content": "...", "items": [{{"id": item_id, "name": "name", "user_id": "uid", "image_url": "url", "color": "color", "url": "shop url or null"}}]}}]
+   [{{"content": "...", "items": [{{"id": item_id, "name": "name", "color": "color"}}]}}]
    The app renders them as photo cards under your text, so the user SEES the
    garment instead of reading its number. Attach only items you actually
    discussed, at most 6, and keep referring to them in prose by name.
 
 For outfits return JSON array:
-[{{"id": "unique_id", "title": "Russian title", "description": "Russian desc", "items": [{{"id": item_id, "name": "name", "user_id": "uid", "image_url": "url", "color": "color"}}], "suggested_items_count": N}}]
+[{{"id": "unique_id", "title": "Russian title", "description": "Russian desc", "items": [{{"id": item_id, "name": "name", "color": "color"}}], "suggested_items_count": N}}]
 
 NEVER show internal ids to the user. The "id" fields exist only so you can put
 items into the "items" array — they are database keys, meaningless to a human.
 Writing things like "Серые леггинсы (ID: 1590)" in prose is a bug: refer to an
 item by its name and colour only ("серые леггинсы", "рваный вязаный свитер").
-The same goes for user_id and image_url — never mention them in text.
 
 Formatting of the "content" text (it is rendered as light markdown):
 - Short paragraphs, one thought each, separated by a blank line.
@@ -700,10 +749,12 @@ Formatting of the "content" text (it is rendered as light markdown):
 
 Always respond with JSON array. Use Russian for all text."""
 
+    # Only what the model needs to reason and to name things back. image_url /
+    # user_id / shop url are attached afterwards by _hydrate_items from the same
+    # rows — the model used to echo them and lost them (see that docstring).
     wardrobe_json = json_lib.dumps([{
         "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
         "style": i.get("style", ""), "type": i.get("clothing_type"),
-        "image_url": i.get("image_url"), "user_id": str(i["user_id"]) if i.get("user_id") else None,
     } for i in wardrobe], ensure_ascii=False)
 
     catalog_json = ""
@@ -725,8 +776,7 @@ Always respond with JSON array. Use Russian for all text."""
             has_brand_guess = has_brand_guess or brand_key == "brand_guess"
             _catalog_payload.append({
                 "id": i["id"], "name": i.get("item_name", ""), "color": i.get("color"),
-                "type": i.get("clothing_type"), "url": i.get("url"),
-                "image_url": i.get("image_url"),
+                "type": i.get("clothing_type"),
                 "retailer": retailer_from_notes(i.get("notes")),
                 **({brand_key: brand_value} if brand_key else {}),
             })
@@ -746,19 +796,25 @@ Always respond with JSON array. Use Russian for all text."""
         temperature=0.7,
     )
 
-    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    content = result.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
     parsed = _parse_ai_json(content)
     if not parsed:
         # Log raw model output so we can see what's coming back when the user gets
         # an empty response (JSON parse silently returns []).
         prompt_preview = (prompt or "")[:120]
-        content_preview = (content or "")[:1000]
+        content_preview = content[:1000]
         print(
             f"[ai-assistant] empty parsed response | user={user.get('id')} "
             f"prompt={prompt_preview!r} wardrobe_items={len(wardrobe)} "
             f"catalog_items={len(catalog_items)} raw_content={content_preview!r}"
         )
-    return parsed
+        if content.strip():
+            # The model answered in plain markdown instead of the JSON envelope —
+            # prod 2026-09-04..05, three times in a row for "what is missing in
+            # my wardrobe". The prose IS the answer; the frontend turned [] into
+            # "Произошла ошибка". Wrap it instead.
+            parsed = [{"content": content.strip()}]
+    return _hydrate_items(parsed, wardrobe, catalog_items)
 
 
 # ── /api/vton helpers ──

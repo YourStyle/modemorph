@@ -1585,10 +1585,21 @@ async def user_timeline(user_id: str, user: dict = Depends(get_admin_user), db: 
         SELECT activity_date, activity_count FROM daily_user_activity
         WHERE user_profile_id = :pid ORDER BY activity_date DESC LIMIT 60
     """), {"pid": pid})).mappings().all()
+    # usage_events has "clicked analyze" and "N items detected", but nothing for
+    # the step that matters — did the person actually put the result into the
+    # wardrobe? That fact lives only in wardrobe_user_items, so it joins the
+    # stream from there (one row per saved item) instead of a new client event
+    # that would miss everything already in the table.
     events = (await db.execute(text("""
-        SELECT occurred_at, feature, action, count FROM usage_events
-        WHERE user_profile_id = :pid ORDER BY occurred_at DESC LIMIT 100
-    """), {"pid": pid})).mappings().all()
+        SELECT occurred_at, feature, action, count, metadata FROM (
+            SELECT occurred_at, feature, action, count, metadata FROM usage_events
+            WHERE user_profile_id = :pid
+            UNION ALL
+            SELECT created_at, 'wardrobe_item_added', 'save', 1,
+                   jsonb_build_object('item_name', item_name)
+            FROM wardrobe_user_items WHERE user_id = :uid
+        ) e ORDER BY occurred_at DESC LIMIT 100
+    """), {"pid": pid, "uid": user_id})).mappings().all()
 
     meta = prof["raw_user_meta_data"] or {}
     if isinstance(meta, str):
@@ -1623,7 +1634,10 @@ async def user_timeline(user_id: str, user: dict = Depends(get_admin_user), db: 
         "credits": credits,
         "payments": payments,
         "activity": [{"date": str(a["activity_date"]), "count": a["activity_count"]} for a in activity],
-        "events": [{"at": str(e["occurred_at"]), "feature": e["feature"], "action": e["action"], "count": e["count"]} for e in events],
+        "events": [{
+            "at": str(e["occurred_at"]), "feature": e["feature"], "action": e["action"], "count": e["count"],
+            "meta": (json_lib.loads(e["metadata"]) if isinstance(e["metadata"], str) else e["metadata"]) or {},
+        } for e in events],
     }
 
 

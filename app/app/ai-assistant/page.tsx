@@ -608,9 +608,13 @@ export default function AIAssistantPage() {
       </div>
 
       {/* Messages. Верхний отступ учитывает и ряд кнопок над лентой (44px
-          кнопка + 8px сверху + 8px снизу), иначе первое сообщение уезжает под них. */}
+          кнопка + 8px сверху + 8px снизу), иначе первое сообщение уезжает под них.
+          overflow-x-hidden обязателен: overflow-y-auto делает и ось X
+          прокручиваемой, и одно неразрывное слово в ответе (модель вставила
+          markdown-ссылку на lamoda, 120 символов) уводило всю ленту влево —
+          с устройства прилетело как «лишняя пустота справа». */}
       <div
-        className="flex-1 overflow-y-auto p-4 space-y-3 pb-56"
+        className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3 pb-56"
         style={{ paddingTop: "calc(var(--tg-content-top) + var(--tg-hint-h, 0px) + 60px)" }}
       >
         {isEmptyChat && (
@@ -641,7 +645,7 @@ export default function AIAssistantPage() {
               className={cn("flex animate-fade-up", isUser ? "justify-end" : "justify-start")}
               style={{ animationDelay: `${Math.min(index, 8) * 30}ms` }}
             >
-              <div className={cn("flex max-w-[85%] gap-2.5", isUser && "flex-row-reverse")}>
+              <div className={cn("flex min-w-0 max-w-[85%] gap-2.5", isUser && "flex-row-reverse")}>
                 <Avatar className="h-7 w-7 flex-shrink-0">
                   <AvatarFallback
                     className={cn(
@@ -652,9 +656,11 @@ export default function AIAssistantPage() {
                     {isUser ? "Вы" : "ИИ"}
                   </AvatarFallback>
                 </Avatar>
+                {/* min-w-0 + overflow-wrap:anywhere: длинный токен переносится
+                    внутри пузыря, а не растягивает его за край экрана. */}
                 <div
                   className={cn(
-                    "rounded-2xl px-4 py-3",
+                    "min-w-0 rounded-2xl px-4 py-3 [overflow-wrap:anywhere]",
                     isUser ? "bg-ink text-canvas" : "bg-canvas-sunk text-ink",
                   )}
                 >
