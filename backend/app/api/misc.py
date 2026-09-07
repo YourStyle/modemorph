@@ -52,7 +52,8 @@ FLATLAY_MODEL = "google/gemini-3.1-flash-lite-image"
 
 async def _openrouter_chat(messages: list, model: str = "google/gemini-2.5-flash-lite",
                            temperature: float = 0.7, modalities: list = None,
-                           image_config: dict = None, max_tokens: int = 8192) -> dict:
+                           image_config: dict = None, max_tokens: int = 8192,
+                           response_format: dict = None) -> dict:
     """Call OpenRouter API.
 
     max_tokens MUST be set: OpenRouter's credit check reserves the full requested
@@ -69,6 +70,8 @@ async def _openrouter_chat(messages: list, model: str = "google/gemini-2.5-flash
         payload["modalities"] = modalities
     if image_config:
         payload["image_config"] = image_config
+    if response_format:
+        payload["response_format"] = response_format
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         for attempt in (1, 2):
@@ -794,6 +797,13 @@ Always respond with JSON array. Use Russian for all text."""
         ],
         model="google/gemini-2.5-flash-lite",
         temperature=0.7,
+        # JSON mode: the prompt alone was not enough — for "what is missing in
+        # my wardrobe" the model wrote markdown prose with the items array
+        # pasted into the middle of it, four times in three minutes on prod
+        # (2026-09-07 11:38–11:41). Verified from the prod container that
+        # OpenRouter honours this for gemini-2.5-flash-lite and still returns
+        # the array envelope.
+        response_format={"type": "json_object"},
     )
 
     content = result.get("choices", [{}])[0].get("message", {}).get("content", "") or ""
@@ -1034,7 +1044,7 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     # its own default and returned a 9:16 phone photo squashed into 3:4.
     vton_ratio = _nearest_aspect_ratio(avatar_b64)
 
-    async def _run_pass1() -> str | None:
+    async def _run_pass1(temperature: float = 0.2) -> str | None:
         result = await _openrouter_chat(
             messages=[{"role": "user", "content": [
                 {"type": "text", "text": prompt},
@@ -1049,7 +1059,7 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
             # benchmark would be the same unverified leap this comment exists
             # to prevent. Measure faces first, then decide.
             model="google/gemini-3.1-flash-image-preview",
-            temperature=0.2,
+            temperature=temperature,
             modalities=["image", "text"],
         )
         return _extract_vton_image(result)
@@ -1074,7 +1084,9 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
 
     if pass1_echo:
         print(f"[vton] Pass 1 echoed avatar (md5={pass1_hash}, phash_dist={pass1_dist}) — retrying once")
-        retry = await _run_pass1()
+        # A "fresh roll" at temperature 0.2 is nearly the same roll: prod
+        # 2026-09-07 11:42 got dist 6 then dist 5 for the same avatar. Retry hot.
+        retry = await _run_pass1(temperature=0.8)
         if retry:
             retry_phash = _data_uri_phash(retry)
             retry_dist = _phash_hamming(avatar_phash, retry_phash)
@@ -1084,7 +1096,14 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
                 or (retry_dist is not None and retry_dist <= _VTON_ECHO_HAMMING_THRESHOLD)
             )
             if still_echo:
-                print(f"[vton] Pass 1 retry also echoed (phash_dist={retry_dist}) — failing")
+                # Keep what we rejected. dHash ≤ 6 on a 9×8 thumbnail cannot tell
+                # "avatar echoed" from "portrait where the garment is a small
+                # area" — only eyes on the image can, and the log is all we had.
+                try:
+                    kept = await _upload_base64_to_s3(retry, folder="vton-rejected")
+                except Exception as e:
+                    kept = f"upload failed: {e}"
+                print(f"[vton] Pass 1 retry also echoed (phash_dist={retry_dist}) — failing; rejected image: {kept}")
                 raise HTTPException(status_code=502, detail="Try-on model returned the original photo, please retry")
             image_data = retry
             pass1_hash = retry_md5

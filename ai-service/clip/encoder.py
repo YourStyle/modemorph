@@ -48,7 +48,12 @@ class CLIPEncoderService:
 
     @torch.no_grad()
     def encode_text(self, text: str) -> np.ndarray:
-        inputs = self.processor(text=text, return_tensors="pt", padding=True, truncation=True)
+        # max_length is not optional: without it truncation=True truncates to the
+        # tokenizer's model_max_length, which for this checkpoint is unbounded —
+        # a 100-char Russian question is 99 tokens and the text tower raises
+        # "Sequence length must be less than max_position_embeddings (77)".
+        # Every /clip/search/text call from the assistant 500-ed on that.
+        inputs = self.processor(text=text, return_tensors="pt", padding=True, truncation=True, max_length=77)
         input_ids = inputs["input_ids"].to(self.device)
         attention_mask = inputs.get("attention_mask")
         if attention_mask is not None:
@@ -67,7 +72,7 @@ class CLIPEncoderService:
         all_embeddings = []
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
-            inputs = self.processor(text=batch, return_tensors="pt", padding=True, truncation=True)
+            inputs = self.processor(text=batch, return_tensors="pt", padding=True, truncation=True, max_length=77)
             input_ids = inputs["input_ids"].to(self.device)
             attention_mask = inputs.get("attention_mask")
             if attention_mask is not None:
