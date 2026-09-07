@@ -104,6 +104,18 @@ FLATLAY_QUERIES = [
 # Score threshold above which the image is considered to contain a person/model
 PERSON_SCORE_THRESHOLD = 0.02  # person_score - flatlay_score > threshold → has_person
 
+# Gender zero-shot. Conditioning on the garment type is not cosmetic: with
+# plain "men's / women's clothing" prompts FashionCLIP is female-biased —
+# median p_male-p_female was +0.2 for MALE items and -0.7 for female ones,
+# so any symmetric cut called half the men's catalogue "unisex" (calibration
+# on 160 feed-labelled SELA/ЦУМ items, 2026-09-07). With "men's <type>" the
+# medians move to +0.6 / -0.9. At ±0.5: 55-72% of male and 80-93% of female
+# items get their gender, 3-7% land on the wrong side, the rest is an honest
+# "cannot tell" — which is what 'unisex' has to mean from now on. Before this
+# the cron read the STYLE tags and stamped 'unisex' on everything.
+GENDER_MALE_MIN = 0.5
+GENDER_FEMALE_MAX = -0.5
+
 
 class CLIPClassifierService:
     def __init__(self, encoder: CLIPEncoderService):
@@ -116,6 +128,27 @@ class CLIPClassifierService:
 
     def _encode_labels(self, labels: list) -> np.ndarray:
         return self._encode_phrases(labels)
+
+    def _gender_embs(self, clothing_type) -> np.ndarray:
+        ct = (clothing_type or "clothing").replace("-", " ")
+        cache = self.__dict__.setdefault("_gender_cache", {})
+        if ct not in cache:
+            cache[ct] = np.stack([self.encoder.encode_text(p) for p in (
+                f"a photo of men's {ct}, menswear",
+                f"a photo of women's {ct}, womenswear",
+                f"a photo of unisex {ct}",
+            )])
+        return cache[ct]
+
+    def gender(self, emb: np.ndarray, clothing_type) -> tuple[str, float]:
+        """('male'|'female'|'unisex', p_male - p_female) — see GENDER_* above."""
+        z = 100.0 * (self._gender_embs(clothing_type) @ emb)
+        z = z - z.max()
+        p = np.exp(z)
+        p = p / p.sum()
+        d = float(p[0] - p[1])
+        label = "male" if d >= GENDER_MALE_MIN else "female" if d <= GENDER_FEMALE_MAX else "unisex"
+        return label, round(d, 3)
 
     def _encode_phrases(self, phrases: list) -> np.ndarray:
         return np.stack([self.encoder.encode_text("a photo of " + p) for p in phrases])
@@ -163,11 +196,14 @@ class CLIPClassifierService:
         is_garment = top_key in CLOTHING_TYPE_PROMPTS
         color = self._top_k(emb, self._color_embs, COLORS, 1)[0]
         style_tags = self._top_k(emb, self._style_embs, STYLES, 3)
+        gender, gender_score = self.gender(emb, top_key if is_garment else None)
         return {
             "clothing_type": top_key if is_garment else None,
             "non_garment": None if is_garment else top_key,
             "color": color,
             "style_tags": style_tags,
+            "gender": gender,
+            "gender_score": gender_score,
             "embedding": emb.tolist(),
             "is_clothing": True,
             "has_person": person_diff > PERSON_SCORE_THRESHOLD,

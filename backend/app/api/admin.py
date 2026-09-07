@@ -1916,12 +1916,69 @@ async def list_broadcasts(user: dict = Depends(get_admin_user), db: AsyncSession
 
 @router.post("/broadcast")
 async def send_broadcast(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Send a Telegram message to a segment and record the outcome.
+
+    Until 2026-09-07 this only INSERTed the row — and read `message_text` while
+    the admin page posts `message`, so the one broadcast on prod (2026-05-16)
+    is an empty string with total_sent=0. Nothing ever reached a user.
+
+    Segments match the admin page: all / subscribers / free / user. Recipients
+    are Telegram accounts (raw_user_meta_data.telegram_id); test profiles are
+    skipped. HTML parse mode, same as the gift message.
+    """
+    import asyncio
+
     body = await request.json()
-    result = await db.execute(
-        text("INSERT INTO broadcast_messages (admin_user_id, message_text, created_at) VALUES (:uid, :msg, NOW()) RETURNING *"),
-        {"uid": user["id"], "msg": body.get("message_text", "")})
+    message = (body.get("message") or body.get("message_text") or "").strip()
+    flt = body.get("filter") or {"type": body.get("filter_type") or "all"}
+    ftype = flt.get("type") or "all"
+    if not message:
+        raise HTTPException(status_code=400, detail="message required")
+
+    where, binds = "TRUE", {}
+    active_sub = """EXISTS (SELECT 1 FROM user_subscriptions s WHERE s.user_profile_id = up.id
+                            AND s.status = 'active' AND s.expires_at > NOW())"""
+    if ftype == "subscribers":
+        where = f"up.id IS NOT NULL AND {active_sub}"
+    elif ftype == "free":
+        where = f"NOT {active_sub}"
+    elif ftype == "user":
+        if not flt.get("user_id"):
+            raise HTTPException(status_code=400, detail="user_id required for filter=user")
+        where, binds = "u.id = :target", {"target": flt["user_id"]}
+    elif ftype != "all":
+        raise HTTPException(status_code=400, detail=f"unknown filter {ftype!r}")
+
+    rows = (await db.execute(text(f"""
+        SELECT u.raw_user_meta_data->>'telegram_id' AS tg
+        FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
+        WHERE COALESCE(u.raw_user_meta_data->>'telegram_id', '') <> ''
+          AND COALESCE(up.is_test, false) = false
+          AND {where}
+    """), binds)).mappings().all()
+    chat_ids = [r["tg"] for r in rows]
+
+    row = (await db.execute(text("""
+        INSERT INTO broadcast_messages (admin_user_id, message_text, recipient_filter, total_sent, total_failed, created_at)
+        VALUES (:uid, :msg, CAST(:flt AS jsonb), 0, 0, NOW()) RETURNING id
+    """), {"uid": user["id"], "msg": message, "flt": json_lib.dumps(flt, ensure_ascii=False)})).mappings().first()
     await db.commit()
-    return {"data": dict(result.mappings().first())}
+
+    # ponytail: sequential, in-request. ~300 Telegram accounts × 50 ms is
+    # 15 s; move to a background task when the base passes ~2000.
+    sent = failed = 0
+    for chat_id in chat_ids:
+        res = await send_bot_message(chat_id, message)
+        if res.get("ok"):
+            sent += 1
+        else:
+            failed += 1
+        await asyncio.sleep(0.05)
+
+    await db.execute(text("UPDATE broadcast_messages SET total_sent = :s, total_failed = :f WHERE id = :id"),
+                     {"s": sent, "f": failed, "id": row["id"]})
+    await db.commit()
+    return {"data": {"id": row["id"], "recipients": len(chat_ids), "total_sent": sent, "total_failed": failed}}
 
 
 # ── Missing admin endpoints ──

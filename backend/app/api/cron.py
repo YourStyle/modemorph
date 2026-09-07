@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.weather_rules import TEMP_RANGES, temp_ok
-from app.services.catalog_filters import gender_ok
+from app.services.catalog_filters import gender_ok, _FEMALE_KEYWORDS, _MALE_KEYWORDS
 from kids_detect import is_kids_item
 from app.services.capsule import capsule_style_guide
 # Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand) —
@@ -1430,8 +1430,14 @@ _MALE_NAME_PATTERNS = [
 
 @router.post("/classify-gender")
 async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
-    """Classify gender for catalog items that have NULL/empty gender.
-    Uses name-based rules first, then CLIP zero-shot for remaining items."""
+    """Classify gender for catalog items whose gender is NULL/empty — or 'unisex'.
+
+    'unisex' is re-checked on purpose: until 2026-09-07 the CLIP branch read the
+    STYLE tags of /clip/classify (the labels form field was ignored), found no
+    "мужск"/"женск" in "casual" and stamped 'unisex' on every item it touched —
+    2801 rows, 8 of 8 wrong on the ЦУМ truth sample. The classifier now returns
+    a real verdict with a "cannot tell" band, so 'unisex' becomes honest.
+    Name rules first, then CLIP for what is left."""
     _verify_cron_auth(request)
 
     # 1. Name-based classification (fast, no API calls)
@@ -1441,10 +1447,11 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
     # "на ребенке представлен размер 140" on children's cards.
     result = await db.execute(text("""
         SELECT id, item_name, url, description FROM wardrobe_items
-        WHERE (gender IS NULL OR gender = '') AND item_name IS NOT NULL
+        WHERE (gender IS NULL OR gender = '' OR gender = 'unisex') AND item_name IS NOT NULL
+          AND COALESCE(is_hidden, false) = false
     """))
     items = result.all()
-    logger.info(f"[classify-gender] {len(items)} items without gender")
+    logger.info(f"[classify-gender] {len(items)} items without a trusted gender")
 
     name_classified = 0
     kids_flagged = 0
@@ -1467,12 +1474,14 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
         name_lower = item.item_name.lower()
         detected = None
 
-        for pattern in _FEMALE_NAME_PATTERNS:
+        # The shared feed-filter word lists know shoes ("балетк", "лодочк") and
+        # the like; the local lists here only knew "юбка/платье".
+        for pattern in (*_FEMALE_NAME_PATTERNS, *_FEMALE_KEYWORDS):
             if pattern in name_lower:
                 detected = "female"
                 break
         if not detected:
-            for pattern in _MALE_NAME_PATTERNS:
+            for pattern in (*_MALE_NAME_PATTERNS, *_MALE_KEYWORDS):
                 if pattern in name_lower:
                     detected = "male"
                     break
@@ -1508,37 +1517,19 @@ async def classify_gender(request: Request, db: AsyncSession = Depends(get_db)):
                     if img_resp.status_code != 200:
                         continue
 
-                    # CLIP classify with gender labels
                     clip_resp = await client.post(
                         f"{AI_SERVICE_URL}/clip/classify",
                         files={"image": ("img.jpg", img_resp.content, "image/jpeg")},
-                        data={"labels": "мужская одежда,женская одежда,унисекс одежда,детская одежда"},
                         timeout=15.0,
                     )
                     if clip_resp.status_code != 200:
                         continue
 
-                    result_data = clip_resp.json()
-                    # The classify endpoint returns sorted tags
-                    tags = result_data.get("style_tags", []) or result_data.get("tags", [])
-                    if not tags:
+                    # 'male' / 'female' / honest 'unisex' — the threshold lives in
+                    # ai-service/clip/classifier.py next to its calibration.
+                    gender_val = clip_resp.json().get("gender")
+                    if gender_val not in ("male", "female", "unisex"):
                         continue
-
-                    top_tag = tags[0].lower()
-                    if "детск" in top_tag:
-                        # Kids — remove from feeds rather than mislabel as unisex.
-                        await db.execute(
-                            text("UPDATE wardrobe_items SET is_kids = true, is_hidden = true WHERE id = :id"),
-                            {"id": item.id},
-                        )
-                        kids_flagged += 1
-                        continue
-                    if "мужск" in top_tag:
-                        gender_val = "male"
-                    elif "женск" in top_tag:
-                        gender_val = "female"
-                    else:
-                        gender_val = "unisex"
 
                     await db.execute(
                         text("UPDATE wardrobe_items SET gender = :g WHERE id = :id"),
