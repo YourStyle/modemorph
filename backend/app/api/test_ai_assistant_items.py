@@ -11,7 +11,7 @@ Run it:  python3 -m app.api.test_ai_assistant_items     (from backend/)
 ponytail: plain asserts, no pytest — pytest is not installed and CI runs no tests.
 """
 
-from app.api.misc import _hydrate_items, _ids_out_of_prose, _parse_ai_json
+from app.api.misc import _hydrate_items, _ids_out_of_prose, _items_by_name, _parse_ai_json
 
 WARDROBE = [
     {"id": 458, "item_name": "джинсы прямого кроя", "color": "индиго",
@@ -68,5 +68,14 @@ assert [i["id"] for i in out[0]["items"]] == [1590, 458, 1000018560], out[0]["it
 hydrated = _hydrate_items(out, WARDROBE, CATALOG)[0]["items"]
 assert [i["id"] for i in hydrated] == [458, 1000018560]        # 1590 unknown -> dropped
 assert _ids_out_of_prose([{"content": "чистый текст", "items": [{"id": 1}]}])[0]["items"] == [{"id": 1}]
+
+# Names in prose (no ids at all): long distinctive names match, generic
+# one-word names do not, catalogue goes first, already-present ids stay unique.
+wardrobe2 = WARDROBE + [{"id": 459, "item_name": "свитер", "color": "ivory", "image_url": "x", "user_id": "u"}]
+named = [{"content": "К **джинсы прямого кроя** возьмите **Кожаные ботинки Dondup**; шерстяной свитер тоже.",
+          "items": [{"id": 458}]}]
+got = _items_by_name(named, wardrobe2, CATALOG)[0]["items"]
+assert [i["id"] for i in got] == [458, 1000018560], got     # 459 "свитер" must not match
+assert _items_by_name([{"type": "trash"}], wardrobe2, CATALOG) == [{"type": "trash"}]
 
 print("test_ai_assistant_items: OK")

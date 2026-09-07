@@ -106,6 +106,43 @@ def _parse_ai_json(content: str) -> list:
         return []
 
 
+def _items_by_name(parsed: list, wardrobe: list, catalog: list, cap: int = 9) -> list:
+    """Attach items the model named in prose but put neither in `items` nor as
+    an id. Third rescue after ids-in-JSON and ids-in-prose: at temperature 0.7
+    the same "what to buy" prompt gave ids once and bare names the next time
+    (prod 2026-09-07, "**Кожаные ботинки Dondup** станут отличным дополнением").
+
+    ponytail: substring match on the exact catalogue name, catalogue first.
+    Names shorter than 10 chars or of one word ("свитер", "футболка") do not
+    match — they hit every sentence that mentions the garment type. Upgrade
+    path if it misses: fuzzy match on the model's bolded phrases.
+    """
+    def usable(row):
+        n = (row.get("item_name") or "").strip()
+        return n if len(n) >= 10 and " " in n else None
+
+    for entry in parsed:
+        if not isinstance(entry, dict) or not isinstance(entry.get("content"), str):
+            continue
+        text_l = entry["content"].lower()
+        items = [i for i in (entry.get("items") or []) if isinstance(i, dict)]
+        seen = set()
+        for i in items:
+            try:
+                seen.add(int(i.get("id")))
+            except (TypeError, ValueError):
+                pass
+        for row in [*catalog, *wardrobe]:
+            if len(items) >= cap:
+                break
+            name = usable(row)
+            if name and int(row["id"]) not in seen and name.lower() in text_l:
+                seen.add(int(row["id"]))
+                items.append({"id": int(row["id"])})
+        entry["items"] = items
+    return parsed
+
+
 def _hydrate_items(parsed: list, wardrobe: list, catalog: list) -> list:
     """Fill every `items[]` entry of the assistant answer from the DB rows by id.
 
@@ -874,7 +911,8 @@ Always respond with JSON array. Use Russian for all text."""
             # my wardrobe". The prose IS the answer; the frontend turned [] into
             # "Произошла ошибка". Wrap it instead.
             parsed = [{"content": content.strip()}]
-    return _hydrate_items(_ids_out_of_prose(parsed), wardrobe, catalog_items)
+    parsed = _items_by_name(_ids_out_of_prose(parsed), wardrobe, catalog_items)
+    return _hydrate_items(parsed, wardrobe, catalog_items)
 
 
 # ── /api/vton helpers ──
