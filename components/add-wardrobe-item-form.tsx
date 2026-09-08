@@ -52,6 +52,14 @@ interface BasicItem {
 interface AddWardrobeItemFormProps {
   onSuccess?: () => void
   onCancel?: () => void
+  /**
+   * "admin" (по умолчанию) — форма ведёт себя как раньше, чтобы админский
+   * экран не поехал. "user" — вход в гардероб для обычного человека: ссылка на
+   * магазин не обязательна, блок базовых вещей и платное автозаполнение скрыты,
+   * тип одежды наоборот обязателен (без канонического слага вещь не попадает
+   * ни в один образ — recommendations.py резолвит слот именно по нему).
+   */
+  mode?: "admin" | "user"
 }
 
 interface AIAnalysisResponse {
@@ -71,7 +79,8 @@ interface AIAnalysisResponse {
   img_url?: string // Made img_url optional since it might not be present in text-only analysis
 }
 
-export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemFormProps) {
+export function AddWardrobeItemForm({ onSuccess, onCancel, mode = "admin" }: AddWardrobeItemFormProps) {
+  const isUserMode = mode === "user"
   const [formData, setFormData] = useState({
     item_name: "",
     item_name_en: "",
@@ -103,8 +112,8 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
   const [isDragging, setIsDragging] = useState(false)
 
   useEffect(() => {
-    void loadBasicItems()
-  }, [])
+    if (!isUserMode) void loadBasicItems()
+  }, [isUserMode])
 
   const loadBasicItems = async () => {
     setIsLoadingBasicItems(true)
@@ -251,8 +260,15 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
       return
     }
 
-    if (!formData.store_url.trim()) {
+    if (!isUserMode && !formData.store_url.trim()) {
       toast.error("Ссылка на товар в магазине обязательна для заполнения")
+      return
+    }
+
+    // В пользовательском режиме наоборот: без канонического типа вещь выпадет
+    // из всех образов, потому что слот резолвится по clothing_type.
+    if (isUserMode && !formData.clothing_type) {
+      toast.error("Выберите тип вещи")
       return
     }
 
@@ -308,13 +324,30 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
         notes: formData.notes || null,
         basic_item_id: formData.basic_item_id === "none" ? null : Number.parseInt(formData.basic_item_id),
         clothing_type: formData.clothing_type || null,
-        gender: formData.gender || null,
+        // gender не отправляем: колонки gender у wardrobe_user_items нет и в
+        // аллоулисте POST-роута её тоже нет — поле молча проглатывалось.
       }
 
-      await api.post("/api/wardrobe", submitData)
+      // Было POST /api/wardrobe — такого роута не существует (зарегистрированы
+      // только /visibility и /add), поэтому форма отвечала 405 и вещь нельзя
+      // было завести руками нигде, включая админку. /api/wardrobe-user-items
+      // собирает INSERT по аллоулисту и принимает все поля формы; /wardrobe/add
+      // потерял бы url, item_name_en, description_en, size_type, shop_url.
+      const created = await api.post("/api/wardrobe-user-items", submitData)
+
+      void api.post("/api/usage/log", {
+        feature: "wardrobe_item",
+        action: "create_manual",
+        meta: {
+          clothing_type: submitData.clothing_type,
+          has_image: !!imageUrl,
+          has_url: !!formData.store_url,
+          pagePath: isUserMode ? "/app/wardrobe" : "/admin/wardrobe",
+        },
+      })
 
       toast.success("Вещь успешно сохранена")
-      router.push("/admin/wardrobe")
+      if (!isUserMode) router.push("/admin/wardrobe")
       onSuccess?.()
     } catch (error) {
       console.error("Error saving item:", error)
@@ -351,7 +384,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
                         alt="Preview"
                         className="w-full max-h-80 object-contain rounded-lg bg-gray-50"
                       />
-                      {imageFile && (
+                      {imageFile && !isUserMode && (
                         <div className="absolute bottom-2 left-2 flex gap-2">
                           <Button
                             type="button"
@@ -506,7 +539,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
               </Select>
             </div>
 
-            <div>
+            <div className={isUserMode ? "hidden" : undefined}>
               <Label htmlFor="gender">Пол</Label>
               <Select
                 value={formData.gender}
@@ -594,7 +627,7 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className={`space-y-2${isUserMode ? " hidden" : ""}`}>
               <Label>Базовая вещь</Label>
               <Select
                 value={formData.basic_item_id}
@@ -630,14 +663,16 @@ export function AddWardrobeItemForm({ onSuccess, onCancel }: AddWardrobeItemForm
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="store_url">Ссылка на товар в магазине *</Label>
+              <Label htmlFor="store_url">
+                {isUserMode ? "Ссылка на товар в магазине" : "Ссылка на товар в магазине *"}
+              </Label>
               <Input
                 id="store_url"
                 type="url"
                 value={formData.store_url}
                 onChange={(e) => setFormData({ ...formData, store_url: e.target.value })}
                 placeholder="https://shop.com/product/123"
-                required
+                required={!isUserMode}
               />
             </div>
 

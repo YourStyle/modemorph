@@ -9,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Trash2, Edit, Camera, Sparkles, MoreVertical, Shirt } from "lucide-react"
+import { Trash2, Edit, Camera, Sparkles, MoreVertical, Shirt, PencilLine } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { EditWardrobeItemSheet } from "./edit-wardrobe-item-sheet"
 import { api } from "@/lib/api-client"
@@ -44,6 +44,8 @@ interface UserWardrobeGridProps {
   /** Категория из ленты над сеткой ("all" или ключ lib/clothing-types#clothingCategories) */
   categoryFilter?: string
   onAddFirstItem?: () => void
+  /** Ручное заполнение — бесплатный вход, в обход оцифровки по фото. */
+  onAddManually?: () => void
 }
 
 // Skeleton component for loading state — карточка того же радиуса (18px), что и
@@ -76,6 +78,7 @@ export function UserWardrobeGrid({
   sortBy = "newest",
   categoryFilter = "all",
   onAddFirstItem,
+  onAddManually,
 }: UserWardrobeGridProps) {
   const [allItems, setAllItems] = useState<WardrobeItem[]>([])
   const [filteredItems, setFilteredItems] = useState<WardrobeItem[]>([])
@@ -213,12 +216,22 @@ export function UserWardrobeGrid({
           <span>AI анализирует фото автоматически</span>
         </div>
 
-        {onAddFirstItem && (
-          <Button onClick={onAddFirstItem} className="gap-2">
-            <Camera className="w-4 h-4" />
-            Добавить первую вещь
-          </Button>
-        )}
+        <div className="flex flex-col items-center gap-2">
+          {onAddFirstItem && (
+            <Button onClick={onAddFirstItem} className="gap-2">
+              <Camera className="w-4 h-4" />
+              Добавить первую вещь
+            </Button>
+          )}
+          {/* Второй вход. 27 из 40 новых пользователей окна остались с пустым
+              гардеробом, а единственная дверь была платной. */}
+          {onAddManually && (
+            <Button onClick={onAddManually} variant="ghost" className="gap-2">
+              <PencilLine className="w-4 h-4" />
+              Заполнить вручную
+            </Button>
+          )}
+        </div>
       </div>
     )
   }

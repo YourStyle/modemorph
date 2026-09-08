@@ -23,6 +23,8 @@ import { cn } from "@/lib/utils"
 
 import { StyleProfileCard } from "@/components/style-profile-card"
 import { StyleCheckSheet } from "@/components/style-check-sheet"
+import { CommonSheet } from "@/components/common-sheet"
+import { AddWardrobeItemForm } from "@/components/add-wardrobe-item-form"
 import { normalizeClothingType, clothingCategories } from "@/lib/clothing-types"
 
 interface BasicWardrobeItem {
@@ -210,6 +212,9 @@ export default function WardrobePage() {
   const [isLoadingUserItems, setIsLoadingUserItems] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [paywallOpen, setPaywallOpen] = useState(false)
+  // Выбор способа добавления и сама форма ручного ввода.
+  const [addChoiceOpen, setAddChoiceOpen] = useState(false)
+  const [manualAddOpen, setManualAddOpen] = useState(false)
   const { toast } = useToast()
   const { openSheet, setOnAnalysisSuccess } = useAddToCloset()
   const aiAnalysis = useAIAnalysis()
@@ -521,7 +526,7 @@ export default function WardrobePage() {
         />
 
         <div className="flex gap-3 mb-4">
-          <Button onClick={handleAddToWardrobe} className="flex-1 h-12">
+          <Button onClick={() => setAddChoiceOpen(true)} className="flex-1 h-12">
             + Добавить
           </Button>
           <Button onClick={() => setStyleCheckOpen(true)} variant="outline" className="h-12 px-4">
@@ -566,6 +571,7 @@ export default function WardrobePage() {
             sortBy={sortBy}
             categoryFilter={activeCategory}
             onAddFirstItem={handleAddToWardrobe}
+            onAddManually={() => setManualAddOpen(true)}
           />
         </div>
 
@@ -670,6 +676,52 @@ export default function WardrobePage() {
         isOpen={styleCheckOpen}
         onClose={() => setStyleCheckOpen(false)}
       />
+
+      <CommonSheet isOpen={addChoiceOpen} onClose={() => setAddChoiceOpen(false)} title="Добавить вещь">
+        <div className="space-y-3 pb-8">
+          <Button
+            className="w-full h-14 justify-start gap-3"
+            onClick={() => {
+              setAddChoiceOpen(false)
+              handleAddToWardrobe()
+            }}
+          >
+            <Sparkles className="h-5 w-5" />
+            <span className="flex flex-col items-start">
+              <span>Сфотографировать</span>
+              <span className="text-caption opacity-70">AI распознает вещь по фото</span>
+            </span>
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full h-14 justify-start gap-3"
+            onClick={() => {
+              setAddChoiceOpen(false)
+              setManualAddOpen(true)
+            }}
+          >
+            <Plus className="h-5 w-5" />
+            <span className="flex flex-col items-start">
+              <span>Заполнить вручную</span>
+              <span className="text-caption text-ink-2">Без фото и без списания</span>
+            </span>
+          </Button>
+        </div>
+      </CommonSheet>
+
+      <CommonSheet isOpen={manualAddOpen} onClose={() => setManualAddOpen(false)} title="Новая вещь">
+        <div className="pb-8">
+          <AddWardrobeItemForm
+            mode="user"
+            onCancel={() => setManualAddOpen(false)}
+            onSuccess={() => {
+              setManualAddOpen(false)
+              void fetchUserItems()
+              setRefreshUserItems((prev) => prev + 1)
+            }}
+          />
+        </div>
+      </CommonSheet>
     </div>
   )
 }
