@@ -1970,11 +1970,15 @@ async def send_broadcast(request: Request, user: dict = Depends(get_admin_user),
     elif ftype != "all":
         raise HTTPException(status_code=400, detail=f"unknown filter {ftype!r}")
 
+    # Segments skip test profiles; an explicitly chosen user is sent to as is —
+    # the owner's own account is is_test=true and "send it to me first" is the
+    # whole point of that filter.
+    skip_test = "AND COALESCE(up.is_test, false) = false" if ftype != "user" else ""
     rows = (await db.execute(text(f"""
         SELECT u.raw_user_meta_data->>'telegram_id' AS tg
         FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
         WHERE COALESCE(u.raw_user_meta_data->>'telegram_id', '') <> ''
-          AND COALESCE(up.is_test, false) = false
+          {skip_test}
           AND {where}
     """), binds)).mappings().all()
     chat_ids = [r["tg"] for r in rows]
