@@ -52,6 +52,13 @@ export const CLOTHING_TYPE_LABELS: Record<string, string> = {
   boots: "Ботинки",
   sneakers: "Кроссовки",
   sandals: "Босоножки",
+  bag: "Сумка",
+  hat: "Головной убор",
+  scarf: "Шарф",
+  belt: "Ремень",
+  sunglasses: "Очки",
+  watch: "Часы",
+  jewellery: "Украшения",
 }
 
 export function styleLabel(key: string): string {

@@ -52,6 +52,14 @@ CLOTHING_TYPE_PROMPTS: dict[str, str] = {
     "boots": "boots",
     "sneakers": "sneakers",
     "sandals": "sandals",
+    # accessories — moved up from NON_GARMENT_PROMPTS when they got real slots.
+    "bag": "a handbag",
+    "hat": "a hat",
+    "scarf": "a scarf",
+    "jewellery": "a piece of jewellery",
+    "sunglasses": "sunglasses",
+    "belt": "a belt",
+    "watch": "a wristwatch",
 }
 
 CLOTHING_TYPES = list(CLOTHING_TYPE_PROMPTS)
@@ -60,13 +68,7 @@ CLOTHING_TYPES = list(CLOTHING_TYPE_PROMPTS)
 # on purpose: without them CLIP is forced to call a handbag "a light jacket".
 # These come back as clothing_type=None + non_garment=<label>, never as a slug.
 NON_GARMENT_PROMPTS: dict[str, str] = {
-    "bag": "a handbag",
-    "hat": "a hat",
-    "scarf": "a scarf",
     "gloves": "gloves",
-    "jewellery": "a piece of jewellery",
-    "sunglasses": "sunglasses",
-    "belt": "a belt",
     "underwear": "underwear",
     "swimwear": "swimwear",
 }

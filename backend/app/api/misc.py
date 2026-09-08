@@ -373,10 +373,8 @@ async def get_user_likes(user: dict = Depends(get_current_user), db: AsyncSessio
 # ever see in an outfit. Bags, hats and scarves are deliberately NOT here — they
 # are plausible outfit elements once slots exist for them.
 _IGNORED_ACCESSORY_RE = re.compile(
-    r"очк|оправ|солнцезащ|часы|наручн|"
-    r"ожерель|серьг|серёж|брасл|кольцо|цепочк|подвеск|брошь|украшени|"
-    r"ремен|\bпояс\b|"
-    r"glass|sunglass|eyewear|watch|jewel|ring|earring|necklace|bracelet|belt",
+    r"перчатк|варежк|носк|колготк|галстук|бабочк|заколк|резинк|"
+    r"glove|socks|tights|tie\b",
     re.IGNORECASE,
 )
 
@@ -607,17 +605,17 @@ async def detect_clothing(
     # --- Step 1: Detect clothing items ---
     detection_prompt = """Analyze this photo and detect the clothing items the person is wearing.
 
-SKIP entirely — do not return an object for these: eyewear (glasses, sunglasses),
-watches, jewellery (rings, earrings, necklaces, bracelets), belts. They are not
-clothing for our purposes: the outfit generator has no slot for them and drops
-them, so a generated product image for a pair of sunglasses is paid for and then
-thrown away. Bags, hats and scarves are still returned.
+SKIP entirely — do not return an object for these: gloves, socks, tights,
+neckties and hair clips. The outfit generator has no slot for them and drops
+them, so a generated product image for a pair of socks is paid for and then
+thrown away. Everything else below, accessories included, is returned.
 
 For each item return a JSON object with these fields:
 - clothing_item: item type in English, ONE of: t-shirt, shirt, blouse, longsleeve,
   tank-top, pullover, cardigan, hoodie, sweatshirt, turtleneck, vest, suit-jacket,
   dress, skirt, jumpsuit, pants, jeans, shorts, sporty-pants, jacket, coat, parka,
-  puffer-jacket, fur-coat, sheepskin-coat, shoes, boots, sneakers, sandals.
+  puffer-jacket, fur-coat, sheepskin-coat, shoes, boots, sneakers, sandals,
+  bag, hat, scarf, belt, sunglasses, watch, jewellery.
   Use "jacket" for any ordinary jacket (denim/leather/bomber/windbreaker),
   "puffer-jacket" only for a down puffer, "coat" only for a long coat/trench.
   For a bag, hat or scarf answer with the plain English noun.
@@ -657,7 +655,7 @@ Return ONLY a valid JSON array. No markdown."""
     dropped_accessories = detected_total - len(items)
 
     if not items:
-        return [{"acceptable": False, "reason": "На фото не нашлось одежды — только аксессуары"}]
+        return [{"acceptable": False, "reason": "На фото не нашлось вещей, которые мы умеем добавлять"}]
 
     # How many items one photo yields has never been recorded anywhere, which is
     # why the cost of a photo could only ever be given as a range: generations are
@@ -668,7 +666,15 @@ Return ONLY a valid JSON array. No markdown."""
         db, user_id=user["id"], feature="photo_detection", action="detected",
         count=len(items),
         meta={"detected": detected_total, "kept": len(items),
+              # dropped_accessories теперь почти всегда 0 — слоты у аксессуаров
+              # появились, отбрасываются только перчатки/носки/галстуки.
+              # accessories_kept — то, ради чего эта правка делалась.
               "dropped_accessories": dropped_accessories,
+              "accessories_kept": sum(
+                  1 for i in items
+                  if str(i.get("clothing_item") or "").strip().lower()
+                  in ("bag", "hat", "scarf", "belt", "sunglasses", "watch", "jewellery")
+              ),
               "generations": len(items)},
     )
     await db.commit()

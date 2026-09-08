@@ -123,7 +123,18 @@ SLOT_MAP: dict[str, str] = {
     "sheepskin-coat": "outerwear",
     # shoes
     "shoes": "shoes", "boots": "shoes", "sneakers": "shoes", "sandals": "shoes",
+    # accessories — one slot EACH, never a shared "accessory" slot: dedup keeps
+    # one item per slot, so a shared slot would make a bag evict a hat and
+    # reproduce the "one pair of sunglasses in nine outfits" incident.
+    "bag": "bag", "sunglasses": "eyewear", "jewellery": "jewellery",
+    "belt": "belt", "hat": "headwear", "watch": "wrist", "scarf": "neckwear",
 }
+
+# Slots that are optional decoration rather than the body of an outfit. An
+# outfit of nothing but a hat, a bag and sunglasses is not an outfit.
+ACCESSORY_SLOTS: frozenset[str] = frozenset({
+    "bag", "eyewear", "jewellery", "belt", "headwear", "wrist", "neckwear",
+})
 
 CANONICAL_TYPES: frozenset[str] = frozenset(SLOT_MAP)
 
@@ -150,6 +161,21 @@ TYPE_ALIASES: dict[str, str] = {
     "romper": "jumpsuit",
     "overall": "jumpsuit",
     "overalls": "jumpsuit",
+    # accessories: legacy stored values and English spellings. 'часы' and
+    # 'головной убор' used to sit in UNSET_VALUES — they are types now.
+    "часы": "watch",
+    "головной убор": "hat",
+    "glasses": "sunglasses",
+    "eyewear": "sunglasses",
+    "backpack": "bag",
+    "clutch": "bag",
+    "cap": "hat",
+    "beanie": "hat",
+    "necklace": "jewellery",
+    "earrings": "jewellery",
+    "bracelet": "jewellery",
+    "ring": "jewellery",
+    "jewelry": "jewellery",
 }
 
 # Slot -> every clothing_type string that may be STORED for it, canonical plus
@@ -163,7 +189,7 @@ SLOT_TO_DB_TYPES: dict[str, list[str]] = {
 # Values that mean "nobody set this". They are NOT garment types and must never
 # be mapped to a slug — see defect 2 in the module docstring.
 UNSET_VALUES: frozenset[str] = frozenset({
-    "", "верхняя", "нижняя", "аксессуар", "часы", "головной убор", "спорт",
+    "", "верхняя", "нижняя", "аксессуар", "спорт",
     "null", "none", "nan", "unknown", "-",
 })
 
@@ -251,18 +277,23 @@ _NAME_RULES: list[tuple] = [
     (r"tracksuit", "tracksuit", None),
     (r"knitted suit", "knitted-suit", None),
     (r"\bsuit\b", "classic", None),
+    # accessories LAST on purpose — the garment rules above must win first.
+    (r"сумк|клатч|шоппер|рюкзак|\bbag\b|backpack|clutch|tote", "bag", None),
+    (r"шапк|кепк|бейсболк|панам|шляп|берет|\bcap\b|\bhat\b|beanie", "hat", None),
+    (r"шарф|платок|снуд|scarf", "scarf", None),
+    (r"ремен|\bпояс\b|belt\b", "belt", None),
+    (r"очки|оправ|солнцезащ|sunglass|eyewear", "sunglasses", None),
+    (r"часы|наручн|watch\b", "watch", None),
+    (r"ожерель|серьг|серёж|брасл|кольцо|цепочк|подвеск|колье|кулон|брошь|"
+     r"чокер|necklace|earring|bracelet|\bring\b|jewel", "jewellery", None),
 ]
 _NAME_RULES_C = [(re.compile(p, re.I), s, re.compile(x, re.I) if x else None)
                  for p, s, x in _NAME_RULES]
 
 # Things this vocabulary has no slot for. Reported, never guessed at.
 _ACCESSORY_RE = re.compile(
-    r"сумк|клатч|шоппер|рюкзак|ремен|\bпояс\b|очки|оправ|ожерель|серьг|"
-    r"брасл|кольцо|цепочк|часы|шапк|кепк|бейсболк|панам|шляп|шарф|платок|"
-    r"колье|кулон|подвеск|брошь|чокер|берет|"
     r"перчатк|варежк|носк|колготк|галстук|бабочк|заколк|резинк|"
-    r"\bbag\b|clutch|backpack|belt\b|sunglasses|necklace|earring|bracelet|"
-    r"\bring\b|watch\b|\bcap\b|\bhat\b|scarf|glove|socks|tights|tie\b",
+    r"glove|socks|tights|tie\b",
     re.I,
 )
 _UNDERWEAR_RE = re.compile(

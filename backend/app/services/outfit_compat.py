@@ -20,7 +20,7 @@ outfit_compat.py — проверка сочетаемости образа ЦЕ
 "temp_max": ...}.
 """
 
-from clothing_taxonomy import normalize_clothing_type, slot_of
+from clothing_taxonomy import ACCESSORY_SLOTS, normalize_clothing_type, slot_of
 from app.services.weather_rules import infer_temp_range
 
 # Минимальная ширина общего окна, чтобы образ считался носибельным. Пересечение
@@ -208,7 +208,12 @@ def _is_base_item(item: dict) -> bool:
     выбрасывая футболку и шорты, но оставляя шапку с шарфом, бессмысленно.
     """
     name = item.get("name") or item.get("item_name")
-    return slot_of(item.get("clothing_type"), name) is not None
+    slot = slot_of(item.get("clothing_type"), name)
+    # Аксессуары теперь ИМЕЮТ слот (bag, eyewear, jewellery, …), поэтому
+    # «слот есть» больше не значит «базовая вещь». Без этой проверки
+    # repair_outfit начал бы жертвовать футболкой ради сумки: у аксессуаров
+    # шире температурное окно, и жадный алгоритм считает их выгоднее оставить.
+    return slot is not None and slot not in ACCESSORY_SLOTS
 
 
 def repair_outfit(items: list, temp=None) -> tuple[list[dict], list[dict]]:

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -18,6 +18,19 @@ import {
   shouldShowFeedbackExplainer,
   markFeedbackExplainerSeen,
 } from "@/lib/feedback-flags"
+import { normalizeClothingType } from "@/lib/clothing-types"
+
+// Зеркало ACCESSORY_SLOTS из backend/clothing_taxonomy.py — нужно только для
+// счётчика «аксессуар доехал до образа».
+const ACCESSORY_TYPE_TO_SLOT: Record<string, string> = {
+  bag: "bag",
+  sunglasses: "eyewear",
+  jewellery: "jewellery",
+  belt: "belt",
+  hat: "headwear",
+  watch: "wrist",
+  scarf: "neckwear",
+}
 
 interface OutfitItem {
   id: string
@@ -44,6 +57,8 @@ interface OutfitItem {
    *  dictionary, вечером того же дня по ЦУМу уже 11494 / 3356. */
   brand_source?: string | null
   size_type?: string
+  /** Канонический слаг типа одежды. Нужен, чтобы отличить аксессуар в образе. */
+  clothing_type?: string | null
   has_print?: string
   has_details?: string
   notes?: string
@@ -229,6 +244,28 @@ export function OutfitCard({ suggestion, sectionSource, recSessionId, onSaveOutf
     rec_session_id: recSessionId,
     catalogItems: catalogTrackingItems,
   })
+
+  // Аксессуары получили слоты в образе — без этого события «доехал ли аксессуар
+  // до образа» измерять нечем: до сих пор все 149 вкладываний за историю были
+  // ручными, чекбоксом, а из генератора не приходило ни одного.
+  const accessorySlots = useMemo(
+    () =>
+      items
+        .map((i) => normalizeClothingType(i.clothing_type))
+        .filter((t): t is string => !!t && t in ACCESSORY_TYPE_TO_SLOT)
+        .map((t) => ACCESSORY_TYPE_TO_SLOT[t]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [items.map((i) => i.id).join(",")],
+  )
+  useEffect(() => {
+    if (accessorySlots.length === 0) return
+    void api.post("/api/usage/log", {
+      feature: "outfit_accessory",
+      action: "shown",
+      meta: { slots: accessorySlots },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessorySlots.join(",")])
 
   if (!suggestion) return null
 

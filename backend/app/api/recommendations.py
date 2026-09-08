@@ -36,10 +36,35 @@ OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # lib/clothing-types.ts). It resolves the legacy spellings still in prod
 # ('lonsleeve', 'hoddie', 'fur-coat-dark-brown') onto the canonical slugs.
 from clothing_taxonomy import (  # noqa: E402
+    ACCESSORY_SLOTS as _ACCESSORY_SLOTS,
     SLOT_MAP as _SLOT_MAP,
     SLOT_TO_DB_TYPES as _SLOT_TO_DB_TYPES,
     normalize_clothing_type,
 )
+
+# Аксессуар — необязательное дополнение, а не восьмой обязательный слот.
+# Больше двух в одном образе — это уже витрина, а не образ.
+_MAX_ACCESSORIES_PER_OUTFIT = 2
+
+
+def _cap_accessories(items: list) -> list:
+    """Оставить не больше _MAX_ACCESSORIES_PER_OUTFIT аксессуаров в образе.
+
+    Слоты у аксессуаров раздельные (сумка не вытесняет шапку), поэтому
+    _dedup_by_slot их не ограничивает — семь аксессуарных слотов означают, что
+    в образ может приехать семь аксессуаров разом.
+    """
+    kept: list = []
+    accessories = 0
+    for item in items:
+        ctype = item.get("clothing_type") if isinstance(item, dict) else None
+        slot = _SLOT_MAP.get(normalize_clothing_type(ctype) or "") if ctype else None
+        if slot in _ACCESSORY_SLOTS:
+            if accessories >= _MAX_ACCESSORIES_PER_OUTFIT:
+                continue
+            accessories += 1
+        kept.append(item)
+    return kept
 
 # Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand).
 # See backend/brand.py — conflating the two is what put "ЦУМ" on a Saint Laurent
@@ -454,16 +479,17 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                 # Preserve all items in the slot — that's the whole point of the section.
                 sug["items"] = enriched_items
             else:
-                # Вещи без слота (аксессуары, незаполненное 'верхняя') выкидываем
-                # и на чтении тоже: генерация их больше не отдаёт, но кеш от этого
-                # не лечится, а _dedup_by_slot складывает бесслотовые в passthrough
-                # безусловно — из-за чего одни очки висели в девяти образах разом.
+                # Вещи без слота (незаполненное 'верхняя', перчатки, носки)
+                # выкидываем и на чтении тоже: _dedup_by_slot складывает
+                # бесслотовые в passthrough безусловно — из-за чего одни очки
+                # висели в девяти образах разом. У аксессуаров слот теперь есть,
+                # поэтому сюда они не попадают; их ограничивает _cap_accessories.
                 enriched_items = [
                     i for i in enriched_items
                     if _SLOT_MAP.get(normalize_clothing_type(i.get("clothing_type")) or "")
                 ]
                 # Clean up already-cached outfits with duplicate slots (pre-fix cache).
-                sug["items"] = _dedup_by_slot(enriched_items)
+                sug["items"] = _cap_accessories(_dedup_by_slot(enriched_items))
         # Gap-секции — витрина по одному слоту, а не образ: чинить нечего.
         if not is_gap_section:
             for s in section.get("suggestions", []):
@@ -584,12 +610,12 @@ async def generate_recommendations(
     _temp = weather.get("temperature") or 15
     wardrobe_items = [i for i in wardrobe_items if temp_ok(i, _temp)]
 
-    # Вещи, тип которых не резолвится в слот (аксессуары и незаполненное
-    # 'верхняя'), не отдаём композитору. Иначе они попадают в КАЖДЫЙ образ:
-    # _dedup_by_slot складывает бесслотовые вещи в passthrough и сохраняет
-    # безусловно, поэтому одни очки с clothing_type='верхняя' оказались во всех
-    # десяти образах пользователя разом. Слота под аксессуары в _SLOT_MAP нет,
-    # и пока его нет — место такой вещи не в образе.
+    # Вещи, тип которых не резолвится в слот (незаполненное 'верхняя',
+    # перчатки, носки), не отдаём композитору. Иначе они попадают в КАЖДЫЙ
+    # образ: _dedup_by_slot складывает бесслотовые вещи в passthrough и
+    # сохраняет безусловно, поэтому одни очки с clothing_type='верхняя'
+    # оказались во всех десяти образах пользователя разом. Аксессуары теперь
+    # слот имеют и сюда не попадают — их число ограничивает _cap_accessories.
     _slotted = [i for i in wardrobe_items
                 if _SLOT_MAP.get(normalize_clothing_type(i.get("clothing_type")) or "")]
     # Страховка: если у человека вообще нечего разложить по слотам, лучше
@@ -812,7 +838,10 @@ MANDATORY RULES FOR EVERY OUTFIT:
      MUST share an overlap of at least 3°C. Shorts (20..35) and a jacket
      (0..20) overlap only at the single point 20 — that is NOT an outfit.
    * FOOTWEAR — REQUIRED IN EVERY OUTFIT
-   * Accessory (bag/scarf/belt/hat/glasses) — when possible
+   * Accessories (bag/scarf/belt/hat/sunglasses/watch/jewellery) — OPTIONAL.
+     Add 0-2 only when they genuinely suit the outfit and the weather. They are
+     decoration, never a substitute for a garment: an "outfit" of a bag, a hat
+     and sunglasses is not an outfit and will be discarded.
 2. FORBIDDEN: outfits with only 2-3 items. If you can't make 4+, skip it.
 3. FORBIDDEN: 2 items of same type (no 2 pants, 2 jackets, 2 shirts). Strictly 1 per slot.
 4. Consider weather. No heavy coats in heat, no shorts in freezing cold.
@@ -953,9 +982,15 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                     outfit_items.append(item_data)
             # Gemini sometimes ignores the "1 per slot" rule (4 pants in one outfit etc.).
             # Enforce it server-side so the client never sees duplicate slots.
-            outfit_items = _dedup_by_slot(outfit_items)
-            # Skip incomplete outfits (fewer than 3 items)
-            if len(outfit_items) >= 3:
+            outfit_items = _cap_accessories(_dedup_by_slot(outfit_items))
+            # Skip incomplete outfits (fewer than 3 items). Аксессуары в этот
+            # счёт не идут: «сумка + шапка + очки» — это три вещи, но не образ.
+            _base_count = sum(
+                1 for i in outfit_items
+                if _SLOT_MAP.get(normalize_clothing_type(i.get("clothing_type")) or "")
+                not in _ACCESSORY_SLOTS
+            )
+            if len(outfit_items) >= 3 and _base_count >= 2:
                 items_hash = hashlib.md5(",".join(str(it["id"]) for it in outfit_items).encode()).hexdigest()[:8]
                 suggestions.append({
                     "id": f"{section_type}_{items_hash}",

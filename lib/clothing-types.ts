@@ -47,6 +47,15 @@ export const clothingTypes = {
   boots: "Ботинки",
   sneakers: "Кроссовки",
   sandals: "Босоножки",
+
+  // Аксессуары
+  bag: "Сумка",
+  hat: "Головной убор",
+  scarf: "Шарф",
+  belt: "Ремень",
+  sunglasses: "Очки",
+  watch: "Часы",
+  jewellery: "Украшения",
 } as const
 
 // Старые значения, которые всё ещё лежат в БД (wardrobe_items: lonsleeve 346
@@ -126,6 +135,12 @@ export const clothingCategories = {
   shoes: {
     name: "Обувь",
     types: ["shoes", "boots", "sneakers", "sandals"],
+  },
+  // Аксессуары. Люди принесли 122 такие вещи вопреки прямому запрету в промпте
+  // детектора и 149 раз клали их в образ руками — слота для них не было.
+  accessories: {
+    name: "Аксессуары",
+    types: ["bag", "hat", "scarf", "belt", "sunglasses", "watch", "jewellery"],
   },
 } as const
 

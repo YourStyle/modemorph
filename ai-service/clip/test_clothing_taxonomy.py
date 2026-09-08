@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from clothing_taxonomy import (  # noqa: E402
+    ACCESSORY_SLOTS,
     CANONICAL_STYLES,
     CANONICAL_TYPES,
     SLOT_MAP,
@@ -55,7 +56,12 @@ def test_vocabulary_is_self_consistent():
         assert new in CANONICAL_TYPES, f"alias {old} -> unknown slug {new}"
         assert old not in CANONICAL_TYPES, f"alias {old} shadows a canonical slug"
     assert set(SLOT_MAP.values()) == {
-        "top", "layer", "dress", "bottom", "set", "outerwear", "shoes"}
+        "top", "layer", "dress", "bottom", "set", "outerwear", "shoes",
+        "bag", "eyewear", "jewellery", "belt", "headwear", "wrist", "neckwear"}
+    # every accessory slot is a real slot, and none of them is a garment slot
+    assert ACCESSORY_SLOTS <= set(SLOT_MAP.values())
+    assert not (ACCESSORY_SLOTS & {"top", "layer", "dress", "bottom", "set",
+                                   "outerwear", "shoes"})
 
 
 def test_typo_aliases_still_resolve():
@@ -127,24 +133,47 @@ def test_prod_garbage_rows_resolve():
     assert not bad, bad
 
 
-def test_accessories_are_reported_not_invented():
-    """No slot exists for these — resolve must stay None and is_accessory True."""
-    for name in ("Сумка мини", "Плетеная сумка из замши", "Солнцезащитные очки",
-                 "Очки имиджевые", "Ремень", "Жемчужное ожерелье", "Серьги",
-                 "Клатч", "Платок", "бейсболка", "золотое ожерелье",
-                 "бралетт на бретелях", "Сумка тоут кожаная большая на плечо"):
-        assert resolve_clothing_type(None, name) is None, name
-        assert is_accessory(name) is True, name
-    # a garment that merely mentions an accessory word is still a garment
+def test_accessories_resolve_to_their_own_slots():
+    """Bags, eyewear, jewellery, belts, hats, watches and scarves have slugs.
+
+    They used to be quarantined as slotless, which is why 122 accessories that
+    people brought in anyway could never reach an outfit.
+    """
+    expected = {
+        "Сумка мини": "bag",
+        "Плетеная сумка из замши": "bag",
+        "Клатч": "bag",
+        "Сумка тоут кожаная большая на плечо": "bag",
+        "Солнцезащитные очки": "sunglasses",
+        "Очки имиджевые": "sunglasses",
+        "Ремень": "belt",
+        "Жемчужное ожерелье": "jewellery",
+        "Серьги": "jewellery",
+        "золотое ожерелье": "jewellery",
+        "Платок": "scarf",
+        "бейсболка": "hat",
+        "Наручные часы": "watch",
+    }
+    for name, slug in expected.items():
+        assert resolve_clothing_type(None, name) == slug, name
+        assert is_accessory(name) is False, name
+
+    # A garment that merely MENTIONS an accessory word is still a garment. This
+    # is the most expensive mistake on this path and it does not go away.
     assert is_accessory("Платье с поясом") is False
     assert resolve_clothing_type(None, "Платье с поясом") == "dress"
-    assert is_accessory("Сумка-кроссбоди") is True
+
+    # Still slotless: too few of them to be worth a slot each (2 pairs of
+    # gloves, 5 pairs of socks), plus underwear.
+    for name in ("Перчатки кожаные", "Носки хлопковые", "бралетт на бретелях"):
+        assert resolve_clothing_type(None, name) is None, name
+        assert is_accessory(name) is True, name
 
 
 def test_name_rules_do_not_swallow_each_other():
     assert infer_clothing_type("полосатая рубашка") == "shirt"          # not поло
     assert infer_clothing_type("свитер с воротником-поло") == "pullover"
-    assert infer_clothing_type("кроссбоди сумка") is None               # not боди
+    assert infer_clothing_type("кроссбоди сумка") == "bag"              # not боди
     assert infer_clothing_type("джинсовая юбка") == "skirt"             # not jeans
     assert infer_clothing_type("спортивные брюки") == "sporty-pants"    # not pants
     assert infer_clothing_type("спортивный костюм") == "tracksuit"      # not classic
@@ -211,8 +240,13 @@ def test_weather_ranges_cover_every_canonical_garment():
     is how a denim jacket filed as puffer-jacket got hidden above +10 °C."""
     sys.path.insert(0, os.path.join(_REPO, "backend"))
     from app.services.weather_rules import TEMP_RANGES  # noqa: E402
+    # Accessories are exempt alongside shoes: infer_temp_range returns
+    # (None, None) for them and temp_ok fails open, which is what we want — a
+    # bag and a watch do not depend on the weather.
     missing = sorted(t for t in CANONICAL_TYPES
-                     if SLOT_MAP[t] != "shoes" and t not in TEMP_RANGES)
+                     if SLOT_MAP[t] != "shoes"
+                     and SLOT_MAP[t] not in ACCESSORY_SLOTS
+                     and t not in TEMP_RANGES)
     assert not missing, f"no temperature band for {missing}"
     assert TEMP_RANGES["jacket"] == (0, 20)
     # the whole point: a jacket must not inherit a puffer's or a coat's band

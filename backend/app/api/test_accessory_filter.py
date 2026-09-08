@@ -1,10 +1,13 @@
 """Guards the accessory filter on the paid photo-detection path.
 
-Audited 2026-08-22: the detection prompt explicitly asked for "a bag, hat, scarf,
-belt or jewellery", and every returned item triggered its own paid flat-lay
-generation (5.64 ₽ each at the time). Meanwhile _SLOT_MAP in recommendations.py
-has no slot for accessories and drops them, so a generated image of a pair of
-sunglasses was paid for and then thrown away — it could never appear in an outfit.
+Audited 2026-08-22: every detected item triggers its own paid flat-lay
+generation, and back then _SLOT_MAP had no slot for accessories, so a generated
+image of a pair of sunglasses was paid for and then thrown away.
+
+2026-09-07: seven accessory families (bag, hat, scarf, belt, sunglasses, watch,
+jewellery) got their own outfit slots, so they are no longer thrown away and
+this filter no longer skips them. What it still skips is what has no slot even
+now: gloves, socks, tights, neckties, hair clips.
 
 Run it:  python3 -m app.api.test_accessory_filter     (from backend/)
 
@@ -13,20 +16,16 @@ ponytail: plain asserts, no pytest — pytest is not installed and CI runs no te
 
 from app.api.misc import _is_ignored_accessory as skip
 
-# Accessories with no outfit slot. Money spent generating these is money burnt.
+# Still no outfit slot. Money spent generating these is money burnt.
 SKIP = [
-    {"clothing_item": "sunglasses", "item_name": "Солнцезащитные очки"},
-    {"clothing_item": "glasses", "item_name": "Очки в тонкой оправе"},
-    {"clothing_item": "watch", "item_name": "Наручные часы"},
-    {"clothing_item": "necklace", "item_name": "Ожерелье"},
-    {"clothing_item": "earrings", "item_name": "Серьги"},
-    {"clothing_item": "bracelet", "item_name": "Браслет"},
-    {"clothing_item": "ring", "item_name": "Золотое кольцо"},
-    {"clothing_item": "belt", "item_name": "Кожаный ремень"},
+    {"clothing_item": "gloves", "item_name": "Перчатки кожаные"},
+    {"clothing_item": "socks", "item_name": "Носки хлопковые"},
+    {"clothing_item": "tights", "item_name": "Колготки"},
+    {"clothing_item": "tie", "item_name": "Галстук"},
+    {"clothing_item": "hair clip", "item_name": "Заколка"},
 ]
 
-# Real garments, plus the accessories deliberately kept (bags, hats, scarves are
-# plausible outfit elements once slots exist for them).
+# Real garments, plus the seven accessory families that now have slots.
 KEEP = [
     {"clothing_item": "t-shirt", "item_name": "Серая футболка"},
     {"clothing_item": "coat", "item_name": "Пальто"},
@@ -35,6 +34,10 @@ KEEP = [
     {"clothing_item": "bag", "item_name": "Сумка-шоппер"},
     {"clothing_item": "hat", "item_name": "Шляпа"},
     {"clothing_item": "scarf", "item_name": "Шарф"},
+    {"clothing_item": "sunglasses", "item_name": "Солнцезащитные очки"},
+    {"clothing_item": "watch", "item_name": "Наручные часы"},
+    {"clothing_item": "jewellery", "item_name": "Ожерелье"},
+    {"clothing_item": "belt", "item_name": "Кожаный ремень"},
     # False positives that cost a user a real item — the expensive mistake.
     {"clothing_item": "t-shirt", "item_name": "Футболка",
      "description": "с принтом в виде очков"},
@@ -57,7 +60,7 @@ def test_garments_survive():
 def test_description_is_never_matched():
     """A garment described using an accessory word is still a garment."""
     assert not skip({"clothing_item": "t-shirt", "item_name": "Футболка",
-                     "description": "часы на запястье модели, очки, ремень"})
+                     "description": "носки на модели, перчатки, галстук"})
 
 
 if __name__ == "__main__":

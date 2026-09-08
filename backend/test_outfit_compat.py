@@ -254,6 +254,28 @@ def test_has_bottom_ignores_accessories_and_shoes():
     assert not has_bottom([_item("Очки", "верхняя"), _item("худи", "hoodie")])
 
 
+def test_outfit_of_only_accessories_is_not_an_outfit():
+    """Аксессуары получили слоты — но образом из них одним быть нельзя.
+
+    До появления слотов _is_base_item определял аксессуар как «слота нет», и
+    после их появления шапка с сумкой стали бы «базовыми вещами»: образ из трёх
+    аксессуаров прошёл бы проверку, а repair_outfit жертвовал бы футболкой ради
+    сумки (у аксессуаров шире температурное окно).
+    """
+    only_accessories = [_item("шапка", "hat"), _item("сумка", "bag"),
+                        _item("очки", "sunglasses")]
+    kept, dropped = repair_outfit(only_accessories, 25)
+    assert kept == [], kept
+    assert len(dropped) == 3, dropped
+
+    # И наоборот: базовая вещь остаётся, аксессуаром жертвуем первым.
+    mixed = [_item("футболка", "t-shirt", 18, 35), _item("шорты", "shorts", 20, 35),
+             _item("шапка", "hat", -30, 12)]
+    kept, dropped = repair_outfit(mixed, 25)
+    assert any(i["name"] == "футболка" for i in kept), kept
+    assert any(i["name"] == "шапка" for i in dropped), dropped
+
+
 if __name__ == "__main__":
     passed = failed = 0
     for _name, _fn in sorted(list(globals().items())):

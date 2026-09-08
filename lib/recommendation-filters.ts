@@ -58,6 +58,21 @@ for (const [categoryKey, category] of Object.entries(clothingCategories)) {
     clothingTypeToSlot[type] = slot
   }
 }
+// Аксессуары — единственная категория, где «одна категория = один слот» не
+// работает: у каждого свой слот, иначе dedupeByCategorySlot оставит один
+// аксессуар на образ и сумка начнёт вытеснять шапку. Зеркало ACCESSORY_SLOTS
+// из backend/clothing_taxonomy.py — домерживаем ПОСЛЕ цикла по категориям.
+const ACCESSORY_TYPE_SLOTS: Record<string, string> = {
+  bag: "bag",
+  sunglasses: "eyewear",
+  jewellery: "jewellery",
+  belt: "belt",
+  hat: "headwear",
+  watch: "wrist",
+  scarf: "neckwear",
+}
+Object.assign(clothingTypeToSlot, ACCESSORY_TYPE_SLOTS)
+
 // Значения из БД, которые ещё не переименованы (lonsleeve и т.п.).
 for (const [legacy, canonical] of Object.entries(CLOTHING_TYPE_ALIASES)) {
   const slot = clothingTypeToSlot[canonical]
