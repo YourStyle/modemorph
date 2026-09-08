@@ -48,3 +48,6 @@ __pycache__/
 
 # local Claude Code settings/worktrees
 .claude/
+
+# gauntlet-прогоны: черновики анализа, не публиковать (public/ раздаётся наружу, репозиторий публичный)
+public/_gauntlet_*

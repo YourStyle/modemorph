@@ -1,6 +1,7 @@
 """File upload endpoints — Yandex S3, with SSRF protection and file validation."""
 
 import hashlib
+import re
 import time
 from urllib.parse import urlparse
 
@@ -17,6 +18,30 @@ router = APIRouter()
 MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
 ALLOWED_MIME_PREFIXES = ("image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif")
 ALLOWED_PROXY_HOSTS = {"storage.yandexcloud.net", "modemorphs3.storage.yandexcloud.net"}
+
+# Одна вещь, которую можно поставить в имя папки: буквы, цифры, дефис,
+# подчёркивание. Без этого `folder` — параметр запроса, то есть строка, которую
+# полностью выбирает вызывающий, — позволяла бы записать объект под чужой
+# префикс (`folder=users/<чужой-uuid>`) и подделать признак владения.
+_SAFE_FOLDER_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+
+def _user_key(user_id: str, folder: str, unique: str, ext: str) -> str:
+    """Ключ объекта, в котором записан владелец.
+
+    Раньше ключи были плоскими (`upload-<hash>.jpg`, `avatars/<hash>.jpg`), то
+    есть по ключу нельзя было сказать, чей это файл. Пока существовал роут
+    удаления с проверкой по префиксу, это означало, что любой залогиненный
+    пользователь мог удалить чужой файл: разрешённые префиксы `upload-` и
+    `avatars/` — ровно то пространство имён, где лежали файлы всех.
+
+    Владелец в ключе — не замена проверке по БД, а её предусловие: без него
+    проверить владение из ключа нельзя в принципе.
+    """
+    ext = re.sub(r"[^A-Za-z0-9]", "", ext)[:8] or "jpg"
+    if folder and _SAFE_FOLDER_RE.match(folder):
+        return f"users/{user_id}/{folder}/{unique}.{ext}"
+    return f"users/{user_id}/{unique}.{ext}"
 
 
 def _validate_url(url: str, allow_hosts: set = None):
@@ -64,11 +89,7 @@ async def upload_to_yandex(
 
     ext = file.filename.rsplit(".", 1)[-1] if file.filename and "." in file.filename else "jpg"
     unique = f"{int(time.time())}-{hashlib.md5(content[:1024]).hexdigest()[:8]}"
-
-    if folder:
-        key = f"{folder}/{unique}.{ext}"
-    else:
-        key = f"upload-{unique}.{ext}"
+    key = _user_key(user["id"], folder, unique, ext)
 
     s3 = _get_s3_client()
     if not s3:
@@ -115,7 +136,8 @@ async def upload_image(
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=400, detail="File too large")
 
-    key = f"upload-{hashlib.md5(content[:1024] + str(time.time()).encode()).hexdigest()[:8]}.{ext}"
+    unique = hashlib.md5(content[:1024] + str(time.time()).encode()).hexdigest()[:8]
+    key = _user_key(user["id"], "", unique, ext)
 
     s3 = _get_s3_client()
     if not s3:
@@ -126,29 +148,28 @@ async def upload_image(
     return {"url": url, "key": key}
 
 
-@router.get("/yandex-s3/list")
-async def list_s3(user: dict = Depends(get_current_user)):
-    s3 = _get_s3_client()
-    if not s3:
-        return {"objects": []}
-    resp = s3.list_objects_v2(Bucket=settings.YANDEX_BUCKET_NAME, MaxKeys=100)
-    return {"objects": [{"key": o["Key"], "size": o["Size"]} for o in resp.get("Contents", [])]}
-
-
-@router.delete("/yandex-s3/delete")
-async def delete_s3(key: str = Query(...), user: dict = Depends(get_current_user)):
-    """Delete S3 object — only allow keys that contain the user's ID or are in upload/avatars folders."""
-    s3 = _get_s3_client()
-    if not s3:
-        raise HTTPException(status_code=500, detail="S3 not configured")
-
-    # Basic ownership check — prevent deleting other users' files
-    allowed_prefixes = ("upload-", "avatars/", f"users/{user['id']}/")
-    if not any(key.startswith(p) for p in allowed_prefixes):
-        raise HTTPException(status_code=403, detail="Cannot delete this file")
-
-    s3.delete_object(Bucket=settings.YANDEX_BUCKET_NAME, Key=key)
-    return {"success": True}
+# GET /yandex-s3/list и DELETE /yandex-s3/delete удалены 2026-09-08.
+#
+# Обе ручки требовали аутентификации, но не проверяли владение:
+#   * list звал list_objects_v2 без Prefix — любой залогиненный пользователь
+#     перечислял до 100 объектов ОБЩЕГО бакета вместе с ключами;
+#   * delete проверял префиксы ("upload-", "avatars/", "users/<свой-id>/"), и
+#     первые два — ровно то пространство имён, где лежат файлы всех
+#     пользователей. То есть докстринг обещал защиту от удаления чужого, а
+#     проверка не отсекала ничего, кроме третьего префикса. Ключ для удаления
+#     брался из первой ручки.
+#
+# Не чинятся, а удаляются: единственным вызывающим был components/yandex-s3-test.tsx
+# — компонент, который нигде не подключён и ходит голым fetch без заголовка
+# Authorization (то есть сломан с переезда на сессионную авторизацию). Возвращать
+# функциональность, которой никто не пользуется, ради того чтобы её укрепить,
+# незачем.
+#
+# Если ручка удаления понадобится снова, владение надо резолвить ИЗ БАЗЫ — по
+# строке, которая ссылается на этот URL (user_avatars.url, user_profiles.avatar_url,
+# wardrobe_user_items.image_url, user_looks.image_url), а не по строке ключа.
+# Только так закрываются легаси-ключи: 1141 вещь и 12 аватаров лежат под плоскими
+# `upload-...`, и по ключу у них владельца не узнать никогда.
 
 
 @router.get("/proxy-image")
