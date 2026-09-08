@@ -1,7 +1,9 @@
 "use client"
 
 import type React from "react"
+import { useEffect } from "react"
 import { usePathname } from "next/navigation"
+import { api } from "@/lib/api-client"
 import { TopNavigation } from "@/components/top-navigation"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { BackgroundTasksWidget } from "@/components/background-tasks-widget"
@@ -32,6 +34,26 @@ export default function AppClientLayout({
   // для iOS: раньше отступ добавлялся только на iOS, и Android оставался
   // без компенсации вовсе.
   const isTmaMobile = useTmaMobile()
+
+  // Открытие по кнопке из рассылки бота. Ссылка вида t.me/<bot>?startapp=bc<id>
+  // приходит в initDataUnsafe.start_param; пишем одно событие на сессию, чтобы
+  // в админке рядом с рассылкой был счётчик кликов (broadcast_open).
+  useEffect(() => {
+    const param: string | undefined = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param
+    if (!param || !/^bc\d+$/.test(param)) return
+    const key = `broadcast_open:${param}`
+    try {
+      if (sessionStorage.getItem(key)) return
+      sessionStorage.setItem(key, "1")
+    } catch {}
+    void api
+      .post("/api/usage/log", {
+        feature: "broadcast_open",
+        action: "click",
+        meta: { broadcast_id: param.slice(2), start_param: param },
+      })
+      .catch(() => {})
+  }, [])
 
   console.log("[AppClientLayout] Rendering")
 

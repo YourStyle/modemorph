@@ -15,11 +15,17 @@ import { Send, Loader2, Search } from "lucide-react"
 interface Broadcast {
   id: number
   message_text: string
-  recipient_filter: { type: string; user_id?: string; user_name?: string }
+  recipient_filter: { type: string; user_id?: string; user_name?: string; button_text?: string; button_url?: string }
   total_sent: number
   total_failed: number
+  clicks?: number
+  active_24h?: number
   created_at: string
 }
+
+// Кнопка под сообщением — единственный измеримый клик. Ссылка на мини-апп
+// получает ?startapp=bc<id> на бэкенде, приложение логирует открытие.
+const APP_LINK = "https://t.me/modemorph_ai_bot?startapp"
 
 interface UserEntry {
   user_id: string
@@ -36,6 +42,8 @@ const FILTER_LABELS: Record<string, string> = {
 
 export default function AdminBroadcastsPage() {
   const [message, setMessage] = useState("")
+  const [buttonText, setButtonText] = useState("Открыть ModeMorph")
+  const [buttonUrl, setButtonUrl] = useState(APP_LINK)
   const [filterType, setFilterType] = useState("all")
   const [sending, setSending] = useState(false)
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([])
@@ -132,6 +140,8 @@ export default function AdminBroadcastsPage() {
       const result = await api.post("/api/admin/broadcast", {
         message: message.trim(),
         filter,
+        button_text: buttonText.trim(),
+        button_url: buttonUrl.trim(),
       })
 
       toast({
@@ -185,6 +195,18 @@ export default function AdminBroadcastsPage() {
               rows={5}
               className="font-mono text-sm"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Кнопка (текст)</Label>
+              <Input value={buttonText} onChange={(e) => setButtonText(e.target.value)} placeholder="Пусто — без кнопки" />
+            </div>
+            <div className="space-y-2">
+              <Label>Кнопка (ссылка)</Label>
+              <Input value={buttonUrl} onChange={(e) => setButtonUrl(e.target.value)} placeholder={APP_LINK} className="font-mono text-xs" />
+              <p className="text-xs text-muted-foreground">К ссылке на мини-апп добавится метка рассылки, клики считаются в истории.</p>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -295,6 +317,8 @@ export default function AdminBroadcastsPage() {
                   <TableHead>Получатели</TableHead>
                   <TableHead>Отправлено</TableHead>
                   <TableHead>Ошибки</TableHead>
+                  <TableHead title="Открыли приложение по кнопке из сообщения">Клики</TableHead>
+                  <TableHead title="Пользователей с любым событием за 24 ч после отправки">Активны 24ч</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -320,6 +344,8 @@ export default function AdminBroadcastsPage() {
                     <TableCell className="text-sm font-medium text-red-600">
                       {b.total_failed}
                     </TableCell>
+                    <TableCell className="text-sm font-medium tabular-nums">{b.clicks ?? 0}</TableCell>
+                    <TableCell className="text-sm tabular-nums text-muted-foreground">{b.active_24h ?? 0}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

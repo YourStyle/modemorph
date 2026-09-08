@@ -1910,8 +1910,27 @@ async def delete_reminder(request: Request, user: dict = Depends(get_admin_user)
 
 @router.get("/broadcast")
 async def list_broadcasts(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(text("SELECT * FROM broadcast_messages ORDER BY created_at DESC LIMIT 50"))
-    return {"data": [dict(r) for r in result.mappings().all()]}
+    """History with two outcome numbers per broadcast:
+
+    clicks     — people who opened the app from the message's button
+                 (the button link carries ?startapp=bc<id>; the app logs
+                 usage_events feature='broadcast_open' with that id).
+    active_24h — distinct profiles with ANY usage event in the 24 h after
+                 the send, regardless of how they got there. Compare against
+                 a quiet day to see whether the message moved anyone.
+    The admin page reads `broadcasts`; `data` stays for older callers.
+    """
+    rows = (await db.execute(text("""
+        SELECT b.*,
+               (SELECT count(DISTINCT COALESCE(e.user_profile_id::text, e.user_anon_id::text)) FROM usage_events e
+                 WHERE e.feature = 'broadcast_open' AND e.metadata->>'broadcast_id' = b.id::text) AS clicks,
+               (SELECT count(DISTINCT e.user_profile_id) FROM usage_events e
+                 WHERE e.occurred_at >= b.created_at AND e.occurred_at < b.created_at + interval '24 hours'
+                   AND e.feature <> 'broadcast_open') AS active_24h
+        FROM broadcast_messages b ORDER BY b.created_at DESC LIMIT 50
+    """))).mappings().all()
+    items = [dict(r) for r in rows]
+    return {"broadcasts": items, "data": items}
 
 
 @router.post("/broadcast")
@@ -1932,6 +1951,8 @@ async def send_broadcast(request: Request, user: dict = Depends(get_admin_user),
     message = (body.get("message") or body.get("message_text") or "").strip()
     flt = body.get("filter") or {"type": body.get("filter_type") or "all"}
     ftype = flt.get("type") or "all"
+    button_text = (body.get("button_text") or "").strip()
+    button_url = (body.get("button_url") or "").strip()
     if not message:
         raise HTTPException(status_code=400, detail="message required")
 
@@ -1958,17 +1979,31 @@ async def send_broadcast(request: Request, user: dict = Depends(get_admin_user),
     """), binds)).mappings().all()
     chat_ids = [r["tg"] for r in rows]
 
+    if button_text or button_url:
+        flt = {**flt, "button_text": button_text, "button_url": button_url}
     row = (await db.execute(text("""
         INSERT INTO broadcast_messages (admin_user_id, message_text, recipient_filter, total_sent, total_failed, created_at)
         VALUES (:uid, :msg, CAST(:flt AS jsonb), 0, 0, NOW()) RETURNING id
     """), {"uid": user["id"], "msg": message, "flt": json_lib.dumps(flt, ensure_ascii=False)})).mappings().first()
     await db.commit()
+    bid = row["id"]
+
+    # Button = the only click we can measure. A URL button gives Telegram no
+    # callback, but a Mini App deep link carries ?startapp=<param>, and the
+    # app logs it as broadcast_open (app/app/layout-client.tsx). So a t.me
+    # link without startapp gets the broadcast id stamped on; any other URL
+    # is sent as is.
+    reply_markup = None
+    if button_text and button_url:
+        if "t.me/" in button_url and "startapp" not in button_url:
+            button_url += ("&" if "?" in button_url else "?") + f"startapp=bc{bid}"
+        reply_markup = {"inline_keyboard": [[{"text": button_text, "url": button_url}]]}
 
     # ponytail: sequential, in-request. ~300 Telegram accounts × 50 ms is
     # 15 s; move to a background task when the base passes ~2000.
     sent = failed = 0
     for chat_id in chat_ids:
-        res = await send_bot_message(chat_id, message)
+        res = await send_bot_message(chat_id, message, reply_markup=reply_markup)
         if res.get("ok"):
             sent += 1
         else:
@@ -1976,9 +2011,10 @@ async def send_broadcast(request: Request, user: dict = Depends(get_admin_user),
         await asyncio.sleep(0.05)
 
     await db.execute(text("UPDATE broadcast_messages SET total_sent = :s, total_failed = :f WHERE id = :id"),
-                     {"s": sent, "f": failed, "id": row["id"]})
+                     {"s": sent, "f": failed, "id": bid})
     await db.commit()
-    return {"data": {"id": row["id"], "recipients": len(chat_ids), "total_sent": sent, "total_failed": failed}}
+    out = {"id": bid, "recipients": len(chat_ids), "sent": sent, "failed": failed, "button_url": button_url or None}
+    return {**out, "data": out}
 
 
 # ── Missing admin endpoints ──
