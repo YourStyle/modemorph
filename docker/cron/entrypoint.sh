@@ -38,7 +38,9 @@ cat > /etc/crontabs/root << EOF
 # ───────────────────────────────────────────────────────────
 EOF
 
+# The crontab carries CRON_SECRET in every line; print the schedule with it
+# masked, never the file itself (it used to land in `docker compose logs`).
 echo "[cron] Schedule loaded:"
-cat /etc/crontabs/root
+sed "s/${CRON_SECRET}/***/g" /etc/crontabs/root
 echo "[cron] Starting crond..."
 exec crond -f -l 2
