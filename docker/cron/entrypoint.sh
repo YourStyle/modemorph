@@ -32,6 +32,9 @@ cat > /etc/crontabs/root << EOF
 
 # Gender classification for new items — 06:30 UTC daily
 30 6 * * * $(call "classify-gender")
+
+# Adaptive re-engagement pushes via the bot — 07:00 UTC (10:00 MSK) daily
+0 7 * * * $(call "auto-push")
 # ───────────────────────────────────────────────────────────
 EOF
 

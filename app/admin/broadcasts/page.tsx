@@ -48,6 +48,7 @@ export default function AdminBroadcastsPage() {
   const [sending, setSending] = useState(false)
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([])
   const [loading, setLoading] = useState(true)
+  const [autoPush, setAutoPush] = useState<Array<{ template: string; sent: number; opened: number; reacted: number; last_sent_at: string }>>([])
 
   // User search
   const [users, setUsers] = useState<UserEntry[]>([])
@@ -58,6 +59,7 @@ export default function AdminBroadcastsPage() {
 
   useEffect(() => {
     loadBroadcasts()
+    api.get("/api/admin/auto-push").then((d) => setAutoPush(d?.templates ?? [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -293,6 +295,47 @@ export default function AdminBroadcastsPage() {
             )}
             {sending ? "Отправка..." : "Отправить"}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Auto pushes: daily cron, adaptive frequency (see backend/app/api/cron.py auto-push) */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Автопуши за 30 дней</CardTitle>
+          <CardDescription>
+            Ежедневно в 10:00 МСК бот сам пишет тем, кто ушёл: пауза удваивается после каждого сообщения без реакции
+            (7 → 14 → 28 → 56 дней) и возвращается к 7 дням после ответа. Не больше 40 сообщений в день.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {autoPush.length === 0 ? (
+            <p className="text-muted-foreground text-sm py-2">Ещё не отправлялись</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Шаблон</TableHead>
+                  <TableHead>Отправлено</TableHead>
+                  <TableHead title="Открыли приложение по кнопке">Открыли</TableHead>
+                  <TableHead title="Любое действие в приложении за 72 ч после сообщения">Вернулись 72ч</TableHead>
+                  <TableHead>Последняя</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {autoPush.map((t) => (
+                  <TableRow key={t.template}>
+                    <TableCell className="text-sm font-mono">{t.template}</TableCell>
+                    <TableCell className="text-sm tabular-nums">{t.sent}</TableCell>
+                    <TableCell className="text-sm tabular-nums">{t.opened}</TableCell>
+                    <TableCell className="text-sm tabular-nums">{t.reacted}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {new Date(t.last_sent_at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

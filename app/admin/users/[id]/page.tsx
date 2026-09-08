@@ -52,6 +52,7 @@ const EVENT_LABELS: Record<string, string | ((e: Ev) => string)> = {
   "outfits_saved·attempt": "Сохранил образ",
   "ideas_viewed·track": "Смотрел идеи",
   "broadcast_open·click": (e) => `Открыл приложение по рассылке №${e.meta?.broadcast_id ?? "?"}`,
+  "push_open·click": (e) => `Открыл приложение по автопушу №${e.meta?.push_id ?? "?"}`,
   "registration_step·view": (e) => `Регистрация: открыл шаг ${e.meta?.step ?? ""}`,
   "registration_step·submit": (e) => `Регистрация: отправил шаг ${e.meta?.step ?? ""}`,
   "registration_step·complete": "Регистрация: завершена",

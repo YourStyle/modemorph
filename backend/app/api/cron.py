@@ -11,7 +11,8 @@ import logging
 import random
 import uuid
 import xml.etree.ElementTree as ET
-from datetime import date, timedelta
+import re
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -31,6 +32,8 @@ from brand import BRAND_GUESS_PROMPT_RULE, prompt_brand_field, retailer_from_not
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_SECTION_TAG = re.compile(r"\s*[\[(]\s*(USER|MIX|PARTNER)\s*[\])]", re.I)
 
 # Probability of using CLIP model vs Gemini-only for a given user
 CLIP_PROBABILITY = 0.6
@@ -621,6 +624,11 @@ async def cron_generate_recommendations(
             VALID_TYPES = {"user_only", "mix", "partner_only"}
 
             sections = []
+            # Один и тот же состав под разными названиями — «Городской спорт-шик»
+            # и «Динамичный образ» из одних четырёх вещей (прод 2026-09-08).
+            # Модель повторяется и внутри раздела, и между разделами; первый
+            # остаётся, остальные отсеиваются по множеству id.
+            seen_item_sets: set = set()
 
             if gemini_sections and isinstance(gemini_sections, list):
                 for gs in gemini_sections:
@@ -644,7 +652,9 @@ async def cron_generate_recommendations(
                             if item_data:
                                 outfit_items.append(item_data)
                         # Skip outfits with fewer than 3 items (incomplete)
-                        if len(outfit_items) >= 3:
+                        item_key = frozenset(i.get("id") for i in outfit_items)
+                        if len(outfit_items) >= 3 and item_key not in seen_item_sets:
+                            seen_item_sets.add(item_key)
                             suggestions.append({
                                 "id": f"{section_type}_{user_id[:8]}_{len(sections)}_{len(suggestions)}",
                                 "title": sug.get("title", "Образ"),
@@ -653,7 +663,10 @@ async def cron_generate_recommendations(
                             })
                     if suggestions:
                         sections.append({
-                            "title": gs.get("title", "Рекомендации"),
+                            # Модель копирует служебные пометки [USER]/[MIX]/[PARTNER]
+                            # из описания типов в название раздела — «Casual на
+                            # каждый день (USER)» на главной. Пользователю они ни к чему.
+                            "title": _SECTION_TAG.sub("", gs.get("title") or "Рекомендации").strip() or "Рекомендации",
                             "source": section_type,
                             # Frontend reads this to fire impression/click/save
                             # events (OutfitCard recSessionId prop). Missing here
@@ -1578,3 +1591,181 @@ async def fill_temp_ranges(request: Request, db: AsyncSession = Depends(get_db))
     await db.commit()
     logger.info(f"[fill-temp-ranges] Updated {updated} items")
     return {"updated": updated}
+
+
+# ---------------------------------------------------------------------------
+# Auto-push: adaptive re-engagement through the bot (daily, 07:00 UTC)
+# ---------------------------------------------------------------------------
+#
+# Every push is a row in auto_push_log. A push "reacted" when the profile has
+# any usage event within AUTO_PUSH_REACT_HOURS after it. The pause before the
+# next regular push doubles per unreacted push in a row (7 → 14 → 28 → 56 days)
+# and resets to 7 days after a reaction — the quiet ones get fewer messages,
+# the responsive ones keep the normal rhythm. Event templates (subscription
+# ending, paywall seen) may cut in after 3 days of silence, at most once per
+# 30 days per template. Never more than AUTO_PUSH_CAP sends per run: on the day
+# this shipped 215 of 219 Telegram profiles were "inactive", and one morning
+# must not dump the whole base at once.
+#
+# Button: the app deep link with ?startapp=ap<log id>; the app logs push_open.
+
+AUTO_PUSH_APP = "https://t.me/modemorph_ai_bot?startapp="
+AUTO_PUSH_CAP = 40
+AUTO_PUSH_BASE_DAYS = 7
+AUTO_PUSH_MAX_DAYS = 56
+AUTO_PUSH_EVENT_GAP_DAYS = 3
+AUTO_PUSH_SAME_TEMPLATE_DAYS = 30
+AUTO_PUSH_REACT_HOURS = 72
+
+# Priority order matters: the first matching template wins.
+AUTO_PUSH_TEMPLATES: dict[str, dict] = {
+    "sub_expiring": {
+        "button": "Продлить",
+        "text": ("Подписка заканчивается через несколько дней\n\n"
+                 "Продлите сейчас, чтобы не потерять лимиты на оцифровку и примерки. "
+                 "Гардероб и образы остаются в любом случае."),
+    },
+    "paywall": {
+        "button": "Оформить подписку",
+        "text": ("Лимиты закончились, а осенний гардероб — нет\n\n"
+                 "Подписка ModeMorph: 40 фото на оцифровку и 10 примерок в месяц, ассистент без лимита. "
+                 "Хватит, чтобы разобрать весь шкаф и собрать капсулу на сезон."),
+    },
+    "empty_wardrobe": {
+        "button": "Добавить вещи",
+        "text": ("Гардероб пока пуст 👀\n\n"
+                 "Сфотографируйте 3–5 вещей, которые носите чаще всего, — ассистент распознает их "
+                 "и соберёт первые образы на сегодняшнюю погоду."),
+    },
+    "no_outfit": {
+        "button": "Спросить стилиста",
+        "text": ("Вещи в гардеробе есть, образов пока нет\n\n"
+                 "Спросите ассистента: «Собери образ на сегодня» или «Что купить, чтобы было больше сочетаний». "
+                 "Ответ придёт с фото ваших вещей, а не списком."),
+    },
+    "inactive": {
+        "button": "Открыть гардероб",
+        "text": ("Похолодало 🍂\n\n"
+                 "ModeMorph уже пересобрал ваш гардероб под осень: что носить сегодня по погоде, "
+                 "чего не хватает, что можно отдать.\n\n"
+                 "Откройте раздел «На сегодня по погоде» — образ из ваших вещей уже собран."),
+    },
+}
+
+
+def _auto_push_pick(p: dict, pushes: list[dict], now: datetime) -> str | None:
+    """Which template (if any) this profile gets today. Pure — see test_auto_push.py.
+
+    p: pid, created_at, last_act (datetime|None), n_items, n_looks,
+       sub_expires (datetime|None), paywall_at (datetime|None)
+    pushes: this profile's auto_push_log rows, oldest first:
+       template, sent_at, reacted (bool)
+    """
+    last_act = p.get("last_act") or p["created_at"]
+    days_inactive = (now - last_act).days
+    last_push = pushes[-1]["sent_at"] if pushes else None
+    streak = 0
+    for row in reversed(pushes):
+        if row["reacted"]:
+            break
+        streak += 1
+    interval = min(AUTO_PUSH_BASE_DAYS * (2 ** streak), AUTO_PUSH_MAX_DAYS)
+    since_push = (now - last_push).days if last_push else 10 ** 6
+    recent_templates = {r["template"] for r in pushes
+                        if (now - r["sent_at"]).days < AUTO_PUSH_SAME_TEMPLATE_DAYS}
+
+    sub_exp = p.get("sub_expires")
+    paywall_at = p.get("paywall_at")
+    checks = [
+        ("sub_expiring", True, sub_exp is not None and 0 <= (sub_exp - now).days <= 3),
+        ("paywall", True, paywall_at is not None and (now - paywall_at).days <= 3 and sub_exp is None),
+        ("empty_wardrobe", False, p["n_items"] == 0 and (now - p["created_at"]).days >= 2),
+        ("no_outfit", False, p["n_items"] > 0 and p["n_looks"] == 0 and days_inactive >= 3),
+        ("inactive", False, days_inactive >= 7),
+    ]
+    for template, is_event, applies in checks:
+        if not applies or template in recent_templates:
+            continue
+        if since_push >= (AUTO_PUSH_EVENT_GAP_DAYS if is_event else interval):
+            return template
+    return None
+
+
+@router.post("/auto-push")
+async def auto_push(request: Request, db: AsyncSession = Depends(get_db)):
+    """Daily adaptive re-engagement. Body {"dry_run": true} plans without sending."""
+    _verify_cron_auth(request)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    dry_run = bool((body or {}).get("dry_run"))
+    cap = int((body or {}).get("cap") or AUTO_PUSH_CAP)
+    now = datetime.now(timezone.utc)
+
+    profiles = (await db.execute(text("""
+        SELECT up.id AS pid, up.created_at,
+               u.raw_user_meta_data->>'telegram_id' AS tg,
+               (SELECT max(d.last_seen_at) FROM daily_user_activity d WHERE d.user_profile_id = up.id) AS last_act,
+               (SELECT count(*) FROM wardrobe_user_items w WHERE w.user_id = up.user_id) AS n_items,
+               (SELECT count(*) FROM user_looks l WHERE l.user_id = up.user_id) AS n_looks,
+               (SELECT min(s.expires_at) FROM user_subscriptions s
+                 WHERE s.user_profile_id = up.id AND s.status = 'active' AND s.expires_at > NOW()) AS sub_expires,
+               (SELECT max(e.occurred_at) FROM usage_events e
+                 WHERE e.user_profile_id = up.id AND e.feature = 'paywall_shown') AS paywall_at
+        FROM user_profiles up JOIN users u ON u.id = up.user_id
+        WHERE COALESCE(u.raw_user_meta_data->>'telegram_id', '') <> ''
+          AND COALESCE(up.is_test, false) = false
+        ORDER BY up.id
+    """))).mappings().all()
+
+    history: dict[int, list[dict]] = {}
+    for r in (await db.execute(text(f"""
+        SELECT p.user_profile_id AS pid, p.template, p.sent_at,
+               EXISTS (SELECT 1 FROM usage_events e WHERE e.user_profile_id = p.user_profile_id
+                         AND e.occurred_at > p.sent_at
+                         AND e.occurred_at < p.sent_at + interval '{AUTO_PUSH_REACT_HOURS} hours') AS reacted
+        FROM auto_push_log p WHERE p.ok ORDER BY p.sent_at
+    """))).mappings().all():
+        history.setdefault(r["pid"], []).append(dict(r))
+
+    plan: list[tuple[dict, str]] = []
+    for p in profiles:
+        template = _auto_push_pick(dict(p), history.get(p["pid"], []), now)
+        if template:
+            plan.append((dict(p), template))
+    # Oldest-inactive first, so the cap does not starve anyone forever.
+    plan.sort(key=lambda pt: (pt[0].get("last_act") or pt[0]["created_at"]))
+    picked = plan[:cap]
+    by_template: dict[str, int] = {}
+    for _, t in picked:
+        by_template[t] = by_template.get(t, 0) + 1
+
+    if dry_run:
+        return {"dry_run": True, "profiles": len(profiles), "eligible": len(plan),
+                "would_send": len(picked), "by_template": by_template}
+
+    import asyncio
+    from app.services.telegram import send_bot_message
+
+    sent = failed = 0
+    for p, template in picked:
+        log_id = (await db.execute(text("""
+            INSERT INTO auto_push_log (user_profile_id, template, sent_at, ok)
+            VALUES (:pid, :t, NOW(), false) RETURNING id
+        """), {"pid": p["pid"], "t": template})).scalar()
+        await db.commit()
+        tpl = AUTO_PUSH_TEMPLATES[template]
+        res = await send_bot_message(p["tg"], tpl["text"], reply_markup={
+            "inline_keyboard": [[{"text": tpl["button"], "url": f"{AUTO_PUSH_APP}ap{log_id}"}]],
+        })
+        if res.get("ok"):
+            sent += 1
+            await db.execute(text("UPDATE auto_push_log SET ok = true WHERE id = :id"), {"id": log_id})
+            await db.commit()
+        else:
+            failed += 1
+        await asyncio.sleep(0.05)
+
+    logger.info(f"[auto-push] eligible={len(plan)} sent={sent} failed={failed} {by_template}")
+    return {"profiles": len(profiles), "eligible": len(plan), "sent": sent, "failed": failed, "by_template": by_template}

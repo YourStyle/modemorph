@@ -1933,6 +1933,26 @@ async def list_broadcasts(user: dict = Depends(get_admin_user), db: AsyncSession
     return {"broadcasts": items, "data": items}
 
 
+@router.get("/auto-push")
+async def auto_push_stats(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Last 30 days of the daily adaptive pushes (cron.py /cron/auto-push), per
+    template: sent, opened the app by the button (push_open), any activity within
+    72 h after the send."""
+    rows = (await db.execute(text("""
+        SELECT p.template,
+               count(*) FILTER (WHERE p.ok) AS sent,
+               count(*) FILTER (WHERE p.ok AND EXISTS (SELECT 1 FROM usage_events e
+                   WHERE e.feature = 'push_open' AND e.metadata->>'push_id' = p.id::text)) AS opened,
+               count(*) FILTER (WHERE p.ok AND EXISTS (SELECT 1 FROM usage_events e
+                   WHERE e.user_profile_id = p.user_profile_id AND e.occurred_at > p.sent_at
+                     AND e.occurred_at < p.sent_at + interval '72 hours')) AS reacted,
+               max(p.sent_at) AS last_sent_at
+        FROM auto_push_log p WHERE p.sent_at > NOW() - interval '30 days'
+        GROUP BY p.template ORDER BY sent DESC
+    """))).mappings().all()
+    return {"templates": [{**dict(r), "last_sent_at": str(r["last_sent_at"])} for r in rows]}
+
+
 @router.post("/broadcast")
 async def send_broadcast(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Send a Telegram message to a segment and record the outcome.

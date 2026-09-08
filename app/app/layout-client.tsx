@@ -35,22 +35,25 @@ export default function AppClientLayout({
   // без компенсации вовсе.
   const isTmaMobile = useTmaMobile()
 
-  // Открытие по кнопке из рассылки бота. Ссылка вида t.me/<bot>?startapp=bc<id>
-  // приходит в initDataUnsafe.start_param; пишем одно событие на сессию, чтобы
-  // в админке рядом с рассылкой был счётчик кликов (broadcast_open).
+  // Открытие по кнопке из сообщения бота. Ссылка вида t.me/<bot>?startapp=bc<id>
+  // (ручная рассылка) или ap<id> (автопуш) приходит в initDataUnsafe.start_param;
+  // пишем одно событие на сессию, чтобы в админке рядом с рассылкой был
+  // счётчик кликов (broadcast_open / push_open).
   useEffect(() => {
     const param: string | undefined = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param
-    if (!param || !/^bc\d+$/.test(param)) return
-    const key = `broadcast_open:${param}`
+    const m = param?.match(/^(bc|ap)(\d+)$/)
+    if (!m) return
+    const feature = m[1] === "bc" ? "broadcast_open" : "push_open"
+    const key = `${feature}:${param}`
     try {
       if (sessionStorage.getItem(key)) return
       sessionStorage.setItem(key, "1")
     } catch {}
     void api
       .post("/api/usage/log", {
-        feature: "broadcast_open",
+        feature,
         action: "click",
-        meta: { broadcast_id: param.slice(2), start_param: param },
+        meta: { [m[1] === "bc" ? "broadcast_id" : "push_id"]: m[2], start_param: param },
       })
       .catch(() => {})
   }, [])
