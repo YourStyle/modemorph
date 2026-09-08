@@ -15,10 +15,27 @@ Caller owns the transaction: this function does NOT commit.
 """
 
 import json as json_lib
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+def age_seconds(created_at) -> Optional[int]:
+    """Seconds between creation and now, for delete events.
+
+    This is what separates "removed a bad detection 40 seconds later" from
+    "gave the thing away three weeks later" — without it a delete event says
+    nothing. Tolerant of naive timestamps: created_at comes back tz-aware from
+    asyncpg for timestamptz columns and naive for plain timestamp ones, and
+    these tables have been through both.
+    """
+    if not isinstance(created_at, datetime):
+        return None
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    return int((datetime.now(timezone.utc) - created_at).total_seconds())
 
 
 async def record_usage_event(

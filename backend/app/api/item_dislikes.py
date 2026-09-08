@@ -61,9 +61,34 @@ async def get_dislikes(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get all disliked item IDs."""
+    """Disliked items with name and image, so they can be shown and undone.
+
+    Resolved here rather than on the client: the join must be on the PAIR
+    (item_id, item_source), because the id spaces of wardrobe_items and
+    wardrobe_user_items overlap for older rows. A client-side lookup by bare id
+    would show the wrong picture.
+    """
     result = await db.execute(
-        text("SELECT item_id, item_source FROM user_item_dislikes WHERE user_id = :uid ORDER BY created_at DESC"),
+        text("""
+            SELECT d.item_id, d.item_source, w.item_name, w.image_url, d.created_at
+            FROM user_item_dislikes d
+            JOIN wardrobe_items w ON w.id = d.item_id
+            WHERE d.user_id = :uid AND d.item_source = 'wardrobe_items'
+            UNION ALL
+            SELECT d.item_id, d.item_source, u.item_name, u.image_url, d.created_at
+            FROM user_item_dislikes d
+            JOIN wardrobe_user_items u ON u.id = d.item_id AND u.user_id = d.user_id
+            WHERE d.user_id = :uid AND d.item_source = 'wardrobe_user_items'
+            ORDER BY created_at DESC
+        """),
         {"uid": user["id"]},
     )
-    return [{"item_id": r[0], "item_source": r[1]} for r in result.all()]
+    return [
+        {
+            "item_id": r["item_id"],
+            "item_source": r["item_source"],
+            "item_name": r["item_name"],
+            "image_url": r["image_url"],
+        }
+        for r in result.mappings().all()
+    ]

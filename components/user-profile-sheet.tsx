@@ -18,6 +18,7 @@ import { api } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
 import { ArrowRight, ChevronDown, MapPin } from "lucide-react"
 import { CityPicker } from "@/components/city-picker"
+import { HiddenItemsSheet } from "@/components/hidden-items-sheet"
 
 interface UserProfile {
   id: string
@@ -83,6 +84,7 @@ export function UserProfileSheet({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const [isPaywallOpen, setIsPaywallOpen] = useState(false)
+  const [isHiddenItemsOpen, setIsHiddenItemsOpen] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
   // Раскрывающаяся секция выбора города — инлайн, без второй шторки поверх
   // этой. Раскрывается сама, если сюда пришли по ссылке "Выбрать" из
@@ -614,6 +616,19 @@ export function UserProfileSheet({
                   <p className="text-micro text-ink-3">
                     Вы также можете отключить уведомления командой /mute в боте
                   </p>
+
+                  <div className="border-t border-line pt-4">
+                    <button
+                      onClick={() => setIsHiddenItemsOpen(true)}
+                      className="flex w-full items-center justify-between py-2 text-left"
+                    >
+                      <div className="space-y-1">
+                        <span className="text-body text-ink">Скрытые из рекомендаций</span>
+                        <p className="text-caption text-ink-2">Вернуть вещь, скрытую по ошибке</p>
+                      </div>
+                      <ArrowRight className="h-4 w-4 text-ink-3" />
+                    </button>
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
@@ -668,6 +683,8 @@ export function UserProfileSheet({
         }}
         variant="explore"
       />
+
+      <HiddenItemsSheet isOpen={isHiddenItemsOpen} onClose={() => setIsHiddenItemsOpen(false)} />
 
       {/* Ютилити: скрываем скроллбар; учитываем safe-area снизу, чтобы футер не перекрывался iOS-панелью */}
       <style jsx global>{`

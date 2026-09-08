@@ -24,6 +24,22 @@ interface CreateLookSheetProps {
   onSave: (data: { name: string; description: string; items: Array<{ type: string; id: number }> }) => void
 }
 
+// Пустое поле имени давало всем один и тот же «Новый образ» — 75 образов из 306
+// у 30 разных людей. Имя из состава решает это в источнике: чинить симптом
+// переименованием постфактум пришлось бы каждому пользователю вручную.
+const MAX_AUTO_NAME = 40
+
+function nameFromItems(items: WardrobeItem[]): string {
+  const parts = items
+    .map((i) => (i.item_name || "").trim())
+    .filter(Boolean)
+    .slice(0, 3)
+  if (parts.length === 0) return "Новый образ"
+  const joined = parts.join(" + ")
+  if (joined.length <= MAX_AUTO_NAME) return joined
+  return joined.slice(0, MAX_AUTO_NAME - 1).trimEnd() + "…"
+}
+
 export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProps) {
   const [name, setName] = useState("")
   const [wardrobeItems, setWardrobeItems] = useState<WardrobeItem[]>([])
@@ -72,13 +88,14 @@ export function CreateLookSheet({ isOpen, onClose, onSave }: CreateLookSheetProp
 
     setSaving(true)
     try {
-      const items = Array.from(selectedItems).map((id) => ({
+      const selectedIds = Array.from(selectedItems)
+      const items = selectedIds.map((id) => ({
         type: "user",
         id,
       }))
 
       await onSave({
-        name: name.trim() || "Новый образ",
+        name: name.trim() || nameFromItems(selectedIds.map((id) => wardrobeItems.find((w) => w.id === id)).filter((w): w is WardrobeItem => !!w)),
         description: "",
         items,
       })

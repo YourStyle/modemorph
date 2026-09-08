@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.services.usage import record_usage_event
+from app.services.usage import age_seconds as _age_seconds, record_usage_event
 
 router = APIRouter()
 
@@ -164,12 +164,43 @@ async def update_user_look(look_id: int, request: Request, user: dict = Depends(
 
 @router.delete("/user-looks/{look_id}")
 async def delete_user_look(look_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Read before deleting — see the same pattern in wardrobe_user_items.delete_item.
+    before = (
+        await db.execute(
+            text(
+                "SELECT items, created_at, "
+                "EXISTS (SELECT 1 FROM section_looks sl WHERE sl.look_id = ul.id) AS was_in_sections "
+                "FROM user_looks ul WHERE id = :id AND user_id = :uid"
+            ),
+            {"id": look_id, "uid": user["id"]},
+        )
+    ).mappings().first()
+
     result = await db.execute(
         text("DELETE FROM user_looks WHERE id = :id AND user_id = :uid RETURNING id"),
         {"id": look_id, "uid": user["id"]},
     )
     if not result.first():
         raise HTTPException(status_code=404, detail="Look not found")
+
+    items = before["items"] if before else None
+    if isinstance(items, str):
+        try:
+            items = json_lib.loads(items)
+        except ValueError:
+            items = None
+    await record_usage_event(
+        db,
+        user["id"],
+        feature="user_look",
+        action="delete",
+        meta={
+            "look_id": look_id,
+            "items_count": len(items) if isinstance(items, list) else 0,
+            "age_seconds": _age_seconds(before["created_at"]) if before else None,
+            "was_in_sections": bool(before["was_in_sections"]) if before else None,
+        },
+    )
     await db.commit()
     return {"success": True}
 
@@ -248,6 +279,123 @@ async def get_section_looks(section_id: int, user: dict = Depends(get_current_us
         {"sid": section_id, "uid": user["id"]},
     )
     return [dict(r) for r in result.mappings().all()]
+
+
+async def _own_section(db: AsyncSession, section_id: int, uid: str) -> None:
+    owner = await db.execute(
+        text("SELECT id FROM looks_sections WHERE id = :id AND user_id = :uid"),
+        {"id": section_id, "uid": uid},
+    )
+    if not owner.first():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+
+@router.post("/looks-sections/{section_id}/looks")
+async def add_looks_to_section(
+    section_id: int,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Attach looks to a collection.
+
+    This route went missing in the FastAPI migration: the frontend has been
+    POSTing here since 2026-03-29 and getting a 405, so every attempt to file a
+    look into a collection showed a red toast and 9 of 12 collections are empty.
+    Accepts both {"look_id": 1} and {"look_ids": [1,2]} — the frontend used to
+    send one request per look, and taking both shapes means the contract does
+    not have to change again if it goes back to that.
+    """
+    body = await request.json()
+    look_ids = body.get("look_ids")
+    if look_ids is None:
+        single = body.get("look_id")
+        look_ids = [single] if single is not None else []
+    if not isinstance(look_ids, list) or not look_ids:
+        raise HTTPException(status_code=400, detail="look_id or look_ids required")
+    look_ids = [int(i) for i in look_ids]
+
+    await _own_section(db, section_id, user["id"])
+
+    # Both sides must belong to the caller. Silently dropping ids that are not
+    # theirs would make "added!" a lie, so a mismatch is a 404.
+    owned = await db.execute(
+        text("SELECT id FROM user_looks WHERE id = ANY(:lids) AND user_id = :uid"),
+        {"lids": look_ids, "uid": user["id"]},
+    )
+    if len({r[0] for r in owned.all()}) != len(set(look_ids)):
+        raise HTTPException(status_code=404, detail="Look not found")
+
+    await db.execute(
+        text(
+            "INSERT INTO section_looks (section_id, look_id) "
+            "SELECT :sid, unnest(CAST(:lids AS bigint[])) "
+            "ON CONFLICT (section_id, look_id) DO NOTHING"
+        ),
+        {"sid": section_id, "lids": look_ids},
+    )
+    await record_usage_event(
+        db,
+        user["id"],
+        feature="look_collection",
+        action="add",
+        count=len(look_ids),
+        meta={"section_id": section_id, "look_ids": look_ids},
+    )
+    await db.commit()
+    return {"success": True, "added": len(look_ids)}
+
+
+@router.delete("/looks-sections/{section_id}/looks/{look_id}")
+async def remove_look_from_section(
+    section_id: int,
+    look_id: int,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Detach one look from a collection.
+
+    Ships with the POST on purpose: without it the only way to get a look out
+    of a collection is to delete the look itself, which is how 92 looks were
+    destroyed.
+    """
+    await _own_section(db, section_id, user["id"])
+    await db.execute(
+        text("DELETE FROM section_looks WHERE section_id = :sid AND look_id = :lid"),
+        {"sid": section_id, "lid": look_id},
+    )
+    await record_usage_event(
+        db,
+        user["id"],
+        feature="look_collection",
+        action="remove",
+        meta={"section_id": section_id, "look_ids": [look_id]},
+    )
+    await db.commit()
+    return {"success": True}
+
+
+@router.put("/looks-sections/{section_id}")
+async def update_section(
+    section_id: int,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    name = (body.get("name") or body.get("title") or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name required")
+
+    await _own_section(db, section_id, user["id"])
+    result = await db.execute(
+        text("UPDATE looks_sections SET name = :name, updated_at = NOW() WHERE id = :id RETURNING *"),
+        {"id": section_id, "name": name},
+    )
+    row = result.mappings().first()
+    await record_usage_event(db, user["id"], feature="collection", action="rename")
+    await db.commit()
+    return dict(row)
 
 
 @router.delete("/looks-sections/{section_id}")

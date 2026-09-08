@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.services.usage import age_seconds as _age_seconds, record_usage_event
 
 router = APIRouter()
 
@@ -151,11 +152,43 @@ async def update_item(item_id: int, request: Request, user: dict = Depends(get_c
 
 @router.delete("/{item_id}")
 async def delete_item(item_id: int, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    # Read before deleting: age_seconds is the whole point of this event — it
+    # separates "removed a bad detection 40 seconds later" from "gave the thing
+    # away three weeks later". Nothing else in the product records a deletion,
+    # so ~18% of everything ever created has vanished without a trace.
+    before = (
+        await db.execute(
+            text(
+                "SELECT clothing_type, created_at, image_url IS NOT NULL AS had_image "
+                "FROM wardrobe_user_items WHERE id = :id AND user_id = :uid"
+            ),
+            {"id": item_id, "uid": user["id"]},
+        )
+    ).mappings().first()
+
     result = await db.execute(
         text("DELETE FROM wardrobe_user_items WHERE id = :id AND user_id = :uid RETURNING id"),
         {"id": item_id, "uid": user["id"]},
     )
     if not result.first():
         raise HTTPException(status_code=404, detail="Item not found")
+
+    await record_usage_event(
+        db,
+        user["id"],
+        feature="wardrobe_item",
+        action="delete",
+        meta={
+            "item_id": item_id,
+            # id spaces of wardrobe_items and wardrobe_user_items overlap for
+            # older rows (006_wardrobe_items_sequence_offset.sql moved the
+            # catalogue sequence but left existing rows), so a bare item_id is
+            # unreadable a quarter from now.
+            "item_source": "wardrobe_user_items",
+            "clothing_type": before["clothing_type"] if before else None,
+            "age_seconds": _age_seconds(before["created_at"]) if before else None,
+            "had_image": bool(before["had_image"]) if before else None,
+        },
+    )
     await db.commit()
     return {"success": True}

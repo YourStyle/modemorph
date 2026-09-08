@@ -9,7 +9,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Plus, Download, Trash2, Search, Sparkles, MoreVertical, Shirt, Package } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Plus, Download, Trash2, Search, Sparkles, MoreVertical, Shirt, Package, FolderMinus, Pencil } from "lucide-react"
 import { SaveImageSheet } from "@/components/save-image-sheet"
 import { renderSinglePhoto, renderLookGrid } from "@/lib/save-image"
 import { AddCollectionSheet } from "@/components/add-collection-sheet"
@@ -162,6 +170,12 @@ export default function LooksPage() {
     sectionName: "",
     looks: [],
   })
+  // Один диалог на оба переименования — образа и подборки. window.prompt в
+  // Telegram WebView поддержан не везде, поэтому свой Dialog, а не нативный.
+  const [renameTarget, setRenameTarget] = useState<
+    null | { kind: "look" | "collection"; id: number; name: string }
+  >(null)
+  const [renameValue, setRenameValue] = useState("")
 
   const { log, consume } = useFeature()
   useReconcileLimits(true)
@@ -274,16 +288,94 @@ export default function LooksPage() {
 
   const handleAddOutfitsToCollection = async (sectionId: number, lookIds: number[]) => {
     try {
-      const promises = lookIds.map((lookId) =>
-        api.post(`/api/looks-sections/${sectionId}/looks`, { look_id: lookId })
-      )
-
-      await Promise.all(promises)
+      await api.post(`/api/looks-sections/${sectionId}/looks`, { look_ids: lookIds })
       toast.success(`Добавлено ${lookIds.length} образов в подборку`)
       loadSections() // Reload sections to show new outfits
     } catch (error) {
       console.error("Error adding outfits to collection:", error)
       toast.error("Ошибка добавления образов")
+    }
+  }
+
+  // Переименование образа и подборки. Роуты (PUT /user-looks/{id},
+  // PUT /looks-sections/{id}) с проверкой владения, кнопок к ним не было —
+  // поэтому за всю историю продукта не переименовали ни одного образа, а 75 из
+  // 306 называются «Новый образ».
+  const handleRenameLook = async (lookId: number, name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const prev = savedLooks
+    setSavedLooks((looks) => looks.map((l) => (l.id === lookId ? { ...l, name: trimmed } : l)))
+    try {
+      await api.put(`/api/user-looks/${lookId}`, { name: trimmed })
+      void api.post("/api/usage/log", { feature: "user_look", action: "rename" })
+      loadSections()
+    } catch (error) {
+      console.error("Error renaming look:", error)
+      setSavedLooks(prev)
+      toast.error("Ошибка переименования")
+    }
+  }
+
+  const handleRenameCollection = async (sectionId: number, name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const prev = sections
+    setSections((all) => all.map((s) => (s.id === sectionId ? { ...s, name: trimmed } : s)))
+    try {
+      await api.put(`/api/looks-sections/${sectionId}`, { name: trimmed })
+    } catch (error) {
+      console.error("Error renaming collection:", error)
+      setSections(prev)
+      toast.error("Ошибка переименования")
+    }
+  }
+
+  const handleDeleteCollection = async (section: LooksSection) => {
+    const looksCount = section.section_looks?.length || 0
+    // Текст говорит правду: delete_section чистит section_looks и саму секцию,
+    // user_looks не трогает. Без этой фразы кнопку боятся нажать.
+    const ok = window.confirm(
+      `Удалить подборку «${section.name}»? Образы останутся в разделе «Мои образы»`
+    )
+    if (!ok) return
+    try {
+      await api.delete(`/api/looks-sections/${section.id}`)
+      setSections((all) => all.filter((s) => s.id !== section.id))
+      void api.post("/api/usage/log", {
+        feature: "collection",
+        action: "delete",
+        meta: { was_empty: looksCount === 0, looks_count: looksCount },
+      })
+      toast.success("Подборка удалена")
+    } catch (error) {
+      console.error("Error deleting collection:", error)
+      toast.error("Ошибка удаления подборки")
+    }
+  }
+
+  const openRename = (kind: "look" | "collection", id: number, name: string) => {
+    setRenameTarget({ kind, id, name })
+    setRenameValue(name)
+  }
+
+  const submitRename = async () => {
+    if (!renameTarget) return
+    const { kind, id } = renameTarget
+    const value = renameValue
+    setRenameTarget(null)
+    if (kind === "look") await handleRenameLook(id, value)
+    else await handleRenameCollection(id, value)
+  }
+
+  const handleRemoveLookFromCollection = async (sectionId: number, lookId: number) => {
+    try {
+      await api.delete(`/api/looks-sections/${sectionId}/looks/${lookId}`)
+      toast.success("Образ убран из подборки")
+      loadSections()
+    } catch (error) {
+      console.error("Error removing look from collection:", error)
+      toast.error("Ошибка удаления из подборки")
     }
   }
 
@@ -316,11 +408,14 @@ export default function LooksPage() {
     index,
     showDelete = false,
     className = "w-full",
+    sectionId,
   }: {
     look: SavedLook
     index: number
     showDelete?: boolean
     className?: string
+    /** Set when the card is rendered inside a collection — enables "убрать из подборки". */
+    sectionId?: number
   }) => {
     const items = look.expandedItems || []
 
@@ -349,6 +444,16 @@ export default function LooksPage() {
                 <Download className="h-4 w-4 mr-2" />
                 Сохранить фото
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openRename("look", look.id, look.name)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Переименовать
+              </DropdownMenuItem>
+              {sectionId !== undefined && (
+                <DropdownMenuItem onClick={() => handleRemoveLookFromCollection(sectionId, look.id)}>
+                  <FolderMinus className="h-4 w-4 mr-2" />
+                  Убрать из подборки
+                </DropdownMenuItem>
+              )}
               {showDelete && (
                 <DropdownMenuItem onClick={() => handleDeleteLook(look.id)} className="text-red-600 focus:text-red-600">
                   <Trash2 className="h-4 w-4 mr-2" />
@@ -407,6 +512,10 @@ export default function LooksPage() {
                 <Download className="h-4 w-4 mr-2" />
                 Сохранить фото
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => openRename("look", look.id, look.name)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Переименовать
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleDeleteLook(look.id)} className="text-red-600 focus:text-red-600">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Удалить
@@ -447,37 +556,66 @@ export default function LooksPage() {
               {sectionLooks.length} {looksLabel(sectionLooks.length)}
             </p>
           </div>
-          {hasLooks && (
-            // gap-4 — не эстетика: с исходным gap-1 (4px) две 44px-зоны касания
-            // физически перекрывались бы (визуальный размер иконок не трогаем).
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => handleOpenFilter(section)}
-                aria-label="Поиск и фильтры"
-                className="group -m-1.5 flex h-11 w-11 items-center justify-center"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-[background-color,transform] duration-press group-hover:bg-canvas-sunk group-active:scale-95">
-                  <Search className="w-4 h-4" />
-                </span>
-              </button>
-              <button
-                onClick={() => handleOpenAddOutfits(section)}
-                aria-label="Добавить образы в подборку"
-                className="group -m-1.5 flex h-11 w-11 items-center justify-center"
-              >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-[background-color,transform] duration-press group-hover:bg-canvas-sunk group-active:scale-95">
-                  <Plus className="w-4 h-4" />
-                </span>
-              </button>
-            </div>
-          )}
+          {/* gap-4 — не эстетика: с исходным gap-1 (4px) две 44px-зоны касания
+              физически перекрывались бы (визуальный размер иконок не трогаем). */}
+          <div className="flex items-center gap-4">
+            {hasLooks && (
+              <>
+                <button
+                  onClick={() => handleOpenFilter(section)}
+                  aria-label="Поиск и фильтры"
+                  className="group -m-1.5 flex h-11 w-11 items-center justify-center"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-[background-color,transform] duration-press group-hover:bg-canvas-sunk group-active:scale-95">
+                    <Search className="w-4 h-4" />
+                  </span>
+                </button>
+                <button
+                  onClick={() => handleOpenAddOutfits(section)}
+                  aria-label="Добавить образы в подборку"
+                  className="group -m-1.5 flex h-11 w-11 items-center justify-center"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-[background-color,transform] duration-press group-hover:bg-canvas-sunk group-active:scale-95">
+                    <Plus className="w-4 h-4" />
+                  </span>
+                </button>
+              </>
+            )}
+            {/* Меню видно и у пустой подборки — иначе девять пустых папок
+                нечем удалить, что и было до сих пор. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  aria-label="Действия с подборкой"
+                  className="group -m-1.5 flex h-11 w-11 items-center justify-center"
+                >
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full text-ink-2 transition-[background-color,transform] duration-press group-hover:bg-canvas-sunk group-active:scale-95">
+                    <MoreVertical className="w-4 h-4" />
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => openRename("collection", section.id, section.name)}>
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Переименовать
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleDeleteCollection(section)}
+                  className="text-red-600 focus:text-red-600"
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Удалить
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         <div className="relative scroll-section">
           <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1 pt-1">
             {!hasLooks && <AddOutfitCard section={section} />}
             {sectionLooks.map((look, index) => (
-              <LookCard key={look.id} look={look} index={index} className="w-36 flex-shrink-0" />
+              <LookCard key={look.id} look={look} index={index} className="w-36 flex-shrink-0" sectionId={section.id} />
             ))}
           </div>
         </div>
@@ -644,6 +782,37 @@ export default function LooksPage() {
           onSuccess={() => setPaywallOpen(false)}
         />
       )}
+
+      <Dialog open={renameTarget !== null} onOpenChange={(open) => !open && setRenameTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              {renameTarget?.kind === "collection" ? "Переименовать подборку" : "Переименовать образ"}
+            </DialogTitle>
+          </DialogHeader>
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                void submitRename()
+              }
+            }}
+            maxLength={100}
+            autoFocus
+            placeholder="Название"
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setRenameTarget(null)}>
+              Отмена
+            </Button>
+            <Button onClick={() => void submitRename()} disabled={!renameValue.trim()}>
+              Сохранить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
