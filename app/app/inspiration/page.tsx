@@ -38,6 +38,8 @@ type FeedOutfit = {
   isLiked: boolean
   isSaved?: boolean
   preview_image_url?: string
+  /** Раздел витрины. По нему подсветка кружка едет за карточкой. */
+  vibe?: string | null
 }
 
 type ApiResponse = {
@@ -259,6 +261,9 @@ export default function InspirationPage(): ReactElement {
   const [selectedOutfitTitle, setSelectedOutfitTitle] = useState<string>("")
 
   const [index, setIndex] = useState(0) // Declare index and setIndex variables
+  // Разделы, уже подшитые в хвост текущей ленты. Лента непрерывна: подборка не
+  // заканчивается тупиком, а переходит в следующую БЕЗ перезагрузки.
+  const [appended, setAppended] = useState<string[]>([])
   const [isDesktop, setIsDesktop] = useState(false)
 
   // Ссылки на скролл-контейнер и карточки
@@ -285,6 +290,12 @@ export default function InspirationPage(): ReactElement {
   }, [activeTab, outfits, likedIds])
 
   const current = filtered[index]
+
+  // Какой кружок подсвечен сверху. Во «Всех» — всегда «Все»: там лента
+  // намеренно перемешана, и бегающая подсветка читалась бы как сбой. Внутри
+  // выбранной подборки подсветка идёт за карточкой, поэтому переход в
+  // подшитый следующий раздел виден без единой перезагрузки.
+  const highlightedVibe = activeVibe === null ? null : (current?.vibe ?? activeVibe)
 
   useReconcileLimits(true)
 
@@ -410,63 +421,66 @@ export default function InspirationPage(): ReactElement {
   useEffect(() => {
     setIndex(0)
     setWindowStart(0)
+    setAppended([])
   }, [activeTab, activeVibe])
 
   const rendered = useMemo(
     () => filtered.slice(windowStart, Math.min(filtered.length, windowStart + WINDOW_SIZE)),
     [filtered, windowStart],
   )
-  // Дозагрузка при приближении к концу
+  // Долистал почти до конца — подшиваем следующий раздел В КОНЕЦ ленты.
+  //
+  // Раньше здесь переключался activeVibe, а он перезагружает ленту целиком:
+  // экран моргал на чёрное, список подменялся, index сбрасывался в 0. Хуже
+  // того, между setActiveVibe и setLoading(true) есть кадр, где список ещё
+  // старый, а index всё ещё в конце — эффект срабатывал second раз и
+  // перепрыгивал через раздел.
+  //
+  // Теперь ничего не перезагружается: следующий раздел дописывается в хвост, а
+  // подсветка сверху едет за карточкой (см. highlightedVibe). Человек просто
+  // долистывает и оказывается в следующей подборке.
   useEffect(() => {
     if (activeTab !== "popular") return
-    if (fetchingMore || !nextCursor) return
-    if (index >= filtered.length - 3) void loadMore()
-  }, [index, filtered.length, nextCursor, fetchingMore, activeTab])
-
-  // Долистал подборку до конца — переключаем на следующую.
-  //
-  // Раньше лента просто упиралась в последнюю карточку: дозагрузки нет
-  // (бэкенд отдаёт nextCursor = null, это одна страница), и человек оставался
-  // на месте, хотя рядом ещё девять подборок. Теперь конец одной подборки —
-  // это вход в следующую, а после последней возвращаемся во «Все».
-  //
-  // Условия намеренно строгие: только вкладка «Популярное», только когда
-  // подборка выбрана, только когда список непустой и догружать больше нечего.
-  // Иначе переключение сработает на полпути загрузки и утащит человека из
-  // подборки, которую он только открыл.
-  useEffect(() => {
-    if (activeTab !== "popular") return
-    if (!activeVibe || loading || fetchingMore || nextCursor) return
+    if (loading || fetchingMore || nextCursor) return
     if (filtered.length === 0) return
-    if (index < filtered.length - 1) return
+    if (index < filtered.length - 3) return
 
     const order = vibes.map((v) => v.vibe)
-    const at = order.indexOf(activeVibe)
-    if (at === -1) return
-    // После последней подборки — во «Все», а не по кругу: круг незаметно
-    // запер бы человека в витрине.
-    setActiveVibe(at + 1 < order.length ? order[at + 1] : null)
-    scrollerRef.current?.scrollTo({ top: 0 })
-  }, [index, filtered.length, activeVibe, vibes, activeTab, loading, fetchingMore, nextCursor])
+    if (order.length === 0) return
+    // Раздел, который человек сейчас смотрит, тоже считается загруженным —
+    // иначе подшили бы его к самому себе.
+    const loaded = new Set([...appended, ...(activeVibe ? [activeVibe] : [])])
+    const next = order.find((v) => !loaded.has(v))
+    if (!next) return
 
-  async function loadMore() {
-    if (activeTab !== "popular") return
-    if (!nextCursor || fetchingMore) return
-    try {
-      setFetchingMore(true)
-      const params = new URLSearchParams({ cursor: nextCursor })
-      if (userGender) params.set("gender", userGender)
-      if (activeVibe) params.set("vibe", activeVibe)
-      const data: ApiResponse = await api.get(`/api/outfits/inspiration?${params.toString()}`)
-      const extra = normalizeOutfits(data.outfits)
-      setOutfits((prev) => [...prev, ...extra])
-      setNextCursor(data.nextCursor ?? null)
-    } catch (_) {
-      setNextCursor(null)
-    } finally {
-      setFetchingMore(false)
+    let cancelled = false
+    ;(async () => {
+      try {
+        setFetchingMore(true)
+        const params = new URLSearchParams({ vibe: next })
+        if (userGender) params.set("gender", userGender)
+        const data: ApiResponse = await api.get(`/api/outfits/inspiration?${params.toString()}`)
+        if (cancelled) return
+        const extra = normalizeOutfits(data.outfits)
+        setAppended((prev) => [...prev, next])
+        setOutfits((prev) => {
+          // Дедуп по id: во вкладке «Все» тот же образ мог уже приехать в
+          // перемешанной выборке, и дубль сбил бы прокрутку.
+          const seen = new Set(prev.map((o) => o.id))
+          return [...prev, ...extra.filter((o) => !seen.has(o.id))]
+        })
+      } catch (_) {
+        // Раздел не доехал — помечаем загруженным, иначе эффект будет долбить
+        // тот же запрос на каждой прокрутке.
+        if (!cancelled) setAppended((prev) => [...prev, next])
+      } finally {
+        if (!cancelled) setFetchingMore(false)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-  }
+  }, [index, filtered.length, activeVibe, vibes, activeTab, loading, fetchingMore, nextCursor, appended, userGender])
 
   // Управление клавиатурой
   const scrollStep = useCallback((dir: "up" | "down") => {
@@ -758,7 +772,7 @@ export default function InspirationPage(): ReactElement {
               <VibeButton
                 label="Все"
                 cover={null}
-                active={activeVibe === null}
+                active={highlightedVibe === null}
                 eager
                 onClick={() => setActiveVibe(null)}
               />
@@ -767,7 +781,7 @@ export default function InspirationPage(): ReactElement {
                   key={v.vibe}
                   label={v.vibe}
                   cover={v.cover}
-                  active={activeVibe === v.vibe}
+                  active={highlightedVibe === v.vibe}
                   eager={i < 5}
                   onClick={() => setActiveVibe(v.vibe === activeVibe ? null : v.vibe)}
                 />
@@ -1099,6 +1113,7 @@ function normalizeOutfits(list: any[]): FeedOutfit[] {
     isLiked: !!o.isLiked,
     isSaved: !!o.isSaved,
     preview_image_url: typeof o?.preview_image_url === "string" ? o.preview_image_url : "",
+      vibe: typeof o?.vibe === "string" ? o.vibe : null,
   }))
 }
 
