@@ -22,8 +22,18 @@ from app.api.limits import PLAN_DAYS
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.services.discounts import redeem as redeem_discount, resolve as resolve_discount
 
 router = APIRouter()
+
+
+async def _profile_id(db: AsyncSession, user_id: str) -> int:
+    row = (await db.execute(
+        text("SELECT id FROM user_profiles WHERE user_id = :uid"), {"uid": user_id}
+    )).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return row[0]
 
 
 class CreatePaymentRequest(BaseModel):
@@ -68,6 +78,19 @@ async def create_payment(
         "price_rub": amount, "display_name": prow["display_name"],
     }
     description = f"Подписка {prow['display_name']}"
+
+    # Скидка считается ЗДЕСЬ, на сервере, и попадает в ту же сумму, которую
+    # потом сверяет вебхук. Клиент присылает только код — иначе цену можно было
+    # бы назначить себе самому, подставив её в запрос.
+    code = (meta_in.get("code") or "").strip()
+    if code:
+        offer = await resolve_discount(db, code, await _profile_id(db, user["id"]), plan_type)
+        amount = offer["discounted_rub"]
+        meta.update({
+            "code": offer["code"], "percent_off": offer["percent_off"],
+            "discounted_rub": amount,
+        })
+        description = f"Подписка {prow['display_name']} (−{offer['percent_off']}%)"
 
     # invoice_id is filled by the sequence default (migration 007_payments_invoice_id_sequence).
     result = await db.execute(
@@ -178,6 +201,14 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
         # вживую при каждом списании. Счётчик потребления сбрасывать тоже не
         # надо — он помнит, под каким планом накоплен (subscription_usage.
         # plan_type), и сам обнулится при первом списании на новом плане.
+
+        # Код закрепляется только теперь, после денег: проверка кода на экране
+        # ничего не расходует, иначе перебор чужих промокодов сжигал бы их.
+        if meta.get("code"):
+            await redeem_discount(
+                db, meta["code"], profile_id, inv, sub_type,
+                int(meta.get("price_rub") or 0), int(meta.get("discounted_rub") or 0),
+            )
 
     # Mark as applied (idempotency)
     updated_meta = {**meta, "post_applied": True, "post_applied_at": "now()"}

@@ -53,6 +53,15 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
   const [loading, setLoading] = useState(true)
   const [currentSub, setCurrentSub] = useState<{ subscription_type: string; status: string; expires_at: string | null } | null>(null)
   const [currentLimits, setCurrentLimits] = useState<Record<string, PlanLimit>>({})
+  // Скидки. `offer` — личное предложение, выданное сервером в момент, когда
+  // кончился бесплатный лимит; его код подставляется сам. `promo` — то, что
+  // человек ввёл руками. `applied` — ответ сервера с посчитанной ценой: считать
+  // её здесь нельзя, платит-то Робокасса по сумме, которую назвал бэкенд.
+  const [offer, setOffer] = useState<{ code: string; percent_off: number; expires_at: string | null } | null>(null)
+  const [promo, setPromo] = useState("")
+  const [applied, setApplied] = useState<{ code: string; percent_off: number; discounted_rub: number } | null>(null)
+  const [promoError, setPromoError] = useState("")
+  const [now, setNow] = useState(() => Date.now())
 
   // Swipe-to-dismiss states
   const contentRef = useRef<HTMLDivElement>(null)
@@ -67,8 +76,54 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
           setCurrentLimits(d?.limits || {})
         })
         .catch(() => setCurrentSub(null))
+      api.get("/api/discounts/mine")
+        .then((d) => {
+          setOffer(d?.offer || null)
+          if (d?.offer?.code) setPromo(d.offer.code)
+        })
+        .catch(() => setOffer(null))
     }
   }, [isOpen])
+
+  // Тикаем раз в секунду только пока шторка открыта и таймеру есть что
+  // показывать. Интервал, который живёт всегда, — это перерисовка всего
+  // приложения раз в секунду ради экрана, которого никто не видит.
+  useEffect(() => {
+    if (!isOpen || !offer?.expires_at) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [isOpen, offer?.expires_at])
+
+  // Код проверяется на сервере при каждой смене тарифа: скидка может быть
+  // привязана к одному плану, и «−25%» рядом с недельным ничего не значит,
+  // если код только на годовой.
+  useEffect(() => {
+    const code = promo.trim()
+    if (!isOpen || !code) {
+      setApplied(null)
+      setPromoError("")
+      return
+    }
+    let cancelled = false
+    api.post("/api/discounts/check", { code, planType: selectedPlan })
+      .then((d) => {
+        if (cancelled) return
+        setApplied({ code: d.code, percent_off: d.percent_off, discounted_rub: d.discounted_rub })
+        setPromoError("")
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setApplied(null)
+        // Бэкенд объясняет причину словами («срок истёк», «уже применяли»),
+        // и это единственное, что человеку помогает. api-client кладёт тело
+        // ответа в message целиком — достаём detail оттуда, а не показываем
+        // одинаковое «код недействителен» на все случаи.
+        const raw = String(e?.message || "")
+        const detail = raw.match(/"detail"\s*:\s*"([^"]+)"/)?.[1]
+        setPromoError(detail || (raw.includes("400") ? "Код не подошёл" : ""))
+      })
+    return () => { cancelled = true }
+  }, [promo, selectedPlan, isOpen])
 
   // ── paywall_shown instrumentation ──
   // This sheet IS the paywall for every trigger in the app, so emitting here once
@@ -146,6 +201,18 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
     ? new Date(currentSub.expires_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
     : ""
 
+  // Сколько осталось от личного предложения. Пусто, когда истекло — тогда и
+  // баннер не рисуется, а не показывает «00:00:00».
+  const countdown = (() => {
+    if (!offer?.expires_at) return ""
+    const left = new Date(offer.expires_at).getTime() - now
+    if (left <= 0) return ""
+    const h = Math.floor(left / 3_600_000)
+    const m = Math.floor((left % 3_600_000) / 60_000)
+    const s = Math.floor((left % 60_000) / 1000)
+    return h > 0 ? `${h} ч ${m} мин` : `${m}:${String(s).padStart(2, "0")}`
+  })()
+
   const handleGetAccess = async () => {
     setIsProcessing(true)
     try {
@@ -159,9 +226,11 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
         return
       }
       await startRoboPayment(
-        plan.price_rub,
+        applied?.discounted_rub ?? plan.price_rub,
         `Подписка ${plan.display_name}`,
-        { action: "subscribe", type: selectedPlan }
+        // Сумму всё равно пересчитает бэкенд по коду — здесь она только для
+        // логов. Клиент выбирает ЧТО купить и ПО КАКОМУ коду, но не почём.
+        { action: "subscribe", type: selectedPlan, ...(applied ? { code: applied.code } : {}) }
       )
       onSuccess?.()
     } catch (error) {
@@ -236,6 +305,20 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
               </div>
             )}
 
+            {/* Личное предложение. Таймер считает от даты, которую выдал сервер,
+                а не от момента открытия шторки: иначе перезагрузка продлевала бы
+                акцию, и срочность была бы враньём. */}
+            {offer && countdown && (
+              <div className="flex-shrink-0 rounded-2xl bg-ink text-signal-ink px-3 py-2.5 text-center">
+                <div className="text-caption font-semibold">
+                  −{offer.percent_off}% на любой тариф
+                </div>
+                <div className="text-micro opacity-80 mt-0.5">
+                  Предложение сгорает через {countdown}
+                </div>
+              </div>
+            )}
+
             {/* Plan selection */}
             <div className="space-y-2 flex-shrink-0">
               {loading ? (
@@ -267,22 +350,64 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
                           </div>
                         </div>
                         <div className="text-right shrink-0">
-                          <div className="font-bold text-body text-ink">
-                            {key === "yearly"
-                              ? `${Math.round(plan.price_rub / 12)} ₽`
-                              : `${plan.price_rub} ₽`
-                            }
-                          </div>
-                          <div className="text-caption text-ink-2">
-                            {key === "yearly"
-                              ? `в месяц · ${plan.price_rub} ₽ за год`
-                              : key === "weekly" ? "в неделю" : "в месяц"}
-                          </div>
+                          {/* Скидка показывается только на выбранном тарифе:
+                              сервер считает её под конкретный план, и рисовать
+                              её на остальных значило бы обещать непроверенное. */}
+                          {isSelected && applied ? (
+                            <>
+                              <div className="font-bold text-body text-ink">
+                                {applied.discounted_rub} ₽
+                              </div>
+                              <div className="text-caption text-ink-2 line-through">
+                                {plan.price_rub} ₽
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="font-bold text-body text-ink">
+                                {key === "yearly"
+                                  ? `${Math.round(plan.price_rub / 12)} ₽`
+                                  : `${plan.price_rub} ₽`
+                                }
+                              </div>
+                              <div className="text-caption text-ink-2">
+                                {key === "yearly"
+                                  ? `в месяц · ${plan.price_rub} ₽ за год`
+                                  : key === "weekly" ? "в неделю" : "в месяц"}
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     </button>
                   )
                 })
+              )}
+            </div>
+
+            {/* Промокод. Поле стоит после тарифов, а не над ними: человек,
+                у которого кода нет, не должен думать, что без кода сюда
+                заходить рано. */}
+            <div className="flex-shrink-0">
+              <input
+                value={promo}
+                onChange={(e) => setPromo(e.target.value.toUpperCase())}
+                placeholder="Промокод"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                className={cn(
+                  "w-full h-11 px-4 rounded-2xl bg-canvas-sunk text-body text-ink placeholder:text-ink-3 outline-none border-2 transition-colors",
+                  applied ? "border-ink" : promoError ? "border-signal" : "border-transparent"
+                )}
+              />
+              {applied && (
+                <p className="text-caption text-ink-2 mt-1.5 px-1">
+                  Код применён: −{applied.percent_off}%
+                </p>
+              )}
+              {!applied && promoError && (
+                <p className="text-caption text-signal mt-1.5 px-1">{promoError}</p>
               )}
             </div>
 

@@ -42,6 +42,7 @@ _ANALYST_MUST_NOT = [
     "/api/admin/broadcast",      # сообщение всем пользователям
     "/api/admin/feature-costs",  # цены
     "/api/admin/plan-limits",    # потолки планов = деньги
+    "/api/admin/discounts",      # промокоды = деньги
     "/api/admin/reminders",      # сообщения пользователям
     "/api/admin/users",          # персональные данные (и /users/{id}/timeline)
     "/api/admin/paying-users",   # платежи

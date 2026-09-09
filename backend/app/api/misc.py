@@ -235,7 +235,7 @@ def _ids_out_of_prose(parsed: list, cap: int = 9) -> list:
 
 @router.post("/check-limits")
 async def check_limits(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from app.api.limits import _get_profile_id, _use_feature, _can_use_feature
+    from app.api.limits import _get_profile_id, _use_feature, _can_use_feature, refuse
 
     body = await request.json()
     feature = body.get("featureType") or body.get("feature") or body.get("type") or body.get("usageType")
@@ -252,7 +252,7 @@ async def check_limits(request: Request, user: dict = Depends(get_current_user),
     if is_consume:
         ok, remaining = await _use_feature(db, profile_id, feature, count)
         if not ok:
-            raise HTTPException(status_code=402, detail="payment_required")
+            await refuse(db, profile_id, user["id"])
         await db.commit()
         return {"success": True, "canUse": True, "remaining": remaining}
     else:

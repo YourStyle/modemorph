@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
+import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api-client"
 import { cn } from "@/lib/utils"
 
@@ -42,6 +43,24 @@ interface PlanEconomics {
   margin_pct: number | null
 }
 
+interface Promo {
+  code: string
+  percent_off: number
+  plan_type: string | null
+  expires_at: string | null
+  max_uses: number | null
+  is_active: boolean
+  redeemed: number
+  revenue_rub: number
+}
+
+interface DiscountSummary {
+  kind: string
+  issued: number
+  used: number
+  revenue_rub: number
+}
+
 interface SubscriptionPricing {
   id: number
   plan_type: string
@@ -62,6 +81,9 @@ export default function FeatureCostsPage() {
   const [subscriptionPricing, setSubscriptionPricing] = useState<SubscriptionPricing[]>([])
   const [planEconomics, setPlanEconomics] = useState<PlanEconomics[]>([])
   const [freeLimits, setFreeLimits] = useState<Record<string, { cap: number; period: string }>>({})
+  const [promos, setPromos] = useState<Promo[]>([])
+  const [summary, setSummary] = useState<DiscountSummary[]>([])
+  const [newPromo, setNewPromo] = useState({ code: "", percent_off: 20, max_uses: "", expires_at: "" })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
@@ -85,7 +107,7 @@ export default function FeatureCostsPage() {
 
   const fetchAllData = async () => {
     setLoading(true)
-    await Promise.all([fetchFeatureCosts(), fetchSubscriptionPricing()])
+    await Promise.all([fetchFeatureCosts(), fetchSubscriptionPricing(), fetchDiscounts()])
     setLoading(false)
   }
 
@@ -108,6 +130,52 @@ export default function FeatureCostsPage() {
     } catch (error) {
       console.error(error)
       toast({ title: "Ошибка", description: "Не удалось загрузить цены подписок", variant: "destructive" })
+    }
+  }
+
+  const fetchDiscounts = async () => {
+    try {
+      const result = await api.get("/api/admin/discounts")
+      setPromos(result.promos || [])
+      setSummary(result.summary || [])
+    } catch (error) {
+      console.error(error)
+      toast({ title: "Ошибка", description: "Не удалось загрузить промокоды", variant: "destructive" })
+    }
+  }
+
+  const createPromo = async () => {
+    setSaving(true)
+    try {
+      await api.post("/api/admin/discounts", {
+        code: newPromo.code,
+        percent_off: newPromo.percent_off,
+        max_uses: newPromo.max_uses ? Number.parseInt(newPromo.max_uses) : null,
+        expires_at: newPromo.expires_at || null,
+      })
+      setNewPromo({ code: "", percent_off: 20, max_uses: "", expires_at: "" })
+      await fetchDiscounts()
+      toast({ title: "Готово", description: "Промокод создан" })
+    } catch (error) {
+      // Пол маржи отвечает словами и числами — показываем их, а не «ошибка».
+      const raw = String((error as Error)?.message || "")
+      const detail = raw.match(/"detail"\s*:\s*"([^"]+)"/)?.[1]
+      toast({ title: "Не создан", description: detail || "Не удалось создать промокод", variant: "destructive" })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const togglePromo = async (code: string, is_active: boolean) => {
+    setSaving(true)
+    try {
+      await api.patch("/api/admin/discounts", { code, is_active })
+      setPromos((prev) => prev.map((p) => (p.code === code ? { ...p, is_active } : p)))
+    } catch (error) {
+      console.error(error)
+      toast({ title: "Ошибка", description: "Не удалось переключить код", variant: "destructive" })
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -364,6 +432,117 @@ export default function FeatureCostsPage() {
             </Card>
           ))}
         </div>
+      </section>
+
+      {/* Промокоды */}
+      <section>
+        <h2 className="text-2xl font-bold mb-1">Промокоды</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Скидка проверяется против пола маржи при создании: код, который продаёт тариф ниже
+          себестоимости, не создастся. Рефералки и разовые предложения выдаются автоматически и
+          в списке не показываются — по ним сводка ниже.
+        </p>
+
+        <Card className="mb-4">
+          <CardContent className="pt-6 flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label htmlFor="promo-code">Код</Label>
+              <Input id="promo-code" className="w-40 uppercase" value={newPromo.code}
+                onChange={(e) => setNewPromo({ ...newPromo, code: e.target.value.toUpperCase() })} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="promo-pct">Скидка, %</Label>
+              <Input id="promo-pct" className="w-24" type="number" min="1" max="100" value={newPromo.percent_off}
+                onChange={(e) => setNewPromo({ ...newPromo, percent_off: Number.parseInt(e.target.value) || 0 })} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="promo-uses">Применений</Label>
+              <Input id="promo-uses" className="w-28" type="number" min="1" placeholder="без лимита"
+                value={newPromo.max_uses} onChange={(e) => setNewPromo({ ...newPromo, max_uses: e.target.value })} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="promo-exp">Действует до</Label>
+              <Input id="promo-exp" className="w-44" type="date" value={newPromo.expires_at}
+                onChange={(e) => setNewPromo({ ...newPromo, expires_at: e.target.value })} />
+            </div>
+            <Button onClick={createPromo} disabled={saving || !newPromo.code}>Создать</Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-muted-foreground text-left">
+                  <th className="pb-2 font-medium">Код</th>
+                  <th className="pb-2 font-medium text-right">Скидка</th>
+                  <th className="pb-2 font-medium text-right">Применений</th>
+                  <th className="pb-2 font-medium text-right">Выручка</th>
+                  <th className="pb-2 font-medium text-right">До</th>
+                  <th className="pb-2 font-medium text-right">Активен</th>
+                </tr>
+              </thead>
+              <tbody>
+                {promos.length === 0 && (
+                  <tr><td colSpan={6} className="py-4 text-muted-foreground">Промокодов пока нет</td></tr>
+                )}
+                {promos.map((p) => (
+                  <tr key={p.code} className="border-b last:border-0">
+                    <td className="py-2.5 font-mono">{p.code}</td>
+                    <td className="py-2.5 text-right tabular-nums">−{p.percent_off}%</td>
+                    <td className="py-2.5 text-right tabular-nums">
+                      {p.redeemed}{p.max_uses ? ` / ${p.max_uses}` : ""}
+                    </td>
+                    <td className="py-2.5 text-right tabular-nums">{p.revenue_rub} ₽</td>
+                    <td className="py-2.5 text-right text-muted-foreground">
+                      {p.expires_at ? new Date(p.expires_at).toLocaleDateString("ru") : "бессрочно"}
+                    </td>
+                    <td className="py-2.5 text-right">
+                      <Switch checked={p.is_active}
+                        onCheckedChange={(checked) => togglePromo(p.code, checked)} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+
+        {/* Гипотеза 2 живёт этой строкой: выдано предложений против оплаченных. */}
+        {summary.length > 0 && (
+          <div className="grid gap-4 md:grid-cols-2 mt-4">
+            {summary.map((s) => (
+              <Card key={s.kind}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">
+                    {s.kind === "referral" ? "Реферальные коды" : "Разовые предложения"}
+                  </CardTitle>
+                  <CardDescription>
+                    {s.kind === "referral"
+                      ? "Выдаются при первом заходе в профиль"
+                      : "Выдаются в момент, когда кончился бесплатный лимит (половине — контрольная группа)"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Выдано</span>
+                    <span className="tabular-nums">{s.issued}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Закончились оплатой</span>
+                    <span className="tabular-nums">
+                      {s.used} {s.issued > 0 && `(${Math.round(100 * s.used / s.issued)}%)`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Принесли</span>
+                    <span className="tabular-nums">{s.revenue_rub} ₽</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Feature Costs Section */}

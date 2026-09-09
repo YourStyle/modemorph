@@ -93,6 +93,7 @@ export function UserProfileSheet({
   const [isPaywallOpen, setIsPaywallOpen] = useState(false)
   const [isHiddenItemsOpen, setIsHiddenItemsOpen] = useState(false)
   const [subscriptionData, setSubscriptionData] = useState<any>(null)
+  const [referral, setReferral] = useState<{ code: string; percent_off: number; reward_days: number; invited: number } | null>(null)
   // Раскрывающаяся секция выбора города — инлайн, без второй шторки поверх
   // этой. Раскрывается сама, если сюда пришли по ссылке "Выбрать" из
   // подсказки про город (autoExpandCity), и сворачивается при закрытии шита.
@@ -177,6 +178,12 @@ export function UserProfileSheet({
       setSubscriptionData(data)
     } catch {
       // ignore
+    }
+    try {
+      const d = await api.get("/api/discounts/mine")
+      setReferral(d?.referral || null)
+    } catch {
+      // Реферальный блок — не то, ради чего человек открыл профиль. Молчим.
     }
   }
 
@@ -392,6 +399,43 @@ export function UserProfileSheet({
                             </Button>
                           </div>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Реферальный код. Показываем только когда бэкенд его
+                        отдал: код заводится лениво, при первом обращении к
+                        /api/discounts/mine, и до ответа рисовать пустую
+                        карточку «пригласи друга» не за чем. */}
+                    {referral && (
+                      <div className="rounded-2xl bg-canvas-sunk p-3 space-y-2">
+                        <div className="text-body font-semibold text-ink">Пригласить друга</div>
+                        <div className="text-caption text-ink-2">
+                          Другу — {referral.percent_off}% скидки на первую подписку,
+                          вам — {referral.reward_days} дней, когда он оплатит.
+                          {referral.invited > 0 && ` Уже пришли: ${referral.invited}.`}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const url = `https://t.me/modemorph_bot?start=ref_${referral.code}`
+                            const text = `Собираю образы из своего гардероба в ModeMorph. Заходи — тебе ${referral.percent_off}% скидки: ${url}`
+                            // В Telegram открываем родной шэринг, вне его —
+                            // копируем ссылку. navigator.share внутри TMA на
+                            // iOS открывает системную шторку поверх мини-аппа
+                            // и часто не возвращает фокус.
+                            const tg = (window as any)?.Telegram?.WebApp
+                            if (tg?.openTelegramLink) {
+                              tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`)
+                            } else {
+                              void navigator.clipboard?.writeText(url)
+                              toast.success("Ссылка скопирована")
+                            }
+                          }}
+                          className="w-full min-h-11 flex items-center justify-between gap-2 px-3 rounded-xl bg-canvas text-left transition-transform duration-press active:scale-[.99]"
+                        >
+                          <span className="font-mono text-body text-ink tracking-wide">{referral.code}</span>
+                          <span className="text-caption text-ink-2">Поделиться</span>
+                        </button>
                       </div>
                     )}
 

@@ -191,6 +191,23 @@ async def check_limits_endpoint(
     return {"success": True, "canUse": ok, "remaining": remaining}
 
 
+async def refuse(db: AsyncSession, profile_id, user_id: str) -> None:
+    """Отказ по лимиту. Здесь же выдаётся разовое предложение — оно обязано
+    появляться от того, что человек упёрся, а не от того, что открыл экран.
+
+    Коммит до исключения: HTTPException откатит транзакцию, и выданный код
+    исчез бы вместе с ней. Форма ответа не меняется — «payment_required», как
+    было; пейволл забирает предложение отдельным запросом /api/discounts/mine.
+    Иначе пришлось бы трогать проверку `includes('payment_required')`, на
+    которой висит показ пейволла в четырёх местах фронта.
+    """
+    if await _plan_of(db, profile_id) == FREE_PLAN:
+        from app.services.discounts import grant_winback
+        await grant_winback(db, profile_id, user_id)
+    await db.commit()
+    raise HTTPException(status_code=402, detail="payment_required")
+
+
 @router.post("/consume")
 async def consume_limit(
     body: ConsumeRequest,
@@ -200,7 +217,7 @@ async def consume_limit(
     profile_id = await _get_profile_id(db, user["id"])
     ok, remaining = await _use_feature(db, profile_id, body.feature, body.count)
     if not ok:
-        raise HTTPException(status_code=402, detail="payment_required")
+        await refuse(db, profile_id, user["id"])
     await db.commit()
     return {"success": True, "remaining": remaining}
 

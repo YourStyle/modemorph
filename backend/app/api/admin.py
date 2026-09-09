@@ -6,6 +6,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from app.api.limits import PLAN_DAYS
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_admin_user, get_staff_user, require_role
+from app.services.discounts import assert_price_above_floor, discounted_price
 from app.services.telegram import send_bot_message
 
 logger = logging.getLogger(__name__)
@@ -2065,6 +2067,101 @@ async def mark_clothing_types(user: dict = Depends(get_admin_user), db: AsyncSes
     """))
     await db.commit()
     return {"success": True, "updated": result.rowcount}
+
+
+@router.get("/discounts")
+async def list_discounts(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Промокоды со статистикой. Рефералки и личные предложения не сыплются в
+    общий список — их сотни и они ничьи; вместо них сводка по видам."""
+    promos = [dict(r) for r in (await db.execute(text("""
+        SELECT d.*, (SELECT count(*) FROM discount_redemptions r WHERE r.code = d.code) AS redeemed,
+               (SELECT coalesce(sum(r.discounted_rub), 0) FROM discount_redemptions r WHERE r.code = d.code) AS revenue_rub
+        FROM discounts d WHERE d.kind = 'promo' ORDER BY d.created_at DESC
+    """))).mappings().all()]
+
+    # Гипотеза 2 живёт этой строкой: сколько предложений выдано и сколько
+    # закончилось оплатой. Контрольная группа — те, кто упёрся в лимит, но
+    # предложения не получил (см. discounts.in_offer_group).
+    summary = [dict(r) for r in (await db.execute(text("""
+        SELECT d.kind, count(*) AS issued,
+               count(*) FILTER (WHERE d.uses > 0) AS used,
+               coalesce(sum(r.discounted_rub), 0) AS revenue_rub
+        FROM discounts d
+        LEFT JOIN discount_redemptions r ON r.code = d.code
+        WHERE d.kind IN ('referral', 'winback')
+        GROUP BY d.kind
+    """))).mappings().all()]
+
+    return {"promos": promos, "summary": summary}
+
+
+class NewDiscount(BaseModel):
+    code: str
+    percent_off: int
+    plan_type: Optional[str] = None
+    expires_at: Optional[str] = None
+    max_uses: Optional[int] = None
+
+
+@router.post("/discounts")
+async def create_discount(
+    body: NewDiscount,
+    user: dict = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Создать промокод.
+
+    Скидка проверяется против пола маржи ДО создания, а не при попытке оплаты:
+    узнать, что код на 90% нельзя применить, должен тот, кто его придумал, а не
+    человек, который его уже получил и вводит.
+    """
+    code = body.code.strip().upper()
+    if not code or not 1 <= body.percent_off <= 100:
+        raise HTTPException(status_code=400, detail="Нужны код и percent_off от 1 до 100")
+
+    plans = [body.plan_type] if body.plan_type else ["weekly", "monthly", "yearly"]
+    for plan in plans:
+        price = (await db.execute(
+            text("SELECT price_rub FROM subscription_pricing WHERE plan_type = :p AND is_active = true"),
+            {"p": plan},
+        )).scalar()
+        if price is None:
+            continue
+        await assert_price_above_floor(db, plan, discounted_price(int(price), body.percent_off))
+
+    created = (await db.execute(
+        text("""
+            INSERT INTO discounts (code, kind, percent_off, plan_type, expires_at, max_uses)
+            VALUES (:c, 'promo', :pct, :plan, CAST(:exp AS timestamptz), :max)
+            ON CONFLICT (code) DO NOTHING
+            RETURNING code
+        """),
+        {"c": code, "pct": body.percent_off, "plan": body.plan_type,
+         "exp": body.expires_at, "max": body.max_uses},
+    )).scalar()
+    if not created:
+        raise HTTPException(status_code=400, detail="Такой код уже есть")
+    await db.commit()
+    return {"success": True, "code": created}
+
+
+@router.patch("/discounts")
+async def toggle_discount(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Выключить или включить промокод. Удалять нельзя: на код ссылаются
+    применения, и снос строки стёр бы историю того, по какой цене продали."""
+    body = await request.json()
+    code = (body.get("code") or "").strip().upper()
+    is_active = body.get("is_active")
+    if not code or not isinstance(is_active, bool):
+        raise HTTPException(status_code=400, detail="code and is_active required")
+    result = await db.execute(
+        text("UPDATE discounts SET is_active = :a WHERE code = :c AND kind = 'promo'"),
+        {"a": is_active, "c": code},
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Промокод не найден")
+    await db.commit()
+    return {"success": True}
 
 
 @router.get("/subscription-pricing")

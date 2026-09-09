@@ -7,7 +7,7 @@ from app.api import (
     auth, health, wardrobe, wardrobe_user_items, basic_items,
     limits, recommendations, outfits, looks, payments,
     ai, ai_chats, me, upload, weather, misc, admin, cron, partner,
-    item_dislikes, rec_events, widget,
+    item_dislikes, rec_events, widget, discounts,
 )
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -71,6 +71,7 @@ app.include_router(looks.router, prefix="/api", tags=["looks"])
 app.include_router(limits.router, prefix="/api/limits", tags=["limits"])
 app.include_router(recommendations.router, prefix="/api/recommendations", tags=["recommendations"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
+app.include_router(discounts.router, prefix="/api/discounts", tags=["discounts"])
 app.include_router(ai.router, prefix="/api/ai", tags=["ai"])
 app.include_router(ai_chats.router, prefix="/api/ai", tags=["ai-chats"])
 app.include_router(upload.router, prefix="/api", tags=["upload"])
