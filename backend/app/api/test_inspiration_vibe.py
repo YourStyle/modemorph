@@ -75,19 +75,30 @@ def test_feed_hides_incomplete_outfits():
     def it(ct, name=""):
         return {"clothing_type": ct, "name": name or ct}
 
+    SHOT = "https://s3/modemorphs3/lookbook/123.png"
     full = [it("t-shirt"), it("jeans"), it("sneakers")]
-    assert _is_showable(full) is True
+    assert _is_showable(full, SHOT) is True
 
     # Ровно то, на что жаловались.
-    assert _is_showable([]) is False
-    assert _is_showable([it("dress")]) is False                       # образ из одной вещи
-    assert _is_showable([it("dress"), it("shoes")]) is False          # две вещи — мало
-    assert _is_showable([it("t-shirt"), it("sneakers"), it("bag")]) is False   # нет низа
+    assert _is_showable([], SHOT) is False
+    assert _is_showable([it("dress")], SHOT) is False                  # образ из одной вещи
+    assert _is_showable([it("dress"), it("shoes")], SHOT) is False     # две вещи — мало
+    assert _is_showable([it("t-shirt"), it("sneakers"), it("bag")], SHOT) is False  # нет низа
 
     # Платье закрывает и верх, и низ — три вещи достаточно.
-    assert _is_showable([it("dress"), it("shoes"), it("bag")]) is True
+    assert _is_showable([it("dress"), it("shoes"), it("bag")], SHOT) is True
     # Летний комплект без верхней одежды остаётся в ленте.
-    assert _is_showable([it("tank-top"), it("shorts"), it("sandals")]) is True
+    assert _is_showable([it("tank-top"), it("shorts"), it("sandals")], SHOT) is True
+
+    # Без кадра образ в ленту не идёт, каким бы полным он ни был: посев ставит в
+    # превью фото первой вещи, и такая карточка выглядит как карточка товара.
+    assert _is_showable(full, None) is False
+    assert _is_showable(full, "") is False
+    assert _is_showable(full, "https://www.sela.ru/shop/products/1.jpg") is False
+    assert _is_showable(full, "https://s3/modemorphs3/original/blouse.png") is False
+    assert _is_showable(full, "https://s3/modemorphs3/flatlay/1-ab.png") is False
+    # Кадры, загруженные руками до появления лукбука, — настоящие.
+    assert _is_showable(full, "https://s3/modemorphs3/upload-5MjoYhFg.jpeg") is True
 
 
 if __name__ == "__main__":

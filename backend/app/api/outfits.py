@@ -72,8 +72,21 @@ def _inspiration_filter(gender: Optional[str], vibe: Optional[str]) -> tuple[str
 # Минимум вещей в образе, который вообще имеет смысл показывать как идею.
 _MIN_FEED_ITEMS = 3
 
+# Куда складываются НАСТОЯЩИЕ кадры образа. Всё остальное в preview_image_url —
+# это фото товара: seed_vibes при посеве ставит туда картинку первой вещи как
+# заглушку, а лукбук заменяет её позже. Лента должна показывать только образ на
+# модели, иначе карточка идеи выглядит как карточка товара.
+#   /lookbook/  — кадр, сгенерированный app/services/lookbook.py
+#   upload-     — кадры, загруженные руками до появления лукбука (16 образов
+#                 обычной ленты, самые первые)
+_REAL_PREVIEW_MARKERS = ("/lookbook/", "/upload-")
 
-def _is_showable(items: list) -> bool:
+
+def _has_real_preview(preview_url: str | None) -> bool:
+    return any(m in (preview_url or "") for m in _REAL_PREVIEW_MARKERS)
+
+
+def _is_showable(items: list, preview_url: str | None = None) -> bool:
     """Годится ли образ для ленты идей.
 
     Лента показывала всё подряд: были образы из одной вещи и такие, что не
@@ -84,8 +97,14 @@ def _is_showable(items: list) -> bool:
 
     Верхнюю одежду НЕ требуем: её нет у 67 образов из 77, и почти везде это
     нормальный летний комплект, а не брак. Требование выбросило бы 87% ленты.
+
+    Кадр обязателен: посев образов бесплатный, а кадр стоит денег, поэтому
+    свежепосеянные образы ждут своей очереди с заглушкой вместо превью. До
+    кадра их в ленте быть не должно.
     """
     if len(items) < _MIN_FEED_ITEMS:
+        return False
+    if not _has_real_preview(preview_url):
         return False
     return covers_body(items)
 
@@ -124,6 +143,12 @@ async def get_inspiration_vibes(
         FROM outfits o
         WHERE o.vibe IS NOT NULL
           AND {gender_clause}
+          -- Тот же порог на кадр, что и в самой ленте (_has_real_preview):
+          -- посеянный образ до генерации кадра держит в превью фото первой
+          -- вещи. Без этого условия кружок обещал бы 40 образов, а открывался
+          -- бы на двух — ровно то, чего докстринг требует не допускать.
+          AND (o.preview_image_url LIKE '%/lookbook/%'
+               OR o.preview_image_url LIKE '%/upload-%')
           AND EXISTS (
               SELECT 1 FROM outfit_items oi
               JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
@@ -224,7 +249,7 @@ async def get_inspiration(
     for o in outfits:
         oid = o["id"]
         outfit_items = items_by_outfit.get(oid, [])
-        if not _is_showable(outfit_items):
+        if not _is_showable(outfit_items, o["preview_image_url"]):
             continue
         feed.append({
             "id": str(oid),
