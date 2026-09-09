@@ -73,6 +73,52 @@ VIBES: dict[str, list[str]] = {
                     "plain white shirt", "black longsleeve top",
                     "straight trousers neutral", "black ankle boots",
                     "men's plain white shirt", "men's black trousers straight"],
+
+    # ── Сезонные кружки под холодную погоду ──
+    # Правило то же, что у страновых: у каждого кружка обязана быть фраза на
+    # верх, на низ и на обувь, иначе слот становится бутылочным горлышком и
+    # образов соберётся втрое меньше пула (замер 2026-08-17). Плюс явные
+    # «men's ...» — каталог женоцентричный, без них мужских образов почти нет.
+    #
+    # Верхняя одежда спрашивается несколькими фразами не для красоты: именно она
+    # задаёт температурное окно образа, а repair_outfit отбросит комплект, если
+    # окна не пересекаются. Чем больше кандидатов на этот слот, тем выше шанс,
+    # что к конкретному низу найдётся совместимый верх.
+    "Осень": ["autumn layered outfit neutral", "wool trench coat",
+              "oversized wool coat beige", "knit sweater neutral",
+              "long sleeve shirt autumn", "straight jeans dark",
+              "wool trousers autumn", "leather ankle boots",
+              "men's wool coat", "men's knit sweater neutral",
+              "men's straight dark jeans", "men's leather boots"],
+    # Первый прогон дал 8 образов из пула в 425 вещей: верх был 6 у женщин и 1 у
+    # мужчин. Причина ровно та, о которой предупреждает комментарий у
+    # «Скандинавии» — водолазка и вязаный свитер по SLOT_MAP это layer, а не top,
+    # так что зимний кружок спрашивал одни слои. Отсюда явные фразы на рубашку и
+    # лонгслив: без верха образ не проходит covers_body и не выпускается.
+    "Зима": ["winter outfit warm layers", "puffer down jacket",
+             "parka with hood winter", "chunky knit wool sweater",
+             "turtleneck wool", "warm wool trousers",
+             "insulated winter boots", "wool scarf neutral",
+             "long sleeve shirt warm", "flannel shirt checked",
+             "men's puffer down jacket", "men's chunky knit sweater",
+             "men's warm trousers winter", "men's winter boots",
+             "men's long sleeve shirt warm", "men's flannel shirt"],
+    "Межсезонье": ["transitional outfit light layers", "light trench coat",
+                   "denim jacket casual", "cardigan light knit",
+                   "cotton shirt long sleeve", "straight trousers light",
+                   "white leather sneakers", "loafers leather",
+                   "men's light jacket", "men's cardigan knit",
+                   "men's cotton shirt", "men's white sneakers"],
+}
+
+# Кружок -> outfits.season. У страновых сезона нет: они про эстетику, а не про
+# погоду. У сезонных он обязателен — без него лента и генератор не могут
+# отличить летний комплект от зимнего, и все 77 образов витрины лежали с
+# season IS NULL (замер 2026-09-08).
+VIBE_SEASON: dict[str, str] = {
+    "Осень": "autumn",
+    "Зима": "winter",
+    "Межсезонье": "spring",
 }
 
 K_PER_PHRASE = 40          # запас: после отсечки по скору и раскладки по слотам останется меньше
@@ -275,13 +321,14 @@ async def write(vibe: str, outfits: list[list[dict]]) -> int:
         for idx, items in enumerate(outfits, 1):
             genders = {(i.get("gender") or "").lower() for i in items} - {""}
             row = await db.execute(text("""
-                INSERT INTO outfits (user_id, name, description, preview_image_url, gender, vibe, created_at)
-                VALUES (:uid, :name, NULL, :preview, :gender, :vibe, NOW()) RETURNING id
+                INSERT INTO outfits (user_id, name, description, preview_image_url, gender, vibe, season, created_at)
+                VALUES (:uid, :name, NULL, :preview, :gender, :vibe, :season, NOW()) RETURNING id
             """), {
                 "uid": CURATOR_UUID, "name": f"{vibe} · образ {idx}",
                 "preview": items[0].get("image_url"),
                 "gender": next(iter(genders)) if len(genders) == 1 else "unisex",
                 "vibe": vibe,
+                "season": VIBE_SEASON.get(vibe),
             })
             oid = row.scalar()
             for pos, it in enumerate(items):
@@ -301,7 +348,7 @@ async def write(vibe: str, outfits: list[list[dict]]) -> int:
     return written
 
 
-async def main(commit: bool, only: str | None) -> None:
+async def main(commit: bool, only: str | None, per_vibe: int = OUTFITS_PER_VIBE) -> None:
     plan = {}
     for vibe, phrases in VIBES.items():
         if only and vibe != only:
@@ -309,7 +356,7 @@ async def main(commit: bool, only: str | None) -> None:
         print(f"\n=== {vibe} ===", file=sys.stderr)
         pool = await collect(phrases)
         print(f"[slots] {vibe}: {slot_histogram(pool)}", file=sys.stderr)
-        outfits = build_outfits(pool, OUTFITS_PER_VIBE)
+        outfits = build_outfits(pool, per_vibe)
         print(f"[build] {vibe}: пул {len(pool)} -> {len(outfits)} образов", file=sys.stderr)
         plan[vibe] = [[{"id": i["id"], "name": i.get("name"), "type": i.get("clothing_type"),
                         "img": i.get("image_url"), "score": round(i.get("score") or 0, 3)}
@@ -394,5 +441,7 @@ if __name__ == "__main__":
         ap = argparse.ArgumentParser()
         ap.add_argument("--commit", action="store_true", help="писать в БД (иначе только план в stdout)")
         ap.add_argument("--only", help="один кружок, например Италия")
+        ap.add_argument("--per-vibe", type=int, default=OUTFITS_PER_VIBE,
+                        help=f"сколько образов на кружок (по умолчанию {OUTFITS_PER_VIBE})")
         a = ap.parse_args()
-        asyncio.run(main(a.commit, a.only))
+        asyncio.run(main(a.commit, a.only, a.per_vibe))
