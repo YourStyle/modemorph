@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.limits import PLAN_DAYS
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_admin_user, get_staff_user, require_role
@@ -1340,15 +1341,12 @@ async def list_users(
     kept (an admin managing a test account still needs to find it) and flagged,
     so the export can label them instead of quietly mixing them in.
     """
-    # limits.* is a REMAINING BALANCE, not a usage count: _use_feature() in
-    # api/limits.py does `UPDATE limits SET "<feature>" = "<feature>" - :cnt`.
-    # The Excel export used to write those columns under the headings «AI
-    # запросов» / «Вещей в гардеробе», which is anti-correlated with the truth —
-    # the heaviest users export the lowest numbers. On prod, profile 1554 has 90
-    # wardrobe items and 184 successful ai_requests consumptions and its limits
-    # row reads 3/3; profile 4714 has 214 wardrobe items and its
-    # wardrobe_items_anlyzed reads 0. So ship the actual counts alongside the
-    # balances and let each column be labelled for what it is.
+    # Столбец лимитов теперь показывает ПОТРАЧЕННОЕ (subscription_usage), а не
+    # остаток. Остаток был анти-коррелирован с правдой: на проде профиль 1554 с
+    # 90 вещами и 184 списаниями ai_requests выгружался как «3/3», а профиль
+    # 4714 с 214 вещами — как «0». Экспорт подписывал это «AI запросов» и
+    # «Вещей в гардеробе», то есть ровно наоборот. Фактические счётчики едут
+    # рядом отдельными колонками, и каждая подписана тем, что она есть.
     # `up.*` already carries is_test (migration 029); the UI badges off it.
     sql = """
         SELECT up.*, u.email, u.raw_user_meta_data, u.created_at as user_created_at,
@@ -1392,21 +1390,19 @@ async def list_users(
 
         # Get subscriptions array
         subs = await db.execute(
-            text("SELECT subscription_type, status, start_date, expires_at as end_date, credits_included FROM user_subscriptions WHERE user_profile_id = :pid ORDER BY start_date DESC"),
+            text("SELECT subscription_type, status, start_date, expires_at as end_date FROM user_subscriptions WHERE user_profile_id = :pid ORDER BY start_date DESC"),
             {"pid": pid},
         )
         row["user_subscriptions"] = [dict(s) for s in subs.mappings().all()]
 
-        # Get credits array
-        creds = await db.execute(
-            text("SELECT credits_balance, updated_at FROM user_credits WHERE user_profile_id = :pid"),
-            {"pid": pid},
-        )
-        row["user_credits"] = [dict(c) for c in creds.mappings().all()]
-
-        # Get limits array
+        # Потраченное по действующему плану. Раньше здесь лежал ОСТАТОК из
+        # limits — число, которое падает с ростом активности, и таблица тем
+        # самым показывала самых живых пользователей самыми пустыми.
         lims = await db.execute(
-            text("SELECT wardrobe_items_anlyzed, ai_requests, ideas_viewed, outfits_saved, vton_used FROM limits WHERE user_profile_id = :pid"),
+            text("""
+                SELECT feature, used, plan_type, period_started_at
+                FROM subscription_usage WHERE user_profile_id = :pid
+            """),
             {"pid": pid},
         )
         row["limits"] = [dict(l) for l in lims.mappings().all()]
@@ -1576,11 +1572,9 @@ async def user_timeline(user_id: str, user: dict = Depends(get_admin_user), db: 
     first_paid_at = next((p["created_at"] for p in payments if p["status"] == "paid"), None)
 
     sub = (await db.execute(text("""
-        SELECT subscription_type, status, start_date, expires_at, credits_included
+        SELECT subscription_type, status, start_date, expires_at
         FROM user_subscriptions WHERE user_profile_id = :pid ORDER BY created_at DESC LIMIT 1
     """), {"pid": pid})).mappings().first()
-    credits = await scalar("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid", {"pid": pid}) or 0
-
     activity = (await db.execute(text("""
         SELECT activity_date, activity_count FROM daily_user_activity
         WHERE user_profile_id = :pid ORDER BY activity_date DESC LIMIT 60
@@ -1629,9 +1623,7 @@ async def user_timeline(user_id: str, user: dict = Depends(get_admin_user), db: 
             "subscription_type": sub["subscription_type"], "status": sub["status"],
             "start_date": str(sub["start_date"]) if sub["start_date"] else None,
             "expires_at": str(sub["expires_at"]) if sub["expires_at"] else None,
-            "credits_included": sub["credits_included"],
         } if sub else None),
-        "credits": credits,
         "payments": payments,
         "activity": [{"date": str(a["activity_date"]), "count": a["activity_count"]} for a in activity],
         "events": [{
@@ -1662,15 +1654,19 @@ async def user_timeline(user_id: str, user: dict = Depends(get_admin_user), db: 
 # `timeline`, which is zero-filled over a 30-day spine. One query per number.
 
 
-@router.post("/grant-credits")
-async def grant_credits(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+# Ручка называлась /grant-credits и умела две несвязанные вещи: начислить
+# кредиты и выдать подписку. Кредитов больше нет, осталась подписка — и имя
+# теперь описывает то, что происходит.
+@router.post("/grant-plan")
+async def grant_plan(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     body = await request.json()
     user_id = body.get("userId")
-    credits = body.get("credits", 0)
     sub_duration = body.get("subscriptionDuration")
 
     if not user_id:
         raise HTTPException(status_code=400, detail="userId required")
+    if sub_duration not in PLAN_DAYS:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {sub_duration}")
 
     profile = await db.execute(text("SELECT id FROM user_profiles WHERE user_id = :uid"), {"uid": user_id})
     p = profile.first()
@@ -1678,38 +1674,33 @@ async def grant_credits(request: Request, user: dict = Depends(get_admin_user), 
         raise HTTPException(status_code=404, detail="User not found")
     pid = p[0]
 
-    if credits and credits > 0:
-        await db.execute(text("UPDATE user_credits SET credits_balance = credits_balance + :amt WHERE user_profile_id = :pid"), {"amt": credits, "pid": pid})
-        await db.execute(text("INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at) VALUES (:pid, 'credit', :amt, 'admin_grant', :desc, NOW())"),
-            {"pid": pid, "amt": credits, "desc": f"Admin granted {credits} credits"})
-
-    if sub_duration in ("monthly", "yearly"):
-        months = 1 if sub_duration == "monthly" else 12
-        # UNIQUE(user_profile_id) means a plain INSERT 500s on repeat grants.
-        # Stack instead of overwrite: a user with active time keeps it.
-        await db.execute(text("""
-            INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at)
-            VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))
-            ON CONFLICT (user_profile_id) DO UPDATE
-            SET subscription_type = EXCLUDED.subscription_type,
-                status = 'active',
-                expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(months => :months)
-        """),
-            {"pid": pid, "stype": sub_duration, "months": months})
-        await db.execute(text("UPDATE limits SET wardrobe_items_anlyzed=999, ai_requests=999, ideas_viewed=999, outfits_saved=999, vton_used=999 WHERE user_profile_id = :pid"), {"pid": pid})
+    # UNIQUE(user_profile_id) means a plain INSERT 500s on repeat grants.
+    # Stack instead of overwrite: a user with active time keeps it.
+    await db.execute(text("""
+        INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at)
+        VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(days => :days))
+        ON CONFLICT (user_profile_id) DO UPDATE
+        SET subscription_type = EXCLUDED.subscription_type,
+            status = 'active',
+            expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(days => :days)
+    """),
+        {"pid": pid, "stype": sub_duration, "days": PLAN_DAYS[sub_duration]})
+    # limits=999 здесь больше не пишется: потолки живут в plan_limits и читаются
+    # по действующей подписке. Материализованный безлимит был багом — он никогда
+    # не откатывался обратно, когда подписка истекала.
 
     await db.commit()
     return {"success": True}
 
 
 # ── Gift template ──────────────────────────────────────────────────────
-# One-shot: grants credits + subscription, sends Telegram notification,
-# and flags user_profiles.pending_gift so the app shows a welcome sheet on
-# next entry. Frontend calls this from the admin "🎁 Подарок" dialog.
+# One-shot: grants a subscription, sends a Telegram notification, and flags
+# user_profiles.pending_gift so the app shows a welcome sheet on next entry.
+# Frontend calls this from the admin "🎁 Подарок" dialog.
 
 _DEFAULT_GIFT_SHEET = {
     "title": "Вам подарок ✨",
-    "body": "Мы подарили вам подписку и кредиты, чтобы вы могли попробовать всё без ограничений.",
+    "body": "Мы подарили вам подписку, чтобы вы могли попробовать всё целиком.",
     "bullets": [
         "Оцифровка гардероба по фото",
         "Подбор образов AI-стилистом",
@@ -1720,11 +1711,11 @@ _DEFAULT_GIFT_SHEET = {
 
 _DEFAULT_BOT_MESSAGE = (
     "✨ <b>Вам выдана подписка!</b>\n\n"
-    "Мы начислили <b>{credits}</b> кредитов и активировали подписку на <b>{duration_ru}</b>.\n\n"
-    "Заходите в приложение — все лимиты сняты."
+    "Мы активировали тариф на <b>{duration_ru}</b>.\n\n"
+    "Заходите в приложение."
 )
 
-_DURATION_RU = {"monthly": "1 месяц", "yearly": "1 год"}
+_DURATION_RU = {"weekly": "1 неделю", "monthly": "1 месяц", "yearly": "1 год"}
 
 
 @router.post("/gift")
@@ -1738,17 +1729,20 @@ async def gift_user(
     if not target_user_id:
         raise HTTPException(status_code=400, detail="userId required")
 
-    credits = int(body.get("credits") or 0)
-    sub_duration = body.get("subscriptionDuration")  # "monthly" | "yearly" | None
+    sub_duration = body.get("subscriptionDuration")  # "weekly" | "monthly" | "yearly" | None
 
     sheet = {**_DEFAULT_GIFT_SHEET, **(body.get("welcomeSheet") or {})}
     # Replace known placeholders rather than .format() — admin-pasted text may
     # legitimately contain stray `{` / `}` (emoji, HTML, JSON) that would crash
     # str.format with ValueError/KeyError.
+    #
+    # {credits} остаётся в списке подстановок: он мог осесть в сохранённых у
+    # админа шаблонах, и лучше подменить его на пустоту, чем отправить человеку
+    # фигурные скобки.
     _template = body.get("botMessage") or _DEFAULT_BOT_MESSAGE
     bot_message = (
         _template
-        .replace("{credits}", str(credits if credits else "дополнительные"))
+        .replace("{credits}", "")
         .replace("{duration_ru}", _DURATION_RU.get(sub_duration, "подарочный период"))
     )
 
@@ -1770,30 +1764,9 @@ async def gift_user(
     pid = found["profile_id"]
     telegram_id = found["telegram_id"]
 
-    # Grant credits
-    if credits > 0:
-        await db.execute(
-            text("""
-                INSERT INTO user_credits (user_profile_id, credits_balance)
-                VALUES (:pid, :amt)
-                ON CONFLICT (user_profile_id) DO UPDATE
-                SET credits_balance = user_credits.credits_balance + EXCLUDED.credits_balance,
-                    updated_at = NOW()
-            """),
-            {"pid": pid, "amt": credits},
-        )
-        await db.execute(
-            text("""
-                INSERT INTO credit_transactions
-                  (user_profile_id, transaction_type, amount, reason, description, created_at)
-                VALUES (:pid, 'credit', :amt, 'admin_gift', :desc, NOW())
-            """),
-            {"pid": pid, "amt": credits, "desc": f"Admin gift: {credits} credits"},
-        )
-
-    # Grant subscription + unlock limits
-    if sub_duration in ("monthly", "yearly"):
-        months = 1 if sub_duration == "monthly" else 12
+    # Grant subscription. Потолки материализовать не нужно — они читаются из
+    # plan_limits по действующей подписке.
+    if sub_duration in PLAN_DAYS:
         # ON CONFLICT handles users who already have a subscription row —
         # we extend from the later of (current expiry, now) so the gift stacks
         # on top of an active subscription instead of overwriting it.
@@ -1801,31 +1774,19 @@ async def gift_user(
             text("""
                 INSERT INTO user_subscriptions
                   (user_profile_id, subscription_type, status, start_date, expires_at)
-                VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))
+                VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(days => :days))
                 ON CONFLICT (user_profile_id) DO UPDATE
                 SET subscription_type = EXCLUDED.subscription_type,
                     status = 'active',
                     start_date = NOW(),
-                    expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(months => :months)
+                    expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(days => :days)
             """),
-            {"pid": pid, "stype": sub_duration, "months": months},
-        )
-        await db.execute(
-            text("""
-                INSERT INTO limits (user_profile_id, wardrobe_items_anlyzed, ai_requests, ideas_viewed, outfits_saved, vton_used)
-                VALUES (:pid, 999, 999, 999, 999, 999)
-                ON CONFLICT (user_profile_id) DO UPDATE
-                SET wardrobe_items_anlyzed = 999, ai_requests = 999,
-                    ideas_viewed = 999, outfits_saved = 999, vton_used = 999,
-                    updated_at = NOW()
-            """),
-            {"pid": pid},
+            {"pid": pid, "stype": sub_duration, "days": PLAN_DAYS[sub_duration]},
         )
 
     # Flag pending welcome sheet
     pending = {
         "subscription_type": sub_duration,
-        "credits": credits,
         "sheet": sheet,
         "granted_at": None,  # populated by NOW() below
     }
@@ -2050,7 +2011,7 @@ async def update_subscription_pricing(request: Request, user: dict = Depends(get
     updates = body.get("updates", {})
     if not pricing_id or not updates:
         raise HTTPException(status_code=400, detail="id and updates required")
-    allowed = ["price_rub", "credits", "display_name", "description", "is_active"]
+    allowed = ["price_rub", "display_name", "description", "is_active"]
     set_parts = [f'"{k}" = :{k}' for k in updates if k in allowed]
     if not set_parts:
         raise HTTPException(status_code=400, detail="No valid fields to update")
@@ -2061,20 +2022,27 @@ async def update_subscription_pricing(request: Request, user: dict = Depends(get
     return {"success": True}
 
 
-@router.patch("/credit-packs")
-async def update_credit_packs(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+@router.patch("/plan-limits")
+async def update_plan_limit(request: Request, user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Изменить потолок функции на плане.
+
+    Пришло на место /credit-packs. Редактируется только cap: план и функция —
+    это ключ строки, а период задаёт смысл тарифа и меняется миграцией вместе с
+    ценой, а не кнопкой.
+    """
     body = await request.json()
-    pack_id = body.get("id")
-    updates = body.get("updates", {})
-    if not pack_id or not updates:
-        raise HTTPException(status_code=400, detail="id and updates required")
-    allowed = ["name", "credits", "price_rub", "is_active"]
-    set_parts = [f'"{k}" = :{k}' for k in updates if k in allowed]
-    if not set_parts:
-        raise HTTPException(status_code=400, detail="No valid fields")
-    params = {k: v for k, v in updates.items() if k in allowed}
-    params["id"] = pack_id
-    await db.execute(text(f"UPDATE credit_packs SET {', '.join(set_parts)} WHERE id = :id"), params)
+    plan_type = body.get("planType")
+    feature = body.get("feature")
+    cap = body.get("cap")
+    if not plan_type or not feature or not isinstance(cap, int) or cap < 0:
+        raise HTTPException(status_code=400, detail="planType, feature and non-negative int cap required")
+
+    result = await db.execute(
+        text("UPDATE plan_limits SET cap = :cap WHERE plan_type = :p AND feature = :f"),
+        {"cap": cap, "p": plan_type, "f": feature},
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail=f"No limit for {plan_type}/{feature}")
     await db.commit()
     return {"success": True}
 
@@ -2099,80 +2067,82 @@ async def mark_clothing_types(user: dict = Depends(get_admin_user), db: AsyncSes
     return {"success": True, "updated": result.rowcount}
 
 
-@router.get("/credit-packs")
-async def get_credit_packs(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(text("SELECT * FROM credit_packs ORDER BY price_rub"))
-    return {"data": [dict(r) for r in result.mappings().all()]}
-
-
 @router.get("/subscription-pricing")
 async def get_subscription_pricing(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("SELECT * FROM subscription_pricing ORDER BY price_rub"))
     return {"data": [dict(r) for r in result.mappings().all()]}
 
 
-_PLAN_MONTHS = {"monthly": 1, "yearly": 12}
+# Сколько дней в окне лимита. Месяц — 30, а не «календарный», потому что рядом
+# стоит подписка длиной 365 дней, и делить одно на другое надо в одних единицах.
+_PERIOD_DAYS = {"week": 7, "month": 30}
 
 
-def feature_economics(features: list[dict], credit_price_min, credit_price_max,
-                      plans: list[dict], caps: dict) -> tuple[list[dict], list[dict]]:
-    """Досчитать маржу к строкам тарификации. Чистая функция — вся арифметика
-    раздела «Тарификация» живёт здесь и проверяется test_pricing_economics.
+def plan_economics(features: list[dict], plans: list[dict], caps: dict) -> tuple[list[dict], list[dict]]:
+    """Досчитать маржу планов. Чистая функция — вся арифметика раздела
+    «Тарификация» живёт здесь и проверяется test_pricing_economics.
 
-    Считается на бэкенде, а не в JSX, по той же причине, по которой цена
-    считается в одном месте: экран, который сам себе считает выручку, однажды
-    начнёт расходиться с тем, что списывает код, и никто этого не заметит.
+    Пришла на место feature_economics, которая считала выручку функции через
+    цену кредита. Кредита больше нет: функция сама по себе ничего не приносит,
+    приносит план, а функция только тратит. Поэтому маржа теперь одна на план,
+    а не вилка на функцию.
 
-    Маржа даётся ВИЛКОЙ, а не одним числом. Кредит стоит человеку от 5,00 ₽
-    (пак 200/999) до 15,80 ₽ (Мини 5/79) — оба пака активны одновременно, и
-    разброс втрое. Одна усреднённая цифра тут была бы красивее и неправдивее:
-    нижняя граница — то, что мы зарабатываем в худшем случае, и решать надо
-    по ней.
+    Считается на бэкенде, а не в JSX, по той же причине, по которой лимит
+    списывается в одном месте: экран, который сам себе считает выручку, однажды
+    разойдётся с тем, что делает код, и никто этого не заметит.
 
-    Пустая себестоимость означает «не замеряли». Тогда маржа — None, а не ноль:
-    ноль выглядит как ответ.
+    Пустая себестоимость означает «не замеряли». Такая функция уходит в
+    unmeasured, а не прибавляет к расходу ноль: ноль выглядит как ответ.
     """
-    out_features = []
-    for f in features:
-        cost = float(f["unit_cost_rub"]) if f.get("unit_cost_rub") is not None else None
-        credits = f.get("cost_credits") or 0
-        billed = bool(f.get("is_active")) and credits > 0
-
-        row = dict(f)
-        row["unit_cost_rub"] = cost
-        row["included_monthly"] = caps.get(f["feature_name"])
-        row["is_free"] = not billed
-        row["revenue_rub_min"] = round(credits * float(credit_price_min), 2) if billed and credit_price_min else None
-        row["revenue_rub_max"] = round(credits * float(credit_price_max), 2) if billed and credit_price_max else None
-
-        for bound in ("min", "max"):
-            rev = row[f"revenue_rub_{bound}"]
-            row[f"margin_pct_{bound}"] = (
-                round((rev - cost) / rev * 100, 1) if rev and cost is not None else None
-            )
-        out_features.append(row)
-
-    unit_cost = {
+    unit = {
         f["feature_name"]: float(f["unit_cost_rub"])
         for f in features if f.get("unit_cost_rub") is not None
     }
-    # Стоимость включённого в подписку: то, что мы дарим подписчику каждый
-    # месяц. Функция без лимита в caps безлимитна — её сюда не посчитать, и
-    # честнее показать это отдельным списком, чем занулить.
-    included_cost = round(sum(n * unit_cost.get(feat, 0) for feat, n in caps.items()), 2)
-    uncapped = sorted(feat for feat in unit_cost if feat not in caps)
+
+    out_features = []
+    for f in features:
+        row = dict(f)
+        row["unit_cost_rub"] = unit.get(f["feature_name"])
+        # Где эта функция ограничена и насколько — по всем планам сразу.
+        row["caps"] = {
+            plan: lim["cap"] for plan, lims in caps.items()
+            if (lim := lims.get(f["feature_name"]))
+        }
+        out_features.append(row)
 
     out_plans = []
     for p in plans:
-        months = _PLAN_MONTHS.get(p.get("plan_type"), 1)
-        monthly = round(float(p["price_rub"]) / months, 2)
+        plan = p.get("plan_type")
+        days = PLAN_DAYS.get(plan)
+        lines, total, unmeasured = [], 0.0, []
+
+        for feature, lim in sorted(caps.get(plan, {}).items()):
+            cost = unit.get(feature)
+            if cost is None:
+                unmeasured.append(feature)
+                continue
+            # Годовой план содержит 12,17 месячных окна, а не 12: 365 / 30.
+            windows = (days / _PERIOD_DAYS[lim["period"]]) if days and lim["period"] in _PERIOD_DAYS else 1
+            line = round(lim["cap"] * windows * cost, 2)
+            total += line
+            lines.append({
+                "feature": feature, "cap": lim["cap"], "period": lim["period"],
+                "unit_cost_rub": cost, "included_cost_rub": line,
+            })
+
+        price = float(p["price_rub"])
+        total = round(total, 2)
         out_plans.append({
-            "plan_type": p.get("plan_type"),
+            "plan_type": plan,
             "display_name": p.get("display_name"),
-            "price_rub": float(p["price_rub"]),
-            "monthly_rub": monthly,
-            "included_cost_rub": included_cost,
-            "margin_pct": round((monthly - included_cost) / monthly * 100, 1) if monthly else None,
+            "price_rub": price,
+            "days": days,
+            "included_cost_rub": total,
+            "included": lines,
+            "unmeasured": unmeasured,
+            # Худший случай: человек выбрал каждый потолок до конца. Медиана
+            # вчетверо ниже, но решать цену надо по худшему случаю.
+            "margin_pct": round((price - total) / price * 100, 1) if price else None,
         })
 
     return out_features, out_plans
@@ -2180,27 +2150,22 @@ def feature_economics(features: list[dict], credit_price_min, credit_price_max,
 
 @router.get("/feature-costs")
 async def get_feature_costs(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
-    from app.api.limits import SUBSCRIBER_MONTHLY_CAPS
-
     features = [dict(r) for r in (
         await db.execute(text("SELECT * FROM feature_costs ORDER BY feature_name"))
-    ).mappings().all()]
-    packs = [dict(r) for r in (
-        await db.execute(text("SELECT credits, price_rub FROM credit_packs WHERE is_active = true AND credits > 0"))
     ).mappings().all()]
     plans = [dict(r) for r in (
         await db.execute(text("SELECT * FROM subscription_pricing WHERE is_active = true ORDER BY price_rub"))
     ).mappings().all()]
+    caps: dict[str, dict] = {}
+    for r in (await db.execute(text("SELECT plan_type, feature, cap, period FROM plan_limits"))).mappings().all():
+        caps.setdefault(r["plan_type"], {})[r["feature"]] = {"cap": r["cap"], "period": r["period"]}
 
-    per_credit = sorted(float(p["price_rub"]) / p["credits"] for p in packs) or [0]
-    enriched, plan_economics = feature_economics(
-        features, per_credit[0], per_credit[-1], plans, SUBSCRIBER_MONTHLY_CAPS
-    )
+    enriched, plan_rows = plan_economics(features, plans, caps)
 
     return {
         "data": enriched,
-        "credit_price": {"min": round(per_credit[0], 2), "max": round(per_credit[-1], 2)},
-        "subscription": plan_economics,
+        "plans": plan_rows,
+        "free_limits": caps.get("free", {}),
     }
 
 
@@ -2214,7 +2179,7 @@ async def update_feature_cost(request: Request, user: dict = Depends(get_admin_u
     # unit_cost_rub редактируется отсюда же: при смене модели себестоимость
     # меняется, и требовать ради одного числа деплой — способ гарантировать,
     # что его не обновят и маржа на экране станет враньём.
-    allowed = ["cost_credits", "display_name", "description", "is_active", "unit_cost_rub"]
+    allowed = ["display_name", "description", "is_active", "unit_cost_rub"]
     set_parts = [f'"{k}" = :{k}' for k in updates if k in allowed]
     if not set_parts:
         return {"success": True}

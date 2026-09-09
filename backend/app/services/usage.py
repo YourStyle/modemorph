@@ -80,28 +80,23 @@ async def record_usage_event(
         # user_looks INSERT) stays intact and can still commit. Without this, a
         # poisoned session would turn a tracking hiccup into a failed save.
         async with db.begin_nested():
-            # Someone without a profile cannot hold a subscription or have bought
-            # credits — both are keyed on the profile id. Skip the two lookups
-            # rather than running them with :pid = NULL, where EXISTS is a
-            # guaranteed false and the query is pure cost.
+            # Someone without a profile cannot hold a subscription — it is keyed
+            # on the profile id. Skip the lookup rather than running it with
+            # :pid = NULL, where EXISTS is a guaranteed false and pure cost.
+            #
+            # has_bought_credits остаётся колонкой ради истории (по ней сегментирована
+            # вся аналитика до сентября 2026), но новых true в ней не будет: покупать
+            # больше нечего. Запрос к credit_transactions убран, чтобы миграция,
+            # которая уронит кредитные таблицы, не уронила заодно трекинг.
+            has_bought = False
             if pid is None:
-                has_sub = has_bought = False
+                has_sub = False
             else:
                 has_sub = (
                     await db.execute(
                         text(
                             "SELECT EXISTS(SELECT 1 FROM user_subscriptions "
                             "WHERE user_profile_id = :pid AND status = 'active' AND expires_at > NOW())"
-                        ),
-                        {"pid": pid},
-                    )
-                ).scalar() or False
-
-                has_bought = (
-                    await db.execute(
-                        text(
-                            "SELECT EXISTS(SELECT 1 FROM credit_transactions "
-                            "WHERE user_profile_id = :pid AND reason = 'purchase')"
                         ),
                         {"pid": pid},
                     )

@@ -1,5 +1,16 @@
 """
-Limits & credits — with input validation and atomic operations.
+Лимиты планов. Кредитов больше нет.
+
+Раньше здесь было две валюты сразу: бесплатный тариф в таблице `limits`,
+включённое в подписку в `subscription_usage`, и кредиты как третий слой, на
+который сваливались все, кто вышел за первые два. Кредит не заработал ни разу
+за десять месяцев (ни одного успешного платежа за пак), зато исправно делал
+поведение непредсказуемым: одна и та же кнопка могла списать лимит, кредит или
+ничего, и ответить это могла только база.
+
+Теперь ровно одно правило: у человека есть план (free, если он не платит), у
+плана есть потолки в `plan_limits`, потолок кончился — 402 и предложение
+перейти на план выше. Никаких «можно продолжить, но за другую валюту».
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,29 +25,21 @@ router = APIRouter()
 
 ALLOWED_FEATURES = {"wardrobe_items_anlyzed", "ai_requests", "ideas_viewed", "outfits_saved", "vton_used"}
 
-# Что включено в подписку помесячно. Функции, которых тут нет (идеи, образы,
-# стилист), остаются безлимитными — они стоят 4 копейки, и считать их дороже,
-# чем отдать.
-#
-# Это не отсечка, а граница включённого: сверх лимита функция продолжает
-# работать по обычной цене за кредиты. Человека не выключают — ему перестают
-# дарить, и дальше это просто продаётся, уже с прибылью.
-#
-# Мерка — годовой тариф: 2 990 ₽ это 249 ₽ в месяц, и на нём пятеро из восьми
-# активных подписчиков. Месячный за 399 ₽ вдвое просторнее.
-#
-#   примерка 10 × 14,10 ₽ = 141 ₽   57% выручки с годового тарифа
-#   фото     40 ×  2,90 ₽ = 116 ₽   47%
-#
-# Сорок фото — это порядка 75 вещей (замеряно: 1,88 вещи на кадр), то есть
-# гардероб целиком за один месяц. По живым данным за 37 подписочных месяцев
-# планку перешагнули бы три: 71, 67 и 41 фото. Медиана — шесть.
-#
-# ЧЕСТНО ПРО ХУДШИЙ СЛУЧАЙ: тот, кто выберет оба лимита до конца, обойдётся в
-# 257 ₽ при выручке 249 ₽ с годового тарифа. Это ноль, а не прибыль. Лимиты
-# убирают хвост (621 ₽ у профиля 1554 в апреле), но не чинят цену: годовой
-# тариф на 38% дешевле месячного, и это отдельное решение.
-SUBSCRIBER_MONTHLY_CAPS = {"vton_used": 10, "wardrobe_items_anlyzed": 40}
+FREE_PLAN = "free"
+
+# Длительность оплаченного плана. Днями, а не месяцами, потому что недельный
+# тариф в месяцах не выражается. Живёт здесь, рядом с потолками, чтобы вебхук
+# оплаты и админская выдача подписки не разошлись в том, что такое «годовой».
+PLAN_DAYS = {"weekly": 7, "monthly": 30, "yearly": 365}
+
+# Длина периода не приходит от пользователя — она берётся из plan_limits.period,
+# а CHECK на колонке допускает только эти три значения. Подстановка в SQL идёт
+# через этот словарь, а не форматированием того, что пришло из запроса.
+_PERIOD_SQL = {"week": "INTERVAL '7 days'", "month": "INTERVAL '1 month'"}
+
+# Безлимит. Отдаётся фронту как остаток у функции, для которой потолка нет
+# (образы, а у платных планов — лента идей): рисовать там счётчик нечем.
+UNLIMITED = 999
 
 
 def _validate_feature(feature: str) -> str:
@@ -61,87 +64,88 @@ async def _get_profile_id(db: AsyncSession, user_id: str):
     return row[0]
 
 
-async def _is_subscriber(db: AsyncSession, profile_id) -> bool:
+async def _plan_of(db: AsyncSession, profile_id) -> str:
+    """Действующий план. Нет активной подписки — значит бесплатный."""
     result = await db.execute(
         text("""
-            SELECT id FROM user_subscriptions
+            SELECT subscription_type FROM user_subscriptions
             WHERE user_profile_id = :pid AND status = 'active' AND expires_at > NOW()
+            ORDER BY expires_at DESC
             LIMIT 1
         """),
         {"pid": profile_id},
     )
-    return result.first() is not None
-
-
-async def _get_feature_cost(db: AsyncSession, feature: str) -> int:
-    result = await db.execute(
-        text("SELECT cost_credits, is_active FROM feature_costs WHERE feature_name = :f"),
-        {"f": feature},
-    )
     row = result.first()
-    if not row:
-        # Ключа нет — таблица цен разошлась с ALLOWED_FEATURES. Ровно это и было
-        # сломано до миграции 037: имена не совпадали ни в одной строке, и этот
-        # fallback молча делал любую функцию стоящей один кредит, что бы ни было
-        # выставлено в админке. Оставляем минимум, а не ноль: бесплатность
-        # должна быть выставлена явно, а не получиться из опечатки в ключе.
-        # Сходимость ключей стережёт test_feature_costs.py.
-        return 1
-    # Выключенный тумблер в админке = функция не тарифицируется. Раньше он не
-    # значил ничего — это была вторая неправда на том же экране.
-    return row[0] if row[1] else 0
+    return (row[0] if row and row[0] else FREE_PLAN)
 
 
-async def _subscriber_used(db: AsyncSession, profile_id, feature: str) -> int:
-    """Сколько из включённого в подписку израсходовано в текущем месяце.
+async def _plan_cap(db: AsyncSession, plan: str, feature: str) -> tuple[int, str] | None:
+    """(потолок, период) или None, если функция на этом плане безлимитна.
 
-    Период, который уже истёк, читается как ноль: сброс ленивый, его делает
-    _claim_subscriber_quota при следующем списании. Проверка не должна ничего
-    писать — иначе GET-подобный вызов начнёт менять состояние.
+    Отсутствие строки — это «безлимит», а не «ноль». Ноль пришлось бы ставить
+    явно, и именно так его и надо ставить, если функцию когда-нибудь закроют:
+    молчание таблицы не должно уметь выключать продукт.
     """
     result = await db.execute(
-        text("""
+        text("SELECT cap, period FROM plan_limits WHERE plan_type = :p AND feature = :f"),
+        {"p": plan, "f": feature},
+    )
+    row = result.first()
+    return (row[0], row[1]) if row else None
+
+
+async def _used(db: AsyncSession, profile_id, feature: str, plan: str, period: str) -> int:
+    """Сколько израсходовано в текущем периоде. Ничего не пишет.
+
+    Счётчик, накопленный под другим планом, читается как ноль: подписка
+    кончилась — потраченное по ней не должно съедать бесплатный тариф, и
+    наоборот. Физически строку обнулит _claim при следующем списании.
+    """
+    stale = "" if period == "once" else f" AND NOW() < period_started_at + {_PERIOD_SQL[period]}"
+    result = await db.execute(
+        text(f"""
             SELECT used FROM subscription_usage
-            WHERE user_profile_id = :pid AND feature = :f
-              AND NOW() < period_started_at + INTERVAL '1 month'
+            WHERE user_profile_id = :pid AND feature = :f AND plan_type = :plan{stale}
         """),
-        {"pid": profile_id, "f": feature},
+        {"pid": profile_id, "f": feature, "plan": plan},
     )
     row = result.first()
     return row[0] if row else 0
 
 
-async def _claim_subscriber_quota(db: AsyncSession, profile_id, feature: str, count: int, cap: int) -> int | None:
-    """Занять count единиц включённого в подписку. Возвращает остаток или None,
-    если включённое кончилось.
+async def _claim(db: AsyncSession, profile_id, feature: str, count: int,
+                 cap: int, period: str, plan: str) -> int | None:
+    """Занять count единиц. Возвращает остаток или None, если потолок исчерпан.
 
-    Два запроса вместо одного, потому что ленивый сброс и атомарный захват — это
-    разные вещи, и слитые в один ON CONFLICT они читаются как ребус. Захват всё
-    равно атомарен: условие «не превысить cap» живёт внутри UPDATE, поэтому две
-    параллельные примерки не могут обе пройти последнюю единицу.
+    Два запроса вместо одного: ленивый сброс и атомарный захват — разные вещи, и
+    слитые в один ON CONFLICT они читаются как ребус. Захват всё равно атомарен —
+    условие «не превысить cap» живёт внутри UPDATE, поэтому две параллельные
+    примерки не могут обе пройти последнюю единицу.
     """
     if count > cap:
         return None
 
+    expired = "" if period == "once" else f" OR NOW() >= period_started_at + {_PERIOD_SQL[period]}"
     await db.execute(
-        text("""
-            UPDATE subscription_usage SET used = 0, period_started_at = NOW()
+        text(f"""
+            UPDATE subscription_usage
+            SET used = 0, period_started_at = NOW(), plan_type = :plan
             WHERE user_profile_id = :pid AND feature = :f
-              AND NOW() >= period_started_at + INTERVAL '1 month'
+              AND (plan_type <> :plan{expired})
         """),
-        {"pid": profile_id, "f": feature},
+        {"pid": profile_id, "f": feature, "plan": plan},
     )
 
     result = await db.execute(
         text("""
-            INSERT INTO subscription_usage (user_profile_id, feature, used, period_started_at)
-            VALUES (:pid, :f, :cnt, NOW())
+            INSERT INTO subscription_usage (user_profile_id, feature, used, period_started_at, plan_type)
+            VALUES (:pid, :f, :cnt, NOW(), :plan)
             ON CONFLICT (user_profile_id, feature) DO UPDATE
                 SET used = subscription_usage.used + :cnt
                 WHERE subscription_usage.used + :cnt <= :cap
             RETURNING used
         """),
-        {"pid": profile_id, "f": feature, "cnt": count, "cap": cap},
+        {"pid": profile_id, "f": feature, "cnt": count, "cap": cap, "plan": plan},
     )
     row = result.first()
     return (cap - row[0]) if row else None
@@ -150,106 +154,30 @@ async def _claim_subscriber_quota(db: AsyncSession, profile_id, feature: str, co
 async def _can_use_feature(db: AsyncSession, profile_id, feature: str, count: int) -> tuple[bool, int]:
     feature = _validate_feature(feature)
 
-    if await _is_subscriber(db, profile_id):
-        cap = SUBSCRIBER_MONTHLY_CAPS.get(feature)
-        if cap is None:
-            return True, 999
-        used = await _subscriber_used(db, profile_id, feature)
-        if used + count <= cap:
-            return True, cap - used
-        # Включённое кончилось — дальше подписчик платит кредитами, как все.
-        # Бесплатный тариф ему не полагается: он уже заплатил за месяц.
-        credits_row = (await db.execute(
-            text("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid"),
-            {"pid": profile_id},
-        )).first()
-        credits = credits_row[0] if credits_row else 0
-        return credits >= await _get_feature_cost(db, feature) * count, 0
+    plan = await _plan_of(db, profile_id)
+    limit = await _plan_cap(db, plan, feature)
+    if limit is None:
+        return True, UNLIMITED
 
-    result = await db.execute(
-        text(f'SELECT "{feature}" FROM limits WHERE user_profile_id = :pid'),
-        {"pid": profile_id},
-    )
-    row = result.first()
-    remaining = row[0] if row else 0
-
-    if remaining >= count:
-        return True, remaining
-
-    credits_result = await db.execute(
-        text("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid"),
-        {"pid": profile_id},
-    )
-    credits_row = credits_result.first()
-    credits = credits_row[0] if credits_row else 0
-    cost = await _get_feature_cost(db, feature)
-
-    if credits >= cost * count:
-        return True, remaining
-
-    return False, remaining
+    cap, period = limit
+    used = await _used(db, profile_id, feature, plan, period)
+    return used + count <= cap, max(0, cap - used)
 
 
 async def _use_feature(db: AsyncSession, profile_id, feature: str, count: int) -> tuple[bool, int]:
-    """Consume feature usage with atomic operations to prevent race conditions."""
     feature = _validate_feature(feature)
 
     if count <= 0:
         raise HTTPException(status_code=400, detail="count must be positive")
 
-    if await _is_subscriber(db, profile_id):
-        cap = SUBSCRIBER_MONTHLY_CAPS.get(feature)
-        if cap is None:
-            return True, 999
-        left = await _claim_subscriber_quota(db, profile_id, feature, count, cap)
-        if left is not None:
-            return True, left
-        # Включённое в подписку кончилось. Не трогаем бесплатный тариф — он для
-        # тех, кто не платит; списываем сразу с кредитов, ниже по общей ветке.
-    else:
-        # Atomic deduct from limits — only if sufficient
-        result = await db.execute(
-            text(f"""
-                UPDATE limits SET "{feature}" = "{feature}" - :cnt
-                WHERE user_profile_id = :pid AND "{feature}" >= :cnt
-                RETURNING "{feature}"
-            """),
-            {"cnt": count, "pid": profile_id},
-        )
-        row = result.first()
-        if row:
-            return True, row[0]
+    plan = await _plan_of(db, profile_id)
+    limit = await _plan_cap(db, plan, feature)
+    if limit is None:
+        return True, UNLIMITED
 
-    # Try atomic top-up from credits
-    cost = await _get_feature_cost(db, feature)
-    total_cost = cost * count
-
-    # Цена ноль — функция бесплатная, кредиты не трогаем вовсе. Без этой ветки
-    # UPDATE ... credits_balance - 0 WHERE credits_balance >= 0 проходит всегда,
-    # и на каждый просмотр идеи в журнал ложится транзакция на −0. Журнал должен
-    # отвечать на вопрос «за что списали», а не хранить сотни строк ни о чём.
-    if total_cost == 0:
-        return True, 0
-
-    credit_result = await db.execute(
-        text("""
-            UPDATE user_credits SET credits_balance = credits_balance - :cost
-            WHERE user_profile_id = :pid AND credits_balance >= :cost
-            RETURNING credits_balance
-        """),
-        {"cost": total_cost, "pid": profile_id},
-    )
-    if credit_result.first():
-        await db.execute(
-            text("""
-                INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at)
-                VALUES (:pid, 'spend', :amt, 'feature_topup', :desc, NOW())
-            """),
-            {"pid": profile_id, "amt": -total_cost, "desc": f"Auto-topup for {feature} x{count}"},
-        )
-        return True, 0
-
-    return False, 0
+    cap, period = limit
+    left = await _claim(db, profile_id, feature, count, cap, period, plan)
+    return (True, left) if left is not None else (False, 0)
 
 
 @router.post("/check")
@@ -282,8 +210,8 @@ async def reconcile_limits(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # No-op: unlimited-while-subscribed is handled live by _is_subscriber().
-    # We intentionally no longer write 999 into the limits table — that value was
-    # never restored on expiry, so churned subscribers kept unlimited access.
+    # No-op: план и его потолки читаются вживую при каждом списании. Ничего
+    # материализовать не надо — ровно этим и был баг с limits=999, который
+    # никогда не откатывался обратно после истечения подписки.
     await _get_profile_id(db, user["id"])
     return {"success": True}

@@ -39,24 +39,18 @@ interface User {
     status: string
     start_date: string
     end_date: string
-    credits_included: number
-  }>
-  user_credits: Array<{
-    credits_balance: number
-    updated_at: string
   }>
   /**
-   * REMAINING BALANCE, not usage. backend/app/api/limits.py `_use_feature()`
-   * decrements these columns (`SET "<feature>" = "<feature>" - :cnt`), so a
-   * heavy user reads LOW here, not high. Never label these «AI запросов» or
-   * «Вещей в гардеробе» — use the `*_count` / `*_used` fields below for that.
+   * ПОТРАЧЕНО по действующему плану — строки subscription_usage. Раньше здесь
+   * лежал ОСТАТОК из таблицы limits: число, которое падает с ростом активности,
+   * из-за чего самые живые пользователи выгружались самыми пустыми. Теперь оно
+   * растёт вместе с использованием и подписано соответственно.
    */
   limits: Array<{
-    wardrobe_items_anlyzed: number
-    ai_requests: number
-    ideas_viewed: number
-    outfits_saved: number
-    vton_used: number
+    feature: string
+    used: number
+    plan_type: string
+    period_started_at: string
   }>
   /** Actual counts from /api/admin/users — rows in wardrobe_user_items and
    *  usage_events(action='consume_success'). Absent on an older API build. */
@@ -105,7 +99,7 @@ interface Metrics {
   mau: number | null
   dau: number | null
   /** Total active subscriptions, and the provenance split behind it. A grant
-   *  from /grant-credits or /gift writes the same status='active' row a paid
+   *  from /grant-plan or /gift writes the same status='active' row a paid
    *  webhook does, so the total alone overstates paid premium. */
   activeSubscriptions: number | null
   subscriptionsPaid: number | null
@@ -128,20 +122,18 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true)
   const [metricsLoading, setMetricsLoading] = useState(true)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
-  const [grantCredits, setGrantCredits] = useState("")
   const [grantSubscription, setGrantSubscription] = useState("")
   const [subscriptionDuration, setSubscriptionDuration] = useState("")
 
   // "🎁 Подарок" template state
   const [giftUser, setGiftUser] = useState<User | null>(null)
-  const [giftCredits, setGiftCredits] = useState("50")
   const [giftDuration, setGiftDuration] = useState<"monthly" | "yearly" | "">("monthly")
   const [giftBotMessage, setGiftBotMessage] = useState(
-    "✨ <b>Вам выдана подписка!</b>\n\nМы начислили <b>{credits}</b> кредитов и активировали подписку на <b>{duration_ru}</b>.\n\nЗаходите в приложение — все лимиты сняты."
+    "✨ <b>Вам выдана подписка!</b>\n\nМы активировали тариф на <b>{duration_ru}</b>.\n\nЗаходите в приложение."
   )
   const [giftSheetTitle, setGiftSheetTitle] = useState("Вам подарок ✨")
   const [giftSheetBody, setGiftSheetBody] = useState(
-    "Мы подарили вам подписку и кредиты, чтобы вы могли попробовать всё без ограничений."
+    "Мы подарили вам подписку, чтобы вы могли попробовать всё целиком."
   )
   const [giftSheetBullets, setGiftSheetBullets] = useState(
     "Оцифровка гардероба по фото\nПодбор образов AI-стилистом\nВиртуальная примерка"
@@ -266,19 +258,17 @@ export default function AdminUsersPage() {
         "Email",
         "Тестовый",
         "Статус",
-        "Кредиты",
         "Вещей в гардеробе",
         "AI-запросов использовано",
         "Фото проанализировано",
-        "Осталось AI-запросов",
-        "Осталось анализов фото",
+        "Потрачено AI по плану",
+        "Потрачено оцифровок по плану",
         "Дата регистрации",
         "Последнее обновление",
       ],
       ...exportRows.map((user) => {
-        const credits = getCurrentCredits(user)
         const subscription = getCurrentSubscription(user)
-        const limits = getRemainingLimits(user)
+        const used = getUsedByFeature(user)
         const status = user.is_admin
           ? "Админ"
           : subscription
@@ -291,12 +281,11 @@ export default function AdminUsersPage() {
           user.email || "—",
           user.is_test ? "да" : "нет",
           status,
-          credits,
           xl(user.wardrobe_items_count),
           xl(user.ai_requests_used),
           xl(user.photos_analyzed),
-          xl(limits?.ai_requests),
-          xl(limits?.wardrobe_items_anlyzed),
+          xl(used.ai_requests),
+          xl(used.wardrobe_items_anlyzed),
           new Date(user.created_at).toLocaleDateString("ru"),
           new Date(user.updated_at).toLocaleDateString("ru"),
         ]
@@ -335,7 +324,7 @@ export default function AdminUsersPage() {
         ["  — из них выдано админом", xl(metrics.subscriptionsGranted)],
         [
           "Оговорка по подпискам",
-          "«Выдано админом» — подписки из /grant-credits и /gift. Это не выручка: у этих пользователей нет ни одного оплаченного платежа.",
+          "«Выдано админом» — подписки из /grant-plan и /gift. Это не выручка: у этих пользователей нет ни одного оплаченного платежа.",
         ],
         ["", ""],
         [
@@ -374,21 +363,18 @@ export default function AdminUsersPage() {
     XLSX.writeFile(wb, `users_activity_${date}.xlsx`)
   }
 
-  const handleGrantCreditsOrSubscription = async () => {
+  const handleGrantSubscription = async () => {
     if (!selectedUser) return
 
     try {
-      await api.post("/api/admin/grant-credits", {
+      await api.post("/api/admin/grant-plan", {
         userId: selectedUser.user_id,
-        credits: grantCredits ? Number.parseInt(grantCredits) : 0,
-        subscriptionType: grantSubscription || null,
         subscriptionDuration: subscriptionDuration || null,
       })
       toast({
         title: "Успешно",
-        description: "Кредиты/подписка успешно начислены",
+        description: "Подписка выдана",
       })
-      setGrantCredits("")
       setGrantSubscription("")
       setSubscriptionDuration("")
       setSelectedUser(null)
@@ -412,7 +398,6 @@ export default function AdminUsersPage() {
         .filter(Boolean)
       const resp = await api.post("/api/admin/gift", {
         userId: giftUser.user_id,
-        credits: giftCredits ? Number.parseInt(giftCredits) : 0,
         subscriptionDuration: giftDuration || null,
         botMessage: giftBotMessage,
         welcomeSheet: {
@@ -459,18 +444,15 @@ export default function AdminUsersPage() {
     }
   }
 
-  const getCurrentCredits = (user: User) => {
-    return user.user_credits?.[0]?.credits_balance || 0
-  }
 
   const getCurrentSubscription = (user: User) => {
     const activeSub = user.user_subscriptions?.find((sub) => sub.status === "active")
     return activeSub || null
   }
 
-  const getRemainingLimits = (user: User) => {
-    return user.limits?.[0] || null
-  }
+  /** Потрачено по плану, по фичам. Пусто — человек ничего ещё не списывал. */
+  const getUsedByFeature = (user: User): Record<string, number> =>
+    Object.fromEntries((user.limits || []).map((l) => [l.feature, l.used]))
 
   if (loading || metricsLoading) {
     return (
@@ -569,7 +551,7 @@ export default function AdminUsersPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{n(metrics.activeSubscriptions)}</div>
-                {/* The total alone reads as monetization. /grant-credits and
+                {/* The total alone reads as monetization. /grant-plan and
                     /gift write the same status='active' row the payment webhook
                     does — on prod 4 of 7 active subscriptions belong to users
                     with zero paid payments. Provenance ships with the number. */}
@@ -759,18 +741,16 @@ export default function AdminUsersPage() {
                 <TableHead>Пользователь</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Статус</TableHead>
-                <TableHead>Кредиты</TableHead>
                 <TableHead>Использовано</TableHead>
-                <TableHead>Остаток лимитов</TableHead>
+                <TableHead>Потрачено по плану</TableHead>
                 <TableHead>Дата регистрации</TableHead>
                 <TableHead>Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {users.map((user) => {
-                const credits = getCurrentCredits(user)
                 const subscription = getCurrentSubscription(user)
-                const limits = getRemainingLimits(user)
+                const used = getUsedByFeature(user)
 
                 return (
                   <TableRow key={user.user_id}>
@@ -805,9 +785,6 @@ export default function AdminUsersPage() {
                         {!user.is_admin && !subscription && <Badge variant="secondary">Free</Badge>}
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <span className="font-bold text-[#B97DC6]">{credits}</span>
-                    </TableCell>
                     {/* What the user actually did. These two columns used to be
                         one column of limits.* values labelled «Лимиты», which is
                         a remaining balance — so a user with 90 wardrobe items
@@ -820,10 +797,10 @@ export default function AdminUsersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      {limits ? (
+                      {user.limits?.length ? (
                         <div className="text-xs space-y-0.5 text-muted-foreground">
-                          <div>AI: {limits.ai_requests}</div>
-                          <div>Анализов фото: {limits.wardrobe_items_anlyzed}</div>
+                          <div>AI: {n(used.ai_requests ?? 0)}</div>
+                          <div>Оцифровок: {n(used.wardrobe_items_anlyzed ?? 0)}</div>
                         </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">{EM_DASH}</span>
@@ -858,54 +835,30 @@ export default function AdminUsersPage() {
                         </DialogTrigger>
                         <DialogContent>
                           <DialogHeader>
-                            <DialogTitle>Начислить кредиты/подписку</DialogTitle>
+                            <DialogTitle>Выдать подписку</DialogTitle>
                           </DialogHeader>
 
                           <div className="space-y-4">
                             <div>
-                              <Label htmlFor="credits">Кредиты</Label>
-                              <Input
-                                id="credits"
-                                type="number"
-                                placeholder="Количество кредитов"
-                                value={grantCredits}
-                                onChange={(e) => setGrantCredits(e.target.value)}
-                              />
-                            </div>
-
-                            <div>
-                              <Label htmlFor="subscription">Подписка</Label>
-                              <Select value={grantSubscription} onValueChange={setGrantSubscription}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Выберите подписку" />
+                              <Label htmlFor="duration">Тариф</Label>
+                              <Select value={subscriptionDuration} onValueChange={setSubscriptionDuration}>
+                                <SelectTrigger id="duration">
+                                  <SelectValue placeholder="Выберите тариф" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="pro">Pro</SelectItem>
+                                  <SelectItem value="weekly">Недельный</SelectItem>
+                                  <SelectItem value="monthly">Месячный</SelectItem>
+                                  <SelectItem value="yearly">Годовой</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
 
-                            {grantSubscription && (
-                              <div>
-                                <Label htmlFor="duration">Длительность</Label>
-                                <Select value={subscriptionDuration} onValueChange={setSubscriptionDuration}>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Выберите длительность" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="monthly">1 месяц</SelectItem>
-                                    <SelectItem value="yearly">1 год</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                            )}
-
                             <Button
-                              onClick={handleGrantCreditsOrSubscription}
+                              onClick={handleGrantSubscription}
                               className="w-full"
-                              disabled={!grantCredits && !grantSubscription}
+                              disabled={!subscriptionDuration}
                             >
-                              Начислить
+                              Выдать
                             </Button>
                           </div>
                         </DialogContent>
@@ -936,16 +889,7 @@ export default function AdminUsersPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label htmlFor="gift-credits">Кредиты</Label>
-                <Input
-                  id="gift-credits"
-                  type="number"
-                  value={giftCredits}
-                  onChange={(e) => setGiftCredits(e.target.value)}
-                />
-              </div>
-              <div>
+              <div className="col-span-2">
                 <Label htmlFor="gift-duration">Подписка</Label>
                 <Select value={giftDuration} onValueChange={(v) => setGiftDuration(v as any)}>
                   <SelectTrigger id="gift-duration">

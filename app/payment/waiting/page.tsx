@@ -5,14 +5,15 @@ import { useSearchParams, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import { usePaymentStatus } from "@/hooks/use-payment-status"
 import { api } from "@/lib/api-client"
-import { Loader2, XCircle, CheckCircle2, Sparkles, CreditCard } from "lucide-react"
+import { Loader2, XCircle, CheckCircle2, Sparkles } from "lucide-react"
 
 interface SubInfo {
   subscription: { subscription_type: string; status: string; expires_at: string | null } | null
-  credits: number
+  limits?: Record<string, { cap: number; remaining: number; period: string }>
 }
 
 const PLAN_LABEL: Record<string, string> = {
+  weekly: "Недельная подписка",
   monthly: "Ежемесячная подписка",
   yearly: "Годовая подписка",
   pro: "Подписка Pro",
@@ -92,7 +93,10 @@ export default function WaitingPage() {
   // status === "paid"
   const sub = info?.subscription
   const active = !!sub && sub.status === "active"
-  const hasCredits = typeof info?.credits === "number" && info.credits > 0
+  // Что человек только что купил, своими числами. «Безлимитный доступ» было
+  // неправдой ещё до кредитов: потолки есть, просто их не показывали.
+  const photos = info?.limits?.wardrobe_items_anlyzed
+  const tryons = info?.limits?.vton_used
 
   return (
     <Centered>
@@ -109,21 +113,15 @@ export default function WaitingPage() {
             <div>
               <div className="font-semibold text-[#101010]">{PLAN_LABEL[sub!.subscription_type] || "Подписка"}</div>
               <div className="text-sm text-gray-600">
-                Активна до {fmtDate(sub!.expires_at)} · безлимитный доступ ко всем функциям
+                Активна до {fmtDate(sub!.expires_at)}
+                {photos && tryons
+                  ? ` · ${photos.cap} фото и ${tryons.cap} примерок в ${photos.period === "week" ? "неделю" : "месяц"}`
+                  : ""}
               </div>
             </div>
           </div>
         )}
-        {hasCredits && (
-          <div className="flex items-start gap-3">
-            <CreditCard className="h-5 w-5 text-[#B97DC6] mt-0.5 shrink-0" />
-            <div>
-              <div className="font-semibold text-[#101010]">{info!.credits} кредитов на счету</div>
-              <div className="text-sm text-gray-600">Трать на анализ гардероба, образы и примерку</div>
-            </div>
-          </div>
-        )}
-        {!active && !hasCredits && (
+        {!active && (
           <div className="text-sm text-gray-600">Доступ активирован — приятного пользования!</div>
         )}
       </div>

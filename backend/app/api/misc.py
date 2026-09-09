@@ -344,11 +344,26 @@ async def log_usage(request: Request, user: dict = Depends(get_current_user), db
 
 @router.get("/pricing")
 async def get_pricing(db: AsyncSession = Depends(get_db)):
-    subs = await db.execute(text("SELECT * FROM subscription_pricing WHERE is_active = true ORDER BY price_rub"))
-    packs = await db.execute(text("SELECT * FROM credit_packs WHERE is_active = true ORDER BY price_rub"))
+    """Планы и то, что в них входит.
+
+    Лимиты едут вместе с ценой, а не переписываются в JSX руками: пейволл обязан
+    показывать ровно те цифры, по которым _use_feature() потом откажет. Раньше
+    рядом с планами лежали пакеты кредитов — их больше нет.
+    """
+    subs = await db.execute(
+        text("SELECT plan_type, price_rub, display_name FROM subscription_pricing WHERE is_active = true ORDER BY price_rub")
+    )
+    caps = await db.execute(text("SELECT plan_type, feature, cap, period FROM plan_limits"))
+
+    by_plan: dict[str, dict] = {}
+    for r in caps.mappings().all():
+        by_plan.setdefault(r["plan_type"], {})[r["feature"]] = {"cap": r["cap"], "period": r["period"]}
+
     return {
-        "subscriptions": [dict(r) for r in subs.mappings().all()],
-        "credit_packs": [dict(r) for r in packs.mappings().all()],
+        "subscriptions": [
+            {**dict(r), "limits": by_plan.get(r["plan_type"], {})} for r in subs.mappings().all()
+        ],
+        "free_limits": by_plan.get("free", {}),
     }
 
 

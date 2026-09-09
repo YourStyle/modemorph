@@ -37,11 +37,11 @@ _ANALYST_MAY = {
 # money, reaches every user, or exposes the log that watches the analyst.
 _ANALYST_MUST_NOT = [
     "/api/admin/audit-log",      # журнал, который её же и пишет
-    "/api/admin/grant-credits",  # выдача кредитов
+    "/api/admin/grant-plan",     # выдача подписки
     "/api/admin/gift",           # подарочные подписки
     "/api/admin/broadcast",      # сообщение всем пользователям
     "/api/admin/feature-costs",  # цены
-    "/api/admin/credit-packs",   # цены
+    "/api/admin/plan-limits",    # потолки планов = деньги
     "/api/admin/reminders",      # сообщения пользователям
     "/api/admin/users",          # персональные данные (и /users/{id}/timeline)
     "/api/admin/paying-users",   # платежи

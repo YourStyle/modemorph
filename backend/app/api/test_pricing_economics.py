@@ -1,113 +1,113 @@
-"""Арифметика раздела «Тарификация».
+"""Арифметика раздела «Тарификация» в админке.
 
-Экран, который сам себе считает выручку, однажды начнёт расходиться с тем, что
-списывает код, и никто этого не заметит — ровно так прайс год с лишним стоял
-рядом с функциями, которые его не читали. Поэтому вся математика живёт в одной
-чистой функции на бэкенде, а здесь проверяется на числах, которые можно
-пересчитать в уме.
+Раньше здесь считалась выручка функции через цену кредита. Кредита больше нет:
+функция сама по себе ничего не приносит — приносит план, а функция только
+тратит. Поэтому маржа теперь одна на план, а не вилка на функцию.
+
+Живые значения на 09.09.2026, чтобы числа в проверках сходились с продом.
 
 Запуск:  python3 -m app.api.test_pricing_economics     (из backend/)
 """
 
-from app.api.admin import feature_economics
+from app.api.admin import plan_economics
 
-# Живые значения на 01.09.2026, чтобы числа в проверках сходились с продом.
 _FEATURES = [
-    {"feature_name": "wardrobe_items_anlyzed", "cost_credits": 3, "unit_cost_rub": 2.90, "is_active": True},
-    {"feature_name": "vton_used", "cost_credits": 6, "unit_cost_rub": 14.10, "is_active": True},
-    {"feature_name": "ai_requests", "cost_credits": 1, "unit_cost_rub": 0.04, "is_active": True},
-    {"feature_name": "ideas_viewed", "cost_credits": 0, "unit_cost_rub": 0.04, "is_active": True},
+    {"feature_name": "wardrobe_items_anlyzed", "unit_cost_rub": 3.10, "is_active": True},
+    {"feature_name": "vton_used", "unit_cost_rub": 14.10, "is_active": True},
+    {"feature_name": "ai_requests", "unit_cost_rub": 0.04, "is_active": True},
+    {"feature_name": "ideas_viewed", "unit_cost_rub": 0.04, "is_active": True},
 ]
 _PLANS = [
-    {"plan_type": "monthly", "price_rub": 399, "display_name": "Ежемесячно"},
-    {"plan_type": "yearly", "price_rub": 2990, "display_name": "Годовой план"},
+    {"plan_type": "weekly", "price_rub": 299, "display_name": "Недельный"},
+    {"plan_type": "monthly", "price_rub": 699, "display_name": "Ежемесячно"},
+    {"plan_type": "yearly", "price_rub": 6990, "display_name": "Годовой план"},
 ]
-_CAPS = {"vton_used": 10, "wardrobe_items_anlyzed": 40}
-_CHEAP, _DEAR = 5.00, 15.80          # пак 200/999 и Мини 5/79
+_CAPS = {
+    "free": {"wardrobe_items_anlyzed": {"cap": 5, "period": "once"},
+             "vton_used": {"cap": 1, "period": "once"},
+             "ai_requests": {"cap": 10, "period": "once"},
+             "ideas_viewed": {"cap": 100, "period": "once"}},
+    "weekly": {"wardrobe_items_anlyzed": {"cap": 10, "period": "week"},
+               "vton_used": {"cap": 2, "period": "week"},
+               "ai_requests": {"cap": 50, "period": "week"}},
+    "monthly": {"wardrobe_items_anlyzed": {"cap": 35, "period": "month"},
+                "vton_used": {"cap": 8, "period": "month"},
+                "ai_requests": {"cap": 300, "period": "month"}},
+    "yearly": {"wardrobe_items_anlyzed": {"cap": 35, "period": "month"},
+               "vton_used": {"cap": 8, "period": "month"},
+               "ai_requests": {"cap": 300, "period": "month"}},
+}
 
 
-def _run():
-    return feature_economics(_FEATURES, _CHEAP, _DEAR, _PLANS, _CAPS)
+def _plans():
+    return {p["plan_type"]: p for p in plan_economics(_FEATURES, _PLANS, _CAPS)[1]}
 
 
-def _by_name(rows):
-    return {r["feature_name"]: r for r in rows}
+def test_the_photo_is_billed_per_photo_not_per_item():
+    """Тот самый вопрос, из-за которого пересчитывали всю экономику: 35 фото на
+    месячном тарифе стоят 35 × 3,10 ₽, а не 35 × 2,5 вещи × 3,10 ₽.
+
+    Оцифровка режет вещи по четыре и просит одну картинку сеткой 2×2, а кадр у
+    Gemini стоит фиксированные ~1120 токенов независимо от содержимого. Если
+    кто-нибудь однажды вернёт генерацию по одной вещи, это число вырастет втрое
+    и упадёт здесь."""
+    assert _plans()["monthly"]["included_cost_rub"] == 233.30
 
 
-def test_margin_is_a_range_not_a_single_number():
-    """Кредит стоит от 5,00 до 15,80 ₽ — оба пака активны. Одно усреднённое
-    число было бы красивее и неправдивее."""
-    f = _by_name(_run()[0])["wardrobe_items_anlyzed"]
-    assert f["revenue_rub_min"] == 15.00 and f["revenue_rub_max"] == 47.40
-    assert f["margin_pct_min"] == 80.7, f["margin_pct_min"]   # (15,00 − 2,90) / 15,00
-    assert f["margin_pct_max"] == 93.9, f["margin_pct_max"]
+def test_weekly_plan_costs_one_week_not_one_month():
+    """Недельный тариф с потолками period='week' — это ровно одно окно, а не
+    четыре. Спутать здесь единицы — вчетверо переоценить расход."""
+    assert _plans()["weekly"]["included_cost_rub"] == 61.20
+    assert _plans()["weekly"]["margin_pct"] == 79.5
 
 
-def test_try_on_margin_survives_the_cheapest_pack():
-    """6 кредитов × 5,00 ₽ = 30,00 ₽ при себестоимости 14,10 ₽."""
-    f = _by_name(_run()[0])["vton_used"]
-    assert f["margin_pct_min"] == 53.0, f["margin_pct_min"]
+def test_yearly_contains_twelve_and_a_bit_monthly_windows():
+    """365 / 30 = 12,17, а не 12. Округление до двенадцати дарит подписчику
+    почти неделю сверх оплаченного — незаметно и каждый год."""
+    y = _plans()["yearly"]
+    assert y["included_cost_rub"] == 2838.48, y["included_cost_rub"]
+    assert y["margin_pct"] == 59.4
 
 
-def test_free_feature_reports_no_margin_instead_of_minus_hundred():
-    """У бесплатной функции выручки нет. −100% формально верно и бесполезно:
-    это не убыток, это подарок ценой в 4 копейки."""
-    f = _by_name(_run()[0])["ideas_viewed"]
-    assert f["is_free"] is True
-    assert f["revenue_rub_min"] is None and f["margin_pct_min"] is None
+def test_no_plan_is_sold_below_cost():
+    """Худший случай должен оставаться прибыльным на каждом тарифе. До правки
+    цен годовой давал минус 8 ₽ в месяц — ровно это здесь и ловится."""
+    for plan, row in _plans().items():
+        assert row["margin_pct"] > 0, f"{plan} убыточен в худшем случае"
 
 
-def test_unmeasured_cost_is_unknown_not_zero():
-    """Ноль выглядит как ответ. Незамеренная себестоимость обязана давать None."""
-    rows, _ = feature_economics(
-        [{"feature_name": "vton_used", "cost_credits": 6, "unit_cost_rub": None, "is_active": True}],
-        _CHEAP, _DEAR, _PLANS, _CAPS,
-    )
-    assert rows[0]["margin_pct_min"] is None and rows[0]["unit_cost_rub"] is None
-
-
-def test_disabled_feature_is_free_not_priced():
-    """Выключенный тумблер = функция не тарифицируется (см. _get_feature_cost).
-    Экран обязан говорить то же самое, что делает код."""
-    rows, _ = feature_economics(
-        [{"feature_name": "vton_used", "cost_credits": 6, "unit_cost_rub": 14.10, "is_active": False}],
-        _CHEAP, _DEAR, _PLANS, _CAPS,
-    )
-    assert rows[0]["is_free"] is True and rows[0]["revenue_rub_min"] is None
-
-
-def test_yearly_plan_is_the_one_that_barely_breaks_even():
-    """2 990 / 12 = 249,17 ₽ в месяц против 257 ₽ включённого. Это и есть
-    причина, по которой цифра должна быть на экране."""
-    plans = {p["plan_type"]: p for p in _run()[1]}
-    assert plans["yearly"]["monthly_rub"] == 249.17
-    assert plans["yearly"]["included_cost_rub"] == 257.00   # 10×14,10 + 40×2,90
-    assert plans["yearly"]["margin_pct"] < 0, "годовой тариф внезапно стал прибыльным — проверь цифры"
-    assert plans["monthly"]["margin_pct"] > 30, "месячный тариф просел ниже 30%"
+def test_unmeasured_cost_is_named_not_counted_as_zero():
+    """Незамеренная себестоимость обязана попасть в unmeasured, а не прибавить
+    к расходу ноль: ноль выглядит как ответ."""
+    features = [{"feature_name": "vton_used", "unit_cost_rub": None, "is_active": True}]
+    caps = {"monthly": {"vton_used": {"cap": 8, "period": "month"}}}
+    _, plans = plan_economics(features, [_PLANS[1]], caps)
+    assert plans[0]["unmeasured"] == ["vton_used"]
+    assert plans[0]["included_cost_rub"] == 0.0
 
 
 def test_numeric_from_postgres_does_not_blow_up():
-    """unit_cost_rub — NUMERIC, а из драйвера он приходит Decimal. Смешать его
-    с float в одном выражении — верный 500 на проде и ровно тот класс ошибки,
-    который не видно до деплоя."""
+    """unit_cost_rub и price_rub — NUMERIC, из драйвера они приходят Decimal.
+    Смешать Decimal с float в одном выражении — верный 500 на проде и ровно тот
+    класс ошибки, который не видно до деплоя."""
     from decimal import Decimal
 
-    rows, plans = feature_economics(
-        [{"feature_name": "vton_used", "cost_credits": 6, "unit_cost_rub": Decimal("14.10"), "is_active": True}],
-        Decimal("5.00"), Decimal("15.80"),
-        [{"plan_type": "yearly", "price_rub": Decimal("2990"), "display_name": "Годовой"}],
-        {"vton_used": 10},
+    features = [{"feature_name": "vton_used", "unit_cost_rub": Decimal("14.10"), "is_active": True}]
+    caps = {"monthly": {"vton_used": {"cap": 8, "period": "month"}}}
+    rows, plans = plan_economics(
+        features, [{"plan_type": "monthly", "price_rub": Decimal("699"), "display_name": "М"}], caps
     )
     assert isinstance(rows[0]["unit_cost_rub"], float)
-    assert rows[0]["margin_pct_min"] == 53.0
-    assert plans[0]["included_cost_rub"] == 141.00
+    assert plans[0]["included_cost_rub"] == 112.80
+    assert plans[0]["margin_pct"] == 83.9
 
 
-def test_included_cost_counts_every_capped_feature():
-    """Если завтра лимит поставят на третью функцию, её стоимость обязана
-    попасть в «включено», а не тихо выпасть из расчёта."""
-    _, plans = feature_economics(_FEATURES, _CHEAP, _DEAR, _PLANS, {**_CAPS, "ai_requests": 100})
-    assert plans[0]["included_cost_rub"] == 261.00          # +100 × 0,04
+def test_feature_rows_say_where_they_are_capped():
+    """Экран должен уметь ответить «примерка: 1 бесплатно, 8 в месяц, 2 в
+    неделю» — иначе себестоимость видна, а на что она тратится, нет."""
+    rows, _ = plan_economics(_FEATURES, _PLANS, _CAPS)
+    vton = next(r for r in rows if r["feature_name"] == "vton_used")
+    assert vton["caps"] == {"free": 1, "weekly": 2, "monthly": 8, "yearly": 8}
 
 
 if __name__ == "__main__":

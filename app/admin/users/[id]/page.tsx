@@ -28,9 +28,7 @@ interface Timeline {
     status: string
     start_date: string | null
     expires_at: string | null
-    credits_included: number
   } | null
-  credits: number
   payments: Array<{ amount: number; status: string; action: string | null; type: string | null; created_at: string }>
   activity: Array<{ date: string; count: number }>
   events: Array<{ at: string; feature: string; action: string; count: number; meta?: Record<string, any> }>
@@ -142,7 +140,6 @@ export default function UserTimelinePage() {
           <span className={`rounded-full px-2 py-0.5 ${data.user.onboarding_complete ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
             {data.user.onboarding_complete ? "онбординг завершён" : "онбординг не завершён"}
           </span>
-          <span className="rounded-full bg-violet-100 text-violet-700 px-2 py-0.5">{data.credits} кредитов</span>
         </div>
       </div>
 
@@ -171,7 +168,6 @@ export default function UserTimelinePage() {
           <div className="font-semibold mb-2">Подписка</div>
           <div className="text-sm">
             {data.subscription.subscription_type} · {data.subscription.status} · до {fmt(data.subscription.expires_at)}
-            {` · включено ${data.subscription.credits_included} кредитов`}
           </div>
         </div>
       )}

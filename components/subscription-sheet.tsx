@@ -2,52 +2,57 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useSheetDrag } from "@/hooks/use-sheet-drag"
-import { Sheet, SheetContent, SheetOverlay, SheetPortal } from "@/components/ui/sheet"
+import { Sheet, SheetPortal } from "@/components/ui/sheet"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { Button } from "@/components/ui/button"
-import { ChevronLeft } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { startRoboPayment } from "@/lib/payments"
 import { toast } from "@/hooks/use-toast"
 import { api } from "@/lib/api-client"
 
-type Plan = "yearly" | "monthly"
-type View = "subscription" | "credits"
+type Plan = "yearly" | "monthly" | "weekly"
 
 interface SubscriptionSheetProps {
   isOpen: boolean
   onClose: () => void
   onSuccess?: () => void
-  variant?: "limitReached" | "explore" // limitReached = "У тебя закончились лимиты", explore = "Открой для себя безлимитные возможности"
+  variant?: "limitReached" | "explore" // limitReached = "У тебя закончились лимиты", explore = апселл
   /** Where the paywall was triggered from (e.g. "limit:vton_used", "limit:outfits_saved").
    *  Logged with the paywall_shown event so conversions can be attributed to the
    *  feature that blocked the user. Optional — defaults to the variant. */
   source?: string
 }
 
+interface PlanLimit {
+  cap: number
+  period: "once" | "week" | "month"
+  remaining?: number
+  renews_at?: string | null
+}
+
 interface SubscriptionPlan {
   plan_type: string
   price_rub: number
-  credits: number
   display_name: string
-  description: string
+  limits: Record<string, PlanLimit>
 }
 
-interface CreditPack {
-  id: number
-  name: string
-  price_rub: number
-  credits: number
+// Что писать про потолок. Только функции, которые чего-то стоят: ставить
+// «300 запросов к стилисту» рядом с «35 оцифровок» — значит уравнять 108 ₽ и 12 ₽.
+const LIMIT_LABEL: Record<string, (n: number) => string> = {
+  wardrobe_items_anlyzed: (n) => `${n} фото на оцифровку`,
+  vton_used: (n) => `${n} примерок`,
+  ai_requests: (n) => `${n} запросов к стилисту`,
 }
+const PERIOD_RU: Record<string, string> = { week: "в неделю", month: "в месяц", once: "" }
 
 export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limitReached", source }: SubscriptionSheetProps) {
   const [selectedPlan, setSelectedPlan] = useState<Plan>("yearly")
-  const [currentView, setCurrentView] = useState<View>("subscription")
   const [isProcessing, setIsProcessing] = useState(false)
   const [subscriptionPlans, setSubscriptionPlans] = useState<SubscriptionPlan[]>([])
-  const [creditPacks, setCreditPacks] = useState<CreditPack[]>([])
   const [loading, setLoading] = useState(true)
   const [currentSub, setCurrentSub] = useState<{ subscription_type: string; status: string; expires_at: string | null } | null>(null)
+  const [currentLimits, setCurrentLimits] = useState<Record<string, PlanLimit>>({})
 
   // Swipe-to-dismiss states
   const contentRef = useRef<HTMLDivElement>(null)
@@ -57,7 +62,10 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
     if (isOpen) {
       fetchPricing()
       api.get("/api/user-subscription")
-        .then((d) => setCurrentSub(d?.subscription || null))
+        .then((d) => {
+          setCurrentSub(d?.subscription || null)
+          setCurrentLimits(d?.limits || {})
+        })
         .catch(() => setCurrentSub(null))
     }
   }, [isOpen])
@@ -90,7 +98,6 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
       setLoading(true)
       const data = await api.get("/api/pricing")
       setSubscriptionPlans(data.subscriptions || [])
-      setCreditPacks(data.credit_packs || [])
     } catch (error) {
       console.error("Error fetching pricing:", error)
       toast({
@@ -111,66 +118,50 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
   const subActive = !!currentSub && currentSub.status === "active" &&
     (!currentSub.expires_at || new Date(currentSub.expires_at) > new Date())
 
-  const title = variant !== "limitReached"
-    ? "Открой для себя безлимитные возможности"
-    : subActive
-      ? "Включённое в подписку закончилось"
-      : "У тебя закончились лимиты"
-  const subtitle = variant !== "limitReached"
-    ? "Выбери подходящий план"
-    : subActive
-      ? "Можно продолжить за кредиты — по обычной цене"
-      : "Открой безграничные возможности"
+  // Функция, из-за которой открылся пейволл: source приходит как "limit:vton_used".
+  const blockedFeature = source?.startsWith("limit:") ? source.slice("limit:".length) : null
+  const renewsAt = blockedFeature ? currentLimits[blockedFeature]?.renews_at : null
+  const renewsLabel = renewsAt
+    ? new Date(renewsAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long" })
+    : ""
 
-  // Подписчику, упёршемуся в лимит, нельзя показывать экран «оформи подписку»:
-  // она у него уже есть, а продление не добавит примерок в текущем месяце.
-  // Единственное, что ему сейчас поможет, — кредиты, поэтому открываем сразу их.
-  useEffect(() => {
-    if (isOpen && subActive && variant === "limitReached") setCurrentView("credits")
-  }, [isOpen, subActive, variant])
+  const title = variant !== "limitReached"
+    ? "Открой для себя больше"
+    : subActive
+      ? "Включённое в тариф закончилось"
+      : "У тебя закончились лимиты"
+
+  // Подписчику, упёршемуся в потолок, врать про «оформи подписку» нельзя — она у
+  // него уже есть. Раньше здесь предлагали докупить кредиты; теперь честный
+  // ответ — дата, когда лимит нальётся заново, и возможность взять тариф шире.
+  const subtitle = variant !== "limitReached"
+    ? "Выбери подходящий тариф"
+    : subActive
+      ? renewsLabel
+        ? `Лимит обновится ${renewsLabel}`
+        : "Лимит обновится в начале следующего периода"
+      : "Выбери тариф — лимиты откроются сразу"
+
   const subExpiresLabel = currentSub?.expires_at
     ? new Date(currentSub.expires_at).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })
     : ""
 
   const handleGetAccess = async () => {
-    if (currentView === "subscription") {
-      setIsProcessing(true)
-      try {
-        const plan = getSelectedPlanData()
-        if (!plan) {
-          toast({
-            title: "Ошибка",
-            description: "План не найден",
-            variant: "destructive",
-          })
-          return
-        }
-        await startRoboPayment(
-          plan.price_rub,
-          `Подписка ${plan.display_name}`,
-          { action: "subscribe", type: selectedPlan }
-        )
-        onSuccess?.()
-      } catch (error) {
-        console.error("Payment error:", error)
-        toast({
-          title: "Ошибка",
-          description: "Не удалось начать оплату",
-          variant: "destructive",
-        })
-      } finally {
-        setIsProcessing(false)
-      }
-    }
-  }
-
-  const handleBuyCreditPack = async (pack: CreditPack) => {
     setIsProcessing(true)
     try {
+      const plan = getSelectedPlanData()
+      if (!plan) {
+        toast({
+          title: "Ошибка",
+          description: "Тариф не найден",
+          variant: "destructive",
+        })
+        return
+      }
       await startRoboPayment(
-        pack.price_rub,
-        `Покупка ${pack.credits} кредитов`,
-        { action: "buy_credits", packId: pack.id }
+        plan.price_rub,
+        `Подписка ${plan.display_name}`,
+        { action: "subscribe", type: selectedPlan }
       )
       onSuccess?.()
     } catch (error) {
@@ -209,7 +200,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
           ref={contentRef}
           className={cn(
             "fixed z-50 inset-x-0 bottom-0 rounded-t-[28px] border-0 p-0 bg-canvas transition-all duration-300 overflow-hidden shadow-[0_-4px_24px_rgba(0,0,0,0.12),0_-1px_4px_rgba(0,0,0,0.04)] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-            currentView === "credits" ? "h-[85vh]" : "h-[65vh]"
+            "h-[72vh]"
           )}
           style={{
             transform: `translateY(${dragY}px)`,
@@ -218,167 +209,103 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
           {...handlers}
           onInteractOutside={(e) => e.preventDefault()}
         >
-        {/* Стеклянная шапка (LIQUID_GLASS.md, уровень 1) — только ручка и (для пакетов) кнопка назад.
+        {/* Стеклянная шапка (LIQUID_GLASS.md, уровень 1) — только ручка.
             Тело ниже — плотный холст, там блюрить нечего. */}
         <div className="sheet-drag-zone glass relative will-change-transform">
           {/* Drag handle */}
           <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
             <div className="w-10 h-1 rounded-full bg-ink/15" />
           </div>
-
-          {/* Back button for credits view */}
-          {currentView === "credits" && (
-            <button
-              onClick={() => setCurrentView("subscription")}
-              className="absolute top-4 left-4 p-2 rounded-full transition-transform duration-press active:scale-95 z-10 text-ink hover:bg-canvas-sunk"
-              aria-label="Назад"
-            >
-              <ChevronLeft className="w-5 h-5" strokeWidth={1.75} />
-            </button>
-          )}
         </div>
 
         <div ref={scrollRef} className="px-6 pb-6 h-full flex flex-col text-ink overflow-y-auto overscroll-contain">
-          {currentView === "subscription" ? (
-            <div className="flex flex-col h-full space-y-4">
-              {/* Header */}
-              <div className="text-center space-y-1 pt-2 flex-shrink-0">
-                <h2 className="text-h2 text-ink">
-                  {title}
-                </h2>
-                <p className="text-body text-ink-2">
-                  {subtitle}
-                </p>
-              </div>
-
-              {subActive && (
-                <div className="flex-shrink-0 rounded-2xl bg-canvas-sunk text-ink text-caption px-3 py-2 text-center">
-                  Подписка активна{subExpiresLabel ? ` до ${subExpiresLabel}` : ""}. Покупка продлит её.
-                </div>
-              )}
-
-              {/* Plan selection */}
-              <div className="space-y-2 flex-shrink-0">
-                {loading ? (
-                  <div className="text-center py-8 text-body text-ink-2">Загрузка...</div>
-                ) : (
-                  subscriptionPlans.map((plan) => {
-                    const key = plan.plan_type as Plan
-                    const isSelected = selectedPlan === key
-                    return (
-                      <button
-                        key={key}
-                        onClick={() => setSelectedPlan(key)}
-                        className={cn(
-                          "w-full p-3 rounded-2xl bg-canvas-sunk transition-transform duration-press ease-out active:scale-[.99] relative border-2",
-                          isSelected ? "border-ink" : "border-transparent"
-                        )}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="text-left">
-                            <div className="font-semibold text-body text-ink">{plan.display_name}</div>
-                            <div className="text-caption text-ink-2">
-                              {key === "yearly"
-                                ? `${plan.description} (${plan.price_rub} ₽)`
-                                : plan.description
-                              }
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-bold text-body text-ink">
-                              {key === "yearly"
-                                ? `${Math.round(plan.price_rub / 12)} ₽`
-                                : `${plan.price_rub} ₽`
-                              }
-                            </div>
-                            <div className="text-caption text-ink-2">
-                              {key === "yearly" ? "в месяц" : `${plan.credits} кредитов`}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-
-              {/* Bottom section - fixed at bottom */}
-              <div className="space-y-3 flex-shrink-0 mt-auto">
-                {/* Get Access button */}
-                <Button
-                  onClick={handleGetAccess}
-                  disabled={isProcessing}
-                  className="w-full h-12 text-body font-semibold rounded-full bg-ink text-signal-ink border-0 hover:bg-ink/90"
-                >
-                  {isProcessing ? "Обработка..." : subActive ? "Продлить подписку" : "Получить доступ"}
-                </Button>
-
-                {/* View credit packs link */}
-                <button
-                  onClick={() => setCurrentView("credits")}
-                  className="w-full text-center text-caption text-ink-2 hover:text-ink transition-colors underline"
-                >
-                  Посмотреть пакеты кредитов
-                </button>
-
-                {/* Continue free button */}
-                <button
-                  onClick={handleContinueFree}
-                  className="w-full text-center text-caption text-ink hover:text-ink-2 transition-colors font-medium"
-                >
-                  Продолжить бесплатно
-                </button>
-              </div>
+          <div className="flex flex-col h-full space-y-4">
+            {/* Header */}
+            <div className="text-center space-y-1 pt-2 flex-shrink-0">
+              <h2 className="text-h2 text-ink">
+                {title}
+              </h2>
+              <p className="text-body text-ink-2">
+                {subtitle}
+              </p>
             </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Header */}
-              <div className="text-center space-y-2 pt-12">
-                <h2 className="text-h1 text-ink">
-                  Пакеты кредитов
-                </h2>
-                <p className="text-body text-ink-2">
-                  Выберите подходящий пакет
-                </p>
-              </div>
 
-              {/* Credit packs */}
-              <div className="space-y-3">
-                {loading ? (
-                  <div className="text-center py-8 text-body text-ink-2">Загрузка...</div>
-                ) : (
-                  creditPacks.map((pack) => (
+            {subActive && (
+              <div className="flex-shrink-0 rounded-2xl bg-canvas-sunk text-ink text-caption px-3 py-2 text-center">
+                Подписка активна{subExpiresLabel ? ` до ${subExpiresLabel}` : ""}. Покупка продлит её.
+              </div>
+            )}
+
+            {/* Plan selection */}
+            <div className="space-y-2 flex-shrink-0">
+              {loading ? (
+                <div className="text-center py-8 text-body text-ink-2">Загрузка...</div>
+              ) : (
+                subscriptionPlans.map((plan) => {
+                  const key = plan.plan_type as Plan
+                  const isSelected = selectedPlan === key
+                  // Состав тарифа приезжает вместе с ценой из /api/pricing, а не
+                  // переписан здесь руками: пейволл обязан обещать ровно те
+                  // цифры, по которым бэкенд потом откажет.
+                  const included = Object.entries(plan.limits || {})
+                    .filter(([f]) => f in LIMIT_LABEL)
+                    .map(([f, l]) => `${LIMIT_LABEL[f](l.cap)} ${PERIOD_RU[l.period] || ""}`.trim())
+                  return (
                     <button
-                      key={pack.id}
-                      onClick={() => handleBuyCreditPack(pack)}
-                      disabled={isProcessing}
-                      className="w-full p-4 rounded-2xl bg-canvas-sunk hover:bg-line transition-colors"
+                      key={key}
+                      onClick={() => setSelectedPlan(key)}
+                      className={cn(
+                        "w-full p-3 rounded-2xl bg-canvas-sunk transition-transform duration-press ease-out active:scale-[.99] relative border-2 text-left",
+                        isSelected ? "border-ink" : "border-transparent"
+                      )}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="text-left">
-                          <div className="font-semibold text-body text-ink">{pack.name}</div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-body text-ink">{plan.display_name}</div>
                           <div className="text-caption text-ink-2 mt-0.5">
-                            {(pack.price_rub / pack.credits).toFixed(1)} ₽ за кредит
+                            {included.join(" · ")}
                           </div>
                         </div>
-                        <div className="text-right">
-                          <div className="font-bold text-h2 text-ink">{pack.price_rub} ₽</div>
+                        <div className="text-right shrink-0">
+                          <div className="font-bold text-body text-ink">
+                            {key === "yearly"
+                              ? `${Math.round(plan.price_rub / 12)} ₽`
+                              : `${plan.price_rub} ₽`
+                            }
+                          </div>
+                          <div className="text-caption text-ink-2">
+                            {key === "yearly"
+                              ? `в месяц · ${plan.price_rub} ₽ за год`
+                              : key === "weekly" ? "в неделю" : "в месяц"}
+                          </div>
                         </div>
                       </div>
                     </button>
-                  ))
-                )}
-              </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Bottom section - fixed at bottom */}
+            <div className="space-y-3 flex-shrink-0 mt-auto">
+              {/* Get Access button */}
+              <Button
+                onClick={handleGetAccess}
+                disabled={isProcessing}
+                className="w-full h-12 text-body font-semibold rounded-full bg-ink text-signal-ink border-0 hover:bg-ink/90"
+              >
+                {isProcessing ? "Обработка..." : subActive ? "Сменить тариф" : "Получить доступ"}
+              </Button>
 
               {/* Continue free button */}
               <button
                 onClick={handleContinueFree}
-                className="w-full text-center text-ink hover:text-ink-2 transition-colors font-medium pt-4"
+                className="w-full text-center text-caption text-ink hover:text-ink-2 transition-colors font-medium"
               >
-                Продолжить бесплатно
+                {subActive ? "Подождать обновления лимита" : "Продолжить бесплатно"}
               </button>
             </div>
-          )}
+          </div>
         </div>
         </SheetPrimitive.Content>
       </SheetPortal>

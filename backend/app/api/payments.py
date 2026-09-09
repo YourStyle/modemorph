@@ -1,12 +1,11 @@
 """
-Payments — Robokassa webhooks + subscription/credits management.
+Payments — Robokassa webhooks + subscription management.
 
-Security model: the server is authoritative on BOTH the charged amount and the
-granted credits. create_payment resolves price/credits from the DB
-(subscription_pricing / credit_packs) by plan/pack id and stores them in
-payments.meta; the result webhook verifies the signature, checks the paid amount
-matches the recorded amount, and credits from that server-resolved meta. The
-client only chooses WHICH plan/pack — never how much it costs or grants.
+Security model: the server is authoritative on the charged amount.
+create_payment resolves the price from subscription_pricing by plan id and
+stores it in payments.meta; the result webhook verifies the signature and checks
+the paid amount matches the recorded one. The client only chooses WHICH plan —
+never how much it costs or what it grants.
 """
 
 import hashlib
@@ -19,6 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.limits import PLAN_DAYS
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
@@ -31,7 +31,7 @@ class CreatePaymentRequest(BaseModel):
     # derives the authoritative price from the DB.
     amount: Optional[float] = None
     description: Optional[str] = None
-    meta: dict  # {action:"subscribe", type} | {action:"buy_credits", packId}
+    meta: dict  # {action:"subscribe", type}
 
 
 @router.post("/robokassa/create")
@@ -40,53 +40,34 @@ async def create_payment(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Resolve the authoritative price/credits from the DB, create a pending
-    payment, and return the Robokassa URL."""
+    """Resolve the authoritative price from the DB, create a pending payment,
+    and return the Robokassa URL."""
     meta_in = body.meta or {}
     action = meta_in.get("action")
 
-    if action == "subscribe":
-        plan_type = meta_in.get("type", "monthly")
-        prow = (
-            await db.execute(
-                text("""
-                    SELECT price_rub, credits, display_name
-                    FROM subscription_pricing WHERE plan_type = :p AND is_active = true
-                """),
-                {"p": plan_type},
-            )
-        ).mappings().first()
-        if not prow:
-            raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_type}")
-        amount = int(prow["price_rub"])
-        meta = {
-            "action": "subscribe", "type": plan_type, "credits": int(prow["credits"]),
-            "price_rub": amount, "display_name": prow["display_name"],
-        }
-        description = f"Подписка {prow['display_name']}"
-
-    elif action == "buy_credits":
-        pack_id = meta_in.get("packId")
-        prow = (
-            await db.execute(
-                text("""
-                    SELECT id, name, credits, price_rub
-                    FROM credit_packs WHERE id = :id AND is_active = true
-                """),
-                {"id": pack_id},
-            )
-        ).mappings().first()
-        if not prow:
-            raise HTTPException(status_code=400, detail=f"Unknown credit pack: {pack_id}")
-        amount = int(prow["price_rub"])
-        meta = {
-            "action": "buy_credits", "packId": prow["id"], "credits": int(prow["credits"]),
-            "price_rub": amount, "packName": prow["name"],
-        }
-        description = f"Покупка {prow['credits']} кредитов"
-
-    else:
+    # buy_credits убран вместе с кредитами. Старый клиент, который его пришлёт,
+    # получит 400, а не молча оплаченный пак, который некуда зачислить.
+    if action != "subscribe":
         raise HTTPException(status_code=400, detail="Invalid action")
+
+    plan_type = meta_in.get("type", "monthly")
+    prow = (
+        await db.execute(
+            text("""
+                SELECT price_rub, display_name
+                FROM subscription_pricing WHERE plan_type = :p AND is_active = true
+            """),
+            {"p": plan_type},
+        )
+    ).mappings().first()
+    if not prow:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_type}")
+    amount = int(prow["price_rub"])
+    meta = {
+        "action": "subscribe", "type": plan_type,
+        "price_rub": amount, "display_name": prow["display_name"],
+    }
+    description = f"Подписка {prow['display_name']}"
 
     # invoice_id is filled by the sequence default (migration 007_payments_invoice_id_sequence).
     result = await db.execute(
@@ -173,7 +154,10 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
 
     if action == "subscribe":
         sub_type = meta.get("type", "monthly")
-        months = 1 if sub_type == "monthly" else 12
+        # Недельный тариф — не месяц и не год, поэтому длительность задаётся
+        # днями, а не months => 1|12. Неизвестный тип трактуем как месяц: деньги
+        # уже приняты, отдать за них меньше всех — худший из возможных ответов.
+        days = PLAN_DAYS.get(sub_type, 30)
 
         # UNIQUE(user_profile_id): a plain INSERT would 500 on any renewal,
         # stranding the payment in post_applied=false forever. Stack expiry
@@ -181,35 +165,19 @@ async def robokassa_result(request: Request, db: AsyncSession = Depends(get_db))
         await db.execute(
             text("""
                 INSERT INTO user_subscriptions (user_profile_id, subscription_type, status, start_date, expires_at)
-                VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(months => :months))
+                VALUES (:pid, :stype, 'active', NOW(), NOW() + make_interval(days => :days))
                 ON CONFLICT (user_profile_id) DO UPDATE
                 SET subscription_type = EXCLUDED.subscription_type,
                     status = 'active',
-                    expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(months => :months)
+                    expires_at = GREATEST(user_subscriptions.expires_at, NOW()) + make_interval(days => :days)
             """),
-            {"pid": profile_id, "stype": sub_type, "months": months},
+            {"pid": profile_id, "stype": sub_type, "days": days},
         )
 
-        # NOTE: we deliberately do NOT write limits=999 here. Unlimited-while-active
-        # is handled live by _is_subscriber() (limits.py). Materializing 999 into the
-        # table meant it was never restored on expiry → churned users kept unlimited.
-
-    elif action == "buy_credits":
-        # credits/packName come from the server-resolved meta (set in create_payment
-        # from credit_packs), NOT from the client — so the amount can't be forged.
-        credits = meta.get("credits", 0)
-        pack_name = meta.get("packName", "")
-        await db.execute(
-            text("UPDATE user_credits SET credits_balance = credits_balance + :amt WHERE user_profile_id = :pid"),
-            {"amt": credits, "pid": profile_id},
-        )
-        await db.execute(
-            text("""
-                INSERT INTO credit_transactions (user_profile_id, transaction_type, amount, reason, description, created_at)
-                VALUES (:pid, 'credit', :amt, 'purchase', :desc, NOW())
-            """),
-            {"pid": profile_id, "amt": credits, "desc": f'Purchase: {pack_name}'},
-        )
+        # Потолки плана не материализуются здесь: _plan_of() читает подписку
+        # вживую при каждом списании. Счётчик потребления сбрасывать тоже не
+        # надо — он помнит, под каким планом накоплен (subscription_usage.
+        # plan_type), и сам обнулится при первом списании на новом плане.
 
     # Mark as applied (idempotency)
     updated_meta = {**meta, "post_applied": True, "post_applied_at": "now()"}
@@ -253,7 +221,7 @@ async def get_subscription(
     )
     profile = profile_result.first()
     if not profile:
-        return {"subscription": None, "credits": 0}
+        return {"subscription": None, "plan": "free", "limits": {}}
 
     pid = profile[0]
 
@@ -267,13 +235,42 @@ async def get_subscription(
     )
     sub_row = sub.mappings().first()
 
-    credits = await db.execute(
-        text("SELECT credits_balance FROM user_credits WHERE user_profile_id = :pid"),
-        {"pid": pid},
+    # План и остатки по нему вместо баланса кредитов: человеку важно «сколько
+    # оцифровок осталось до конца месяца», а не абстрактная вторая валюта.
+    plan = sub_row["subscription_type"] if sub_row and sub_row["status"] == "active" else "free"
+    usage = await db.execute(
+        text("""
+            SELECT pl.feature, pl.cap, pl.period,
+                   GREATEST(0, pl.cap - COALESCE(su.used, 0)) AS remaining,
+                   -- Когда потолок нальётся заново. У бесплатного тарифа — никогда,
+                   -- и NULL здесь честнее, чем дата, которой не будет.
+                   CASE WHEN pl.period = 'once' THEN NULL
+                        ELSE su.period_started_at
+                             + CASE pl.period WHEN 'week' THEN INTERVAL '7 days'
+                                              ELSE INTERVAL '1 month' END
+                   END AS renews_at
+            FROM plan_limits pl
+            LEFT JOIN subscription_usage su
+                   ON su.user_profile_id = :pid
+                  AND su.feature = pl.feature
+                  AND su.plan_type = pl.plan_type
+                  AND (pl.period = 'once'
+                       OR NOW() < su.period_started_at
+                                  + CASE pl.period WHEN 'week' THEN INTERVAL '7 days'
+                                                   ELSE INTERVAL '1 month' END)
+            WHERE pl.plan_type = :plan
+        """),
+        {"pid": pid, "plan": plan},
     )
-    credit_row = credits.first()
 
     return {
         "subscription": dict(sub_row) if sub_row else None,
-        "credits": credit_row[0] if credit_row else 0,
+        "plan": plan,
+        "limits": {
+            r["feature"]: {
+                "cap": r["cap"], "remaining": r["remaining"], "period": r["period"],
+                "renews_at": str(r["renews_at"]) if r["renews_at"] else None,
+            }
+            for r in usage.mappings().all()
+        },
     }

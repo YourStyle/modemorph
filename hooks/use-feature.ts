@@ -14,7 +14,7 @@ export function useFeature() {
   const log = useCallback(
     async (
       feature: Feature,
-      action: "click" | "attempt" | "purchase_sub" | "purchase_credits",
+      action: "click" | "attempt" | "purchase_sub",
       meta?: Record<string, any>
     ) => {
       try {

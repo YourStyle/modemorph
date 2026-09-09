@@ -107,7 +107,7 @@ interface AnalyticsData {
     paywall_shown: Num
     paid_subscriptions: Num
     /** Active subscriptions, split by provenance. `premium_users` is the total;
-     *  `premium_granted` are rows written by /grant-credits and /gift, which are
+     *  `premium_granted` are rows written by /grant-plan and /gift, which are
      *  not revenue. Never render the total without the split beside it. */
     premium_users: Num
     premium_paid: Num
@@ -431,7 +431,7 @@ export default function AnalyticsPage() {
       ["  — из них выдано админом", xl(data.monetization.premium_granted)],
       [
         "Оговорка по подпискам",
-        "«Выдано админом» — подписки из /grant-credits и /gift. У этих пользователей нет ни одного оплаченного платежа, поэтому в выручку они не входят.",
+        "«Выдано админом» — подписки из /grant-plan и /gift. У этих пользователей нет ни одного оплаченного платежа, поэтому в выручку они не входят.",
       ],
       [
         "Конверсия paywall -> оплата",
@@ -900,7 +900,7 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
           {/* An active subscription row has two possible authors: the payment
-              webhook, and the admin buttons /grant-credits and /gift. Under a
+              webhook, and the admin buttons /grant-plan and /gift. Under a
               «Монетизация» heading, one tile away from «Оплаченных подписок»,
               the undifferentiated total reads as "N people are on paid plans" —
               on prod that is 7, of which only 3 belong to anyone who ever paid.

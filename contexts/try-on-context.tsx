@@ -287,7 +287,7 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
     }, TICK_MS)
 
     // 6. Fire the actual API call (closure captures stable refs)
-    // Credits are consumed ONLY on success — if the call fails, nothing is charged.
+    // Лимит списывается ТОЛЬКО при успехе — если вызов упал, ничего не потрачено.
     ;(async () => {
       const setError = (errMsg: string) => {
         stopProgressTimer()
@@ -319,17 +319,17 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
         if (response?.error) {
           setError(typeof response.error === "string"
             ? response.error
-            : "Сервис примерки вернул ошибку. Ваши кредиты не списаны.")
+            : "Сервис примерки вернул ошибку. Лимит не списан.")
           return
         }
 
         const imageUrl = extractImageUrl(response)
         if (!imageUrl) {
-          setError("Не удалось получить результат примерки. Ваши кредиты не списаны.")
+          setError("Не удалось получить результат примерки. Лимит не списан.")
           return
         }
 
-        // Success — NOW consume the credit
+        // Success — NOW consume the limit
         try {
           await api.post("/api/check-limits", {
             featureType: "vton_used",
@@ -337,8 +337,8 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
             meta: { requestId },
           })
         } catch {
-          // Credit consumption failed but try-on succeeded — don't block user
-          console.error("[TryOn] Failed to consume credit after success")
+          // Limit consumption failed but try-on succeeded — don't block user
+          console.error("[TryOn] Failed to consume the limit after success")
         }
 
         setSession((prev) =>
@@ -350,21 +350,21 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
 
         onTryOnSuccessRef.current?.(imageUrl)
       } catch (err: unknown) {
-        // API call failed — no credit consumed
-        let errMsg = "Произошла ошибка при создании примерки. Ваши кредиты не списаны — попробуйте ещё раз."
+        // API call failed — nothing consumed
+        let errMsg = "Произошла ошибка при создании примерки. Лимит не списан — попробуйте ещё раз."
         if (err instanceof Error) {
           const msg = err.message
           if (msg.includes("402") || msg.includes("payment_required")) {
             // Сервер отказал ДО генерации — примерки в этом месяце кончились.
             // Раньше такого ответа не существовало: /api/vton генерировал
             // всегда, а отказ приходил уже после того, как картинка сделана.
-            errMsg = "Примерки на этот месяц закончились. Пополните кредиты, чтобы продолжить."
+            errMsg = "Примерки в тарифе закончились. Лимит обновится в начале следующего периода."
           } else if (msg.includes("503") || msg.includes("502")) {
-            errMsg = "Сервис примерки временно недоступен. Ваши кредиты не списаны — попробуйте позже."
+            errMsg = "Сервис примерки временно недоступен. Лимит не списан — попробуйте позже."
           } else if (msg.includes("400")) {
-            errMsg = "Загрузите аватар в профиле для виртуальной примерки. Кредиты не списаны."
+            errMsg = "Загрузите аватар в профиле для виртуальной примерки. Лимит не списан."
           } else if (msg.includes("timeout") || msg.includes("Timeout")) {
-            errMsg = "Сервис не ответил вовремя. Ваши кредиты не списаны — попробуйте позже."
+            errMsg = "Сервис не ответил вовремя. Лимит не списан — попробуйте позже."
           }
         }
         setError(errMsg)

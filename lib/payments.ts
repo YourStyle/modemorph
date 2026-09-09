@@ -3,10 +3,10 @@ import { api } from "@/lib/api-client"
 export async function startRoboPayment(
   amount: number,
   description?: string,
-  meta?: Record<string, any> // что сделать после оплаты: {action:"subscribe",type} | {action:"buy_credits",packId}
+  meta?: Record<string, any> // что сделать после оплаты: {action:"subscribe",type}
 ) {
-  // Backend is authoritative on price + credits — it resolves them from `meta`
-  // (subscription_pricing / credit_packs) and returns the Robokassa URL.
+  // Backend is authoritative on the price — it resolves it from `meta`
+  // (subscription_pricing) and returns the Robokassa URL.
   const data = await api.post("/api/payments/robokassa/create", {
     amount,
     description,

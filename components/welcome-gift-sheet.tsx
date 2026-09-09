@@ -69,18 +69,11 @@ export function WelcomeGiftSheet({ gift, onDismissed }: Props) {
           <Sparkles className="h-8 w-8 text-signal" strokeWidth={1.75} />
         </div>
         <h2 className="text-h1 text-ink">{title}</h2>
-        {(gift.credits || subLabel) && (
+        {subLabel && (
           <div className="mt-3 inline-flex flex-wrap items-center justify-center gap-2">
-            {subLabel && (
-              <span className="rounded-full bg-canvas-sunk text-ink px-3 py-1 text-caption font-medium">
-                Подписка {subLabel}
-              </span>
-            )}
-            {!!gift.credits && gift.credits > 0 && (
-              <span className="rounded-full bg-canvas-sunk text-ink px-3 py-1 text-caption font-medium">
-                +{gift.credits} кредитов
-              </span>
-            )}
+            <span className="rounded-full bg-canvas-sunk text-ink px-3 py-1 text-caption font-medium">
+              Подписка {subLabel}
+            </span>
           </div>
         )}
         {body && <p className="mt-4 text-body text-ink-2 leading-relaxed">{body}</p>}

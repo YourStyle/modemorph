@@ -47,6 +47,13 @@ interface UserProfileSheetProps {
   autoExpandCity?: boolean
 }
 
+// Что показывать в остатке тарифа. Только дорогие функции: «осталось 297 из 300
+// запросов к стилисту» — шум ценой в 12 копеек.
+const REMAINING_LABEL: [string, string][] = [
+  ["wardrobe_items_anlyzed", "Оцифровок"],
+  ["vton_used", "Примерок"],
+]
+
 const CLOTHING_SIZES = [
   "XXS",
   "XS",
@@ -355,25 +362,24 @@ export function UserProfileSheet({
                                   когда она наступит, и там она объяснена. */}
                               <div className="text-caption text-ink-2">
                                 {subscriptionData?.subscription?.status === "active"
-                                  ? "40 кредитов каждый месяц"
+                                  ? "Тариф активен"
                                   : "Все функции открыты — попробуйте каждую"}
                               </div>
-                              {/* Остаток читается как ЧИСЛО. Бэкенд отдаёт
-                                  {"credits": 35}, а здесь стояло
-                                  credits?.credits_balance — обращение к полю
-                                  числа даёт undefined, и `|| 0` превращало это
-                                  в уверенный ноль. Пользователь с 35 кредитами
-                                  на счету видел «0 кредитов доступно» (баг с
-                                  прода 19.08).
-
-                                  Ноль не пишем вовсе: «0 кредитов доступно» у
-                                  того, кто ничего не покупал, — не факт о счёте,
-                                  а сообщение, что он тут лишний. */}
-                              {(subscriptionData?.credits ?? 0) > 0 && (
-                                <div className="text-micro text-ink-3 mt-2">
-                                  {subscriptionData.credits} кредитов на счету
-                                </div>
-                              )}
+                              {/* Остаток по тарифу — только у платящего. У
+                                  бесплатного та же строка читалась бы как
+                                  «осталось 5 из 5» ещё до первого действия:
+                                  это не факт о счёте, а сообщение, что человек
+                                  тут лишний. Границу он встретит там, где она
+                                  наступит, и там она объяснена. */}
+                              {subscriptionData?.subscription?.status === "active" &&
+                                REMAINING_LABEL.map(([feature, label]) => {
+                                  const l = subscriptionData?.limits?.[feature]
+                                  return l ? (
+                                    <div key={feature} className="text-micro text-ink-3 mt-2">
+                                      {label}: {l.remaining} из {l.cap}
+                                    </div>
+                                  ) : null
+                                })}
                             </div>
 
                             <Button
