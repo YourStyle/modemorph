@@ -1,7 +1,8 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef, useEffect } from "react"
+import { useRef } from "react"
+import { useSheetDrag } from "@/hooks/use-sheet-drag"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetPortal } from "@/components/ui/sheet"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { cn } from "@/lib/utils"
@@ -36,60 +37,20 @@ export function CommonSheet({
   onMinimize,
   swipeAction = 'close'
 }: CommonSheetProps) {
-  const [dragY, setDragY] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
-  const startYRef = useRef<number>(0)
   const contentRef = useRef<HTMLDivElement>(null)
+  // Скроллер тела: пока он на самом верху, тянуть шторку можно и за контент,
+  // а не только за 28px шапки. Именно из-за этого казалось, что шторка не
+  // понимает, что её тащат вниз.
+  const scrollRef = useRef<HTMLDivElement>(null)
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    // Тянуть можно за всю шапку, а не только за саму полоску. Полоска —
-    // 40x4px, попасть в неё пальцем на ходу почти нереально, поэтому свайп
-    // «не работал» на устройстве. Шапка целиком — цель нормального размера.
-    const target = e.target as HTMLElement
-    if (!target.closest('.sheet-drag-zone')) return
-    // Кнопки внутри шапки (свернуть) тянуть не должны.
-    if (target.closest('button')) return
-
-    startYRef.current = e.touches[0].clientY
-    setIsDragging(true)
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging) return
-
-    const currentY = e.touches[0].clientY
-    const deltaY = currentY - startYRef.current
-
-    // Позволяем свайпить только вниз
-    if (deltaY > 0) {
-      setDragY(deltaY)
-    }
-  }
-
-  const handleTouchEnd = () => {
-    if (!isDragging) return
-    setIsDragging(false)
-
-    // Если протащили больше 100px - выполняем действие
-    if (dragY > 100) {
-      if (swipeAction === 'minimize' && onMinimize) {
-        onMinimize()
-      } else {
-        onClose()
-      }
-    }
-
-    // Сбрасываем позицию
-    setDragY(0)
-  }
-
-  // Сбрасываем dragY при закрытии шторки
-  useEffect(() => {
-    if (!isOpen) {
-      setDragY(0)
-      setIsDragging(false)
-    }
-  }, [isOpen])
+  const { dragY, isDragging, handlers } = useSheetDrag({
+    isOpen,
+    scrollRef,
+    onDismiss: () => {
+      if (swipeAction === "minimize" && onMinimize) onMinimize()
+      else onClose()
+    },
+  })
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
@@ -115,9 +76,7 @@ export function CommonSheet({
             transform: `translateY(${dragY}px)`,
             transition: isDragging ? 'none' : 'transform 0.2s ease-out',
           }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          {...handlers}
           // Раньше здесь стоял голый preventDefault: тап по затемнению не
           // закрывал шит вообще. Вместе с неработающим крестиком закрыть его
           // можно было только свайпом за ручку. Теперь первая же попытка
@@ -170,8 +129,11 @@ export function CommonSheet({
             padding adds env(safe-area-inset-bottom) on top of the visual
             pb-6 so content isn't hidden behind the iPhone home indicator. */}
         <div
+          ref={scrollRef}
           className={cn(
-            "flex-1 min-h-0 overflow-x-hidden px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] overflow-y-auto bg-background text-foreground",
+            // overscroll-contain: без него дотягивание на самом верху уходит
+            // резиновым скроллом страницы под шторкой.
+            "flex-1 min-h-0 overflow-x-hidden overscroll-contain px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] overflow-y-auto bg-background text-foreground",
             !title && "pt-4"
           )}
         >

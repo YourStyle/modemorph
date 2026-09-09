@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useSheetDrag } from "@/hooks/use-sheet-drag"
 import { Sheet, SheetContent, SheetOverlay, SheetPortal } from "@/components/ui/sheet"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { Button } from "@/components/ui/button"
@@ -49,10 +50,8 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
   const [currentSub, setCurrentSub] = useState<{ subscription_type: string; status: string; expires_at: string | null } | null>(null)
 
   // Swipe-to-dismiss states
-  const [dragY, setDragY] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
-  const startYRef = useRef<number>(0)
   const contentRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (isOpen) {
@@ -190,42 +189,14 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
     onClose()
   }
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const target = e.target as HTMLElement
-    if (!target.closest('.drag-handle')) return
-
-    startYRef.current = e.touches[0].clientY
-    setIsDragging(true)
-  }
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging) return
-
-    const currentY = e.touches[0].clientY
-    const deltaY = currentY - startYRef.current
-
-    if (deltaY > 0) {
-      setDragY(deltaY)
-    }
-  }
-
-  const handleTouchEnd = () => {
-    if (!isDragging) return
-    setIsDragging(false)
-
-    if (dragY > 100) {
-      onClose()
-    }
-
-    setDragY(0)
-  }
-
-  useEffect(() => {
-    if (!isOpen) {
-      setDragY(0)
-      setIsDragging(false)
-    }
-  }, [isOpen])
+  // Тот же жест, что у CommonSheet: буфер перед стартом, тянуть можно и за
+  // контент, пока он на самом верху. Раньше здесь лежала своя копия логики,
+  // ограниченная 28px ручки.
+  const { dragY, isDragging, handlers } = useSheetDrag({
+    isOpen,
+    scrollRef,
+    onDismiss: onClose,
+  })
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
@@ -244,14 +215,12 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
             transform: `translateY(${dragY}px)`,
             transition: isDragging ? 'none' : 'transform 0.2s ease-out',
           }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          {...handlers}
           onInteractOutside={(e) => e.preventDefault()}
         >
         {/* Стеклянная шапка (LIQUID_GLASS.md, уровень 1) — только ручка и (для пакетов) кнопка назад.
             Тело ниже — плотный холст, там блюрить нечего. */}
-        <div className="glass relative will-change-transform">
+        <div className="sheet-drag-zone glass relative will-change-transform">
           {/* Drag handle */}
           <div className="drag-handle flex justify-center py-3 cursor-grab active:cursor-grabbing">
             <div className="w-10 h-1 rounded-full bg-ink/15" />
@@ -269,7 +238,7 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
           )}
         </div>
 
-        <div className="px-6 pb-6 h-full flex flex-col text-ink overflow-y-auto">
+        <div ref={scrollRef} className="px-6 pb-6 h-full flex flex-col text-ink overflow-y-auto overscroll-contain">
           {currentView === "subscription" ? (
             <div className="flex flex-col h-full space-y-4">
               {/* Header */}
