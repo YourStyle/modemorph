@@ -423,6 +423,32 @@ export default function InspirationPage(): ReactElement {
     if (index >= filtered.length - 3) void loadMore()
   }, [index, filtered.length, nextCursor, fetchingMore, activeTab])
 
+  // Долистал подборку до конца — переключаем на следующую.
+  //
+  // Раньше лента просто упиралась в последнюю карточку: дозагрузки нет
+  // (бэкенд отдаёт nextCursor = null, это одна страница), и человек оставался
+  // на месте, хотя рядом ещё девять подборок. Теперь конец одной подборки —
+  // это вход в следующую, а после последней возвращаемся во «Все».
+  //
+  // Условия намеренно строгие: только вкладка «Популярное», только когда
+  // подборка выбрана, только когда список непустой и догружать больше нечего.
+  // Иначе переключение сработает на полпути загрузки и утащит человека из
+  // подборки, которую он только открыл.
+  useEffect(() => {
+    if (activeTab !== "popular") return
+    if (!activeVibe || loading || fetchingMore || nextCursor) return
+    if (filtered.length === 0) return
+    if (index < filtered.length - 1) return
+
+    const order = vibes.map((v) => v.vibe)
+    const at = order.indexOf(activeVibe)
+    if (at === -1) return
+    // После последней подборки — во «Все», а не по кругу: круг незаметно
+    // запер бы человека в витрине.
+    setActiveVibe(at + 1 < order.length ? order[at + 1] : null)
+    scrollerRef.current?.scrollTo({ top: 0 })
+  }, [index, filtered.length, activeVibe, vibes, activeTab, loading, fetchingMore, nextCursor])
+
   async function loadMore() {
     if (activeTab !== "popular") return
     if (!nextCursor || fetchingMore) return

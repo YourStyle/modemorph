@@ -6,6 +6,7 @@ outfit_items references wardrobe_items (not wardrobe_user_items).
 
 import json as json_lib
 import random
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -52,21 +53,77 @@ def _gender_filter(gender: Optional[str]) -> tuple[str, dict]:
 def _inspiration_filter(gender: Optional[str], vibe: Optional[str]) -> tuple[str, dict]:
     """WHERE для ленты идей. Чистая функция — покрыта test_inspiration_vibe.py.
 
-    Курируемая витрина («кружки по странам», outfits.vibe — миграция 024) НЕ
-    должна течь в общую ленту: у витрины created_at = момент наполнения, то есть
-    она самая свежая и при ORDER BY created_at DESC вытесняет обычные образы за
-    границу LIMIT. Поэтому без параметра vibe отдаём только vibe IS NULL, а
-    курируемое — исключительно по явно выбранному кружку.
+    Кружок выбран — отдаём только его. Кружок не выбран («Все») — отдаём ВСЁ,
+    и курируемое тоже.
+
+    Раньше «Все» означало vibe IS NULL, то есть 16 самых первых образов и ни
+    одного из витрины. Это ломалось дважды. Во-первых, витрина выросла до 90%
+    содержимого, и вкладка «Все» показывала меньше любого кружка. Во-вторых, из
+    этих 16 образов 14 женских и 2 мужских: мужчина после фильтра по полу и
+    отсева неполных образов видел пустой экран с надписью «нет образов».
+
+    Прежнее ограничение защищало от того, что витрина вытеснит обычные образы
+    за границу LIMIT: у неё created_at = момент посева, она всегда свежее.
+    Защита осталась, но переехала в сортировку — при невыбранном кружке выборка
+    идёт ORDER BY random() (см. _inspiration_order), поэтому разделы попадают в
+    ленту вперемешку, а не по дате.
     """
+    clauses: list[str] = []
+    binds: dict = {}
     if vibe:
-        clauses, binds = ["vibe = :vibe"], {"vibe": vibe}
-    else:
-        clauses, binds = ["vibe IS NULL"], {}
+        clauses.append("vibe = :vibe")
+        binds["vibe"] = vibe
     gender_clause, gender_binds = _gender_filter(gender)
     if gender_binds:
         clauses.append(gender_clause)
         binds.update(gender_binds)
-    return " AND ".join(clauses), binds
+    return (" AND ".join(clauses) if clauses else "TRUE"), binds
+
+
+# Месяц -> сезон. Северное полушарие: продукт работает в России.
+_MONTH_SEASON = {12: "winter", 1: "winter", 2: "winter",
+                 3: "spring", 4: "spring", 5: "spring",
+                 6: "summer", 7: "summer", 8: "summer",
+                 9: "autumn", 10: "autumn", 11: "autumn"}
+
+# Сезон -> насколько он далёк от текущего. Соседний сезон ещё уместен (в сентябре
+# летний комплект носибелен, зимний — нет), противоположный уходит в самый низ.
+_SEASON_NEIGHBOURS = {"winter": ("autumn", "spring"), "spring": ("winter", "summer"),
+                      "summer": ("spring", "autumn"), "autumn": ("summer", "winter")}
+
+
+def _current_season(month: int) -> str:
+    return _MONTH_SEASON[month]
+
+
+def _season_rank_sql(season: str) -> str:
+    """CASE, поднимающий образы текущего сезона наверх выборки.
+
+    0 — текущий сезон, 1 — образ без сезона (страновые кружки: они про эстетику,
+    а не про погоду, и уместны всегда), 2 — соседний сезон, 3 — противоположный.
+    """
+    near = ", ".join(f"'{s}'" for s in _SEASON_NEIGHBOURS[season])
+    return ("CASE WHEN season = :season THEN 0 "
+            "WHEN season IS NULL THEN 1 "
+            f"WHEN season IN ({near}) THEN 2 ELSE 3 END")
+
+
+def _inspiration_order(vibe: Optional[str], season: Optional[str] = None) -> str:
+    """Порядок выборки. Внутри кружка — по свежести, во «Всех» — по сезону.
+
+    random() именно в SQL, а не shuffle после выборки: перемешивать нужно ДО
+    LIMIT, иначе в выборку попадут только самые свежие (вся витрина), а старые
+    образы обычной ленты не доедут до неё вовсе.
+
+    Сезон идёт первым ключом, случайность — вторым: в сентябре человек должен
+    видеть осеннее, а не пуховики, но внутри «осеннего» порядок каждый раз
+    новый, иначе лента застывает.
+    """
+    if vibe:
+        return "created_at DESC"
+    if season:
+        return f"{_season_rank_sql(season)}, random()"
+    return "random()"
 
 
 # Минимум вещей в образе, который вообще имеет смысл показывать как идею.
@@ -177,9 +234,15 @@ async def get_inspiration(
     """
     # Fetch outfits
     where, binds = _inspiration_filter(gender, vibe)
+    # Сезон считаем на сервере, а не принимаем от клиента: у телефона своя
+    # таймзона и свои часы, а лента должна быть одинаковой для всех.
+    season = _current_season(datetime.now(timezone.utc).month)
+    order = _inspiration_order(vibe, season)
+    if ":season" in order:
+        binds["season"] = season
     sql = (
         "SELECT id, name, description, preview_image_url, created_at, gender, occasion, season, vibe "
-        f"FROM outfits WHERE {where} ORDER BY created_at DESC LIMIT :lim"
+        f"FROM outfits WHERE {where} ORDER BY {order} LIMIT :lim"
     )
     # Берём с запасом: часть образов отсеется как неполная (см. _is_showable
     # ниже), и без запаса страница вышла бы короче запрошенной.
@@ -265,7 +328,11 @@ async def get_inspiration(
             "vibe": o["vibe"],
         })
 
-    random.shuffle(feed)
+    # Перемешиваем ТОЛЬКО внутри кружка. Во «Всех» порядок уже задан сезоном
+    # (см. _inspiration_order), и shuffle здесь стёр бы его — осенние образы
+    # перестали бы быть первыми, ради чего сортировка и делалась.
+    if vibe:
+        random.shuffle(feed)
     return {"outfits": feed[:limit], "nextCursor": None}
 
 

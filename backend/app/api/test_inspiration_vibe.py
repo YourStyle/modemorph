@@ -12,7 +12,12 @@ Postgres, ни TestClient (ср. test_ai_chats.py, где изоляция по�
 
 import sys
 
-from app.api.outfits import _gender_filter, _inspiration_filter
+from app.api.outfits import (
+    _current_season,
+    _gender_filter,
+    _inspiration_filter,
+    _inspiration_order,
+)
 
 
 def test_gender_filter_is_shared_by_feed_and_circles():
@@ -35,10 +40,56 @@ def test_gender_filter_without_gender_matches_everything():
     assert _gender_filter("") == ("TRUE", {})
 
 
-def test_default_feed_hides_curated():
+def test_default_feed_shows_every_section():
+    """«Все» обязано грузить из всех разделов, включая витрину.
+
+    Раньше это был vibe IS NULL — 16 самых первых образов и ничего из витрины,
+    хотя витрина к тому моменту стала 90% содержимого. У мужчин экран выходил
+    пустым совсем: из тех 16 образов мужских всего 2, и оба не проходили отсев
+    неполных.
+    """
     where, binds = _inspiration_filter(None, None)
-    assert where == "vibe IS NULL", where
+    assert where == "TRUE", where
     assert binds == {}, binds
+    assert "vibe" not in where, where
+
+
+def test_season_is_derived_from_the_month():
+    """Северное полушарие: продукт работает в России."""
+    assert _current_season(9) == "autumn" and _current_season(11) == "autumn"
+    assert _current_season(12) == "winter" and _current_season(2) == "winter"
+    assert _current_season(3) == "spring" and _current_season(6) == "summer"
+    # Все двенадцать месяцев обязаны разрешаться — иначе лента упадёт в декабре.
+    for m in range(1, 13):
+        assert _current_season(m) in ("winter", "spring", "summer", "autumn"), m
+
+
+def test_all_tab_puts_current_season_first():
+    """В сентябре наверху осеннее, а пуховики — в самом низу.
+
+    Порядок рангов: текущий сезон, потом образы без сезона (страновые кружки —
+    они про эстетику, а не про погоду), потом соседний сезон, потом
+    противоположный.
+    """
+    order = _inspiration_order(None, "autumn")
+    assert order.startswith("CASE WHEN season = :season THEN 0"), order
+    assert "WHEN season IS NULL THEN 1" in order, order
+    assert "'summer'" in order and "'winter'" in order, order   # соседние
+    assert order.endswith("random()"), order                    # внутри ранга — вперемешку
+    # Внутри кружка сезон не применяется: человек сам выбрал раздел.
+    assert _inspiration_order("Зима", "autumn") == "created_at DESC"
+
+
+def test_default_feed_is_shuffled_before_limit():
+    """Витрина не должна вытеснять обычные образы за границу LIMIT.
+
+    Раньше от этого защищал сам фильтр (vibe IS NULL). Теперь, когда «Все»
+    грузит всё, защита держится только на порядке: у витрины created_at =
+    момент посева, она всегда свежее, и при сортировке по дате в выборку попала
+    бы одна витрина.
+    """
+    assert _inspiration_order(None) == "random()"
+    assert _inspiration_order("Япония") == "created_at DESC"
 
 
 def test_vibe_selects_only_that_circle():
@@ -47,6 +98,7 @@ def test_vibe_selects_only_that_circle():
     assert binds == {"vibe": "Япония"}, binds
     # Главное: выбранный кружок НЕ добавляет обычные образы к витрине.
     assert "IS NULL" not in where, where
+    assert where == "vibe = :vibe", where
 
 
 def test_gender_composes_with_both_modes():
@@ -54,13 +106,18 @@ def test_gender_composes_with_both_modes():
         where, binds = _inspiration_filter("female", vibe)
         assert "(gender = :g OR gender = 'unisex' OR gender IS NULL)" in where, where
         assert binds["g"] == "female", binds
-        assert where.startswith("vibe "), where     # фильтр витрины идёт первым и всегда есть
+        # У кружка фильтр витрины идёт первым; во «Всех» его нет вовсе, и
+        # остаётся только пол.
+        if vibe:
+            assert where.startswith("vibe "), where
+        else:
+            assert where == "(gender = :g OR gender = 'unisex' OR gender IS NULL)", where
 
 
 def test_empty_vibe_is_treated_as_absent():
     # ?vibe= из строки запроса приходит пустой строкой, а не None — она не должна
     # превращаться в "vibe = ''" и выдавать пустую ленту.
-    assert _inspiration_filter(None, "")[0] == "vibe IS NULL"
+    assert _inspiration_filter(None, "")[0] == "TRUE"
 
 
 def test_feed_hides_incomplete_outfits():
