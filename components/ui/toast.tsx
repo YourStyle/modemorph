@@ -14,7 +14,12 @@ const ToastViewport = React.forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed top-0 z-[100] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]",
+      // Тосты всегда сверху и по центру. Раньше на вьюпорте от 640px viewport
+      // уезжал вниз-вправо (sm:bottom-0 sm:right-0 sm:top-auto) и ложился
+      // поверх пилюли навигации — она fixed внизу и перекрывалась целиком.
+      // Вертикаль берётся из --toast-top (app/globals.css): под хромом
+      // Telegram и под липкой строкой стиля гардероба.
+      "fixed inset-x-0 top-[var(--toast-top)] z-[60] mx-auto flex max-h-screen w-full max-w-sm flex-col gap-2 px-4",
       className,
     )}
     {...props}
@@ -23,12 +28,19 @@ const ToastViewport = React.forwardRef<
 ToastViewport.displayName = ToastPrimitives.Viewport.displayName
 
 const toastVariants = cva(
-  "group pointer-events-auto relative flex w-full items-center justify-between space-x-4 overflow-hidden rounded-md border p-6 pr-8 shadow-lg transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-right-full data-[state=open]:slide-in-from-top-full data-[state=open]:sm:slide-in-from-bottom-full",
+  // p-6 (24px) — это размер карточки, а не тоста; текст в одну строку висел
+  // в пустоте. Радиус 22px и стекло — как у остального плавающего хрома
+  // (пилюля, шапка шторки): тост парит над контентом, значит это тот же
+  // материал. Въезжает и уезжает вверх, к своему краю экрана.
+  "group pointer-events-auto relative flex w-full items-center justify-between gap-3 overflow-hidden rounded-[22px] px-4 py-3 transition-all data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)] data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[swipe=end]:animate-out data-[state=closed]:fade-out-80 data-[state=closed]:slide-out-to-top-full data-[state=open]:slide-in-from-top-full",
   {
     variants: {
       variant: {
-        default: "border bg-background text-foreground",
-        destructive: "destructive group border-destructive bg-destructive text-destructive-foreground",
+        default: "glass glass-refract text-ink",
+        // У ошибки стекло остаётся, но подкрашено: сплошная заливка убила бы
+        // единственный признак, по которому тост читается как тост.
+        destructive:
+          "destructive group glass glass-refract text-ink [background:hsl(var(--destructive)/.16)]",
       },
     },
     defaultVariants: {
@@ -67,7 +79,11 @@ const ToastClose = React.forwardRef<
   <ToastPrimitives.Close
     ref={ref}
     className={cn(
-      "absolute right-2 top-2 rounded-md p-1 text-foreground/50 opacity-0 transition-opacity hover:text-foreground focus:opacity-100 focus:outline-none focus:ring-2 group-hover:opacity-100 group-[.destructive]:text-red-300 group-[.destructive]:hover:text-red-50 group-[.destructive]:focus:ring-red-400 group-[.destructive]:focus:ring-offset-red-600",
+      // Была opacity-0 + group-hover:opacity-100 — на тач-экране hover не
+      // наступает никогда, поэтому крестик был не просто незаметен, а
+      // недостижим: закрыть тост руками было нельзя. Продукт живёт внутри
+      // Telegram на телефоне, так что видим всегда.
+      "shrink-0 rounded-full p-1.5 text-ink-2 transition-colors hover:text-ink focus:outline-none focus:ring-2 focus:ring-ring",
       className,
     )}
     toast-close=""

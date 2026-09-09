@@ -104,6 +104,16 @@
        WebApp.safeAreaInset.bottom (его пишет lib/tma/safe-area.ts). Сумма
        здесь дала бы тот же двойной счёт, что когда-то дала сверху. */
     --sab: max(env(safe-area-inset-bottom, 0px), var(--tg-safe-bottom, 0px));
+
+    /* --toast-top — единственный источник правды для вертикали тостов.
+       Тосты уезжают ВНИЗ от верхнего края, а не вверх от нижнего: снизу
+       живёт пилюля навигации (fixed, z-50), и тост поверх неё перекрывал
+       единственный способ уйти со страницы.
+       156px = сюда уже не достаёт хром Telegram (приложение считает, что он
+       кончается до 100px — по этой же цифре выставлена липкая строка стиля
+       гардероба, style-profile-card.tsx), плюс сама строка (~48px), плюс
+       зазор. Значит тост не накрывает ни нативный UI, ни виджет стиля. */
+    --toast-top: 156px;
   }
 
   .dark {
@@ -279,6 +289,24 @@
      игнорирует url() в backdrop-filter и молча остаётся на уровне 1. */
   @supports (backdrop-filter: url(#mm-glass)) {
     .glass-refract {
+      backdrop-filter: url(#mm-glass) blur(12px) saturate(170%);
+    }
+  }
+
+  /* Тост sonner: раскладку рисует сам sonner, здесь только материал — то же
+     стекло уровня 1, что у пилюли и шапки шторки. Через :where() специфичность
+     нулевая, поэтому utility-классы в className тоста всё ещё перебивают. */
+  :where(.mm-glass-toast) {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / .55),
+      inset 0 -1px 0 hsl(0 0% 100% / .18),
+      inset 1px 0 0 hsl(0 0% 100% / .25),
+      0 8px 28px hsl(0 0% 0% / .10);
+  }
+  @supports (backdrop-filter: url(#mm-glass)) {
+    :where(.mm-glass-toast) {
       backdrop-filter: url(#mm-glass) blur(12px) saturate(170%);
     }
   }

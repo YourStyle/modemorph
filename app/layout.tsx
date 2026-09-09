@@ -5,6 +5,7 @@ import Script from "next/script"
 import "./globals.css"
 import "./tma.css"
 import { Toaster } from "@/components/ui/toaster"
+import { SonnerProvider } from "@/components/ui/sonner-toaster"
 import { SelectedItemsProvider } from "@/contexts/selected-items-context"
 import { AuthProvider } from "@/contexts/auth-context"
 import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
@@ -77,6 +78,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <SelectedItemsProvider>
               {children}
               <Toaster />
+              <SonnerProvider />
               <VpnWarning />
             </SelectedItemsProvider>
           </AuthProvider>
