@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.services.outfit_compat import covers_body
 
 router = APIRouter()
 
@@ -66,6 +67,27 @@ def _inspiration_filter(gender: Optional[str], vibe: Optional[str]) -> tuple[str
         clauses.append(gender_clause)
         binds.update(gender_binds)
     return " AND ".join(clauses), binds
+
+
+# Минимум вещей в образе, который вообще имеет смысл показывать как идею.
+_MIN_FEED_ITEMS = 3
+
+
+def _is_showable(items: list) -> bool:
+    """Годится ли образ для ленты идей.
+
+    Лента показывала всё подряд: были образы из одной вещи и такие, что не
+    одевают человека целиком. Проверка ровно одна и общая с рекомендациями и
+    сидером витрины — covers_body из app/services/outfit_compat.py; своего
+    списка типов здесь заводить нельзя, иначе определения «одет ли человек»
+    станет три и они разойдутся.
+
+    Верхнюю одежду НЕ требуем: её нет у 67 образов из 77, и почти везде это
+    нормальный летний комплект, а не брак. Требование выбросило бы 87% ленты.
+    """
+    if len(items) < _MIN_FEED_ITEMS:
+        return False
+    return covers_body(items)
 
 
 @router.get("/inspiration/vibes")
@@ -134,7 +156,9 @@ async def get_inspiration(
         "SELECT id, name, description, preview_image_url, created_at, gender, occasion, season, vibe "
         f"FROM outfits WHERE {where} ORDER BY created_at DESC LIMIT :lim"
     )
-    binds["lim"] = limit
+    # Берём с запасом: часть образов отсеется как неполная (см. _is_showable
+    # ниже), и без запаса страница вышла бы короче запрошенной.
+    binds["lim"] = limit * 3
 
     result = await db.execute(text(sql), binds)
     outfits = result.mappings().all()
@@ -149,7 +173,8 @@ async def get_inspiration(
         text("""
             SELECT oi.outfit_id, wi.id, wi.item_name, wi.image_url, wi.url,
                    wi.color, wi.shade, wi.style, wi.material, wi.size_type,
-                   wi.has_print, wi.has_details, wi.notes, wi.is_basic
+                   wi.has_print, wi.has_details, wi.notes, wi.is_basic,
+                   wi.clothing_type
             FROM outfit_items oi
             JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
             WHERE oi.outfit_id = ANY(:ids)
@@ -177,6 +202,7 @@ async def get_inspiration(
             "has_details": row["has_details"],
             "notes": row["notes"],
             "is_basic": bool(row["is_basic"]),
+            "clothing_type": row["clothing_type"],
         })
 
     # Fetch like counts
@@ -193,12 +219,12 @@ async def get_inspiration(
     )
     liked_by_me = {r[0] for r in user_likes_result.all()}
 
-    # Build feed — skip outfits with no items
+    # Build feed — skip outfits that are not wearable ideas
     feed = []
     for o in outfits:
         oid = o["id"]
         outfit_items = items_by_outfit.get(oid, [])
-        if not outfit_items:
+        if not _is_showable(outfit_items):
             continue
         feed.append({
             "id": str(oid),
@@ -215,7 +241,7 @@ async def get_inspiration(
         })
 
     random.shuffle(feed)
-    return {"outfits": feed, "nextCursor": None}
+    return {"outfits": feed[:limit], "nextCursor": None}
 
 
 @router.get("/{outfit_id}")

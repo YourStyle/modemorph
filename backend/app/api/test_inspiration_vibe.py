@@ -63,6 +63,33 @@ def test_empty_vibe_is_treated_as_absent():
     assert _inspiration_filter(None, "")[0] == "vibe IS NULL"
 
 
+def test_feed_hides_incomplete_outfits():
+    """Лента идей показывала образы из одной вещи и такие, что не одевают.
+
+    Замер на проде 2026-09-08: 77 образов, из них 6 с одной-двумя вещами и 12,
+    не одевающих человека целиком. Верхнюю одежду не требуем сознательно — её
+    нет у 67 из 77, и это почти всегда нормальный летний комплект.
+    """
+    from app.api.outfits import _is_showable
+
+    def it(ct, name=""):
+        return {"clothing_type": ct, "name": name or ct}
+
+    full = [it("t-shirt"), it("jeans"), it("sneakers")]
+    assert _is_showable(full) is True
+
+    # Ровно то, на что жаловались.
+    assert _is_showable([]) is False
+    assert _is_showable([it("dress")]) is False                       # образ из одной вещи
+    assert _is_showable([it("dress"), it("shoes")]) is False          # две вещи — мало
+    assert _is_showable([it("t-shirt"), it("sneakers"), it("bag")]) is False   # нет низа
+
+    # Платье закрывает и верх, и низ — три вещи достаточно.
+    assert _is_showable([it("dress"), it("shoes"), it("bag")]) is True
+    # Летний комплект без верхней одежды остаётся в ленте.
+    assert _is_showable([it("tank-top"), it("shorts"), it("sandals")]) is True
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
