@@ -158,6 +158,35 @@ def test_feed_hides_incomplete_outfits():
     assert _is_showable(full, "https://s3/modemorphs3/upload-5MjoYhFg.jpeg") is True
 
 
+def test_mixed_gender_outfits_are_hidden():
+    """Мужчина в женской блузке — брак по составу, а не по ярлыку.
+
+    Жалоба с прода 2026-09-09: «Осень · образ 6» (id 139) показывался как
+    мужской, а состоял из женской блузки, женских ботильонов и женских джинсов
+    при одной мужской вещи. Правка пола не помогла бы: вещи всё равно из разных
+    гардеробов. Замер тогда же: 31 образ из 196 смешивал полы, 13 показывались.
+    """
+    from app.api.outfits import _is_showable
+
+    SHOT = "https://s3/modemorphs3/lookbook/1.png"
+
+    def it(ct, g=None):
+        return {"clothing_type": ct, "name": ct, "gender": g}
+
+    # Тот самый случай: три женские вещи и одна мужская.
+    mixed = [it("blouse", "female"), it("jeans", "female"),
+             it("boots", "female"), it("pullover", "male")]
+    assert _is_showable(mixed, SHOT) is False
+
+    # Однополый образ проходит, каким бы ни был пол.
+    assert _is_showable([it("shirt", "male"), it("pants", "male"), it("shoes", "male")], SHOT) is True
+    assert _is_showable([it("blouse", "female"), it("jeans", "female"), it("boots", "female")], SHOT) is True
+
+    # Неразмеченные и unisex не считаются противоречием: они годятся обоим.
+    assert _is_showable([it("shirt", "male"), it("pants"), it("shoes", "unisex")], SHOT) is True
+    assert _is_showable([it("blouse"), it("jeans"), it("boots")], SHOT) is True
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):

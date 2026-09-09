@@ -143,6 +143,23 @@ def _has_real_preview(preview_url: str | None) -> bool:
     return any(m in (preview_url or "") for m in _REAL_PREVIEW_MARKERS)
 
 
+def _mixes_genders(items: list) -> bool:
+    """Есть ли в образе И мужская, И женская вещь одновременно.
+
+    Такой образ — брак по составу, а не по ярлыку: мужчина в женской блузке и
+    ботильонах остаётся мужчиной в женской блузке, каким бы ни был
+    outfits.gender. Замер на проде 2026-09-09: 31 образ из 196 смешивал полы,
+    13 из них показывались.
+
+    Появляются они так: seed_vibes раскладывает по полу, но вещь с пустым
+    gender идёт в оба ведра, а ночной крон classify-gender проставляет ей пол
+    уже ПОСЛЕ посева — и образ задним числом становится смешанным. Поэтому
+    проверка стоит на чтении, а не только на посеве.
+    """
+    genders = {(i.get("gender") or "").strip().lower() for i in items}
+    return "male" in genders and "female" in genders
+
+
 def _is_showable(items: list, preview_url: str | None = None) -> bool:
     """Годится ли образ для ленты идей.
 
@@ -162,6 +179,8 @@ def _is_showable(items: list, preview_url: str | None = None) -> bool:
     if len(items) < _MIN_FEED_ITEMS:
         return False
     if not _has_real_preview(preview_url):
+        return False
+    if _mixes_genders(items):
         return False
     return covers_body(items)
 
@@ -262,7 +281,7 @@ async def get_inspiration(
             SELECT oi.outfit_id, wi.id, wi.item_name, wi.image_url, wi.url,
                    wi.color, wi.shade, wi.style, wi.material, wi.size_type,
                    wi.has_print, wi.has_details, wi.notes, wi.is_basic,
-                   wi.clothing_type
+                   wi.clothing_type, wi.gender
             FROM outfit_items oi
             JOIN wardrobe_items wi ON wi.id = oi.wardrobe_item_id
             WHERE oi.outfit_id = ANY(:ids)
@@ -291,6 +310,7 @@ async def get_inspiration(
             "notes": row["notes"],
             "is_basic": bool(row["is_basic"]),
             "clothing_type": row["clothing_type"],
+            "gender": row["gender"],
         })
 
     # Fetch like counts
