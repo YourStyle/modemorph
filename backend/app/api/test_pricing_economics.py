@@ -33,9 +33,9 @@ _CAPS = {
     "monthly": {"wardrobe_items_anlyzed": {"cap": 35, "period": "month"},
                 "vton_used": {"cap": 8, "period": "month"},
                 "ai_requests": {"cap": 300, "period": "month"}},
-    "yearly": {"wardrobe_items_anlyzed": {"cap": 35, "period": "month"},
-               "vton_used": {"cap": 8, "period": "month"},
-               "ai_requests": {"cap": 300, "period": "month"}},
+    "yearly": {"wardrobe_items_anlyzed": {"cap": 50, "period": "month"},
+               "vton_used": {"cap": 10, "period": "month"},
+               "ai_requests": {"cap": 600, "period": "month"}},
 }
 
 
@@ -65,8 +65,17 @@ def test_yearly_contains_twelve_and_a_bit_monthly_windows():
     """365 / 30 = 12,17, а не 12. Округление до двенадцати дарит подписчику
     почти неделю сверх оплаченного — незаметно и каждый год."""
     y = _plans()["yearly"]
-    assert y["included_cost_rub"] == 2838.48, y["included_cost_rub"]
-    assert y["margin_pct"] == 59.4
+    assert y["included_cost_rub"] == 3893.33, y["included_cost_rub"]
+    assert y["margin_pct"] == 44.3
+
+
+def test_the_upgrade_costs_us_what_it_promises():
+    """Годовой шире месячного (миграция 044), и разница — не косметика: она
+    обязана быть видна в себестоимости. Если завтра потолки снова сравняют,
+    included_cost_rub сойдётся с месячным ×12,17 и это упадёт здесь."""
+    plans = _plans()
+    monthly_equivalent = plans["monthly"]["included_cost_rub"] * 365 / 30
+    assert plans["yearly"]["included_cost_rub"] > monthly_equivalent * 1.2
 
 
 def test_no_plan_is_sold_below_cost():
@@ -107,7 +116,7 @@ def test_feature_rows_say_where_they_are_capped():
     неделю» — иначе себестоимость видна, а на что она тратится, нет."""
     rows, _ = plan_economics(_FEATURES, _PLANS, _CAPS)
     vton = next(r for r in rows if r["feature_name"] == "vton_used")
-    assert vton["caps"] == {"free": 1, "weekly": 2, "monthly": 8, "yearly": 8}
+    assert vton["caps"] == {"free": 1, "weekly": 2, "monthly": 8, "yearly": 10}
 
 
 if __name__ == "__main__":

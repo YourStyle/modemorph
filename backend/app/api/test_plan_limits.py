@@ -28,19 +28,25 @@ from app.api.limits import (
     _use_feature,
 )
 
-_MIGRATION = (Path(__file__).resolve().parents[2] / "migrations" / "042_plans_replace_credits.sql").read_text()
+_MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 
 # Себестоимость из feature_costs.unit_cost_rub, замер 22.08.2026.
 _RUB = {"wardrobe_items_anlyzed": 3.10, "vton_used": 14.10, "ai_requests": 0.04, "ideas_viewed": 0.04}
 
 
 def _seeded_caps() -> dict[str, dict[str, tuple[int, str]]]:
-    """Разобрать посев plan_limits прямо из миграции.
+    """Разобрать потолки из ПОСЛЕДНЕЙ миграции, которая объявляет plan_limits.
 
     Не копия цифр рядом с тестом: копия разошлась бы с продом при первой правке,
-    и тест продолжил бы уверенно проверять то, чего в базе уже нет.
+    и тест продолжил бы уверенно проверять то, чего в базе уже нет. Каждая
+    миграция, меняющая тариф, переписывает посев целиком — тогда «последняя»
+    и есть текущее состояние, и читать историю не нужно.
     """
-    block = _MIGRATION.split("INSERT INTO plan_limits", 1)[1].split("ON CONFLICT", 1)[0]
+    latest = max(
+        (p for p in _MIGRATIONS.glob("*.sql") if "INSERT INTO plan_limits" in p.read_text()),
+        key=lambda p: p.name,
+    )
+    block = latest.read_text().split("INSERT INTO plan_limits", 1)[1].split("ON CONFLICT", 1)[0]
     caps: dict[str, dict[str, tuple[int, str]]] = {}
     for plan, feature, cap, period in re.findall(
         r"\('(\w+)',\s*'(\w+)',\s*(\d+),\s*'(\w+)'\)", block
@@ -113,18 +119,44 @@ def test_seed_keys_match_the_features_the_app_actually_bills():
     assert set(caps) == {"free", *PLAN_DAYS}, "план без потолков или потолки без плана"
 
 
-def test_every_paid_plan_earns_more_than_it_gives_away():
+_PRICE = {"weekly": 299, "monthly": 699, "yearly": 6990}
+
+# Пол маржи худшего случая. 40%, а не 60%: годовой обязан быть просторнее
+# месячного при цене на 17% ниже за месяц (582 ₽ против 699 ₽), и его маржа ниже
+# по построению — это плата за то, чтобы у апгрейда был смысл. Пол ловит не
+# «стало хуже», а «щедрость вышла из берегов».
+_MARGIN_FLOOR = 40.0
+
+
+def _worst_case_cost(plan: str, caps: dict) -> float:
+    days = PLAN_DAYS[plan]
+    return sum(
+        cap * (days / (7 if period == "week" else 30)) * _RUB[f]
+        for f, (cap, period) in caps[plan].items()
+    )
+
+
+def test_every_paid_plan_keeps_a_margin_floor():
     """Худший случай: человек выбрал каждый потолок до конца. Цены — 299 / 699 /
-    6 990 из «Тарифы_V2». Если хоть один план уходит в минус, это видно здесь, а
-    не через месяц по счёту от OpenRouter."""
-    price = {"weekly": 299, "monthly": 699, "yearly": 6990}
+    6 990 из «Тарифы_V2». Если щедрость съест маржу, это видно здесь, а не через
+    месяц по счёту от OpenRouter."""
     caps = _seeded_caps()
-    for plan, days in PLAN_DAYS.items():
-        cost = sum(
-            cap * (days / (7 if period == "week" else 30)) * _RUB[f]
-            for f, (cap, period) in caps[plan].items()
+    for plan in PLAN_DAYS:
+        cost = _worst_case_cost(plan, caps)
+        margin = (_PRICE[plan] - cost) / _PRICE[plan] * 100
+        assert margin >= _MARGIN_FLOOR, f"{plan}: маржа {margin:.1f}% при расходе {cost:.0f} ₽"
+
+
+def test_yearly_is_actually_wider_than_monthly():
+    """Смысл годового тарифа. До миграции 044 потолки совпадали (35/8/300), и
+    месячному подписчику за лимитом было некуда апгрейдиться: годовой давал
+    ровно столько же в месяц и отличался только ценой."""
+    caps = _seeded_caps()
+    for feature, (monthly_cap, _) in caps["monthly"].items():
+        yearly_cap = caps["yearly"][feature][0]
+        assert yearly_cap > monthly_cap, (
+            f"{feature}: годовой даёт {yearly_cap}, месячный {monthly_cap} — апгрейд ни во что"
         )
-        assert cost < price[plan], f"{plan}: включённое стоит {cost:.0f} ₽ при цене {price[plan]} ₽"
 
 
 def test_free_tier_costs_less_than_a_third_of_the_cheapest_plan():
