@@ -17,16 +17,33 @@
 # Состояние — в /var/lib/mm-watchdog. Первый запуск только запоминает эталон и
 # ничего не шлёт, иначе первое же срабатывание было бы ложным.
 #
-# Ставится в cron раз в 5 минут:
+# Ставится в cron раз в 5 минут (в crontab ROOT: под пользователем половина
+# проверок молча вернула бы пустоту, а пустота здесь читается как «изменений
+# нет» — сторож врал бы, что всё тихо):
 #   */5 * * * * /home/tashernaut/apps/modemorph/scripts/security-watchdog.sh
 set -uo pipefail
+
+# Один прогон за раз. Без этого запуски накладываются: отправка одного
+# сообщения занимает десятки секунд, тревог за прогон бывает пять, и следующий
+# звонок будильника приходит раньше, чем закончился предыдущий. Копия молча
+# уходит, а не ждёт очереди: ждать нечего, следующий прогон через пять минут
+# увидит ровно то же состояние.
+exec 9>/var/lock/mm-watchdog.lock
+flock -n 9 || exit 0
 
 STATE_DIR=/var/lib/mm-watchdog
 ADMIN_CHAT_ID=416546809
 # Токен нигде не копируем: сообщение отправляет сам контейнер бота, у которого
 # BOT_TOKEN уже есть в окружении. Вторая копия секрета — это то, что потом
 # забудут ротировать.
-BOT_CONTAINER=modemorph-bot
+#
+# Имя контейнера ищем по образцу, а не задаём константой. При переезде
+# 10.09.2026 compose назвал бота modemorph-tma-app-modemorph-bot-1 вместо
+# modemorph-bot — точное имя зависит от имени каталога проекта. Со старой
+# константой сторож молча перестал бы доставлять: docker exec в несуществующее
+# имя пишет ошибку в stderr, которую никто не читает.
+BOT_CONTAINER=$(docker ps --format '{{.Names}}' 2>/dev/null | grep -m1 -E 'modemorph.*bot')
+[ -n "$BOT_CONTAINER" ] || echo "watchdog: контейнер бота не найден — тревоги не уйдут" >&2
 
 mkdir -p "$STATE_DIR"
 
@@ -38,10 +55,28 @@ mkdir -p "$STATE_DIR"
 #
 # Скрипт передаётся на stdin, а не кладётся файлом: /tmp контейнера чистится
 # при каждом пересоздании, и сторож бы тихо перестал работать после деплоя.
+#
+# Отправляем ЧЕРЕЗ hysteria-прокси. Напрямую api.telegram.org с этой машины
+# недоступен вовсе: у самого бота 254 неудачных попытки против 5 удачных, он
+# пробивается случайно и не сразу. Через прокси — 200 за 0,3 секунды.
+# Сигнализация, которая доходит «когда повезёт», бесполезна.
+#
+# Бюджет попыток подобран под интервал крона: 8 попыток по 5 секунд — не больше
+# минуты на сообщение, пять тревог укладываются в пять минут до следующего
+# запуска. Прежние 40 попыток по 8 секунд давали до шести минут НА ОДНО
+# сообщение и гарантированно переполняли интервал.
 notify() {
     local text="$1"
     docker exec -i "$BOT_CONTAINER" python3 - "$ADMIN_CHAT_ID" "$text" <<'PY' 2>/dev/null || echo "watchdog: не доставлено: $text"
-import os, sys, time, urllib.request, urllib.parse
+import os, socket, sys, time, urllib.request, urllib.parse
+
+# Только IPv4. У api.telegram.org есть AAAA-запись, IPv6 в контейнере нет, и
+# попытка уйти в него падает с Errno 101 ещё до всякой сети — выглядит как
+# «сеть недоступна», хотя недоступен только IPv6.
+_orig = socket.getaddrinfo
+socket.getaddrinfo = lambda *a, **k: [x for x in _orig(*a, **k) if x[0] == socket.AF_INET]
+
+PROXY = "http://172.18.0.1:1081"      # hysteria, тот же выход, что у OpenRouter
 
 token = os.environ.get("BOT_TOKEN")
 if not token:
@@ -50,10 +85,11 @@ chat, text = sys.argv[1], sys.argv[2]
 payload = urllib.parse.urlencode(
     {"chat_id": chat, "text": text, "parse_mode": "HTML"}).encode()
 url = f"https://api.telegram.org/bot{token}/sendMessage"
-for attempt in range(1, 41):          # столько же попыток, сколько делает сам бот
+opener = urllib.request.build_opener(
+    urllib.request.ProxyHandler({"https": PROXY, "http": PROXY}))
+for attempt in range(1, 9):
     try:
-        with urllib.request.urlopen(
-                urllib.request.Request(url, data=payload), timeout=8) as r:
+        with opener.open(urllib.request.Request(url, data=payload), timeout=5) as r:
             sys.exit(0 if r.status == 200 else 1)
     except Exception:
         time.sleep(1)
@@ -66,6 +102,13 @@ PY
 check() {
     local name="$1" current="$2" title="$3"
     local prev_file="$STATE_DIR/$name"
+
+    # Сравниваем и храним ОДИНАКОВО нормализованным. prev=$(cat ...) срезает
+    # завершающие переводы строки, а $current их содержит — без нормализации
+    # состояние «не изменилось» выглядит как изменение, и сторож поднимает
+    # ложную тревогу каждые пять минут. После такого его просто отключат.
+    current=$(printf '%s' "$current")
+
     if [ ! -f "$prev_file" ]; then
         printf '%s' "$current" > "$prev_file"
         return
@@ -75,6 +118,10 @@ check() {
     if [ "$prev" != "$current" ]; then
         local diff_text
         diff_text=$(diff <(printf '%s' "$prev") <(printf '%s' "$current") | grep -E '^[<>]' | head -10)
+        # Экранируем перед вставкой в HTML: строки diff начинаются с < и >, и
+        # Telegram считает их незакрытыми тегами, отвечая 400. Тревога при этом
+        # молча не доходит — самый неприятный вид поломки для сигнализации.
+        diff_text=$(printf '%s' "$diff_text" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
         notify "🚨 <b>${title}</b>
 
 <pre>${diff_text}</pre>
