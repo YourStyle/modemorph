@@ -67,9 +67,16 @@ TYPE_RU = {
 }
 
 
+# Картинки магазинов тянем МИМО прокси. У контейнера HTTPS_PROXY указывает на
+# VPN-хоп, который нужен только OpenRouter; sela.ru и ЦУМ доступны напрямую.
+# Пока скачивание шло через туннель, каждый его флап ронял целую сетку из
+# четырёх вещей ещё до генерации — так в первом прогоне потерялось 40 вещей.
+_direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def fetch_image(url: str) -> Image.Image:
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=40) as r:
+    with _direct.open(req, timeout=40) as r:
         return Image.open(io.BytesIO(r.read())).convert("RGB")
 
 
@@ -140,19 +147,43 @@ async def real_cost(gen_id: str) -> float | None:
 
 async def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ids", required=True, help="id вещей через запятую")
+    ap.add_argument("--ids", help="id вещей через запятую")
+    ap.add_argument("--ids-file", help="файл с id по одному в строке")
+    ap.add_argument("--visible-outfits", action="store_true",
+                    help="все вещи из ВИДИМЫХ образов витрины, у которых ещё нет flat-lay")
     ap.add_argument("--commit", action="store_true", help="записать в S3 и базу")
     ap.add_argument("--max-cost-usd", type=float, default=1.0)
     args = ap.parse_args()
 
-    ids = [int(x) for x in args.ids.split(",") if x.strip()]
-
     async with async_session_maker() as db:
-        rows = (await db.execute(
-            text("SELECT id, item_name, image_url, clothing_type FROM wardrobe_items "
-                 "WHERE id = ANY(:ids) ORDER BY clothing_type, id"),
-            {"ids": ids},
-        )).mappings().all()
+        if args.visible_outfits:
+            # Вещи из образов, которые реально показываются в ленте, и у которых
+            # картинка ещё не пересобрана. Порядок по типу — чтобы в одну сетку
+            # попадали однородные вещи: модели проще держать общий план.
+            rows = (await db.execute(text("""
+                SELECT DISTINCT w.id, w.item_name, w.image_url, w.clothing_type
+                FROM outfits o
+                JOIN outfit_items oi ON oi.outfit_id = o.id
+                JOIN wardrobe_items w ON w.id = oi.wardrobe_item_id
+                WHERE (o.preview_image_url LIKE '%/lookbook/%'
+                       OR o.preview_image_url LIKE '%/upload-%')
+                  AND COALESCE(w.is_hidden, false) = false
+                  AND COALESCE(w.is_kids, false) = false
+                  AND w.image_url NOT LIKE '%/flatlay/%'
+                ORDER BY w.clothing_type, w.id
+            """))).mappings().all()
+        else:
+            if args.ids_file:
+                ids = [int(x) for x in open(args.ids_file).read().split() if x.strip()]
+            else:
+                ids = [int(x) for x in (args.ids or "").split(",") if x.strip()]
+            if not ids:
+                raise SystemExit("нужен --ids, --ids-file или --visible-outfits")
+            rows = (await db.execute(
+                text("SELECT id, item_name, image_url, clothing_type FROM wardrobe_items "
+                     "WHERE id = ANY(:ids) ORDER BY clothing_type, id"),
+                {"ids": ids},
+            )).mappings().all()
         items = [dict(r) for r in rows]
 
     print(f"вещей: {len(items)}  |  режим: {'ЗАПИСЬ' if args.commit else 'сухой прогон'}")
@@ -163,12 +194,20 @@ async def main():
         if spent >= args.max_cost_usd:
             print(f"  бюджет ${args.max_cost_usd} исчерпан — останавливаюсь")
             break
-        try:
-            srcs = [fetch_image(it["image_url"]) for it in chunk]
-        except Exception as e:
-            print(f"  !! чанк {ci}: не скачались исходники: {e}")
-            failures += [it["id"] for it in chunk]
+        # Качаем ПОШТУЧНО и битую вещь выбрасываем из сетки. Раньше здесь стоял
+        # один list comprehension, и первый же 404 (у мерчанта пропал товар)
+        # ронял весь чанк: четыре вещи помечались провалившимися из-за одной.
+        srcs, kept = [], []
+        for it in chunk:
+            try:
+                srcs.append(fetch_image(it["image_url"]))
+                kept.append(it)
+            except Exception as e:
+                print(f"  !! вещь {it['id']}: исходник не скачался: {str(e)[:60]}")
+                failures.append(it["id"])
+        if not kept:
             continue
+        chunk = kept
 
         try:
             res = await _openrouter_chat(

@@ -22,22 +22,43 @@
 set -uo pipefail
 
 STATE_DIR=/var/lib/mm-watchdog
-ENV_FILE=/home/tashernaut/apps/modemorph/.env
 ADMIN_CHAT_ID=416546809
+# Токен нигде не копируем: сообщение отправляет сам контейнер бота, у которого
+# BOT_TOKEN уже есть в окружении. Вторая копия секрета — это то, что потом
+# забудут ротировать.
+BOT_CONTAINER=modemorph-bot
 
 mkdir -p "$STATE_DIR"
 
-# Токен берём из того же .env, что и приложение, — чтобы не заводить вторую
-# копию секрета, которую потом забудут ротировать.
-BOT_TOKEN=$(grep -E "^TELEGRAM_BOT_TOKEN=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d "\"'")
-
+# Отправка идёт ИЗНУТРИ контейнера бота и с ретраями — иначе тревога не дойдёт.
+# С хоста api.telegram.org недостижим вовсе, а из контейнера пробивается не с
+# первой попытки: в логах самого бота видно «Connection established (tryings =
+# 41)». Одиночный curl с таймаутом 15с молча возвращал пустоту, то есть
+# сигнализация существовала, но молчала.
+#
+# Скрипт передаётся на stdin, а не кладётся файлом: /tmp контейнера чистится
+# при каждом пересоздании, и сторож бы тихо перестал работать после деплоя.
 notify() {
     local text="$1"
-    [ -z "$BOT_TOKEN" ] && { echo "no token: $text"; return; }
-    curl -s -m 15 -o /dev/null \
-        --data-urlencode "text=$text" \
-        -d "chat_id=${ADMIN_CHAT_ID}" -d "parse_mode=HTML" \
-        "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" || true
+    docker exec -i "$BOT_CONTAINER" python3 - "$ADMIN_CHAT_ID" "$text" <<'PY' 2>/dev/null || echo "watchdog: не доставлено: $text"
+import os, sys, time, urllib.request, urllib.parse
+
+token = os.environ.get("BOT_TOKEN")
+if not token:
+    sys.exit("no BOT_TOKEN in bot container")
+chat, text = sys.argv[1], sys.argv[2]
+payload = urllib.parse.urlencode(
+    {"chat_id": chat, "text": text, "parse_mode": "HTML"}).encode()
+url = f"https://api.telegram.org/bot{token}/sendMessage"
+for attempt in range(1, 41):          # столько же попыток, сколько делает сам бот
+    try:
+        with urllib.request.urlopen(
+                urllib.request.Request(url, data=payload), timeout=8) as r:
+            sys.exit(0 if r.status == 200 else 1)
+    except Exception:
+        time.sleep(1)
+sys.exit(1)
+PY
 }
 
 # Сравнить текущее состояние с эталоном. Первый прогон — только запомнить.
