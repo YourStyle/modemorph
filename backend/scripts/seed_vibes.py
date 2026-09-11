@@ -300,9 +300,17 @@ def build_outfits(items: list[dict], limit: int, season: str | None = None) -> l
                     if len(picked) < MIN_ITEMS:
                         continue
                     candidate, _dropped = repair_outfit(picked)
-                    if len(candidate) >= MIN_ITEMS and is_valid(candidate):
-                        kept = candidate
-                        break
+                    if len(candidate) < MIN_ITEMS or not is_valid(candidate):
+                        continue
+                    # Проверять надо ТО, ЧТО ОСТАЛОСЬ, а не то, что положили:
+                    # repair_outfit вправе выбросить верхнюю одежду по
+                    # температуре, и тогда зимний образ выходит без неё. Первый
+                    # прогон этой правки дал 14 образов с пальто из 20 именно
+                    # так — набор собирался верно, а до выпуска доезжал уже без.
+                    if require_outer and not any(_slot(i) == "outerwear" for i in candidate):
+                        continue
+                    kept = candidate
+                    break
                 if kept or not shoes:
                     break                             # обувь кончилась, пробовать больше нечего
                 bad_shoes.add(shoes["id"])
@@ -478,6 +486,12 @@ def _self_check() -> None:
     cold_ok = build_outfits(cold_pool + [it(4, "coat", lo=-20, hi=8)], 3, season="winter")
     assert len(cold_ok) == 1, cold_ok
     assert "coat" in {i["clothing_type"] for i in cold_ok[0]}, cold_ok[0]
+
+    # Пальто, несовместимое по температуре, repair_outfit выбросит. Зимой это
+    # значит «образа нет», а не «образ без пальто»: раньше такой набор доезжал
+    # до выпуска уже раздетым.
+    assert build_outfits(cold_pool + [it(5, "coat", lo=18, hi=35)], 3,
+                         season="winter") == [], "зима не выпускается, если пальто отвалилось"
 
     # Страновые кружки сезона не имеют и собираются как раньше — без пальто тоже.
     assert len(build_outfits(cold_pool, 3)) == 1, "у кружков без сезона правило прежнее"
