@@ -121,6 +121,23 @@ VIBE_SEASON: dict[str, str] = {
     "Межсезонье": "spring",
 }
 
+# Что примеряем поверх ядра «верх + низ», в зависимости от сезона кружка.
+#
+# Раньше список был один на все кружки — ["layer", "outerwear", None] по кругу.
+# То есть верхнюю одежду примерял лишь КАЖДЫЙ ТРЕТИЙ образ, независимо от
+# погоды: зима собиралась ровно теми же правилами, что и лето. Замер 2026-09-11
+# показал результат: 7 зимних образов с верхней одеждой из 40, 6 осенних из 39.
+# Каталог тут ни при чём — в нём 5243 куртки, 2192 пуховика и 1730 пальто.
+#
+# У страновых кружков сезона нет: они про эстетику, а не про температуру, и там
+# прежнее чередование остаётся правильным.
+SEASON_EXTRAS: dict[str | None, list[str | None]] = {
+    "winter": ["outerwear"],
+    "autumn": ["outerwear", "outerwear", "layer"],
+    "spring": ["outerwear", "layer", "outerwear"],
+    None: ["layer", "outerwear", None],
+}
+
 K_PER_PHRASE = 40          # запас: после отсечки по скору и раскладки по слотам останется меньше
 OUTFITS_PER_VIBE = 12      # на кружок, суммарно по всем полам
 # Порог строже, чем _MIN_OUTFIT_SIZE в outfit_compat: тот разрешает согласованную
@@ -191,7 +208,7 @@ def slot_histogram(items: list[dict]) -> dict[str, dict[str, int]]:
     return {g: dict(sorted(h.items(), key=lambda kv: -kv[1])) for g, h in hist.items()}
 
 
-def build_outfits(items: list[dict], limit: int) -> list[list[dict]]:
+def build_outfits(items: list[dict], limit: int, season: str | None = None) -> list[list[dict]]:
     """Чистая сборка: вещи одной эстетики -> список комплектов. Без I/O.
 
     Вещь не переиспользуется между образами внутри одного кружка — иначе лента
@@ -232,7 +249,11 @@ def build_outfits(items: list[dict], limit: int) -> list[list[dict]]:
 
     # Круговой обход полов, чтобы лента не начиналась двенадцатью женскими образами.
     genders = [g for g in ("female", "male") if g in by_gender]
-    extras = ["layer", "outerwear", None]
+    extras = SEASON_EXTRAS.get(season, SEASON_EXTRAS[None])
+    # Зимой образ без верхней одежды не выпускаем вовсе. Двадцать пять честных
+    # комплектов полезнее сорока, половина которых предлагает выйти в мороз в
+    # свитере: такой образ не просто бесполезен, он подрывает доверие к ленте.
+    require_outer = season == "winter"
     round_i = 0
     while len(outfits) < limit and genders:
         progressed = False
@@ -253,15 +274,28 @@ def build_outfits(items: list[dict], limit: int) -> list[list[dict]]:
                 genders.remove(g)
                 continue
             extra_slot = extras[round_i % len(extras)]
+            # Берём дополнительную вещь ДО перебора обуви: от обуви она не
+            # зависит, а take() без отметки used вернул бы ту же самую вещь на
+            # каждой итерации — лишняя работа и неочевидный код.
+            extra = take(slots, extra_slot) if extra_slot else None
+            if require_outer and extra is None:
+                # Верхняя одежда для этого пола кончилась. Продолжать значит
+                # выпускать ровно те зимние образы без пальто, которые чиним.
+                genders.remove(g)
+                continue
             kept: list[dict] = []
             bad_shoes: set = set()
             for _try in range(SHOE_TRIES):
                 shoes = take(slots, "shoes", bad_shoes)
-                extra = take(slots, extra_slot) if extra_slot else None
                 # От самого полного набора к самому скромному. Без этого один
                 # неподходящий по температуре слой сжигал годное ядро верх+низ:
                 # у «Скандинавии» так терялось 4 верха из 6 (замер 2026-08-17).
-                for combo in ([shoes, extra], [shoes], [extra]):
+                #
+                # Зимой варианты без верхней одежды исключены: иначе «спасение»
+                # комплекта просто выбросит пальто и вернёт нас к исходной беде.
+                variants = ([shoes, extra],) if require_outer \
+                    else ([shoes, extra], [shoes], [extra])
+                for combo in variants:
                     picked = list(core) + [x for x in combo if x]
                     if len(picked) < MIN_ITEMS:
                         continue
@@ -356,7 +390,7 @@ async def main(commit: bool, only: str | None, per_vibe: int = OUTFITS_PER_VIBE)
         print(f"\n=== {vibe} ===", file=sys.stderr)
         pool = await collect(phrases)
         print(f"[slots] {vibe}: {slot_histogram(pool)}", file=sys.stderr)
-        outfits = build_outfits(pool, per_vibe)
+        outfits = build_outfits(pool, per_vibe, season=VIBE_SEASON.get(vibe))
         print(f"[build] {vibe}: пул {len(pool)} -> {len(outfits)} образов", file=sys.stderr)
         plan[vibe] = [[{"id": i["id"], "name": i.get("name"), "type": i.get("clothing_type"),
                         "img": i.get("image_url"), "score": round(i.get("score") or 0, 3)}
@@ -431,6 +465,23 @@ def _self_check() -> None:
                           it(3, "sneakers", lo=0, hi=30), it(4, "coat", lo=-10, hi=8)], 1)
     assert len(warm) == 1, warm
     assert {i["clothing_type"] for i in warm[0]} == {"t-shirt", "jeans", "sneakers"}, warm[0]
+
+    # Зима без верхней одежды не выпускается. Пул заведомо достаточен для
+    # комплекта верх+низ+обувь, но пальто в нём нет — значит образов быть не
+    # должно вовсе. Прежняя сборка выдала бы здесь комплект, и именно так
+    # появились 33 зимних образа без верхней одежды.
+    cold_pool = [it(1, "longsleeve", lo=-15, hi=10), it(2, "pants", lo=-15, hi=12),
+                 it(3, "boots", lo=-20, hi=8)]
+    assert build_outfits(cold_pool, 3, season="winter") == [], "зима без пальто не выпускается"
+
+    # С пальто зимний образ собирается, и пальто в нём обязано быть.
+    cold_ok = build_outfits(cold_pool + [it(4, "coat", lo=-20, hi=8)], 3, season="winter")
+    assert len(cold_ok) == 1, cold_ok
+    assert "coat" in {i["clothing_type"] for i in cold_ok[0]}, cold_ok[0]
+
+    # Страновые кружки сезона не имеют и собираются как раньше — без пальто тоже.
+    assert len(build_outfits(cold_pool, 3)) == 1, "у кружков без сезона правило прежнее"
+
     print("seed_vibes self-check OK")
 
 
