@@ -106,6 +106,43 @@ function VibeButton({
   )
 }
 
+// Кэш уже загруженных разделов, ключ — «пол|раздел».
+//
+// Живёт в памяти вкладки, а НЕ в sessionStorage: хранилище на телефоне
+// ограничено парой мегабайт, пишется синхронно и подвесило бы прокрутку ровно в
+// момент, когда человек листает. Плюс лента всё равно не переживает
+// перезагрузку осмысленно — картинки подтянутся заново из кэша браузера.
+//
+// Ограничения не для красоты: держать всю ленту целиком — верный способ
+// получить выгрузку вкладки на слабом телефоне. Трёх разделов хватает, чтобы
+// метание «туда-обратно» между соседними подборками шло без загрузки, а
+// двенадцати образов — чтобы вернуться в раздел на то же место.
+const FEED_CACHE_MAX_SECTIONS = 3
+const FEED_CACHE_MAX_ITEMS = 12
+const feedCache = new Map<string, FeedOutfit[]>()
+
+function feedCacheGet(key: string): FeedOutfit[] | null {
+  const hit = feedCache.get(key)
+  if (!hit) return null
+  // Перевставка двигает запись в конец: Map хранит порядок вставки, а вытесняем
+  // мы всегда первую — так реже всего нужный раздел уходит первым.
+  feedCache.delete(key)
+  feedCache.set(key, hit)
+  return hit
+}
+
+function feedCachePut(key: string, list: FeedOutfit[]) {
+  feedCache.set(key, list.slice(0, FEED_CACHE_MAX_ITEMS))
+  while (feedCache.size > FEED_CACHE_MAX_SECTIONS) {
+    const oldest = feedCache.keys().next().value
+    if (oldest === undefined) break
+    feedCache.delete(oldest)
+  }
+}
+
+// За сколько карточек до конца подборки идём за следующей.
+const PREFETCH_LEAD = 5
+
 const WINDOW_SIZE = 10
 const WINDOW_STEP = 3
 const DOWN_TRIGGER = 7 // когда локальный индекс >= 7 — сдвигаем окно вниз
@@ -374,7 +411,17 @@ export default function InspirationPage(): ReactElement {
       return
     }
 
-    console.log("[v0] Loading outfits for gender:", userGender || "(all)")
+    const cacheKey = `${userGender || ""}|${activeVibe || ""}`
+    const cached = feedCacheGet(cacheKey)
+    if (cached && cached.length) {
+      // Возврат в уже виденный раздел — без сети и без скелетона. Лента внутри
+      // одной сессии не меняется, поэтому перепроверять её нечем и незачем.
+      setOutfits(cached)
+      setNextCursor(null)
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     ;(async () => {
       try {
@@ -392,6 +439,7 @@ export default function InspirationPage(): ReactElement {
           setOutfits(normalized)
           setNextCursor(data.nextCursor ?? null)
           setLikedIds(new Set((likedData?.liked ?? []).map(String)))
+          feedCachePut(cacheKey, normalized)
         }
       } catch (e) {
         if (!cancelled) setError("Не удалось загрузить образы")
@@ -443,7 +491,12 @@ export default function InspirationPage(): ReactElement {
     if (activeTab !== "popular") return
     if (loading || fetchingMore || nextCursor) return
     if (filtered.length === 0) return
-    if (index < filtered.length - 3) return
+    // Опережение в пять карточек, а не в три. Разделы короткие: женщина видит в
+    // подборке от 1 до 9 образов (замер 2026-09-11), и на медленной сети запрос
+    // не успевал вернуться, пока человек долистывал последние три. Он упирался в
+    // конец, ничего не происходило, и переход выглядел несуществующим — при том
+    // что запрос уходил и данные приезжали секундой позже, уже никому не нужные.
+    if (index < filtered.length - PREFETCH_LEAD) return
 
     const order = vibes.map((v) => v.vibe)
     if (order.length === 0) return
@@ -455,23 +508,41 @@ export default function InspirationPage(): ReactElement {
 
     let cancelled = false
     ;(async () => {
+      const cacheKey = `${userGender || ""}|${next}`
       try {
         setFetchingMore(true)
-        const params = new URLSearchParams({ vibe: next })
-        if (userGender) params.set("gender", userGender)
-        const data: ApiResponse = await api.get(`/api/outfits/inspiration?${params.toString()}`)
+        let extra = feedCacheGet(cacheKey)
+        if (!extra) {
+          const params = new URLSearchParams({ vibe: next })
+          if (userGender) params.set("gender", userGender)
+          const url = `/api/outfits/inspiration?${params.toString()}`
+          // Одна повторная попытка. Прежний код на любой ошибке помечал раздел
+          // загруженным и больше к нему не возвращался: одна моргнувшая сеть
+          // навсегда выкидывала подборку из ленты, причём молча.
+          let data: ApiResponse
+          try {
+            data = await api.get(url)
+          } catch (_first) {
+            if (cancelled) return
+            await new Promise((r) => setTimeout(r, 1200))
+            if (cancelled) return
+            data = await api.get(url)
+          }
+          if (cancelled) return
+          extra = normalizeOutfits(data.outfits)
+          feedCachePut(cacheKey, extra)
+        }
         if (cancelled) return
-        const extra = normalizeOutfits(data.outfits)
         setAppended((prev) => [...prev, next])
         setOutfits((prev) => {
           // Дедуп по id: во вкладке «Все» тот же образ мог уже приехать в
           // перемешанной выборке, и дубль сбил бы прокрутку.
           const seen = new Set(prev.map((o) => o.id))
-          return [...prev, ...extra.filter((o) => !seen.has(o.id))]
+          return [...prev, ...(extra as FeedOutfit[]).filter((o) => !seen.has(o.id))]
         })
       } catch (_) {
-        // Раздел не доехал — помечаем загруженным, иначе эффект будет долбить
-        // тот же запрос на каждой прокрутке.
+        // Не вышло и со второй попытки — помечаем загруженным, иначе эффект
+        // будет долбить тот же запрос на каждой прокрутке.
         if (!cancelled) setAppended((prev) => [...prev, next])
       } finally {
         if (!cancelled) setFetchingMore(false)
@@ -688,14 +759,7 @@ export default function InspirationPage(): ReactElement {
   }
 
   if (loading) {
-    return (
-      <div className="fixed inset-0 overflow-hidden bg-canvas" style={darkFeedVars}>
-        <div className="skeleton absolute inset-0" />
-        <div className="absolute inset-x-0 bottom-24 flex justify-center px-6">
-          <span className="text-caption text-ink-2">Подбираем образы</span>
-        </div>
-      </div>
-    )
+    return <FeedSkeleton style={darkFeedVars} withVibes={vibes.length > 0} />
   }
 
   if (error) {
@@ -1097,6 +1161,54 @@ function Slide({
             <span className="text-caption">{`+${remaining}`}</span>
           </button>
         )}
+      </div>
+    </div>
+  )
+}
+
+/** Заглушка ленты на время загрузки.
+ *
+ * Раньше здесь был серый прямоугольник во весь экран и подпись «Подбираем
+ * образы». Подпись — обещание работы, а не её результат: она сообщает, что
+ * что-то происходит, но не даёт понять, ЧТО появится и сколько ждать, поэтому
+ * секунда ожидания читается как зависание.
+ *
+ * Скелетон повторяет раскладку настоящей карточки: ряд кружков, кадр во весь
+ * экран, строка названия и столбик действий справа. Появление реального
+ * содержимого тогда не перестраивает экран — меняется только наполнение, и
+ * переход не воспринимается как скачок.
+ */
+function FeedSkeleton({ style, withVibes }: { style: React.CSSProperties; withVibes: boolean }) {
+  return (
+    <div className="fixed inset-0 overflow-hidden bg-canvas" style={style} aria-busy="true" aria-label="Загружаем образы">
+      {withVibes && (
+        <div className="absolute inset-x-0 top-0 px-4 pt-[calc(var(--tg-safe-top)+var(--tg-nav-gap)+12px)]">
+          <div className="flex gap-3 overflow-hidden">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex shrink-0 flex-col items-center gap-1.5">
+                <div className="skeleton h-14 w-14 rounded-full" />
+                <div className="skeleton h-2 w-10 rounded-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Кадр образа. Занимает тот же прямоугольник, что настоящий, чтобы при
+          подстановке картинки ничего не съезжало. */}
+      <div className="skeleton absolute inset-x-0 bottom-0" style={{ top: withVibes ? 150 : 60 }} />
+
+      {/* Название и описание слева снизу — как у карточки. */}
+      <div className="absolute bottom-28 left-4 right-20 space-y-2">
+        <div className="skeleton h-4 w-2/3 rounded-full" />
+        <div className="skeleton h-3 w-1/3 rounded-full" />
+      </div>
+
+      {/* Столбик действий справа. */}
+      <div className="absolute bottom-28 right-4 flex flex-col gap-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="skeleton h-11 w-11 rounded-full" />
+        ))}
       </div>
     </div>
   )
