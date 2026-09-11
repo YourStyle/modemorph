@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useEffect, useMemo, useRef, useState, useLayoutEffect, type ReactElement } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react"
 import Image from "next/image"
 import { Bookmark, ChevronDown, ChevronUp, GalleryVerticalEnd, Heart, Loader2, Zap } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -143,11 +143,6 @@ function feedCachePut(key: string, list: FeedOutfit[]) {
 // За сколько карточек до конца подборки идём за следующей.
 const PREFETCH_LEAD = 5
 
-const WINDOW_SIZE = 10
-const WINDOW_STEP = 3
-const DOWN_TRIGGER = 7 // когда локальный индекс >= 7 — сдвигаем окно вниз
-const UP_TRIGGER = 2
-
 function getPreviewSrc(o?: FeedOutfit | null): string {
   const direct = (o?.preview_image_url || "").trim()
   if (direct) return direct
@@ -268,8 +263,6 @@ BufferedImage.displayName = "BufferedImage"
 
 export default function InspirationPage(): ReactElement {
   // Данные / состояние
-  const [windowStart, setWindowStart] = useState(0) // глобальный индекс начала окна
-  const adjustScrollRef = useRef(0)
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
   const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -468,14 +461,23 @@ export default function InspirationPage(): ReactElement {
   // Смена вкладки или кружка -> на начало списка
   useEffect(() => {
     setIndex(0)
-    setWindowStart(0)
     setAppended([])
   }, [activeTab, activeVibe])
 
-  const rendered = useMemo(
-    () => filtered.slice(windowStart, Math.min(filtered.length, windowStart + WINDOW_SIZE)),
-    [filtered, windowStart],
-  )
+  // Рисуем ленту целиком, без окна.
+  //
+  // Окно из десяти карточек со сдвигом на три и ручной правкой scrollTop
+  // экономило ничтожно (в разделе от 1 до 9 образов, во «Всех» — несколько
+  // десятков), а ломало две вещи сразу. Сдвиг переиндексировал карточки, из-за
+  // чего у уже показанных менялся animationDelay и анимация появления
+  // запускалась заново: при fill-mode `both` карточка висела невидимой всю
+  // задержку, до 360 мс. Это и есть «моргание при пролистывании». Вторая беда —
+  // компенсация прокрутки на глаз (scrollTop += сдвиг × высота), которая спорит
+  // со scroll-snap и даёт рывки.
+  //
+  // Картинки и так грузятся лениво, поэтому цена отрисовки списка целиком —
+  // это DOM-узлы, а не трафик и не память под изображения.
+  const rendered = filtered
   // Долистал почти до конца — подшиваем следующий раздел В КОНЕЦ ленты.
   //
   // Раньше здесь переключался activeVibe, а он перезагружает ленту целиком:
@@ -594,37 +596,10 @@ export default function InspirationPage(): ReactElement {
       { root, threshold: thresholds },
     )
 
-    const nodes = root.querySelectorAll<HTMLDivElement>("[data-window-node='1']")
+    const nodes = root.querySelectorAll<HTMLDivElement>("[data-feed-slide='1']")
     nodes.forEach((el) => observer.observe(el))
     return () => observer.disconnect()
-  }, [rendered, windowStart, index])
-
-  useEffect(() => {
-    if (!filtered.length) return
-    const localIndex = index - windowStart
-    const viewH = scrollerRef.current?.clientHeight || 0
-
-    // вниз
-    if (localIndex >= DOWN_TRIGGER && windowStart + WINDOW_SIZE < filtered.length) {
-      const shift = Math.min(WINDOW_STEP, filtered.length - (windowStart + WINDOW_SIZE))
-      setWindowStart((ws) => ws + shift)
-      adjustScrollRef.current += shift * viewH
-    }
-
-    // вверх
-    if (localIndex <= UP_TRIGGER && windowStart > 0) {
-      const shift = Math.min(WINDOW_STEP, windowStart)
-      setWindowStart((ws) => ws - shift)
-      adjustScrollRef.current -= shift * viewH
-    }
-  }, [index, filtered.length, windowStart])
-
-  useLayoutEffect(() => {
-    if (adjustScrollRef.current !== 0 && scrollerRef.current) {
-      scrollerRef.current.scrollTop += adjustScrollRef.current
-      adjustScrollRef.current = 0
-    }
-  }, [windowStart])
+  }, [rendered, index])
 
   // Прелоад ближайших изображений (текущее + окрестность)
   const preloadedImages = useRef<Set<string>>(new Set())
@@ -734,8 +709,6 @@ export default function InspirationPage(): ReactElement {
   }, [])
 
   useEffect(() => {
-    const maxStart = Math.max(0, filtered.length - WINDOW_SIZE)
-    if (windowStart > maxStart) setWindowStart(maxStart)
     if (index >= filtered.length) setIndex(Math.max(0, filtered.length - 1))
   }, [filtered.length])
 
@@ -902,7 +875,7 @@ export default function InspirationPage(): ReactElement {
               </div>
             ) : (
               rendered.map((o, i) => {
-                const globalIndex = windowStart + i
+                const globalIndex = i
                 const isCurrent = globalIndex === index
                 const items = (isCurrent ? filtered[globalIndex]?.items : o.items) ?? []
                 const preview = getPreviewSrc(filtered[globalIndex] ?? o)
@@ -913,9 +886,8 @@ export default function InspirationPage(): ReactElement {
                   <div
                     key={o.id}
                     data-index={globalIndex}
-                    data-window-node="1"
-                    className="snap-start h-full w-full relative animate-fade-up"
-                    style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+                    data-feed-slide="1"
+                    className="snap-start h-full w-full relative"
                   >
                     <Slide
                       title={o.title}
