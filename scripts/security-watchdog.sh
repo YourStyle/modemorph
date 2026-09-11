@@ -118,13 +118,15 @@ check() {
     if [ "$prev" != "$current" ]; then
         local diff_text
         diff_text=$(diff <(printf '%s' "$prev") <(printf '%s' "$current") | grep -E '^[<>]' | head -10)
-        # Экранируем перед вставкой в HTML: строки diff начинаются с < и >, и
-        # Telegram считает их незакрытыми тегами, отвечая 400. Тревога при этом
-        # молча не доходит — самый неприятный вид поломки для сигнализации.
-        # Считаем ДО экранирования, пока < и > ещё означают направление.
+        # Считаем ДО экранирования, пока < и > ещё означают направление, а не
+        # текст сообщения.
         local added removed
         added=$(printf '%s\n' "$diff_text" | grep -c '^>')
         removed=$(printf '%s\n' "$diff_text" | grep -c '^<')
+
+        # Экранируем перед вставкой в HTML: строки diff начинаются с < и >, и
+        # Telegram считает их незакрытыми тегами, отвечая 400. Тревога при этом
+        # молча не доходит — самый неприятный вид поломки для сигнализации.
         diff_text=$(printf '%s' "$diff_text" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
 
         # Заголовок обязан отвечать на вопрос «случилось ли что-то новое».
@@ -162,11 +164,11 @@ for f in /home/tashernaut/.ssh/authorized_keys /root/.ssh/authorized_keys; do
     done < "$f"
 done
 rm -f /tmp/.wd_key.pub
-check "authorized_keys" "$keys_now" "Изменились SSH-ключи доступа"
+check "authorized_keys" "$keys_now" "SSH-ключи доступа"
 
 # 2. systemd-юниты. Так появился automaticmachine.service.
 units_now=$(ls -1 /etc/systemd/system/*.service 2>/dev/null | xargs -r -n1 basename | sort)
-check "units" "$units_now" "Изменился список systemd-юнитов"
+check "units" "$units_now" "systemd-юниты"
 
 # 3. Успешные входы: ключ + СЕТЬ /16, а не точный адрес.
 #
@@ -198,13 +200,13 @@ logins_now=$(grep -h "Accepted publickey" /var/log/auth.log /var/log/auth.log.1 
 if [ -n "$ci_fps" ]; then
     logins_now=$(printf '%s\n' "$logins_now" | grep -vF "$ci_fps")
 fi
-check "logins" "$logins_now" "Вход по SSH из новой сети"
+check "logins" "$logins_now" "Входы по SSH"
 
 # 4. Порты наружу. Бот поднимал свой uvicorn и держал MySQL открытым в мир.
 ports_now=$(ss -tlnH 2>/dev/null | awk '{print $4}' \
     | grep -vE '^(127\.|\[::1\]|172\.18\.)' | sort -u)
-check "ports" "$ports_now" "Появился новый порт, открытый наружу"
+check "ports" "$ports_now" "Порты, открытые наружу"
 
 # 5. root crontab.
 cron_now=$(crontab -l -u root 2>/dev/null | grep -v '^#' | sort)
-check "root_cron" "$cron_now" "Изменился root crontab"
+check "root_cron" "$cron_now" "root crontab"
