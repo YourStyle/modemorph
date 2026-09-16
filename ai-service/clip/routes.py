@@ -821,6 +821,23 @@ async def complement_outfits(request: Request, body: ComplementRequest):
 
 
 # ---------------------------------------------------------------------------
+def _embedding_param(vec) -> list:
+    """Эмбеддинг в том виде, в каком его принимает asyncpg для колонки text[].
+
+    wardrobe_items.embedding — это text[] из 512 элементов. asyncpg отображает
+    массив Postgres на СПИСОК Python и не принимает текстовый литерал вида
+    '{0.1,0.2}': отвечает «invalid input for query argument».
+
+    На этом молча терялась вся работа. Картинка скачивалась, CLIP её кодировал,
+    а запись падала в warning — и вещь оставалась в очереди с embedding IS NULL
+    навсегда. В первом прогоне так потерялись 193 вещи из 300. Та же строка
+    стояла и в build-index, то есть он не сохранил бы ничего, даже не упади он
+    по памяти.
+    """
+    return [str(float(x)) for x in vec]
+
+
+# ---------------------------------------------------------------------------
 # /clip/index-pending — порционно доиндексировать вещи без эмбеддинга
 # ---------------------------------------------------------------------------
 # Заменяет /clip/build-index как способ пополнять индекс.
@@ -911,11 +928,10 @@ async def index_pending(request: Request, limit: int = 2000, chunk: int = 64):
             async with pool.acquire() as conn:
                 for item, vec in zip(kept, matrix):
                     item["embedding"] = vec.tolist()
-                    emb_str = "{" + ",".join(str(x) for x in item["embedding"]) + "}"
                     try:
                         await conn.execute(
                             "UPDATE wardrobe_items SET embedding = $1 WHERE id = $2",
-                            emb_str, item["id"],
+                            _embedding_param(item["embedding"]), item["id"],
                         )
                         encoded.append(item)
                     except Exception as e:
@@ -1035,11 +1051,10 @@ async def build_index(request: Request, force: bool = False):
             async with pool.acquire() as conn:
                 for i, (item, emb_vec) in enumerate(zip(batch_items, embeddings_matrix)):
                     item["embedding"] = emb_vec.tolist()
-                    emb_str = "{" + ",".join(str(x) for x in item["embedding"]) + "}"
                     try:
                         await conn.execute(
                             "UPDATE wardrobe_items SET embedding = $1 WHERE id = $2",
-                            emb_str, item["id"],
+                            _embedding_param(item["embedding"]), item["id"],
                         )
                     except Exception as e:
                         logger.warning(f"[build-index] DB save failed {item['id']}: {e}")
