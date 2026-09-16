@@ -1331,11 +1331,20 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
     #    Поднимать лимит памяти бессмысленно: одним запросом скачать и прогнать
     #    через CLIP 80 тысяч картинок не выйдет ни при каком лимите. Правильное
     #    решение — порционная индексация в ai-service, она делается отдельно.
-    if total_imported:
-        logger.info(
-            f"[import-feeds] imported={total_imported}; FAISS не трогаем — "
-            f"индексация вынесена из крона (см. комментарий выше)"
-        )
+    #    Вместо пересборки — порционное пополнение. Ручка берёт ограниченную
+    #    пачку вещей без эмбеддинга, кодирует подпачками и ДОПИСЫВАЕТ в индекс.
+    #    Продолжаемость бесплатна: признак «не проиндексирована» это
+    #    embedding IS NULL, и он снимается по мере работы, поэтому оборванный
+    #    прогон не теряет сделанного, а следующий продолжает с того же места.
+    if total_imported and ai_url:
+        try:
+            async with httpx.AsyncClient(timeout=3600.0) as client:
+                r = await client.post(f"{ai_url}/clip/index-pending", params={"limit": 3000})
+                logger.info(f"[import-feeds] index-pending: {r.json()}")
+        except Exception as e:
+            # Не роняем импорт из-за индексации: вещи уже в базе, а очередь на
+            # индексацию заберёт следующий прогон.
+            logger.warning(f"[import-feeds] index-pending failed: {e}")
 
     return {"imported": total_imported, "feeds": results}
 

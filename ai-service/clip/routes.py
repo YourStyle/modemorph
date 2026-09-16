@@ -821,11 +821,133 @@ async def complement_outfits(request: Request, body: ComplementRequest):
 
 
 # ---------------------------------------------------------------------------
+# /clip/index-pending — порционно доиндексировать вещи без эмбеддинга
+# ---------------------------------------------------------------------------
+# Заменяет /clip/build-index как способ пополнять индекс.
+#
+# build-index брал из базы ВСЕ видимые вещи разом (98 950 на 16.09.2026),
+# скачивал все картинки в память и кодировал одним вызовом. Контейнер упирался в
+# лимит 4 ГБ и его убивало ядро — шесть ночей подряд, и ни один прогон так и не
+# завершился: индекс не обновлялся с 20.08.2026, около 80 тысяч вещей остались
+# невидимы для поиска и рекомендаций.
+#
+# Здесь три отличия, каждое обязательно:
+#   1. Берём ограниченную порцию, а не всё.
+#   2. Скачиваем и кодируем подпачками, освобождая картинки после каждой —
+#      в памяти одновременно живут chunk штук, а не восемьдесят тысяч.
+#   3. Дописываем в индекс (add_many), а не пересобираем его целиком.
+#
+# Продолжаемость бесплатна: признак «не проиндексирована» — это embedding IS
+# NULL, и он снимается по мере работы. Прогон можно оборвать в любой момент,
+# следующий продолжит с того же места.
+
+
+@router.post('/index-pending')
+async def index_pending(request: Request, limit: int = 2000, chunk: int = 64):
+    encoder, faiss_index = _get_services(request)
+    pool = _get_db(request)
+    import httpx
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, item_name, image_url, clothing_type, color, created_at, "
+            "partner_id, source_sku, gender, temp_min, temp_max "
+            "FROM wardrobe_items "
+            "WHERE image_url IS NOT NULL AND image_url <> '' "
+            "  AND embedding IS NULL "
+            # Скрытые не индексируем: /clip/search отдаёт соседей из FAISS без
+            # последующей фильтрации, поэтому скрытая вещь, попавшая в индекс,
+            # всплывёт в выдаче. На этом уже обжигались (исправлено 13.08.2026).
+            "  AND COALESCE(is_hidden, false) = false "
+            "ORDER BY id LIMIT $1",
+            limit,
+        )
+        remaining_before = await conn.fetchval(
+            "SELECT count(*) FROM wardrobe_items "
+            "WHERE image_url IS NOT NULL AND image_url <> '' "
+            "  AND embedding IS NULL AND COALESCE(is_hidden, false) = false"
+        )
+
+    items = [dict(r) for r in rows]
+    logger.info(f"[index-pending] взято {len(items)}, всего ждёт {remaining_before}")
+
+    encoded, failed = [], 0
+
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        for start in range(0, len(items), chunk):
+            part = items[start:start + chunk]
+            images, kept = [], []
+            for item in part:
+                try:
+                    r = await client.get(item["image_url"])
+                    r.raise_for_status()
+                    images.append(Image.open(io.BytesIO(r.content)).convert("RGB"))
+                    kept.append(item)
+                except Exception as e:
+                    logger.warning(f"[index-pending] не скачалась {item.get('id')}: {e}")
+                    failed += 1
+
+            if not images:
+                continue
+
+            matrix = encoder.encode_batch_images(images)
+            async with pool.acquire() as conn:
+                for item, vec in zip(kept, matrix):
+                    item["embedding"] = vec.tolist()
+                    emb_str = "{" + ",".join(str(x) for x in item["embedding"]) + "}"
+                    try:
+                        await conn.execute(
+                            "UPDATE wardrobe_items SET embedding = $1 WHERE id = $2",
+                            emb_str, item["id"],
+                        )
+                        encoded.append(item)
+                    except Exception as e:
+                        # В индекс кладём только то, что легло в базу. Иначе при
+                        # следующем перезапуске вещь исчезнет из индекса, но
+                        # embedding IS NULL уже не вернёт её в очередь.
+                        logger.warning(f"[index-pending] не записалась {item['id']}: {e}")
+                        failed += 1
+
+            # Картинки и матрица больше не нужны — отпускаем до следующей
+            # подпачки, иначе смысл порционности теряется.
+            images.clear()
+            del matrix
+
+            logger.info(f"[index-pending] {start + len(part)}/{len(items)}, закодировано {len(encoded)}")
+
+    added = faiss_index.add_many(encoded)
+
+    return {
+        "encoded": len(encoded),
+        "added_to_index": added,
+        "failed": failed,
+        "index_total": int(faiss_index.index.ntotal) if faiss_index.index is not None else 0,
+        "remaining": max(0, remaining_before - len(encoded)),
+    }
+
+
+# ---------------------------------------------------------------------------
 # /clip/build-index — fetch wardrobe_items from DB, encode, build FAISS
 # ---------------------------------------------------------------------------
 
 @router.post('/build-index')
-async def build_index(request: Request):
+async def build_index(request: Request, force: bool = False):
+    """ОПАСНО. Полная пересборка: выбирает все вещи разом и держит в памяти все
+    картинки. На текущем каталоге (98 950 вещей) гарантированно убивает
+    контейнер по лимиту 4 ГБ — так и было шесть ночей подряд 10–15.09.2026.
+
+    Для пополнения индекса есть /clip/index-pending. Эта ручка остаётся только
+    для случая, когда индекс надо собрать заново с нуля на маленьком каталоге,
+    и требует явного force=true: раньше её звал крон, и падения выглядели как
+    всплески нагрузки, а не как отказ.
+    """
+    if not force:
+        raise HTTPException(
+            status_code=400,
+            detail="build-index кладёт сервис по памяти на большом каталоге. "
+                   "Для пополнения индекса используйте /clip/index-pending. "
+                   "Если пересборка с нуля действительно нужна — force=true.",
+        )
     encoder, faiss_index = _get_services(request)
     pool = _get_db(request)
     import httpx

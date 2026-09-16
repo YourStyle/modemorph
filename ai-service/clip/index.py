@@ -115,25 +115,14 @@ class FAISSIndexService:
             if norm > 0:
                 vec = vec / norm
             embeddings.append(vec)
-            self.meta.append({
-                'id': item.get('id'),
-                'name': item.get('item_name') or item.get('name'),
-                'image_url': item.get('image_url'),
-                'clothing_type': item.get('clothing_type'),
-                'color': item.get('color'),
-                'created_at': str(item.get('created_at', '')),
-                # Partner scoping for the embeddable widget: retrieval can be
-                # restricted to a single partner's catalog. source_sku lets the
-                # widget map a shopper's cart line back to a catalog row.
-                'partner_id': item.get('partner_id'),
-                'source_sku': item.get('source_sku'),
-                # Gender + season bounds power the widget's complementary-item
-                # filter (don't pair men's shirt with women's skirt, no winter
-                # coat at +25°C).
-                'gender': item.get('gender'),
-                'temp_min': item.get('temp_min'),
-                'temp_max': item.get('temp_max'),
-            })
+            # partner_id + source_sku — область видимости для встраиваемого
+            # виджета: выдачу можно ограничить каталогом одного партнёра, а по
+            # source_sku виджет сопоставляет строку корзины с записью каталога.
+            # gender + температурные границы питают фильтр сочетаемости (не
+            # предлагать женскую юбку к мужской рубашке, не звать в пуховике
+            # при +25). Состав полей — в _meta_of, чтобы у сборки и дописывания
+            # он не разошёлся.
+            self.meta.append(self._meta_of(item))
         if not embeddings:
             self.partner_positions = {}
             return 0
@@ -175,6 +164,72 @@ class FAISSIndexService:
         self.index.add(vec)
         self.meta.append({'id': item_id, **meta})
         self._save()
+
+    def _meta_of(self, item: dict) -> dict:
+        """Метаданные одной вещи. Единственное место, где задаётся их состав.
+
+        Раньше набор полей existed только внутри build(); когда появилось
+        дописывание, его пришлось бы продублировать — а расхождение здесь
+        ломается не заметно: поиск просто перестаёт фильтровать по полу или
+        температуре у части вещей, потому что у них этих ключей нет.
+        """
+        return {
+            'id': item.get('id'),
+            'name': item.get('item_name') or item.get('name'),
+            'image_url': item.get('image_url'),
+            'clothing_type': item.get('clothing_type'),
+            'color': item.get('color'),
+            'created_at': str(item.get('created_at', '')),
+            'partner_id': item.get('partner_id'),
+            'source_sku': item.get('source_sku'),
+            'gender': item.get('gender'),
+            'temp_min': item.get('temp_min'),
+            'temp_max': item.get('temp_max'),
+        }
+
+    def add_many(self, items: list) -> int:
+        """Дописать пачку вещей в индекс, НЕ перестраивая его.
+
+        Зачем отдельно от add(): тот сохраняет индекс на диск после каждой
+        вещи. Файл сейчас 43 МБ, и для восьмидесяти тысяч вещей это столько же
+        раз переписать его целиком. Здесь запись одна на всю пачку.
+
+        Зачем отдельно от build(): тот выбирает из базы ВСЕ вещи разом и держит
+        в памяти все картинки. Именно так modemorph-ai убивало по памяти каждую
+        ночь шесть суток подряд (10–15.09.2026).
+        """
+        vecs, metas = [], []
+        for item in items:
+            emb = item.get('embedding')
+            if emb is None:
+                continue
+            vec = np.array(emb, dtype=np.float32)
+            if vec.shape[0] != DIM:
+                continue
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+            vecs.append(vec)
+            metas.append(self._meta_of(item))
+
+        if not vecs:
+            return 0
+
+        matrix = np.stack(vecs)
+        # Индекса ещё нет — обычная сборка умеет выбрать между IVF и плоским.
+        if self.index is None:
+            return self.build(items)
+        # IVF без обучения не принимает векторы. На практике не случается
+        # (индекс приходит с диска обученным), но падать тут было бы обидно.
+        if not self.index.is_trained:
+            self.index.train(matrix)
+
+        self.index.add(matrix)
+        self.meta.extend(metas)
+        self._rebuild_partner_positions()
+        self._save()
+        logger.info(f"[FAISS] Дописано {len(vecs)}, всего в индексе {self.index.ntotal}")
+        return len(vecs)
 
     def search(self, query_emb: np.ndarray, k: int = 20, apply_mmr: bool = True, mmr_diversity: float = 0.3) -> list:
         """Similarity search with optional MMR diversity re-ranking.
