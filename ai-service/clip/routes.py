@@ -871,7 +871,7 @@ async def index_pending(request: Request, limit: int = 2000, chunk: int = 64):
     items = [dict(r) for r in rows]
     logger.info(f"[index-pending] взято {len(items)}, всего ждёт {remaining_before}")
 
-    encoded, failed = [], 0
+    encoded, failed, dead = [], 0, []
 
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         for start in range(0, len(items), chunk):
@@ -883,7 +883,24 @@ async def index_pending(request: Request, limit: int = 2000, chunk: int = 64):
                     r.raise_for_status()
                     images.append(Image.open(io.BytesIO(r.content)).convert("RGB"))
                     kept.append(item)
+                except httpx.HTTPStatusError as e:
+                    # 404/410 — картинки у мерчанта больше нет. Такую вещь
+                    # НЕЛЬЗЯ просто пропустить: признак очереди это
+                    # embedding IS NULL, порядок выборки — по id, и мёртвые
+                    # ссылки возвращались бы первыми на каждом прогоне, навсегда
+                    # затыкая очередь. Первый же пробный прогон в это и упёрся:
+                    # 100 из 100 — мёртвые ссылки SELA.
+                    #
+                    # Скрываем: вещь без картинки всё равно нечего показывать
+                    # человеку, он увидел бы битый прямоугольник.
+                    if e.response.status_code in (404, 410):
+                        dead.append(item["id"])
+                    else:
+                        failed += 1
+                    logger.warning(f"[index-pending] не скачалась {item.get('id')}: {e}")
                 except Exception as e:
+                    # Таймаут или обрыв — повод повторить в следующий раз, а не
+                    # приговор ссылке. Такие не скрываем.
                     logger.warning(f"[index-pending] не скачалась {item.get('id')}: {e}")
                     failed += 1
 
@@ -915,14 +932,23 @@ async def index_pending(request: Request, limit: int = 2000, chunk: int = 64):
 
             logger.info(f"[index-pending] {start + len(part)}/{len(items)}, закодировано {len(encoded)}")
 
+    if dead:
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE wardrobe_items SET is_hidden = true WHERE id = ANY($1::bigint[])",
+                dead,
+            )
+        logger.info(f"[index-pending] скрыто вещей с мёртвой картинкой: {len(dead)}")
+
     added = faiss_index.add_many(encoded)
 
     return {
         "encoded": len(encoded),
         "added_to_index": added,
         "failed": failed,
+        "hidden_dead_image": len(dead),
         "index_total": int(faiss_index.index.ntotal) if faiss_index.index is not None else 0,
-        "remaining": max(0, remaining_before - len(encoded)),
+        "remaining": max(0, remaining_before - len(encoded) - len(dead)),
     }
 
 
