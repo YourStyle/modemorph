@@ -885,15 +885,10 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
         """), {"total": len(parsed["items"]), "imp": imported, "skip": skipped, "fid": feed_id})
         await db.commit()
 
-        # Trigger CLIP index rebuild
-        if imported > 0:
-            ai_url = settings.AI_SERVICE_URL
-            if ai_url:
-                try:
-                    async with httpx.AsyncClient(timeout=10.0) as client:
-                        await client.post(f"{ai_url}/clip/build-index")
-                except Exception as e:
-                    logger.warning(f"[ProcessFeeds] CLIP rebuild failed: {e}")
+        # FAISS не перестраиваем — по той же причине, что и в import-feeds
+        # (см. подробный комментарий там). Таймаут в 10 секунд здесь не спасал:
+        # клиент переставал ждать, а сервис продолжал выбирать все 98 тысяч
+        # вещей и всё равно умирал по памяти.
 
         logger.info(f"[ProcessFeeds] Feed {feed_id} done: {imported} imported, {skipped} skipped")
         return {"success": True, "feed_id": feed_id, "imported": imported, "skipped": skipped}
@@ -1320,13 +1315,27 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
             results[source_name] = {"error": str(e)}
             logger.error(f"[import-feeds] {source_name} failed: {e}")
 
-    # 5. Encode + rebuild FAISS so new rows are retrievable in recommendations.
-    if total_imported and ai_url:
-        try:
-            async with httpx.AsyncClient(timeout=1800.0) as client:
-                await client.post(f"{ai_url}/clip/build-index")
-        except Exception as e:
-            logger.warning(f"[import-feeds] build-index failed: {e}")
+    # 5. FAISS НЕ перестраиваем. Раньше здесь висел вызов /clip/build-index, и
+    #    он убивал modemorph-ai каждую ночь.
+    #
+    #    Эта ручка выбирает из базы ВСЕ видимые вещи разом (на 16.09.2026 их
+    #    98 950) вместе с колонкой embedding — массивом из 512 чисел в текстовом
+    #    виде на каждую. Контейнер упирается в лимит 4 ГБ, и его убивает ядро:
+    #    шесть ночей подряд, 10–15.09, всегда в окне 23:32–23:52.
+    #
+    #    Важно, что убирать тут нечего: операция не завершилась НИ РАЗУ. Файл
+    #    wardrobe.index не обновлялся с 20.08.2026, в логах пять ночей подряд
+    #    «build-index failed: Server disconnected». То есть вызов не индексировал
+    #    новые вещи, а только ронял сервис и поднимал нагрузку перезапуском.
+    #
+    #    Поднимать лимит памяти бессмысленно: одним запросом скачать и прогнать
+    #    через CLIP 80 тысяч картинок не выйдет ни при каком лимите. Правильное
+    #    решение — порционная индексация в ai-service, она делается отдельно.
+    if total_imported:
+        logger.info(
+            f"[import-feeds] imported={total_imported}; FAISS не трогаем — "
+            f"индексация вынесена из крона (см. комментарий выше)"
+        )
 
     return {"imported": total_imported, "feeds": results}
 
