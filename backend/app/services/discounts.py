@@ -23,10 +23,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # может больше. Но не всё.
 MIN_MARGIN_PCT = 20.0
 
-# Сколько даёт разовое предложение после исчерпания бесплатного лимита.
-# 25% выбраны так, чтобы одно число работало на всех трёх тарифах: на годовом
-# −30% уронили бы маржу до 20,4%, впритык к полу.
-WINBACK_PERCENT = 25
+# Запасной процент разового предложения — на случай, когда у тарифа не задана
+# offer_price_rub (завели новый план, цену акции забыли). Обычно предложение
+# идёт по абсолютной цене из прайса, см. resolve().
+#
+# 18%, а не прежние 25%: после перехода на цены лендинга годовой стоит 5 990, и
+# −25% дают 4 493 при себестоимости 3 893 — это маржа 13,3% при поле в 20%.
+# То есть запасной вариант САМ падал бы с 400 в момент показа скидки, а это
+# худшая из возможных минут. Потолок считается так: цена после скидки должна
+# быть не ниже 3893 / 0,8 = 4 867, значит скидка не больше 18,7%.
+WINBACK_PERCENT = 18
 WINBACK_HOURS = 48
 
 # Приглашённому — скидка, пригласившему — дни подписки.
@@ -128,21 +134,36 @@ async def resolve(db: AsyncSession, code: str, profile_id: int, plan_type: str) 
     if used:
         raise HTTPException(status_code=400, detail="Вы уже применяли этот код")
 
-    price = (await db.execute(
-        text("SELECT price_rub FROM subscription_pricing WHERE plan_type = :p AND is_active = true"),
+    plan = (await db.execute(
+        text("SELECT price_rub, offer_price_rub FROM subscription_pricing "
+             "WHERE plan_type = :p AND is_active = true"),
         {"p": plan_type},
-    )).scalar()
-    if price is None:
+    )).mappings().first()
+    if plan is None:
         raise HTTPException(status_code=400, detail=f"Неизвестный тариф: {plan_type}")
 
-    price = int(price)
-    final = discounted_price(price, row["percent_off"])
+    price = int(plan["price_rub"])
+
+    # Разовое предложение идёт по цене из прайса, а не по проценту.
+    #
+    # На лендинге это 199 / 449 / 4 999 — числа психологические, в один процент
+    # они не ложатся (−33,4%, −25,0%, −16,5%), а percent_off хранится целым.
+    # Промокоды и рефералки остаются на процентах: там важна именно доля, её
+    # называют человеку голосом («минус пятнадцать»).
+    offer = plan["offer_price_rub"]
+    if row["kind"] == "winback" and offer is not None:
+        final = int(offer)
+        percent_shown = round((price - final) / price * 100) if price else 0
+    else:
+        final = discounted_price(price, row["percent_off"])
+        percent_shown = row["percent_off"]
+
     await assert_price_above_floor(db, plan_type, final)
 
     return {
         "code": code,
         "kind": row["kind"],
-        "percent_off": row["percent_off"],
+        "percent_off": percent_shown,
         "price_rub": price,
         "discounted_rub": final,
         "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,

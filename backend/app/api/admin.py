@@ -2013,7 +2013,10 @@ async def update_subscription_pricing(request: Request, user: dict = Depends(get
     updates = body.get("updates", {})
     if not pricing_id or not updates:
         raise HTTPException(status_code=400, detail="id and updates required")
-    allowed = ["price_rub", "display_name", "description", "is_active"]
+    # offer_price_rub — цена разового предложения после бесплатного лимита.
+    # Правится здесь же, вместе с основной ценой: разнеси их по разным местам —
+    # и первое же изменение прайса оставит акцию со старой цифрой, причём молча.
+    allowed = ["price_rub", "offer_price_rub", "display_name", "description", "is_active"]
     set_parts = [f'"{k}" = :{k}' for k in updates if k in allowed]
     if not set_parts:
         raise HTTPException(status_code=400, detail="No valid fields to update")

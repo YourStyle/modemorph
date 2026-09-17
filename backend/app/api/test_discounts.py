@@ -92,25 +92,50 @@ def test_price_rounds_up_not_down():
     которой нет в payments.amount: вебхук вернул бы OK и молча ничего не сделал
     (см. robokassa_result — там UPDATE ... AND amount = :amt)."""
     assert discounted_price(299, 25) == 225
-    assert discounted_price(699, 25) == 525
-    assert discounted_price(6990, 25) == 5243
+    assert discounted_price(599, 25) == 450
+    assert discounted_price(5990, 25) == 4493
     assert discounted_price(100, 50) == 50, "ровное деление не должно прибавлять рубль"
 
 
-def test_winback_percent_survives_every_plan():
-    """Одно число скидки на все три тарифа. −30% уронили бы годовой до 20,4% —
-    впритык к полу, поэтому здесь 25%."""
+def test_landing_offer_prices_clear_the_margin_floor():
+    """Разовое предложение теперь задаётся абсолютной ценой, а не процентом:
+    199 / 449 / 4 999 с лендинга в единый процент не ложатся (−33,4%, −25,0%,
+    −16,5%), а percent_off хранится целым.
+
+    Самый тонкий — годовой: 4 999 при себестоимости включённого 3 893 ₽ даёт
+    22,1% при поле в 20%. Запаса здесь меньше сотни рублей, поэтому цена
+    предложения и проверяется тем же полом, что и промокоды."""
     db = _FakeDB()
-    for plan, price in (("weekly", 299), ("monthly", 699), ("yearly", 6990)):
+    for plan, offer in (("weekly", 199), ("monthly", 449), ("yearly", 4999)):
+        asyncio.run(assert_price_above_floor(db, plan, offer))  # не должно бросить
+
+    # И обязано падать чуть ниже: иначе пол ничего не охраняет.
+    try:
+        asyncio.run(assert_price_above_floor(db, "yearly", 4800))
+        raise AssertionError("годовой за 4 800 ₽ прошёл — пол маржи не работает")
+    except HTTPException as e:
+        assert e.status_code == 400 and "маржу" in e.detail
+
+
+def test_winback_percent_still_guards_plans_without_an_offer_price():
+    """offer_price_rub может быть пустым (новый тариф завели, акцию не задали).
+    Тогда предложение считается от процента — и этот процент обязан проходить
+    пол НА ВСЕХ тарифах.
+
+    Прежние 25% после перехода на цену 5 990 давали годовой за 4 493 при
+    себестоимости 3 893: маржа 13,3%. Запасной вариант падал бы с 400 ровно в
+    ту минуту, когда человеку показывают скидку."""
+    db = _FakeDB()
+    for plan, price in (("weekly", 299), ("monthly", 599), ("yearly", 5990)):
         final = discounted_price(price, WINBACK_PERCENT)
-        asyncio.run(assert_price_above_floor(db, plan, final))  # не должно бросить
+        asyncio.run(assert_price_above_floor(db, plan, final))
 
 
 def test_a_greedy_promo_is_refused_before_anyone_sees_it():
-    """Промокод на 60% продаёт годовой за 2 796 ₽ при себестоимости 3 893 ₽.
-    Это должно падать у того, кто код придумывает."""
+    """Промокод на 60% продаёт годовой за 2 396 ₽ при себестоимости 3 893 ₽ —
+    то есть себе в убыток. Это должно падать у того, кто код придумывает."""
     db = _FakeDB()
-    final = discounted_price(6990, 60)
+    final = discounted_price(5990, 60)
     try:
         asyncio.run(assert_price_above_floor(db, "yearly", final))
         raise AssertionError(f"скидка 60% прошла: годовой за {final} ₽")

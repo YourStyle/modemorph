@@ -4,7 +4,8 @@
 функция сама по себе ничего не приносит — приносит план, а функция только
 тратит. Поэтому маржа теперь одна на план, а не вилка на функцию.
 
-Живые значения на 09.09.2026, чтобы числа в проверках сходились с продом.
+Живые значения на 17.09.2026, чтобы числа в проверках сходились с продом.
+Цены — те же, что на лендинге modemorph.site (миграция 046).
 
 Запуск:  python3 -m app.api.test_pricing_economics     (из backend/)
 """
@@ -19,8 +20,8 @@ _FEATURES = [
 ]
 _PLANS = [
     {"plan_type": "weekly", "price_rub": 299, "display_name": "Недельный"},
-    {"plan_type": "monthly", "price_rub": 699, "display_name": "Ежемесячно"},
-    {"plan_type": "yearly", "price_rub": 6990, "display_name": "Годовой план"},
+    {"plan_type": "monthly", "price_rub": 599, "display_name": "Ежемесячно"},
+    {"plan_type": "yearly", "price_rub": 5990, "display_name": "Годовой план"},
 ]
 _CAPS = {
     "free": {"wardrobe_items_anlyzed": {"cap": 5, "period": "once"},
@@ -66,7 +67,9 @@ def test_yearly_contains_twelve_and_a_bit_monthly_windows():
     почти неделю сверх оплаченного — незаметно и каждый год."""
     y = _plans()["yearly"]
     assert y["included_cost_rub"] == 3893.33, y["included_cost_rub"]
-    assert y["margin_pct"] == 44.3
+    # 35,0% — цена с лендинга (5 990). Пол маржи опущен до 35% осознанно,
+    # см. _MARGIN_FLOOR в test_plan_limits.
+    assert y["margin_pct"] == 35.0
 
 
 def test_the_upgrade_costs_us_what_it_promises():
@@ -104,11 +107,11 @@ def test_numeric_from_postgres_does_not_blow_up():
     features = [{"feature_name": "vton_used", "unit_cost_rub": Decimal("14.10"), "is_active": True}]
     caps = {"monthly": {"vton_used": {"cap": 8, "period": "month"}}}
     rows, plans = plan_economics(
-        features, [{"plan_type": "monthly", "price_rub": Decimal("699"), "display_name": "М"}], caps
+        features, [{"plan_type": "monthly", "price_rub": Decimal("599"), "display_name": "М"}], caps
     )
     assert isinstance(rows[0]["unit_cost_rub"], float)
     assert plans[0]["included_cost_rub"] == 112.80
-    assert plans[0]["margin_pct"] == 83.9
+    assert plans[0]["margin_pct"] == 81.2
 
 
 def test_feature_rows_say_where_they_are_capped():
