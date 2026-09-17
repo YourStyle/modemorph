@@ -106,7 +106,15 @@ jobs:
 
       - name: Run E2E tests
         working-directory: backend
-        run: python -m pytest app/api/test_e2e_money.py app/api/test_ai_chats.py -q
+        run: python -m pytest app/api/test_e2e_money.py -q
+
+      # У test_ai_chats СВОЙ прогон: он поднимает TestClient, заводит двух
+      # пользователей и убирает их за собой, а код возврата ставит сам. Под
+      # pytest его собрать можно, но выполнить нельзя — клиент создаётся в
+      # main(), и все 21 проверки падают на 'NoneType'. Запускаем как задумано.
+      - name: Run AI chat integration tests
+        working-directory: backend
+        run: python3 app/api/test_ai_chats.py
 
   typecheck:
     name: Type Check
