@@ -7,6 +7,107 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  # Тесты бэкенда без базы. 75 проверок за секунду — они существовали давно, но
+  # не запускались НИКОГДА: CI делал только линт, типы и сборку фронтенда.
+  # Отсюда и стиль части файлов («plain asserts, no pytest — CI runs no tests»):
+  # их писали скриптами, потому что запускать было некому.
+  #
+  # Цена такой тишины видна на истории: тест, поймавший убыточную скидку на
+  # годовом тарифе, лежал в репозитории и молчал, пока его не позвали руками.
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install -q --upgrade pip
+          pip install -q -r requirements.txt
+          pip install -q pytest
+
+      # test_ai_chats нужен живой Postgres — он идёт в задании e2e ниже.
+      - name: Run tests
+        working-directory: backend
+        run: python -m pytest app --ignore=app/api/test_ai_chats.py -q
+
+  # E2E против настоящей базы: миграции с нуля + проверки денежных путей.
+  #
+  # Смысл именно в настоящей базе. Почти всё, что ломалось на проекте, ломалось
+  # одинаково: ручка отвечала 200, а нужного действия не происходило. Мок такое
+  # не ловит по устройству — он подтверждает, что мы позвали то, что собирались
+  # позвать, а вопрос в том, изменилось ли состояние на той стороне.
+  #
+  # Накат миграций с чистого Postgres — половина ценности этого задания: он
+  # проверяет, что база вообще восстановима из репозитория. На момент заведения
+  # она не была: не хватало звена (013a) и засева себестоимости (047).
+  e2e:
+    name: E2E (real database)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: modemorph
+          POSTGRES_PASSWORD: modemorph
+          POSTGRES_DB: modemorph
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      PGPASSWORD: modemorph
+      DATABASE_URL: postgresql+asyncpg://modemorph:modemorph@localhost:5432/modemorph
+      JWT_SECRET: ci-secret-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      TELEGRAM_PEPPER: ci-pepper
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install -q --upgrade pip
+          pip install -q -r requirements.txt
+          pip install -q pytest
+
+      # Заглушки объектов Supabase: три ранние миграции написаны до переезда на
+      # свой Postgres и ждут схему auth, которую создавал он сам.
+      - name: Bootstrap legacy Supabase objects
+        run: psql -h localhost -U modemorph -d modemorph -v ON_ERROR_STOP=1 -q -f scripts/test-db-bootstrap.sql
+
+      - name: Apply migrations from scratch
+        run: |
+          for f in backend/migrations/*.sql; do
+            echo "  migrate: $(basename "$f")"
+            psql -h localhost -U modemorph -d modemorph -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      - name: Run E2E tests
+        working-directory: backend
+        run: python -m pytest app/api/test_e2e_money.py app/api/test_ai_chats.py -q
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
