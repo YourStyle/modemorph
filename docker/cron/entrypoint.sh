@@ -35,6 +35,9 @@ cat > /etc/crontabs/root << EOF
 
 # Adaptive re-engagement pushes via the bot — 07:00 UTC (10:00 MSK) daily
 0 7 * * * $(call "auto-push")
+
+# Error digest to the admins' Telegram — hourly at :05 (silent when nothing broke)
+5 * * * * $(call "error-digest")
 # ───────────────────────────────────────────────────────────
 EOF
 

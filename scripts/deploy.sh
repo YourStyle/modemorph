@@ -17,6 +17,10 @@ docker compose pull backend app
 
 echo "== [3/5] restart code services =="
 docker compose up -d backend app
+# cron is alpine + one shell script (the schedule): builds in seconds, so it is
+# rebuilt every deploy — otherwise a new line in docker/cron/entrypoint.sh
+# never reaches the box.
+docker compose up -d --build cron
 
 # AFTER the restart on purpose: these run code out of the freshly pulled backend
 # image (feed download + parsing), so running them before the pull would execute

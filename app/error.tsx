@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import * as Sentry from "@sentry/nextjs"
+import { reportError } from "@/lib/error-report"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertTriangle, Wifi, ArrowRight } from "lucide-react"
@@ -20,6 +21,7 @@ export default function Error({
 
   useEffect(() => {
     Sentry.captureException(error)
+    reportError({ message: `Error screen: ${error.message}`, detail: error.stack })
     console.error("Page error (client):", {
       message: error.message,
       digest: (error as any).digest,

@@ -1798,3 +1798,12 @@ async def auto_push(request: Request, db: AsyncSession = Depends(get_db)):
 
     logger.info(f"[auto-push] eligible={len(plan)} sent={sent} failed={failed} {by_template}")
     return {"profiles": len(profiles), "eligible": len(plan), "sent": sent, "failed": failed, "by_template": by_template}
+
+
+@router.post("/error-digest")
+async def error_digest(request: Request, db: AsyncSession = Depends(get_db)):
+    """Hourly: group new error_events, send the digest to admins' Telegram (api/errors.py)."""
+    _verify_cron_auth(request)
+    from app.api.errors import run_error_digest
+
+    return await run_error_digest(db)

@@ -7,7 +7,7 @@ from app.api import (
     auth, health, wardrobe, wardrobe_user_items, basic_items,
     limits, recommendations, outfits, looks, payments,
     ai, ai_chats, me, upload, weather, misc, admin, cron, partner,
-    item_dislikes, rec_events, widget, discounts,
+    item_dislikes, rec_events, widget, discounts, errors,
 )
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -59,6 +59,24 @@ app.add_middleware(widget.WidgetCORSMiddleware)
 # decorate is the one worth auditing.
 app.add_middleware(AdminAuditMiddleware)
 
+
+# Every 5xx and unhandled exception goes to error_events → hourly digest to
+# the admins' Telegram (api/errors.py). Before this they lived only in
+# `docker logs`, i.e. nobody saw them.
+@app.middleware("http")
+async def record_server_errors(request, call_next):
+    location = f"{request.method} {request.url.path}"
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        await errors.record_error(request, "backend", location, f"{type(exc).__name__}: {exc}",
+                                  detail=errors.exception_detail(exc), status=500)
+        raise
+    if response.status_code >= 500:
+        await errors.record_error(request, "backend", location, f"HTTP {response.status_code}",
+                                  status=response.status_code)
+    return response
+
 # ── Core routes ──
 app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
@@ -85,3 +103,4 @@ app.include_router(widget.router, prefix="/api/v1/widget", tags=["partner-widget
 app.include_router(item_dislikes.router, prefix="/api/items", tags=["items"])
 app.include_router(rec_events.router, prefix="/api", tags=["rec-events"])
 app.include_router(cron.router, prefix="/api/cron", tags=["cron"])
+app.include_router(errors.router, prefix="/api", tags=["errors"])

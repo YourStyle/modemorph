@@ -2,6 +2,7 @@
 // Универсальный API клиент с session-based авторизацией
 
 import { sessionAuth } from "./tma/session-auth"
+import { reportError } from "./error-report"
 
 interface ApiClientOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
@@ -64,14 +65,33 @@ class ApiClient {
       }
     }
 
-    const response = await fetch(url, config)
+    const hadSession = sessionAuth.hasValidSession()
+    let response: Response
+    try {
+      response = await fetch(url, config)
+    } catch (e) {
+      reportError({ message: `Network error: ${e instanceof Error ? e.message : e}`, location: `${method} ${url}` })
+      throw e
+    }
+
+    // A logged-in user who is still 401 after the refresh attempt is the
+    // "Missing token" class of bug — the user is stuck. Logged-out visitors
+    // hitting 401 is normal and not reported.
+    if (response.status === 401 && hadSession && attempt === 1) {
+      reportError({ message: `401 after token refresh: ${await response.clone().text().catch(() => "")}`.slice(0, 300),
+                    location: `${method} ${url}`, status: 401 })
+    }
 
     // Handle 401 — attempt token refresh once
     if (response.status === 401 && attempt === 0) {
       try {
         await sessionAuth.refreshAccessToken()
         return this.requestWithRetry<T>(url, options, 1)
-      } catch {
+      } catch (e) {
+        if (hadSession) {
+          reportError({ message: `Session refresh failed: ${e instanceof Error ? e.message : e}`,
+                        location: `${method} ${url}`, status: 401 })
+        }
         sessionAuth.clearSession()
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth:session-expired'))
