@@ -22,7 +22,7 @@ from app.core.deps import get_current_user
 from app.services.weather_rules import temp_ok
 from app.services.catalog_filters import gender_ok
 from app.services.capsule import capsule_style_guide
-from app.services.outfit_compat import repair_outfit, item_window, has_bottom, covers_body
+from app.services.outfit_compat import repair_outfit, item_window, covers_body
 
 logger = logging.getLogger(__name__)
 
@@ -513,13 +513,18 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
         # слотам этого не ловят: «рубашка + куртка» согласована по погоде и не
         # дублирует слоты, но это не образ. Ставим ПОСЛЕ repair_outfit — тот
         # выбрасывает несочетаемое и сам может оставить образ без низа.
+        #
+        # Без верха — тоже. Раньше здесь стоял has_bottom, и «брюки + жакет +
+        # ботинки» уходили пользователю, а примерка честно рисовала жакет на
+        # голое тело (26.09.2026). covers_body признаёт худи/свитшот за верх,
+        # а пиджак/кардиган/жилет — нет.
         if not is_gap_section:
             kept_sugs = []
             for s in section.get("suggestions", []):
-                if has_bottom(s.get("items") or []):
+                if covers_body(s.get("items") or []):
                     kept_sugs.append(s)
                 else:
-                    logger.info("[rec] образ %s выброшен: нет низа (%s)", s.get("id"),
+                    logger.info("[rec] образ %s выброшен: не одевает целиком (%s)", s.get("id"),
                                 ", ".join(str(i.get("clothing_type")) for i in s.get("items") or []))
             section["suggestions"] = kept_sugs
 
@@ -831,7 +836,10 @@ SECTION TYPES (section_type):
 {capsule_block}
 MANDATORY RULES FOR EVERY OUTFIT:
 1. Each outfit = STRICTLY 4-6 items covering the FULL body:
-   * Upper body (shirt/blouse/t-shirt/hoodie/sweater) — REQUIRED
+   * Upper body (shirt/blouse/t-shirt/hoodie/sweater) — REQUIRED.
+     A blazer, jacket, cardigan or vest is NOT upper body: it is worn OVER a
+     top, so an outfit with one of them still needs a shirt/t-shirt/top under it.
+     Outfits without a real top are discarded.
    * Lower body (pants/jeans/skirt/shorts) OR dress — REQUIRED
    * Outerwear — REQUIRED if weather < 15°C, OPTIONAL between 15 and 20°C.
      Every item carries a "temp" window [min, max]. All items in ONE outfit
