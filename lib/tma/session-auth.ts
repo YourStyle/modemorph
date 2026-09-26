@@ -24,6 +24,14 @@ export class TMASessionAuth {
     return TMASessionAuth.instance
   }
 
+  // Telegram: sessionStorage — initData re-creates the session on every open,
+  // and a stale one must not outlive a Telegram account switch.
+  // Web / installed PWA: localStorage — iOS drops sessionStorage whenever the
+  // home-screen app is unloaded, which meant logging in on every launch.
+  private store(): Storage {
+    return (window as any).Telegram?.WebApp?.initData ? sessionStorage : localStorage
+  }
+
   private isStorageAvailable(): boolean {
     if (this.storageAvailable !== null) return this.storageAvailable
     if (typeof window === 'undefined') {
@@ -32,8 +40,8 @@ export class TMASessionAuth {
     }
     try {
       const test = '__storage_test__'
-      sessionStorage.setItem(test, test)
-      sessionStorage.removeItem(test)
+      this.store().setItem(test, test)
+      this.store().removeItem(test)
       this.storageAvailable = true
       return true
     } catch {
@@ -48,7 +56,7 @@ export class TMASessionAuth {
 
     if (this.isStorageAvailable()) {
       try {
-        sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
+        this.store().setItem(SESSION_KEY, JSON.stringify(session))
         return
       } catch (error) {
         console.error('[SessionAuth] Failed to save to sessionStorage:', error)
@@ -58,34 +66,25 @@ export class TMASessionAuth {
     this.inMemorySession = session
   }
 
+  // No client-side expiry check on purpose. An expired access token used to wipe
+  // the whole session — refresh token included — so after 60 min idle the next
+  // request went out with no header at all ("401 Missing token" on onboarding
+  // submit) and the 401 → refresh path had nothing to refresh with. The server
+  // is the only judge of expiry: it answers 401, api-client refreshes and retries.
+  // This also survives a phone clock that runs ahead of the server's.
   getSession(): TMASession | null {
     if (typeof window === 'undefined') return null
 
     if (this.isStorageAvailable()) {
       try {
-        const stored = sessionStorage.getItem(SESSION_KEY)
-        if (stored) {
-          const session: TMASession = JSON.parse(stored)
-          if (Date.now() >= session.expires_at) {
-            this.clearSession()
-            return null
-          }
-          return session
-        }
+        const stored = this.store().getItem(SESSION_KEY)
+        if (stored) return JSON.parse(stored)
       } catch (error) {
         console.error('[SessionAuth] Failed to read session:', error)
       }
     }
 
-    if (this.inMemorySession) {
-      if (Date.now() >= this.inMemorySession.expires_at) {
-        this.inMemorySession = null
-        return null
-      }
-      return this.inMemorySession
-    }
-
-    return null
+    return this.inMemorySession
   }
 
   clearSession(): void {
@@ -93,7 +92,7 @@ export class TMASessionAuth {
 
     if (this.isStorageAvailable()) {
       try {
-        sessionStorage.removeItem(SESSION_KEY)
+        this.store().removeItem(SESSION_KEY)
       } catch (error) {
         console.error('[SessionAuth] Failed to clear session:', error)
       }
@@ -157,7 +156,7 @@ export class TMASessionAuth {
   debug(): void {
     if (typeof window === 'undefined') return
     try {
-      const stored = sessionStorage.getItem(SESSION_KEY)
+      const stored = this.store().getItem(SESSION_KEY)
       if (!stored) {
         console.log('[SessionAuth Debug] No session in storage')
         return
