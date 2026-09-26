@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils"
 import { ArrowRight, ChevronDown, MapPin } from "lucide-react"
 import { CityPicker } from "@/components/city-picker"
 import { HiddenItemsSheet } from "@/components/hidden-items-sheet"
+import { PwaSettings } from "@/components/pwa-settings"
 
 interface UserProfile {
   id: string
@@ -654,7 +655,7 @@ export function UserProfileSheet({
                     <div className="space-y-1">
                       <Label className="text-ink text-body">Получать уведомления</Label>
                       <p className="text-caption text-ink-2">
-                        Напоминания и рассылки через Telegram
+                        {isTMA ? "Напоминания и рассылки через Telegram" : "Напоминания и рассылки"}
                       </p>
                     </div>
                     <Switch
@@ -663,9 +664,13 @@ export function UserProfileSheet({
                       disabled={notificationsLoading}
                     />
                   </div>
-                  <p className="text-micro text-ink-3">
-                    Вы также можете отключить уведомления командой /mute в боте
-                  </p>
+                  {isTMA ? (
+                    <p className="text-micro text-ink-3">
+                      Вы также можете отключить уведомления командой /mute в боте
+                    </p>
+                  ) : (
+                    <PwaSettings />
+                  )}
 
                   <div className="border-t border-line pt-4">
                     <button

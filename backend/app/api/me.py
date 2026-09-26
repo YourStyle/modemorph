@@ -346,3 +346,55 @@ async def update_notifications(
     )
     await db.commit()
     return {"success": True, "notifications_enabled": enabled}
+
+
+@router.get("/push-key")
+async def get_push_key(user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """VAPID public key for PushManager.subscribe (generated on first call)."""
+    from app.services.webpush import get_vapid
+
+    public_key, _ = await get_vapid(db)
+    return {"key": public_key}
+
+
+@router.post("/push-subscription")
+async def save_push_subscription(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Store a browser's PushSubscription.toJSON(). Re-subscribing moves the endpoint to this profile."""
+    if not user.get("profile_id"):
+        raise HTTPException(status_code=400, detail="profile required")
+    body = await request.json()
+    endpoint = body.get("endpoint")
+    keys = body.get("keys") or {}
+    if not (isinstance(endpoint, str) and endpoint.startswith("https://") and keys.get("p256dh") and keys.get("auth")):
+        raise HTTPException(status_code=400, detail="invalid subscription")
+    await db.execute(
+        text("""
+            INSERT INTO push_subscriptions (user_profile_id, endpoint, p256dh, auth, user_agent)
+            VALUES (:pid, :e, :p, :a, :ua)
+            ON CONFLICT (endpoint) DO UPDATE
+               SET user_profile_id = EXCLUDED.user_profile_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth
+        """),
+        {"pid": int(user["profile_id"]), "e": endpoint, "p": keys["p256dh"], "a": keys["auth"],
+         "ua": (request.headers.get("user-agent") or "")[:300]},
+    )
+    await db.commit()
+    return {"success": True}
+
+
+@router.delete("/push-subscription")
+async def delete_push_subscription(
+    request: Request,
+    user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    body = await request.json()
+    await db.execute(
+        text("DELETE FROM push_subscriptions WHERE endpoint = :e AND user_profile_id = :pid"),
+        {"e": body.get("endpoint"), "pid": int(user["profile_id"] or 0)},
+    )
+    await db.commit()
+    return {"success": True}

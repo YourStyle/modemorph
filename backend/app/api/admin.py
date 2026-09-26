@@ -1956,15 +1956,23 @@ async def send_broadcast(request: Request, user: dict = Depends(get_admin_user),
     # Segments skip test profiles; an explicitly chosen user is sent to as is —
     # the owner's own account is is_test=true and "send it to me first" is the
     # whole point of that filter.
-    skip_test = "AND COALESCE(up.is_test, false) = false" if ftype != "user" else ""
+    # Same for the profile's "Получать уведомления" switch: segments honour it,
+    # an explicitly chosen user does not. Until 2026-09-25 nothing read it.
+    skip_test = ("AND COALESCE(up.is_test, false) = false AND COALESCE(up.notifications_enabled, true)"
+                 if ftype != "user" else "")
+    # Recipients: Telegram accounts (bot) and profiles with a web push
+    # subscription (browser / installed PWA). A profile may have both.
     rows = (await db.execute(text(f"""
-        SELECT u.raw_user_meta_data->>'telegram_id' AS tg
+        SELECT NULLIF(u.raw_user_meta_data->>'telegram_id', '') AS tg, up.id AS pid,
+               EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_profile_id = up.id) AS has_web
         FROM users u LEFT JOIN user_profiles up ON up.user_id = u.id
-        WHERE COALESCE(u.raw_user_meta_data->>'telegram_id', '') <> ''
+        WHERE (COALESCE(u.raw_user_meta_data->>'telegram_id', '') <> ''
+               OR EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_profile_id = up.id))
           {skip_test}
           AND {where}
     """), binds)).mappings().all()
-    chat_ids = [r["tg"] for r in rows]
+    chat_ids = [r["tg"] for r in rows if r["tg"]]
+    web_pids = [r["pid"] for r in rows if r["has_web"]]
 
     if button_text or button_url:
         flt = {**flt, "button_text": button_text, "button_url": button_url}
@@ -1997,10 +2005,25 @@ async def send_broadcast(request: Request, user: dict = Depends(get_admin_user),
             failed += 1
         await asyncio.sleep(0.05)
 
+    # Web push: the click opens the web app with ?bc=<id>, which the app logs
+    # as broadcast_open — the same counter as the bot's startapp=bc<id>.
+    from app.services.webpush import send_web_push, split_title
+
+    title, text_body = split_title(message)
+    web_sent = web_failed = 0
+    for pid in web_pids:
+        if await send_web_push(db, pid, title, text_body, f"/app?bc={bid}"):
+            web_sent += 1
+        else:
+            web_failed += 1
+    sent += web_sent
+    failed += web_failed
+
     await db.execute(text("UPDATE broadcast_messages SET total_sent = :s, total_failed = :f WHERE id = :id"),
                      {"s": sent, "f": failed, "id": bid})
     await db.commit()
-    out = {"id": bid, "recipients": len(chat_ids), "sent": sent, "failed": failed, "button_url": button_url or None}
+    out = {"id": bid, "recipients": len(chat_ids) + len(web_pids), "sent": sent, "failed": failed,
+           "telegram": len(chat_ids), "web_push": web_sent, "button_url": button_url or None}
     return {**out, "data": out}
 
 

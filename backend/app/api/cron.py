@@ -1732,8 +1732,10 @@ async def auto_push(request: Request, db: AsyncSession = Depends(get_db)):
                (SELECT max(e.occurred_at) FROM usage_events e
                  WHERE e.user_profile_id = up.id AND e.feature = 'paywall_shown') AS paywall_at
         FROM user_profiles up JOIN users u ON u.id = up.user_id
-        WHERE COALESCE(u.raw_user_meta_data->>'telegram_id', '') <> ''
+        WHERE (COALESCE(u.raw_user_meta_data->>'telegram_id', '') <> ''
+               OR EXISTS (SELECT 1 FROM push_subscriptions ps WHERE ps.user_profile_id = up.id))
           AND COALESCE(up.is_test, false) = false
+          AND COALESCE(up.notifications_enabled, true)
         ORDER BY up.id
     """))).mappings().all()
 
@@ -1765,6 +1767,7 @@ async def auto_push(request: Request, db: AsyncSession = Depends(get_db)):
 
     import asyncio
     from app.services.telegram import send_bot_message
+    from app.services.webpush import send_web_push, split_title
 
     sent = failed = 0
     for p, template in picked:
@@ -1774,15 +1777,23 @@ async def auto_push(request: Request, db: AsyncSession = Depends(get_db)):
         """), {"pid": p["pid"], "t": template})).scalar()
         await db.commit()
         tpl = AUTO_PUSH_TEMPLATES[template]
-        res = await send_bot_message(p["tg"], tpl["text"], reply_markup={
-            "inline_keyboard": [[{"text": tpl["button"], "url": f"{AUTO_PUSH_APP}ap{log_id}"}]],
-        })
-        if res.get("ok"):
+        # Both channels: the bot for Telegram accounts, web push for every
+        # browser/PWA the profile subscribed. One log row — "ok" if either landed.
+        tg_ok = False
+        if p["tg"]:
+            res = await send_bot_message(p["tg"], tpl["text"], reply_markup={
+                "inline_keyboard": [[{"text": tpl["button"], "url": f"{AUTO_PUSH_APP}ap{log_id}"}]],
+            })
+            tg_ok = bool(res.get("ok"))
+        title, text_body = split_title(tpl["text"])
+        web_ok = await send_web_push(db, p["pid"], title, text_body, f"/app?ap={log_id}")
+        if tg_ok or web_ok:
             sent += 1
             await db.execute(text("UPDATE auto_push_log SET ok = true WHERE id = :id"), {"id": log_id})
             await db.commit()
         else:
             failed += 1
+            await db.commit()  # dead web subscriptions deleted by send_web_push
         await asyncio.sleep(0.05)
 
     logger.info(f"[auto-push] eligible={len(plan)} sent={sent} failed={failed} {by_template}")

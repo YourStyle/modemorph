@@ -39,8 +39,13 @@ export default function AppClientLayout({
   // (ручная рассылка) или ap<id> (автопуш) приходит в initDataUnsafe.start_param;
   // пишем одно событие на сессию, чтобы в админке рядом с рассылкой был
   // счётчик кликов (broadcast_open / push_open).
+  // Веб-пуш (public/sw.js) открывает /app?bc=<id> или /app?ap=<id> — тот же
+  // счётчик, что и у кнопки бота.
   useEffect(() => {
-    const param: string | undefined = (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param
+    const q = new URLSearchParams(window.location.search)
+    const webParam = q.get("bc") ? `bc${q.get("bc")}` : q.get("ap") ? `ap${q.get("ap")}` : undefined
+    const param: string | undefined =
+      (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param || webParam
     const m = param?.match(/^(bc|ap)(\d+)$/)
     if (!m) return
     const feature = m[1] === "bc" ? "broadcast_open" : "push_open"

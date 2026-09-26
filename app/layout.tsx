@@ -12,6 +12,7 @@ import MiniAppRegistrationGate from "@/components/MiniAppRegistrationGate"
 import TmaBodyClass from "@/components/TmaBodyClass"
 import VpnWarning from "@/components/vpn-warning"
 import ErudaDebug from "@/components/ErudaDebug"
+import { InstallBanner } from "@/components/install-banner"
 import {
   LIQUID_GLASS_DISPLACEMENT_MAP,
   LIQUID_GLASS_MAP_HEIGHT,
@@ -27,7 +28,10 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: "Mode Morph - Умный гардероб",
   description: "Создавайте стильные образы с помощью ИИ",
-  generator: "v0.app"
+  generator: "v0.app",
+  // PWA: manifest — app/manifest.ts; iOS читает иконку и режим окна отсюда.
+  icons: { icon: "/icon-192.png", apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "ModeMorph", statusBarStyle: "default" },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -73,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </svg>
         <ErudaDebug />
         <TmaBodyClass/>
+        <InstallBanner />
         <MiniAppRegistrationGate>
           <AuthProvider>
             <SelectedItemsProvider>
