@@ -531,7 +531,7 @@ export default function WardrobePage() {
           </Button>
           <Button onClick={() => setStyleCheckOpen(true)} variant="outline" className="h-12 px-4">
             <Sparkles className="h-4 w-4 mr-1.5 text-ink-2" />
-            <span>Подойдёт?</span>
+            <span>Брать?</span>
           </Button>
         </div>
 

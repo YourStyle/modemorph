@@ -8,7 +8,8 @@ type Feature =
   | "ai_requests"
   | "ideas_viewed"
   | "outfits_saved"
-  | "vton_used";
+  | "vton_used"
+  | "style_check"; // только log: «Стоит ли покупать?», лимита нет
 
 export function useFeature() {
   const log = useCallback(

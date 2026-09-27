@@ -1,5 +1,6 @@
 """Miscellaneous endpoints: check-limits, usage/log, pricing, user-subscription, user-likes, detect-clothing, ai-assistant, vton, clip/search."""
 
+import asyncio
 import base64
 import hmac
 import io
@@ -22,7 +23,8 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.services.capsule import capsule_style_guide
 from app.services.usage import record_usage_event
-from clothing_taxonomy import resolve_clothing_type
+from clothing_taxonomy import SLOT_MAP, resolve_clothing_type, slot_of
+from app.services.outfit_compat import covers_body
 # Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand) —
 # see backend/brand.py.
 from brand import BRAND_GUESS_PROMPT_RULE, prompt_brand_field, retailer_from_notes
@@ -1282,50 +1284,85 @@ async def clip_search(request: Request, user: dict = Depends(get_current_user)):
         return resp.json()
 
 
-# ── /api/style-check — "Will this item fit my wardrobe?" ──
-
-# Веса и якоря шкалы. Не подобраны на глаз — посчитаны 01.09.2026 на всех 1090
-# вещах с эмбеддингами (109 гардеробов, 91 из них с двумя вещами и больше).
+# ── /api/style-check — «Стоит ли покупать?» ──
 #
-# Методика: для каждой вещи считаем её близость к ОСТАЛЬНОМУ своему гардеробу
-# (leave-one-out) — это ровно та задача, которую решает style-check для новой
-# вещи. Контроль — та же вещь против случайного ЧУЖОГО гардероба, то есть
-# эталон ответа «не ваш стиль».
-#
-# Что показал замер:
-#   близость к ближайшей своей вещи  — медиана 0.745, у чужого гардероба 0.602;
-#   близость ко всему гардеробу      — медиана 0.541, у чужого 0.496.
-# Разрыв по максимуму втрое больше, чем по среднему, поэтому максимум и весит
-# 0.7: ключ к «моё» — есть ли в гардеробе хоть одна близкая вещь, а не средняя
-# температура по шкафу. Итоговая метрика разделяет своё и чужое с AUC 0.748.
-#
-# Якоря шкалы — измеренные квантили этой метрики:
-#   0.573 = медиана ЧУЖОГО гардероба -> 40 баллов («не ваш стиль»)
-#   0.686 = медиана СВОЕГО            -> 70 («хорошо дополнит»)
-#   0.796 = p95 СВОЕГО                -> 95 («отлично подходит»)
-# Края 0.35 и 0.95 — технические границы косинуса на этих данных.
-_FIT_W_MAX = 0.7
-_FIT_W_MEAN = 0.3
-_FIT_ANCHORS = [(0.35, 0), (0.573, 40), (0.686, 70), (0.796, 95), (0.95, 100)]
+# Раньше ответом был процент CLIP-близости фото к гардеробу. Замер 27.09.2026
+# на 23 гардеробах: процент мерил «есть ли у тебя вещь того же типа», а не
+# сочетаемость. Своя вещь нового типа — медиана 38 («не ваш стиль»), чужая
+# вещь знакомого типа — 62 («хорошо дополнит»); вторая чёрная футболка
+# выходила «отлично подходит». Теперь ответ — образы из своих вещей и честное
+# «такое у тебя уже есть». Модель проверяем: id только из гардероба, образ
+# должен одевать целиком (covers_body), дубль — только того же слота.
+
+_STYLE_CHECK_PROMPT = """На фото — вещь, которую человек думает купить. Ниже его гардероб: «id: название (тип, цвет)».
+
+1. Определи вещь на фото: is_clothing (это одежда, обувь или аксессуар?), name — коротко по-русски с цветом, type — один из: {types}.
+2. outfits — до 3 образов. В каждом эта вещь плюс 2-4 вещи ИЗ ГАРДЕРОБА по id. Образ одевает человека целиком (верх и низ или платье, плюс обувь, если она есть в гардеробе), вещи сочетаются по стилю и уместны при одной погоде. Только существующие id. Нет хороших образов — пустой массив, не натягивай.
+
+Ответ — только JSON: {{"is_clothing": true, "name": "", "type": "", "outfits": [{{"title": "Название по-русски", "item_ids": [id]}}]}}
+
+Гардероб:
+{wardrobe}"""
 
 
-def _wardrobe_fit_score(mean: float | None, max_sim: float | None) -> int | None:
-    """Косинусная близость -> балл 0-100 по измеренным якорям.
+def _int_ids(values) -> list[int]:
+    out = []
+    for v in values or []:
+        try:
+            out.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    return out
 
-    Возвращает None, когда сравнивать не с чем — это честнее выдуманного числа.
-    """
-    if mean is None or max_sim is None:
-        return None
 
-    fit = _FIT_W_MAX * max_sim + _FIT_W_MEAN * mean
+# Дубли модель по текстовому списку не видит: в живом прогоне 27.09.2026 она
+# пропустила 3 из 3, даже когда на фото была ровно та же вещь из гардероба.
+# Поэтому дубль — это CLIP: близость к вещи того же слота не ниже порога.
+# Порог — по всем 1088 вещам с эмбеддингами: у двух разных вещей одного слота
+# в одном гардеробе p95 = 0.888, p99 = 0.934; от 0.92 вверх — одна и та же вещь,
+# загруженная дважды. 0.90 помечает ~3% пар.
+_DUPLICATE_SIM = 0.90
 
-    # Кусочно-линейная интерполяция по якорям; за краями — зажим.
-    if fit <= _FIT_ANCHORS[0][0]:
-        return _FIT_ANCHORS[0][1]
-    for (x0, y0), (x1, y1) in zip(_FIT_ANCHORS, _FIT_ANCHORS[1:]):
-        if fit <= x1:
-            return round(y0 + (y1 - y0) * (fit - x0) / (x1 - x0))
-    return _FIT_ANCHORS[-1][1]
+# Платье/комбинезон закрывают тело целиком: к брюкам или верху их не подкладывают.
+_WHOLE = {"dress", "set"}
+_PARTS = {"top", "bottom"}
+
+
+def _check_style_answer(parsed: dict, wardrobe: dict, clip_nearest: list | None = None) -> tuple[dict, list, list]:
+    """Не верим модели на слово: id только из гардероба, дубль — того же слота,
+    образ вместе с новой вещью одевает целиком. Остальное выбрасываем."""
+    name = str(parsed.get("name") or "Вещь")
+    new_item = {"name": name, "clothing_type": resolve_clothing_type(parsed.get("type"), name)}
+    new_slot = slot_of(new_item["clothing_type"], name)
+
+    def slot(w):
+        return slot_of(w.get("clothing_type"), w.get("item_name"))
+
+    def card(w):
+        return {"id": w["id"], "name": w["item_name"], "image_url": w["image_url"], "clothing_type": w.get("clothing_type")}
+
+    # Только CLIP: модель по тексту и пропускала дубли, и выдумывала их
+    # («брюки в полоску» = «брюки» при близости 0.56).
+    clip_dups = [n["id"] for n in clip_nearest or [] if n.get("similarity", 0) >= _DUPLICATE_SIM]
+    duplicates = [card(wardrobe[i]) for i in dict.fromkeys(clip_dups)
+                  if i in wardrobe and new_slot and slot(wardrobe[i]) == new_slot][:3]
+    clash = _PARTS | _WHOLE if new_slot in _WHOLE else _WHOLE if new_slot in _PARTS else set()
+
+    outfits = []
+    for o in (parsed.get("outfits") or [])[:3]:
+        if not isinstance(o, dict):
+            continue
+        own = [wardrobe[i] for i in dict.fromkeys(_int_ids(o.get("item_ids"))) if i in wardrobe]
+        # Вторая вещь того же слота (брюки к брюкам) — не образ, а подмена покупки.
+        own = [w for w in own if not new_slot or slot(w) != new_slot]
+        if any(slot(w) in clash for w in own):
+            continue
+        as_items = [new_item] + [{"name": w["item_name"], "clothing_type": w.get("clothing_type")} for w in own]
+        if len(own) < 2 or not covers_body(as_items):
+            continue
+        outfits.append({"title": str(o.get("title") or "Образ"), "items": [card(w) for w in own]})
+    return new_item, duplicates, outfits
+
 
 @router.post("/style-check")
 async def style_check(
@@ -1333,107 +1370,71 @@ async def style_check(
     user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Upload a photo of an item → get style compatibility score with user's wardrobe.
-    Uses CLIP: computes embedding of the photo, compares with average wardrobe embedding.
-    """
-    content = await image.read()
-    ai_service = settings.AI_SERVICE_URL or "http://modemorph-ai:8000"
+    """Фото вещи из магазина → образы с ней из своего гардероба + предупреждение о дубле."""
+    rows = (await db.execute(text("""
+        SELECT id, item_name, clothing_type, color, image_url FROM wardrobe_user_items
+        WHERE user_id = :uid AND COALESCE(is_hidden, false) = false AND image_url IS NOT NULL
+        ORDER BY created_at DESC LIMIT 150
+    """), {"uid": user["id"]})).mappings().all()
+    wardrobe = {r["id"]: dict(r) for r in rows}
+    if not wardrobe:
+        return {"is_clothing": True, "item": None, "duplicates": [], "outfits": [], "wardrobe_size": 0}
 
-    # 1. Classify the uploaded item
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        classify_resp = await client.post(
-            f"{ai_service}/clip/classify",
-            files={"image": ("item.jpg", content, "image/jpeg")},
-        )
-        if classify_resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Classification failed")
-        classification = classify_resp.json()
+    try:
+        img = Image.open(io.BytesIO(await image.read())).convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Не удалось открыть фото")
+    img.thumbnail((1024, 1024))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=85)
+    data_uri = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
-    # Reject non-clothing images
-    if not classification.get("is_clothing", True):
-        return {
-            "score": 0,
-            "item_style": "",
-            "item_color": "",
-            "item_type": "",
-            "user_style": "",
-            "style_match": False,
-            "similar_items": 0,
-            "verdict": "На фото не удалось распознать одежду. Попробуйте загрузить фото вещи крупнее.",
-        }
-
-    # 2. Насколько вещь близка к ГАРДЕРОБУ пользователя.
-    #
-    # Раньше здесь звался /clip/search с параметрами k и user_id, которых у него
-    # нет в сигнатуре (ai-service/clip/routes.py: search берёт только image и
-    # хардкодит k=20). Он молча отдавал 20 вещей КАТАЛОГА, бонус min(30, 20*6)
-    # всегда упирался в потолок, и балл был константой: 100 при совпадении
-    # стиля, иначе 70. /clip/wardrobe-fit считает настоящий косинус к вещам
-    # именно этого пользователя.
-    fit = {}
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        fit_resp = await client.post(
-            f"{ai_service}/clip/wardrobe-fit",
-            files={"image": ("item.jpg", content, "image/jpeg")},
-            data={"user_id": user["id"]},
-        )
-        if fit_resp.status_code == 200:
-            fit = fit_resp.json()
-    similar = fit.get("nearest", [])
-
-    # 3. Get user's dominant style
-    style_result = await db.execute(
-        text("SELECT dominant_style, style_tags FROM user_profiles WHERE user_id = :uid"),
-        {"uid": user["id"]},
+    listing = "\n".join(
+        f"{i}: {w['item_name']} ({w.get('clothing_type') or '?'}, {w.get('color') or '?'})"
+        for i, w in wardrobe.items()
     )
-    profile = style_result.mappings().first()
-    dominant_style = (profile["dominant_style"] if profile else "") or "casual"
+    async def _clip_nearest() -> list:
+        # Дубли — по картинке (см. _DUPLICATE_SIM). CLIP недоступен — обходимся без.
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                r = await client.post(
+                    f"{settings.AI_SERVICE_URL or 'http://modemorph-ai:8000'}/clip/wardrobe-fit",
+                    files={"image": ("item.jpg", buf.getvalue(), "image/jpeg")},
+                    data={"user_id": user["id"]},
+                )
+                return r.json().get("nearest", []) if r.status_code == 200 else []
+        except Exception as e:
+            print(f"[style-check] CLIP недоступен: {e}")
+            return []
 
-    # 4. Compute compatibility
-    item_styles = classification.get("style_tags", [])
-    item_primary_style = item_styles[0] if item_styles else "casual"
-    style_match = item_primary_style == dominant_style
-
-    # 5. Балл — из измеренной близости, а не из строкового равенства стилей.
-    #
-    # style_match намеренно НЕ входит в балл: dominant_style агрегируется по
-    # сырому свободному тексту (cron.py), поэтому равенство строк здесь —
-    # ненадёжный сигнал. Он остаётся в ответе как справка.
-    score = _wardrobe_fit_score(fit.get("mean"), fit.get("max"))
-    if score is None:
-        # Сравнивать не с чем: гардероб пуст или вещам ещё не проставили
-        # эмбеддинги. Врать числом не будем — фронт покажет объяснение.
-        return {
-            "score": None,
-            "item_style": item_primary_style,
-            "item_color": classification.get("color", ""),
-            "item_type": classification.get("clothing_type")
-            or classification.get("non_garment")
-            or "",
-            "user_style": dominant_style,
-            "style_match": style_match,
-            "similar_items": 0,
-            "verdict": "Пока не с чем сравнить — добавьте несколько вещей в гардероб.",
-        }
-
-    return {
-        "score": score,
-        "item_style": item_primary_style,
-        "item_color": classification.get("color", ""),
-        # Canonical slug (components/style-check-sheet.tsx looks it up in
-        # CLOTHING_TYPE_LABELS); non_garment is the bag/hat/scarf answer, which
-        # has no slug and is shown as-is.
-        "item_type": classification.get("clothing_type")
-        or classification.get("non_garment")
-        or "",
-        "user_style": dominant_style,
-        "style_match": style_match,
-        "similar_items": len(similar),
-        "verdict": (
-            "Отлично подходит вашему стилю!" if score >= 80
-            else "Хорошо дополнит гардероб" if score >= 60
-            else "Интересный эксперимент — попробуйте!" if score >= 40
-            else "Не совсем ваш стиль, но почему бы и нет?"
+    result, nearest = await asyncio.gather(
+        _openrouter_chat(
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": _STYLE_CHECK_PROMPT.format(types=", ".join(sorted(SLOT_MAP)), wardrobe=listing)},
+                {"type": "image_url", "image_url": {"url": data_uri}},
+            ]}],
+            temperature=0.3, max_tokens=2000, response_format={"type": "json_object"},
         ),
+        _clip_nearest(),
+    )
+    body = result["choices"][0]["message"]["content"] or ""
+    try:
+        parsed = json_lib.loads(body[body.find("{"): body.rfind("}") + 1])
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Не получилось разобрать ответ")
+
+    if not parsed.get("is_clothing", True):
+        return {"is_clothing": False, "item": None, "duplicates": [], "outfits": [], "wardrobe_size": len(wardrobe)}
+
+    new_item, duplicates, outfits = _check_style_answer(parsed, wardrobe, nearest)
+
+    await record_usage_event(db, user["id"], "style_check", "check",
+                             meta={"outfits": len(outfits), "duplicates": len(duplicates)})
+    await db.commit()
+    return {
+        "is_clothing": True,
+        "item": new_item,
+        "duplicates": duplicates,
+        "outfits": outfits,
+        "wardrobe_size": len(wardrobe),
     }
