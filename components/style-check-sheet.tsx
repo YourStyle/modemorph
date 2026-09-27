@@ -102,10 +102,10 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
   const handleShare = async () => {
     if (!result?.item) return
     void log("style_check", "click", { action: "share", outfits: result.outfits.length })
-    let url = "https://t.me/modemorph_bot"
+    let url = "https://t.me/modemorph_ai_bot"
     try {
       const d = await api.get("/api/discounts/mine")
-      if (d?.referral?.code) url = `https://t.me/modemorph_bot?start=ref_${d.referral.code}`
+      if (d?.referral?.code) url = `https://t.me/modemorph_ai_bot?start=ref_${d.referral.code}`
     } catch {
       // без реферального кода делимся просто ссылкой на бота
     }
