@@ -577,6 +577,20 @@ async def generate_recommendations(
     profile_row = profile.first()
     gender = profile_row[0] if profile_row else None
 
+    # Платным — больше образов на главной. До 27.09.2026 тариф здесь не
+    # учитывался вовсе: платный видел медиану 22 образа, бесплатный 15, и то
+    # только за счёт большего гардероба. Платному читаем больше гардероба
+    # (раньше обрезалось на 60 вещах), больше вещей каталога и просим у модели
+    # вдвое больше образов.
+    from app.api.limits import _get_profile_id, _plan_of, FREE_PLAN
+    try:
+        paid = await _plan_of(db, await _get_profile_id(db, user["id"])) != FREE_PLAN
+    except HTTPException:
+        paid = False
+    wardrobe_limit, catalog_k = (150, 100) if paid else (60, 50)
+    task_line = ("Create 8-10 themed sections, each with 4-5 outfits. Total 35-50 outfits."
+                 if paid else "Create 5-7 themed sections, each with 3-4 outfits. Total 15-25 outfits.")
+
     # Curated capsule as style exemplars (cached per gender; "" if unavailable).
     capsule_guide = await capsule_style_guide(db, gender)
 
@@ -590,9 +604,9 @@ async def generate_recommendations(
                    has_print, image_url, user_id, temp_min, temp_max
             FROM wardrobe_user_items
             WHERE user_id = :uid AND COALESCE(is_hidden, false) = false
-            LIMIT 60
+            LIMIT :lim
         """),
-        {"uid": user["id"]},
+        {"uid": user["id"], "lim": wardrobe_limit},
     )
     wardrobe_items = [_safe_dict(r) for r in wardrobe_result.mappings().all()]
 
@@ -678,7 +692,7 @@ async def generate_recommendations(
             async with httpx.AsyncClient(timeout=15.0) as clip_client:
                 clip_resp = await clip_client.post(
                     f"{ai_url}/clip/recommend",
-                    json={"user_id": user["id"], "k": 50},
+                    json={"user_id": user["id"], "k": catalog_k},
                 )
                 if clip_resp.status_code == 200:
                     clip_payload = clip_resp.json()
@@ -825,7 +839,7 @@ async def generate_recommendations(
 
     system_prompt = f"""You are a top fashion stylist AI. Generate MANY complete outfit recommendations.
 {style_hint}
-TASK: Create 5-7 themed sections, each with 3-4 outfits. Total 15-25 outfits.
+TASK: {task_line}
 
 SECTION THEMES (pick what fits weather/wardrobe):
 "На каждый день", "В офис", "На свидание", "На прогулку", "Выходной день", "Спорт", "Вечерний выход", "Уютный день дома", "На встречу с друзьями"
@@ -876,7 +890,7 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
     logger.info(f"[Recs POST] Calling OpenRouter for user {user['id']}: {len(wardrobe_items)} user items, {len(partner_items)} partner items")
 
     # Call OpenRouter
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=90.0 if paid else 60.0) as client:
         resp = await client.post(
             OPENROUTER_URL,
             headers={
@@ -893,7 +907,7 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                 # Cap max_tokens — OpenRouter reserves the full amount for its
                 # credit check, and Gemini's uncapped default (~65535) 402s on a
                 # budget-limited key. 16k is ample for the sections JSON.
-                "max_tokens": 16384,
+                "max_tokens": 24576 if paid else 16384,
             },
         )
 
