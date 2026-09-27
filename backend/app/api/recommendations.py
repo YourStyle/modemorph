@@ -679,7 +679,7 @@ async def generate_recommendations(
     # (раньше обрезалось на 60 вещах), больше вещей каталога и просим у модели
     # вдвое больше образов.
     paid = await _is_paid(db, user["id"])
-    wardrobe_limit, catalog_k = (150, 100) if paid else (60, 50)
+    wardrobe_limit, catalog_k = (150, 300) if paid else (60, 50)
     task_line = ("Create 8-10 themed sections, each with 4-5 outfits. Total 35-50 outfits."
                  if paid else "Create 8-9 themed sections, each with 3-4 outfits. Total 24-36 outfits.")
     # ponytail: у бесплатного сверх _FREE_OPEN_SECTIONS секций уходят в закрытый тизер
@@ -925,7 +925,7 @@ async def generate_recommendations(
 
     mix_rules = ""
     if has_partners:
-        mix_rules = """- "mix" sections: mix [USER] + [PARTNER] items. At least 1 [USER] item per outfit. Create 2-3 such sections.
+        mix_rules = """- "mix" sections: mix [USER] + [PARTNER] items. At least 2 [USER] items per outfit — the partner item completes the user's own clothes, not the other way round. Create 2-3 such sections.
 - "partner_only" section: outfits entirely from [PARTNER] items. Create 1 such section."""
 
     capsule_block = f"\n{capsule_guide}\n" if capsule_guide else ""
@@ -938,7 +938,7 @@ SECTION THEMES (pick what fits weather/wardrobe):
 "На каждый день", "В офис", "На свидание", "На прогулку", "Выходной день", "Спорт", "Вечерний выход", "Уютный день дома", "На встречу с друзьями"
 
 SECTION TYPES (section_type):
-- "user_only" — outfits ONLY from [USER] items. Create 2-3 such sections.
+- "user_only" — outfits ONLY from [USER] items. Create 3-5 such sections: most outfits must be wearable from what the user already owns.
 {mix_rules}
 {capsule_block}
 MANDATORY RULES FOR EVERY OUTFIT:
