@@ -5,7 +5,7 @@ import { OutfitCard } from "@/components/outfit-card"
 import { GapShelf } from "@/components/gap-shelf"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Loader2, Camera } from "lucide-react"
+import { Sparkles, Loader2, Camera, Lock } from "lucide-react"
 import { HomeHeroSection } from "@/components/home-hero-section"
 import { useReconcileLimits } from "@/hooks/use-reconcile-limits";
 import { useFeature } from "@/hooks/use-feature";
@@ -52,6 +52,9 @@ interface LookSection {
   source?: "user_only" | "mix" | "partner_only" | "clip" | "ai" | "wardrobe_gap"
   source_label?: string
   rec_session_id?: string | null
+  // Закрытая секция бесплатного: только заголовки и картинки для размытого
+  // превью, вещей в ней нет — сервер их не отдаёт.
+  locked?: boolean
 }
 
 /** «1 вещь», «2 вещи», «5 вещей» — витрина считает вещи, а не образы. */
@@ -230,6 +233,8 @@ export default function HomePage() {
   const [generationError, setGenerationError] = useState(false)
   const [userLooks, setUserLooks] = useState<any[]>([])
   const [paywallOpen, setPaywallOpen] = useState(false);
+  // Пейволл из закрытых образов — апселл, а не «лимиты закончились».
+  const [paywallFromLocked, setPaywallFromLocked] = useState(false);
   const [visualSearchOpen, setVisualSearchOpen] = useState(false);
   const refreshingRef = useRef(false)
   const { log, consume } = useFeature()
@@ -577,7 +582,10 @@ export default function HomePage() {
                             <div key={`${section.title || "section"}-${sectionIndex}`} className="space-y-3 animate-fade-up" style={{ animationDelay: `${sectionIndex * 50}ms` }}>
                               {/* Section Header */}
                               <div className="flex items-center justify-between">
-                                <h2 className="text-h2 text-ink">{section.title || "Образы"}</h2>
+                                <h2 className="text-h2 text-ink flex items-center gap-2">
+                                  {section.title || "Образы"}
+                                  {section.locked && <Lock className="h-4 w-4 text-ink-2" aria-label="Для подписчиков" />}
+                                </h2>
                                 <span className="text-caption text-ink-2">
                           {section.source === "wardrobe_gap"
                               ? pluralItems(section.suggestions.reduce((n, s) => n + (s.items?.length ?? 0), 0))
@@ -588,7 +596,34 @@ export default function HomePage() {
                               {/* Дыры гардероба — витрина товаров, а не образы:
                                   внутри группы лежат взаимозаменяемые варианты
                                   одного слота, «Примерить» для них бессмысленно. */}
-                              {section.source === "wardrobe_gap" ? (
+                              {section.locked ? (
+                                  <div className="relative scroll-section -mx-4">
+                                    <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-6 pt-1 px-4 snap-x snap-mandatory">
+                                      {section.suggestions.map((suggestion, i) => (
+                                          <button
+                                              key={suggestion.id || `locked-${i}`}
+                                              type="button"
+                                              onClick={() => { setPaywallFromLocked(true); setPaywallOpen(true) }}
+                                              aria-label={`${suggestion.title || "Образ"} — доступно по подписке`}
+                                              className="relative flex-shrink-0 snap-start w-[calc(100vw-2rem)] max-w-96 rounded-xl overflow-hidden bg-white shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.08)] text-left"
+                                          >
+                                            <div className="grid grid-cols-2 gap-2 p-3 blur-md scale-105" aria-hidden>
+                                              {(suggestion.items ?? []).slice(0, 4).map((item: any, j: number) => (
+                                                  <div key={j} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                                                    {item.image_url && <img src={item.image_url} alt="" className="w-full h-full object-cover" />}
+                                                  </div>
+                                              ))}
+                                            </div>
+                                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/40 px-6 text-center">
+                                              <Lock className="h-6 w-6 text-ink" />
+                                              <span className="text-body font-semibold text-ink">{suggestion.title || "Образ"}</span>
+                                              <span className="rounded-full bg-ink px-4 py-2 text-caption text-white">Открыть с подпиской</span>
+                                            </div>
+                                          </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                              ) : section.source === "wardrobe_gap" ? (
                                   <GapShelf
                                       groups={section.suggestions
                                           .filter(Boolean)
@@ -645,16 +680,18 @@ export default function HomePage() {
 
         <SubscriptionSheet
             isOpen={paywallOpen}
-            source="limit:home"
-            onClose={() => setPaywallOpen(false)}
-            onSuccess={() => setPaywallOpen(false)}
+            variant={paywallFromLocked ? "explore" : "limitReached"}
+            source={paywallFromLocked ? "locked_looks:home" : "limit:home"}
+            onClose={() => { setPaywallOpen(false); setPaywallFromLocked(false) }}
+            onSuccess={() => { setPaywallOpen(false); setPaywallFromLocked(false) }}
         />
 
         {/* Partner items intro — shown once when user first sees recommendations */}
         <PartnerItemsIntroSheet
-          shouldShow={outfitSections.length > 0 && outfitSections.some(s => s.source === "clip" || s.suggestions?.some((sg: any) => sg.items?.some((i: any) => !i.user_id)))}
+          shouldShow={outfitSections.length > 0 && outfitSections.some(s => !s.locked && (s.source === "clip" || s.suggestions?.some((sg: any) => sg.items?.some((i: any) => !i.user_id))))}
           sampleImages={
             outfitSections
+              .filter(s => !s.locked)  // у закрытых вещей нет user_id — это не партнёрские
               .flatMap(s => s.suggestions || [])
               .flatMap((sg: any) => sg.items || [])
               .filter((i: any) => !i.user_id && i.image_url)

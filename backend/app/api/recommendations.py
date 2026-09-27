@@ -66,6 +66,102 @@ def _cap_accessories(items: list) -> list:
         kept.append(item)
     return kept
 
+# ── Судья образов ──
+# Генератор (flash-lite) пишет образы пачкой и сам себя не проверяет. Второй
+# вызов той же модели оценивает готовые образы 0-10, слабые выбрасываем,
+# остальные сортируем. Замер 27.09.2026 на 115 ручных образах: AUC 0.97-0.99
+# за $0.001 (дообученная Laya — 0.68). Все его промахи — неполные образы
+# («пиджак; брюки; ботинки» → 7-9), а их отсекает covers_body в _enrich_sections.
+_JUDGE_MIN_SCORE = 5
+_JUDGE_PROMPT = (
+    "Ты строгий стилист. Оцени каждый образ по шкале 0-10: насколько он хорош. Хороший образ: "
+    "вещи сочетаются по стилю и поводу; одевает человека целиком (верх и низ или платье, плюс обувь; "
+    "пиджак, кардиган, жилет, куртка или пальто без верха под ними — это НЕ одетый человек); "
+    "все вещи уместны при одной и той же погоде. Верни только JSON-массив "
+    '[{"i": номер, "score": число}] для всех образов, без пояснений.\n\n'
+)
+
+
+async def _judge_outfits(api_key: str, sections: list) -> list:
+    """Оценить образы одним вызовом на пачку, выбросить слабые, лучшие — вперёд.
+
+    Судья необязателен: любой сбой — образы остаются как были.
+    """
+    sugs = [s for sec in sections if sec.get("source") != "wardrobe_gap" for s in sec.get("suggestions", [])]
+    if not sugs:
+        return sections
+    try:
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            for b in range(0, len(sugs), 50):
+                batch = sugs[b:b + 50]
+                listing = "\n".join(
+                    f"{n + 1}. " + "; ".join(str(i.get("name") or "") for i in s.get("items", []))
+                    for n, s in enumerate(batch)
+                )
+                resp = await client.post(
+                    OPENROUTER_URL,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={"model": "google/gemini-2.5-flash-lite", "temperature": 0,
+                          "max_tokens": 3000,  # см. project_openrouter: без потолка 402
+                          "messages": [{"role": "user", "content": _JUDGE_PROMPT + listing}]},
+                )
+                resp.raise_for_status()
+                body = resp.json()["choices"][0]["message"]["content"]
+                start, end = body.find("["), body.rfind("]")
+                for o in json_lib.loads(body[start:end + 1]):
+                    n = int(o["i"]) - 1
+                    if 0 <= n < len(batch):
+                        batch[n]["score"] = float(o["score"])
+    except Exception as e:
+        logger.warning(f"[Recs judge] пропущен: {e}")
+        return sections
+    for sec in sections:
+        if sec.get("source") == "wardrobe_gap":
+            continue
+        kept = [s for s in sec.get("suggestions", []) if s.get("score", 10) >= _JUDGE_MIN_SCORE]
+        dropped = len(sec.get("suggestions", [])) - len(kept)
+        if dropped:
+            logger.info(f"[Recs judge] «{sec.get('title')}»: выброшено {dropped} слабых образов")
+        sec["suggestions"] = sorted(kept, key=lambda s: -s.get("score", 0))
+    return [s for s in sections if s.get("suggestions")]
+
+
+# ── Закрытые образы для бесплатных ──
+# Бесплатный получает свои обычные ~6 секций; секции сверх этого генерируются
+# так же, но отдаются закрытыми — заголовок и картинки для размытого превью,
+# без вещей. Блок ставится при выдаче, не при генерации: оплатил — и те же
+# образы открылись без перегенерации.
+_FREE_OPEN_SECTIONS = 6
+
+
+async def _is_paid(db: AsyncSession, user_id: str) -> bool:
+    from app.api.limits import _get_profile_id, _plan_of, FREE_PLAN
+    try:
+        return await _plan_of(db, await _get_profile_id(db, user_id)) != FREE_PLAN
+    except HTTPException:
+        return False
+
+
+def _lock_for_free(sections: list, paid: bool) -> list:
+    if paid:
+        return sections
+    out, opened = [], 0
+    for sec in sections:
+        if sec.get("source") == "wardrobe_gap" or opened < _FREE_OPEN_SECTIONS:
+            opened += sec.get("source") != "wardrobe_gap"
+            out.append(sec)
+            continue
+        out.append({
+            "title": sec.get("title"), "source": sec.get("source"), "locked": True,
+            "suggestions": [
+                {"id": s.get("id"), "title": s.get("title"),
+                 "items": [{"image_url": i.get("image_url")} for i in s.get("items", [])[:4]]}
+                for s in sec.get("suggestions", [])
+            ],
+        })
+    return out
+
+
 # Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand).
 # See backend/brand.py — conflating the two is what put "ЦУМ" on a Saint Laurent
 # coat, on the card and in the Gemini prompt.
@@ -553,7 +649,7 @@ async def get_recommendations(
         if sections:
             enriched = await _enrich_sections(db, sections, user["id"])
             is_stale = str(row["run_date"]) != today
-            return {"sections": enriched, "stale": is_stale}
+            return {"sections": _lock_for_free(enriched, await _is_paid(db, user["id"])), "stale": is_stale}
 
     return {"sections": [], "stale": True}
 
@@ -582,14 +678,11 @@ async def generate_recommendations(
     # только за счёт большего гардероба. Платному читаем больше гардероба
     # (раньше обрезалось на 60 вещах), больше вещей каталога и просим у модели
     # вдвое больше образов.
-    from app.api.limits import _get_profile_id, _plan_of, FREE_PLAN
-    try:
-        paid = await _plan_of(db, await _get_profile_id(db, user["id"])) != FREE_PLAN
-    except HTTPException:
-        paid = False
+    paid = await _is_paid(db, user["id"])
     wardrobe_limit, catalog_k = (150, 100) if paid else (60, 50)
     task_line = ("Create 8-10 themed sections, each with 4-5 outfits. Total 35-50 outfits."
-                 if paid else "Create 5-7 themed sections, each with 3-4 outfits. Total 15-25 outfits.")
+                 if paid else "Create 8-9 themed sections, each with 3-4 outfits. Total 24-36 outfits.")
+    # ponytail: у бесплатного сверх _FREE_OPEN_SECTIONS секций уходят в закрытый тизер
 
     # Curated capsule as style exemplars (cached per gender; "" if unavailable).
     capsule_guide = await capsule_style_guide(db, gender)
@@ -767,7 +860,7 @@ async def generate_recommendations(
         # "ЦУМ" (the old bug, 62% of the catalog) and beats presenting one of
         # 3239 inferred ЦУМ brands as merchant fact in a user-visible title.
         _partner_payload = []
-        for i in partner_items[:50]:
+        for i in partner_items[:catalog_k]:
             brand_key, brand_value = prompt_brand_field(i.get("brand"), i.get("brand_source"))
             has_brand_guess = has_brand_guess or brand_key == "brand_guess"
             _partner_payload.append({
@@ -1028,6 +1121,8 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
                 "suggestions": suggestions,
             })
 
+    sections = await _judge_outfits(api_key, sections)
+
     # Wardrobe gap analysis — surface missing slots so the user sees
     # genuinely *new* categories, not variations of what they already own.
     # Runs independently of Gemini and is cheap (CLIP text retrieval only).
@@ -1070,7 +1165,9 @@ Weather: {weather.get('city_name', 'Москва')}, {weather.get('temperature',
     await db.commit()
 
     logger.info(f"[Recs POST] Generated {len(sections)} sections for user {user['id']}")
-    return sections
+    # Главная показывает ответ POST сразу, поэтому он проходит те же фильтры
+    # (covers_body и др.) и тот же замок, что и GET. Раньше уходили сырые секции.
+    return _lock_for_free(await _enrich_sections(db, sections, user["id"]), paid)
 
 
 @router.delete("")
