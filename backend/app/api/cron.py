@@ -25,6 +25,7 @@ from app.services.weather_rules import TEMP_RANGES, temp_ok
 from app.services.catalog_filters import gender_ok, _FEMALE_KEYWORDS, _MALE_KEYWORDS
 from kids_detect import is_kids_item
 from app.services.capsule import capsule_style_guide
+from app.api.recommendations import _is_paid, _judge_outfits
 # Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand) —
 # see backend/brand.py.
 from brand import BRAND_GUESS_PROMPT_RULE, prompt_brand_field, retailer_from_notes
@@ -113,6 +114,7 @@ async def _clip_recommend(user_id: str, k: int = 50) -> tuple[list, str | None]:
 async def _gemini_organize(
     user_items: list, partner_items: list, weather: dict, gender: str,
     dominant_style: str = "", sections_count: int = 3, capsule_guide: str = "",
+    user_cap: int = 50, partner_cap: int = 50,
 ) -> list | None:
     """Use OpenRouter Gemini to organize items into themed outfit sections."""
     api_key = settings.OPENROUTER_API_KEY
@@ -120,7 +122,7 @@ async def _gemini_organize(
         return None
 
     user_desc = []
-    for i in user_items[:50]:
+    for i in user_items[:user_cap]:
         name = i.get("item_name", "?")
         ct = i.get("clothing_type", "")
         color = i.get("shade") or i.get("color", "")
@@ -137,7 +139,7 @@ async def _gemini_organize(
 
     partner_desc = []
     has_brand_guess = False
-    for i in partner_items[:50]:
+    for i in partner_items[:partner_cap]:
         name = i.get("item_name") or i.get("name", "?")
         ct = i.get("clothing_type", "")
         # The merchant's exact colour when there is one: `color` is the hue
@@ -186,7 +188,7 @@ async def _gemini_organize(
 
     mix_rules = ""
     if has_partners:
-        mix_rules = """- В разделах "mix" — микс вещей пользователя [USER] и партнёрских [PARTNER]. Минимум 1 вещь [USER] в каждом образе.
+        mix_rules = """- В разделах "mix" — микс вещей пользователя [USER] и партнёрских [PARTNER]. Минимум 2 вещи [USER] в каждом образе — вещь партнёра дополняет гардероб пользователя, а не наоборот.
 - В разделах "partner_only" — образы целиком из [PARTNER] вещей. Миксуй бренды или собирай из одного."""
 
     # For small wardrobes: lean heavily on partner items
@@ -197,7 +199,7 @@ async def _gemini_organize(
 - "partner_only" — только [PARTNER]. Создай 2-3 раздела — у пользователя мало вещей, поэтому подбери ему МНОГО готовых образов из рекомендованных."""
     elif has_partners:
         section_types_block = f"""ТИПЫ РАЗДЕЛОВ (section_type):
-- "user_only" — образы ТОЛЬКО из [USER] вещей. Создай 2-3 таких раздела.
+- "user_only" — образы ТОЛЬКО из [USER] вещей. Создай 3-5 таких разделов: большинство образов должно собираться из того, что у пользователя уже есть.
 - "mix" — микс [USER] + [PARTNER]. Создай 2-3 таких раздела.
 - "partner_only" — только [PARTNER]. Создай 1 раздел."""
     else:
@@ -477,6 +479,10 @@ async def cron_generate_recommendations(
             partner_items = []
             clip_rec_session_id = None
             clip_k = 100 if item_count < 6 else 80
+            # Платным — больше каталога и больше разделов (как в POST /recommendations).
+            paid = await _is_paid(db, user_id)
+            if paid:
+                clip_k = 300
             if use_clip:
                 clip_results, clip_rec_session_id = await _clip_recommend(user_id, k=clip_k)
                 if clip_results:
@@ -616,9 +622,13 @@ async def cron_generate_recommendations(
             # разделов, то есть 9-20 образов на ночь. Партнёрских кандидатов в
             # пуле 60-100, материала на большее хватает.
             n_sections = min(10, max(5, len(user_items) // 2 + 3))
+            # Бесплатному — хотя бы 8: сверх _FREE_OPEN_SECTIONS уходит в закрытый
+            # тизер при выдаче. Платному — 10 разделов по 4-5 образов.
+            n_sections = 10 if paid else max(8, n_sections)
             capsule_guide = await capsule_style_guide(db, gender)
             gemini_sections = await _gemini_organize(
                 user_items, partner_items, weather, gender, dominant_style, n_sections, capsule_guide,
+                user_cap=150 if paid else 50, partner_cap=300 if paid else 50,
             )
 
             VALID_TYPES = {"user_only", "mix", "partner_only"}
@@ -675,6 +685,7 @@ async def cron_generate_recommendations(
                             "suggestions": suggestions,
                         })
 
+            sections = await _judge_outfits(settings.OPENROUTER_API_KEY, sections)
             if not sections:
                 results["failed"] += 1
                 continue
