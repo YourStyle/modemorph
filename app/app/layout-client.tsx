@@ -4,6 +4,7 @@ import type React from "react"
 import { useEffect } from "react"
 import { usePathname } from "next/navigation"
 import { api } from "@/lib/api-client"
+import { REF_CODE_KEY } from "@/lib/referral"
 import { TopNavigation } from "@/components/top-navigation"
 import { BottomNavigation } from "@/components/bottom-navigation"
 import { BackgroundTasksWidget } from "@/components/background-tasks-widget"
@@ -46,6 +47,18 @@ export default function AppClientLayout({
     const webParam = q.get("bc") ? `bc${q.get("bc")}` : q.get("ap") ? `ap${q.get("ap")}` : undefined
     const param: string | undefined =
       (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param || webParam
+    // Приглашение друга: t.me/<bot>?startapp=ref_<код> (lib/referral.ts).
+    // Запоминаем код до оплаты — лист подписки подставит его в промокод.
+    const ref = param?.match(/^ref_([A-Za-z0-9_-]{3,40})$/)?.[1]
+    if (ref) {
+      try {
+        if (sessionStorage.getItem(`referral_open:${ref}`)) return
+        sessionStorage.setItem(`referral_open:${ref}`, "1")
+        localStorage.setItem(REF_CODE_KEY, ref)
+      } catch {}
+      void api.post("/api/usage/log", { feature: "referral_open", action: "click", meta: { code: ref } }).catch(() => {})
+      return
+    }
     const m = param?.match(/^(bc|ap)(\d+)$/)
     if (!m) return
     const feature = m[1] === "bc" ? "broadcast_open" : "push_open"

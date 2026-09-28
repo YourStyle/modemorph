@@ -5,6 +5,7 @@ import { CommonSheet } from "./common-sheet"
 import { Upload, Loader2, Sparkles, AlertCircle, Send } from "lucide-react"
 import { toast } from "sonner"
 import { api } from "@/lib/api-client"
+import { referralLink } from "@/lib/referral"
 import { useFeature } from "@/hooks/use-feature"
 
 interface CheckItem {
@@ -105,7 +106,7 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
     let url = "https://t.me/modemorph_ai_bot"
     try {
       const d = await api.get("/api/discounts/mine")
-      if (d?.referral?.code) url = `https://t.me/modemorph_ai_bot?start=ref_${d.referral.code}`
+      if (d?.referral?.code) url = referralLink(d.referral.code)
     } catch {
       // без реферального кода делимся просто ссылкой на бота
     }

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import { startRoboPayment } from "@/lib/payments"
 import { toast } from "@/hooks/use-toast"
 import { api } from "@/lib/api-client"
+import { REF_CODE_KEY } from "@/lib/referral"
 
 type Plan = "yearly" | "monthly" | "weekly"
 
@@ -80,6 +81,14 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
         .then((d) => {
           setOffer(d?.offer || null)
           if (d?.offer?.code) setPromo(d.offer.code)
+          // Код друга из ссылки-приглашения (запомнен в layout-client). Личное
+          // предложение важнее: оно выдано под этого человека.
+          else {
+            try {
+              const ref = localStorage.getItem(REF_CODE_KEY)
+              if (ref) setPromo(ref)
+            } catch {}
+          }
         })
         .catch(() => setOffer(null))
     }
@@ -114,11 +123,21 @@ export function SubscriptionSheet({ isOpen, onClose, onSuccess, variant = "limit
       .catch((e) => {
         if (cancelled) return
         setApplied(null)
+        const raw = String(e?.message || "")
+        // Код друга подставили мы, а не человек: если сервер его отклонил (свой
+        // же код, уже использован), молча убираем, а не пугаем ошибкой. На сбое
+        // сети код оставляем — он ещё пригодится.
+        try {
+          if (code === localStorage.getItem(REF_CODE_KEY) && /\b4\d\d\b/.test(raw)) {
+            localStorage.removeItem(REF_CODE_KEY)
+            setPromo("")
+            return
+          }
+        } catch {}
         // Бэкенд объясняет причину словами («срок истёк», «уже применяли»),
         // и это единственное, что человеку помогает. api-client кладёт тело
         // ответа в message целиком — достаём detail оттуда, а не показываем
         // одинаковое «код недействителен» на все случаи.
-        const raw = String(e?.message || "")
         const detail = raw.match(/"detail"\s*:\s*"([^"]+)"/)?.[1]
         setPromoError(detail || (raw.includes("400") ? "Код не подошёл" : ""))
       })

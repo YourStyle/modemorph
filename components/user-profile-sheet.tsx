@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch"
 import { SubscriptionSheet } from "./subscription-sheet"
 import { normalizeImageFile } from "@/lib/image-normalize"
 import { api } from "@/lib/api-client"
+import { referralLink } from "@/lib/referral"
 import { cn } from "@/lib/utils"
 import { ArrowRight, ChevronDown, MapPin } from "lucide-react"
 import { CityPicker } from "@/components/city-picker"
@@ -418,7 +419,7 @@ export function UserProfileSheet({
                         <button
                           type="button"
                           onClick={() => {
-                            const url = `https://t.me/modemorph_ai_bot?start=ref_${referral.code}`
+                            const url = referralLink(referral.code)
                             const text = `Собираю образы из своего гардероба в ModeMorph. Заходи — тебе ${referral.percent_off}% скидки: ${url}`
                             // В Telegram открываем родной шэринг, вне его —
                             // копируем ссылку. navigator.share внутри TMA на
