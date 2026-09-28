@@ -18,8 +18,8 @@ type OutfitItem = {
   material?: string | null
   url?: string | null
   size_type?: string | null
-  has_print?: string | null
-  has_details?: string | null
+  has_print?: string | boolean | null
+  has_details?: string | boolean | null
   notes?: string | null
   is_basic?: boolean
   basic_item_id?: number | null
@@ -46,7 +46,9 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
     setAddingItems((prev) => new Set([...prev, item.id]))
 
     try {
-      const response = await api.post("/api/wardrobe-user-items", {
+      // api.post бросает исключение на любой не-2xx и возвращает уже разобранный
+      // JSON ({ data }), так что отдельной проверки статуса тут не нужно.
+      await api.post("/api/wardrobe-user-items", {
         item_name: item.name,
         image_url: item.image_url,
         color: item.color || "",
@@ -66,11 +68,6 @@ export function OutfitItemsSheet({ isOpen, onClose, items, outfitTitle }: Outfit
         basic_material_id: null,
         clothing_type: null,
       })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to add item to wardrobe")
-      }
 
       setAddedItems((prev) => new Set([...prev, item.id]))
       toast.success(`«${item.name || "Вещь"}» добавлена в гардероб`)
