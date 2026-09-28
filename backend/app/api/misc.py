@@ -1016,6 +1016,41 @@ def _phash_hamming(a: str | None, b: str | None) -> int | None:
 # re-encoding noise but tight enough that distinct portraits don't collide.
 _VTON_ECHO_HAMMING_THRESHOLD = 6
 
+# Одного dHash мало: на 9×8 ч/б он не видит смену ЦВЕТА одежды при той же позе и
+# светлом фоне. Живой прогон 28.09.2026: удачные примерки (чёрный жакет поверх
+# футболки; блузка + юбка) имели dist 3–6 и отбраковывались как «вернула исходное
+# фото» — человек получал ошибку вместо готовой примерки. Средняя разница цвета
+# на 32×32 RGB разводит случаи в 15 раз: настоящий повтор (пережатый/обрезанный
+# аватар) 0.3–0.9, смена одежды 13–20. Повтор = хеш близок И цвет почти тот же.
+_VTON_ECHO_COLOR_DIFF = 4.0
+
+
+def _data_uri_color_diff(a: str | None, b: str | None) -> float | None:
+    """Средняя по каналам разница цвета двух data URI на 32×32 (0–255)."""
+    try:
+        imgs = []
+        for uri in (a, b):
+            m = re.match(r"data:image/\w+;base64,(.+)", uri or "")
+            if not m:
+                return None
+            imgs.append(Image.open(io.BytesIO(base64.b64decode(m.group(1)))).convert("RGB")
+                        .resize((32, 32), Image.BILINEAR))
+        from PIL import ImageChops, ImageStat
+        return sum(ImageStat.Stat(ImageChops.difference(*imgs)).mean) / 3
+    except Exception:
+        return None
+
+
+def _vton_is_echo(avatar_b64: str, avatar_md5, avatar_phash, generated: str) -> tuple[bool, int | None, float | None]:
+    if avatar_md5 and avatar_md5 == _data_uri_md5(generated):
+        return True, 0, 0.0
+    dist = _phash_hamming(avatar_phash, _data_uri_phash(generated))
+    if dist is None or dist > _VTON_ECHO_HAMMING_THRESHOLD:
+        return False, dist, None
+    cdiff = _data_uri_color_diff(avatar_b64, generated)
+    # Цвет не посчитался — остаёмся на прежнем правиле (только хеш).
+    return (cdiff is None or cdiff < _VTON_ECHO_COLOR_DIFF), dist, cdiff
+
 
 async def _vton_refine_face(avatar_b64: str, generated_b64: str) -> str | None:
     """Send original avatar + generated result, ask model to correct the face
@@ -1214,25 +1249,17 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     avatar_hash = _data_uri_md5(avatar_b64)
     pass1_hash = _data_uri_md5(image_data)
     pass1_phash = _data_uri_phash(image_data)
-    pass1_dist = _phash_hamming(avatar_phash, pass1_phash)
-    pass1_echo = (
-        (avatar_hash and pass1_hash and avatar_hash == pass1_hash)
-        or (pass1_dist is not None and pass1_dist <= _VTON_ECHO_HAMMING_THRESHOLD)
-    )
+    pass1_echo, pass1_dist, pass1_cdiff = _vton_is_echo(avatar_b64, avatar_hash, avatar_phash, image_data)
 
     if pass1_echo:
-        print(f"[vton] Pass 1 echoed avatar (md5={pass1_hash}, phash_dist={pass1_dist}) — retrying once")
+        print(f"[vton] Pass 1 echoed avatar (md5={pass1_hash}, phash_dist={pass1_dist}, color_diff={pass1_cdiff}) — retrying once")
         # A "fresh roll" at temperature 0.2 is nearly the same roll: prod
         # 2026-09-07 11:42 got dist 6 then dist 5 for the same avatar. Retry hot.
         retry = await _run_pass1(temperature=0.8)
         if retry:
             retry_phash = _data_uri_phash(retry)
-            retry_dist = _phash_hamming(avatar_phash, retry_phash)
             retry_md5 = _data_uri_md5(retry)
-            still_echo = (
-                (avatar_hash and retry_md5 and avatar_hash == retry_md5)
-                or (retry_dist is not None and retry_dist <= _VTON_ECHO_HAMMING_THRESHOLD)
-            )
+            still_echo, retry_dist, _ = _vton_is_echo(avatar_b64, avatar_hash, avatar_phash, retry)
             if still_echo:
                 # Keep what we rejected. dHash ≤ 6 on a 9×8 thumbnail cannot tell
                 # "avatar echoed" from "portrait where the garment is a small
