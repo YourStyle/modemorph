@@ -529,24 +529,6 @@ def push_keys() -> tuple[str, str]:
 
 # ────────────────────────────── партнёры ──────────────────────────────
 
-_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-PARTNER_CABINET_SQL = os.path.join(_REPO, "sql", "partner_cabinet.sql")
-
-
-def ensure_partner_cabinet_schema():
-    """partner_api_tokens / partner_api_usage / partner_feeds, wardrobe_items.feed_id
-    и wardrobe_items.price не создаёт НИ ОДНА миграция (см. test_e2e_partner::test_migrations_create_partner_cabinet_tables),
-    поэтому на базе «с нуля» кабинет падает 500 на первом же токене. Чтобы покрыть
-    сам кабинет, дотягиваем схему её же определением из репозитория
-    (sql/partner_cabinet.sql, всё через IF NOT EXISTS — повторный вызов ничего не делает)."""
-    with open(PARTNER_CABINET_SQL, encoding="utf-8") as f:
-        sql_run(f.read())
-    # wardrobe_items.price пишут оба импортёра фидов (cron process-feeds и
-    # import-feeds, import_catalog.py) и читает генерация подборок, а миграции
-    # этой колонки тоже нет. Тип на проде в репозитории не записан — NUMERIC.
-    sql_run("ALTER TABLE wardrobe_items ADD COLUMN IF NOT EXISTS price NUMERIC")
-
-
 def make_partner(client, *, company: str | None = None, approve: bool = True, admin: "U | None" = None):
     """Партнёр так, как он появляется в жизни: регистрация в кабинете, затем
     одобрение админом через /api/admin/partners. Возвращает (пользователь, partner_id)."""

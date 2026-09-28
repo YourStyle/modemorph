@@ -24,7 +24,7 @@ if "DATABASE_URL" not in os.environ:
 
 from app.api.e2e_harness import *  # noqa: E402,F401,F403
 from app.api.e2e_harness import (  # noqa: E402
-    add_catalog_item, ensure_partner_cabinet_schema, make_partner, make_user, png, q, q1,
+    add_catalog_item, make_partner, make_user, png, q, q1,
 )
 
 SHOP = "https://shop.e2e"
@@ -38,11 +38,6 @@ def _sha(s: str) -> str:
 
 # ───────────────────────────── схема ─────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason=(
-    "БАГ: миграции не создают partner_api_tokens, partner_api_usage, partner_feeds, "
-    "wardrobe_items.feed_id (есть только в sql/partner_cabinet.sql) и wardrobe_items.price "
-    "(нет нигде); на базе с нуля кабинет (токены, фиды, /usage, /api/v1/vton) и оба "
-    "импортёра фидов (process-feeds, import-feeds) падают"))
 def test_migrations_create_partner_cabinet_tables():
     """Кабинет пишет в partner_api_tokens, partner_api_usage, partner_feeds и
     wardrobe_items.feed_id — а создаёт их только sql/partner_cabinet.sql вне
@@ -59,13 +54,6 @@ def test_migrations_create_partner_cabinet_tables():
         if not re.search(rf"add column (if not exists )?{col}\b", sql):
             missing.append(f"wardrobe_items.{col}")
     assert not missing, "миграции не создают: " + ", ".join(missing)
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _cabinet_schema():
-    # Намеренно ПОСЛЕ проверки выше по смыслу: схема дотягивается файлом из
-    # репозитория, чтобы покрыть сам кабинет, а не только констатировать 500.
-    ensure_partner_cabinet_schema()
 
 
 # ─────────────────────── регистрация и одобрение ───────────────────────

@@ -800,6 +800,15 @@ async def cron_train_lightgcn(request: Request):
         return {"error": str(e)}
 
 
+def _hide_reason(item: dict) -> str | None:
+    """Причина скрытия нового товара фида (см. миграцию 052) или None — показывать."""
+    if not item.get("flatlay_checked"):
+        return "unchecked"
+    if item.get("has_person"):
+        return "has_person"
+    return None
+
+
 @router.post("/process-feeds")
 async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db)):
     """Process pending partner XML feeds — parse YML, insert items into wardrobe_items."""
@@ -857,10 +866,11 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
                             if data.get("url"):
                                 item["image_url"] = data["url"]
                             item["has_person"] = bool(data.get("has_person"))
+                            item["flatlay_checked"] = True
                             if item["has_person"]:
                                 person_count += 1
                     except Exception as e:
-                        logger.debug(f"[ProcessFeeds] pick-flatlay failed for item: {e}")
+                        logger.warning(f"[ProcessFeeds] pick-flatlay failed for item: {e}")
             logger.info(f"[ProcessFeeds] Flat-lay selection done ({person_count} items flagged as model-photo)")
 
         imported = 0
@@ -868,13 +878,23 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
 
         for item in parsed["items"]:
             notes = f"{item['source']}:{item['source_sku']}"
-            existing = await db.execute(text("SELECT id FROM wardrobe_items WHERE notes = :notes LIMIT 1"), {"notes": notes})
+            # Дедуп внутри своего партнёра: одинаковое название магазина у двух
+            # партнёров (или совпавшее с источником Admitad, например SELA) раньше
+            # отправляло весь второй фид в skipped (e2e 28.09.2026).
+            existing = await db.execute(
+                text("SELECT id FROM wardrobe_items WHERE notes = :notes AND partner_id IS NOT DISTINCT FROM :pid LIMIT 1"),
+                {"notes": notes, "pid": partner_id},
+            )
             if existing.first():
                 skipped += 1
                 continue
 
             # Model-photo items get auto-hidden — admin can review and un-hide if needed.
-            is_hidden = bool(item.get("has_person"))
+            # Не проверенное pick-flatlay (CLIP лежал/не настроен) тоже скрыто: иначе
+            # фото на моделях уходили в каталог без проверки — ровно то, что
+            # запрещает правило в CLAUDE.md.
+            reason = _hide_reason(item)
+            is_hidden = reason is not None
             # `style` is deliberately absent from the column list (it used to be
             # the literal 'Casual'): no feed and no merchant page publishes a
             # style, so writing one here is fake markup. Measured 2026-08-13 —
@@ -883,9 +903,10 @@ async def cron_process_feeds(request: Request, db: AsyncSession = Depends(get_db
             # used to be left NULL here while import_catalog.py wrote them, so the
             # same offer got different markup depending on which path imported it.
             await db.execute(text("""
-                INSERT INTO wardrobe_items (item_name, description, image_url, url, clothing_type, color, shade, material, gender, is_hidden, is_basic, notes, source_sku, partner_id, feed_id, price)
-                VALUES (:name, :desc, :img, :url, :ct, :color, :shade, :material, :gender, :hidden, false, :notes, :sku, :pid, :fid, :price)
+                INSERT INTO wardrobe_items (item_name, description, image_url, url, clothing_type, color, shade, material, gender, is_hidden, hidden_reason, is_basic, notes, source_sku, partner_id, feed_id, price)
+                VALUES (:name, :desc, :img, :url, :ct, :color, :shade, :material, :gender, :hidden, :reason, false, :notes, :sku, :pid, :fid, :price)
             """), {
+                "reason": reason,
                 "name": item["item_name"], "desc": item["description"], "img": item["image_url"],
                 "url": item["url"], "ct": item["clothing_type"], "color": item["color"],
                 "shade": item["shade"], "material": item["material"],
@@ -1165,7 +1186,9 @@ async def sync_feeds(request: Request, db: AsyncSession = Depends(get_db)):
                 hidden = 0
                 if stale_ids and stale_pct >= STALE_THRESHOLD_PCT:
                     await db.execute(
-                        text("UPDATE wardrobe_items SET is_hidden = true WHERE id = ANY(:ids)"),
+                        # Причина нужна, чтобы import-feeds вернул товар, когда он снова
+                        # появится в фиде (миграция 052).
+                        text("UPDATE wardrobe_items SET is_hidden = true, hidden_reason = 'gone_from_feed' WHERE id = ANY(:ids)"),
                         {"ids": stale_ids},
                     )
                     hidden = len(stale_ids)
@@ -1232,11 +1255,17 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
                 parsed = parse_yml_feed(resp.text, source_override=source_name, sku_prefer_model=True)
 
             # 2. Drop offers already in the DB; cap NEW imports at `limit`.
-            rows = await db.execute(
-                text("SELECT notes FROM wardrobe_items WHERE notes LIKE :p"),
+            rows = (await db.execute(
+                text("SELECT notes, hidden_reason FROM wardrobe_items WHERE notes LIKE :p"),
                 {"p": f"{source_name}:%"},
-            )
-            existing = {r[0].split(":", 1)[1] for r in rows.all() if ":" in (r[0] or "")}
+            )).all()
+            existing = {r[0].split(":", 1)[1] for r in rows if ":" in (r[0] or "")}
+            # Скрытые с причиной gone_from_feed/unchecked возвращаются, если оффер
+            # снова в фиде и проходит pick-flatlay. Раньше sync только прятал, а
+            # import считал их уже импортированными — товар, на день ушедший из
+            # наличия, пропадал навсегда (e2e 28.09.2026).
+            revivable = {r[0].split(":", 1)[1] for r in rows
+                         if ":" in (r[0] or "") and r[1] in ("gone_from_feed", "unchecked")}
 
             # Rows keyed under a SKU scheme this feed no longer uses. Not fatal
             # and not silently swallowed: at ElytS and 2moodstore <model> turned
@@ -1257,12 +1286,13 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
                 new_items.append(item)
                 if limit and len(new_items) >= limit:
                     break
+            revive_items = [i for i in parsed["items"] if i.get("source_sku") in revivable]
 
             # 3. pick-flatlay every new item; auto-hide model photos.
             flagged = 0
-            if ai_url and new_items:
+            if ai_url and (new_items or revive_items):
                 async with httpx.AsyncClient(timeout=20.0) as client:
-                    for item in new_items:
+                    for item in new_items + revive_items:
                         pics = item.get("all_pictures") or []
                         if not pics:
                             continue
@@ -1272,11 +1302,26 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
                                 d = r.json()
                                 if d.get("url"):
                                     item["image_url"] = d["url"]
+                                item["flatlay_checked"] = True
                                 if d.get("has_person"):
                                     item["has_person"] = True
                                     flagged += 1
                         except Exception as e:
-                            logger.debug(f"[import-feeds] pick-flatlay failed: {e}")
+                            logger.warning(f"[import-feeds] pick-flatlay failed: {e}")
+
+            # 3b. Вернуть в каталог офферы, которые снова в фиде (или теперь проверены).
+            revived = 0
+            for item in revive_items:
+                reason = _hide_reason(item)
+                res = await db.execute(text("""
+                    UPDATE wardrobe_items
+                    SET is_hidden = :hidden, hidden_reason = :reason,
+                        image_url = COALESCE(:img, image_url)
+                    WHERE notes = :notes AND hidden_reason IN ('gone_from_feed', 'unchecked')
+                """), {"hidden": reason is not None, "reason": reason,
+                       "img": item.get("image_url") if item.get("flatlay_checked") else None,
+                       "notes": f"{source_name}:{item['source_sku']}"})
+                revived += (reason is None) * (res.rowcount or 0)
 
             # 4. Insert.
             imported = 0
@@ -1289,16 +1334,17 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
                 await db.execute(text("""
                     INSERT INTO wardrobe_items
                         (item_name, description, image_url, url, clothing_type, color,
-                         shade, material, gender, is_hidden, is_basic, notes, source_sku, price,
+                         shade, material, gender, is_hidden, hidden_reason, is_basic, notes, source_sku, price,
                          brand, brand_source)
                     VALUES (:name, :desc, :img, :url, :ct, :color, :shade, :material, :gender,
-                            :hidden, false, :notes, :sku, :price, :brand, :brand_source)
+                            :hidden, :reason, false, :notes, :sku, :price, :brand, :brand_source)
                 """), {
                     "name": item["item_name"], "desc": item["description"],
                     "img": item["image_url"], "url": item["url"],
                     "ct": item["clothing_type"], "color": item["color"],
                     "shade": item["shade"], "material": item["material"],
-                    "gender": item["gender"], "hidden": bool(item.get("has_person")),
+                    "gender": item["gender"], "hidden": _hide_reason(item) is not None,
+                    "reason": _hide_reason(item),
                     "notes": f"{source_name}:{item['source_sku']}",
                     "sku": item["source_sku"], "price": item["price"],
                     "brand": item.get("brand"), "brand_source": item.get("brand_source"),
@@ -1312,7 +1358,7 @@ async def cron_import_feeds(request: Request, db: AsyncSession = Depends(get_db)
             with_brand = sum(1 for i in new_items if i.get("brand"))
             results[source_name] = {
                 "feed_items": len(parsed["items"]), "new": len(new_items),
-                "imported": imported, "flagged_person": flagged,
+                "imported": imported, "flagged_person": flagged, "revived": revived,
                 "skipped_kids": parsed["skippedKids"],
                 "with_brand": with_brand,
                 # Which tag ended up as the dedup key, and how many DB rows are

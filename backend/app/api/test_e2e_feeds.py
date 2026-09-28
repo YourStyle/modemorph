@@ -29,7 +29,7 @@ if "DATABASE_URL" not in os.environ:
 
 from app.api.e2e_harness import *  # noqa: E402,F401,F403
 from app.api.e2e_harness import (  # noqa: E402
-    RUN, add_catalog_item, cron, ensure_partner_cabinet_schema, make_partner, q, q1,
+    RUN, add_catalog_item, cron, make_partner, q, q1,
 )
 
 FEED_IMG = "http://img.e2e/feed"
@@ -88,11 +88,6 @@ def flatlay(urls: list[str]) -> dict:
 
 def flatlay_calls(world) -> list[list[str]]:
     return [b["urls"] for p, b in world.clip_json if p == "/clip/pick-flatlay"]
-
-
-@pytest.fixture(scope="module", autouse=True)
-def _schema():
-    ensure_partner_cabinet_schema()  # partner_feeds / feed_id / price — см. test_e2e_partner
 
 
 @pytest.fixture(autouse=True)
@@ -175,11 +170,6 @@ def test_broken_partner_feed_is_marked_failed_without_rows(client):
     assert q1("SELECT count(*) AS n FROM wardrobe_items WHERE partner_id = $1", a_pid)["n"] == 0
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "БАГ: process-feeds дедуплицирует по notes = '<shop><name>:<offer id>' без partner_id — "
-    "у второго партнёра с тем же названием магазина (или партнёра, чей <name> совпал с "
-    "источником Admitad, напр. SELA) весь фид уходит в skipped, его каталог пуст и "
-    "виджет отвечает no_cart_match (cron.py, process-feeds: SELECT id FROM wardrobe_items WHERE notes = :notes)"))
 def test_two_partners_with_same_shop_name_both_get_their_catalog(client):
     prefix = f"s{RUN}{uuid.uuid4().hex[:4]}"
     xml = feed_xml("Мой магазин", prefix, ids=["2"])
@@ -264,11 +254,6 @@ def test_admitad_import_every_offer_through_flatlay_and_idempotent(client, world
     assert flatlay_calls(world) == [[f"{FEED_IMG}/{p}/flat-7.jpg"]]
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "БАГ: при недоступном CLIP (/clip/pick-flatlay 503 или таймаут) import-feeds всё равно "
-    "вставляет офферы видимыми (is_hidden=false) — фото на моделях уходят в каталог без "
-    "проверки, ровно та утечка, от которой правило CLAUDE.md. Так же устроен process-feeds "
-    "(cron.py: except → logger.debug и дальше INSERT)"))
 def test_admitad_import_with_clip_down_does_not_publish_unchecked_offers(client, world, admitad):
     world.flatlay = lambda urls: httpx.Response(503, text="CLIP is restarting")
     cron(client, "import-feeds")
@@ -331,11 +316,6 @@ def test_sync_below_threshold_hides_nothing(client, admitad):
     assert not any(r["is_hidden"] for r in _rows(src).values())
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "БАГ: вещь, спрятанная sync-feeds как пропавшая из фида, не возвращается, когда оффер "
-    "снова в фиде: sync-feeds только прячет, а import-feeds считает её уже импортированной "
-    "(existing берётся без фильтра is_hidden). Товар, на день ушедший из наличия, "
-    "исчезает из каталога навсегда"))
 def test_offer_back_in_feed_becomes_visible_again(client, admitad):
     cron(client, "import-feeds")
     p, src = admitad.prefix, admitad.src
