@@ -14,6 +14,7 @@ import { VisualSearchSheet } from "@/components/visual-search-sheet";
 import { api } from "@/lib/api-client";
 import { useAddToCloset } from "@/contexts/add-to-closet-context";
 import { PartnerItemsIntroSheet } from "@/components/partner-items-intro-sheet";
+import { InviteFriendCard } from "@/components/invite-friend-card";
 import { toast } from "sonner";
 
 
@@ -663,6 +664,11 @@ export default function HomePage() {
                                   })}
                                 </div>
                               </div>
+                              )}
+                              {/* Приглашение — после второй подборки: видно без
+                                  прокрутки до конца, но образы не отодвигает. */}
+                              {sectionIndex === Math.min(1, outfitSections.length - 1) && (
+                                  <InviteFriendCard place="home" />
                               )}
                             </div>
                         )

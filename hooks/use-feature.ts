@@ -9,7 +9,8 @@ type Feature =
   | "ideas_viewed"
   | "outfits_saved"
   | "vton_used"
-  | "style_check"; // только log: «Стоит ли покупать?», лимита нет
+  | "style_check" // только log: «Стоит ли покупать?», лимита нет
+  | "invite_share"; // только log: клик «Отправить приглашение»
 
 export function useFeature() {
   const log = useCallback(
