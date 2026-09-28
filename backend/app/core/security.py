@@ -72,7 +72,10 @@ def validate_telegram_init_data(init_data: str, bot_token: str) -> Optional[dict
     if not received_hash:
         return None
 
-    auth_date = int(params.get("auth_date", "0"))
+    try:
+        auth_date = int(params.get("auth_date", "0"))
+    except (TypeError, ValueError):
+        return None  # мусор в auth_date — отказ, а не 500
     if auth_date > 0 and abs(time.time() - auth_date) > 3600:
         return None
 
@@ -98,10 +101,14 @@ def validate_telegram_login_widget(data: dict, bot_token: str) -> bool:
     Uses SHA256(bot_token) as secret key (different from Mini App).
     """
     received_hash = data.get("hash", "")
-    if not received_hash:
+    if not received_hash or not isinstance(received_hash, str):
         return False
 
-    auth_date = int(data.get("auth_date", "0"))
+    # Мусор в auth_date — отказ (401), а не ValueError и 500 (найдено e2e 28.09.2026).
+    try:
+        auth_date = int(data.get("auth_date", "0"))
+    except (TypeError, ValueError):
+        return False
     if auth_date > 0 and abs(time.time() - auth_date) > 3600:
         return False
 

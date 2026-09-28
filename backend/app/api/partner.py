@@ -453,7 +453,9 @@ async def usage_stats(summary: str = "", user: dict = Depends(get_current_user),
     feeds_count = (await db.execute(text("SELECT count(*) FROM partner_feeds WHERE partner_id = :pid"), {"pid": pid})).scalar()
     total_calls = (await db.execute(text("SELECT count(*) FROM partner_api_usage WHERE partner_id = :pid"), {"pid": pid})).scalar()
 
-    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    # datetime, не .isoformat(): asyncpg не приводит строку к timestamptz, и
+    # /usage падал 500 на каждом открытии кабинета (найдено e2e 28.09.2026).
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     today_calls = (await db.execute(text("SELECT count(*) FROM partner_api_usage WHERE partner_id = :pid AND created_at >= :ts"), {"pid": pid, "ts": today_start})).scalar()
     success_calls = (await db.execute(text("SELECT count(*) FROM partner_api_usage WHERE partner_id = :pid AND status_code = 200"), {"pid": pid})).scalar()
     success_rate = round((success_calls / max(total_calls, 1)) * 100) if total_calls else 0

@@ -139,7 +139,10 @@ def _verify_miniapp_init_data(raw: str, bot_token: str) -> dict | None:
     if not received_hash:
         return None
 
-    auth_date = int(params.get("auth_date", "0"))
+    try:
+        auth_date = int(params.get("auth_date", "0"))
+    except ValueError:
+        return None  # мусор в auth_date — 401, а не 500
     if auth_date <= 0 or abs(time.time() - auth_date) > 3600:
         return None
 
