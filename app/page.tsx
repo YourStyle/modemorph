@@ -7,12 +7,24 @@ import { sessionAuth } from "@/lib/tma/session-auth"
 import { AnimatedLanding } from "@/components/animated-landing"
 import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
 import { NetworkError as NetworkErrorComponent } from "@/components/network-error"
+import { REF_CODE_KEY } from "@/lib/referral"
 
 export default function HomePage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const [showLanding, setShowLanding] = useState(false)
   const [networkError, setNetworkError] = useState<string | null>(null)
+
+  // Код друга из старых ссылок t.me/<бот>?start=ref_КОД: бот передаёт его сюда
+  // как ?ref=КОД (кнопка «Открыть приложение» ведёт на корень). Ловим до
+  // редиректа на /app — router.replace теряет query. Дальше как со startapp:
+  // лист подписки подставит код в промокод (lib/referral.ts).
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref")
+    if (ref && /^[A-Za-z0-9_-]{3,40}$/.test(ref)) {
+      try { localStorage.setItem(REF_CODE_KEY, ref) } catch {}
+    }
+  }, [])
 
   useEffect(() => {
     // Wait for AuthProvider to finish (including TMA handshake)
