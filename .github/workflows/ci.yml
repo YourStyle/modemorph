@@ -104,9 +104,13 @@ jobs:
             psql -h localhost -U modemorph -d modemorph -v ON_ERROR_STOP=1 -q -f "$f"
           done
 
+      # Все test_e2e_*.py: деньги, вход и источники, гардероб и ИИ, главная и
+      # крон, образы, админка. Внешние сервисы (Gemini, CLIP, S3, картинки) на
+      # заглушках в app/api/e2e_harness.py — запрос мимо них роняет тест.
+      # Локально то же одной командой: scripts/e2e-local.sh
       - name: Run E2E tests
         working-directory: backend
-        run: python -m pytest app/api/test_e2e_money.py -q
+        run: python -m pytest app/api/test_e2e_*.py -q -p no:warnings
 
       # У test_ai_chats СВОЙ прогон: он поднимает TestClient, заводит двух
       # пользователей и убирает их за собой, а код возврата ставит сам. Под
