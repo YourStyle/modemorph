@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { api } from "@/lib/api-client"
 import { referralLink } from "@/lib/referral"
 import { useFeature } from "@/hooks/use-feature"
+import { SubscriptionSheet } from "@/components/subscription-sheet"
 
 interface CheckItem {
   id: number
@@ -70,6 +71,7 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
   const [error, setError] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const { log } = useFeature()
+  const [paywallOpen, setPaywallOpen] = useState(false)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -92,7 +94,13 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
       setResult(data)
     } catch (e: any) {
       console.error("Style check failed:", e)
-      setError("Не получилось проверить вещь. Попробуйте ещё раз")
+      // Лимит запросов к ИИ общий с ассистентом и списывается на сервере.
+      if (/\b402\b|payment_required/.test(String(e?.message || ""))) {
+        setError("Бесплатные проверки закончились")
+        setPaywallOpen(true)
+      } else {
+        setError("Не получилось проверить вещь. Попробуйте ещё раз")
+      }
     } finally {
       setLoading(false)
     }
@@ -221,6 +229,12 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
           </>
         )}
       </div>
+      <SubscriptionSheet
+        isOpen={paywallOpen}
+        source="limit:style_check"
+        onClose={() => setPaywallOpen(false)}
+        onSuccess={() => setPaywallOpen(false)}
+      />
     </CommonSheet>
   )
 }

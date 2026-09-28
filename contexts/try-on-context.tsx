@@ -329,17 +329,7 @@ export function TryOnProvider({ children }: { children: ReactNode }) {
           return
         }
 
-        // Success — NOW consume the limit
-        try {
-          await api.post("/api/check-limits", {
-            featureType: "vton_used",
-            count: 1,
-            meta: { requestId },
-          })
-        } catch {
-          // Limit consumption failed but try-on succeeded — don't block user
-          console.error("[TryOn] Failed to consume the limit after success")
-        }
+        // Лимит списан сервером (/api/vton) вместе с готовой картинкой.
 
         setSession((prev) =>
           prev

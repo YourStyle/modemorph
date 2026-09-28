@@ -183,9 +183,7 @@ def test_vton_success_then_402_when_free_tryon_spent(client, world):
     assert world.s3 and world.s3[-1]["Key"].startswith("vton/")
     assert world.kinds().count("image:vton") == 2  # генерация + доводка лица
 
-    # списание — на клиенте после успеха (handleTryOnSuccess)
-    assert client.post("/api/check-limits", headers=u.h, json={"featureType": "vton_used"}).status_code == 200
-
+    # списание — на сервере вместе с картинкой (с 28.09.2026); клиент больше не списывает
     world.calls.clear()
     again = client.post("/api/vton", headers=u.h, json=body)
     assert again.status_code == 402
@@ -261,3 +259,42 @@ def test_ai_assistant_plain_prose_is_wrapped_not_lost(client, world):
     world.assistant = "Просто совет текстом, без JSON."
     r = client.post("/api/ai-assistant", headers=u.h, json={"prompt": "совет"})
     assert r.status_code == 200 and r.json()[0]["content"].startswith("Просто совет")
+
+
+# ───────────── лимиты на сервере (с 28.09.2026 списывает сервер, не клиент) ─────────────
+
+def _remaining(client, u, feature):
+    return client.post("/api/limits/check", headers=u.h, json={"feature": feature}).json()["remaining"]
+
+
+def test_server_charges_ai_features_only_after_success(client, world):
+    u = make_user()
+    before = _remaining(client, u, "ai_requests")
+    world.assistant = [{"content": "Надень джинсы и белую футболку.", "items": []}]
+    assert client.post("/api/ai-assistant", headers=u.h, json={"prompt": "что надеть?", "weather": {}}).status_code == 200
+    assert _remaining(client, u, "ai_requests") == before - 1, "ассистент не списал запрос на сервере"
+
+    photos = _remaining(client, u, "wardrobe_items_anlyzed")
+    assert client.post("/api/detect-clothing", headers=u.h,
+                       files={"image": ("a.png", png(), "image/png")}).status_code == 200
+    assert _remaining(client, u, "wardrobe_items_anlyzed") == photos - 1
+
+    world.detect_items = []
+    assert client.post("/api/detect-clothing", headers=u.h,
+                       files={"image": ("b.png", png(), "image/png")}).status_code == 200
+    assert _remaining(client, u, "wardrobe_items_anlyzed") == photos - 1, "фото без вещей не должно тратить лимит"
+
+
+def test_server_refuses_before_calling_model_when_limit_spent(client, world):
+    u = make_user()
+    for feature in ("ai_requests", "wardrobe_items_anlyzed"):
+        cap = q1("SELECT cap FROM plan_limits WHERE plan_type='free' AND feature=$1", feature)["cap"]
+        assert _consume(client, u, feature, cap).status_code == 200
+
+    world.calls.clear()
+    assert client.post("/api/ai-assistant", headers=u.h, json={"prompt": "что надеть?", "weather": {}}).status_code == 402
+    assert client.post("/api/detect-clothing", headers=u.h,
+                       files={"image": ("c.png", png(), "image/png")}).status_code == 402
+    assert client.post("/api/style-check", headers=u.h,
+                       files={"image": ("d.png", png(), "image/png")}).status_code == 402
+    assert world.kinds() == [], "402 обязан прийти ДО вызова модели"

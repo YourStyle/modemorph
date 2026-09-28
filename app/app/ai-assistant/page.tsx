@@ -482,10 +482,13 @@ export default function AIAssistantPage() {
         },
       ])
 
-      const bill = await consume("ai_requests", { pagePath: "/app/ai-assistant", requestId }, 1)
-      if (!bill.ok && bill.code === "payment_required") setPaywallOpen(true)
+      // Лимит списывает сервер (/api/ai-assistant) — после ответа модели.
     } catch (error) {
       console.error("Error in handleSend:", error)
+      if (/\b402\b|payment_required/.test(String((error as any)?.message || ""))) {
+        setPaywallOpen(true)
+        return
+      }
       setMessages((prev) => [
         ...prev,
         {

@@ -290,3 +290,17 @@ def test_rec_events_persist(client):
     assert q("SELECT 1 FROM user_likes WHERE user_id=$1::uuid AND suggestion_id='user_only_abc'", u.id)
     assert client.post("/api/rec-event", headers=u.h, json={
         "rec_session_id": rs, "event": "click"}).status_code == 400
+
+
+def test_manual_regeneration_within_cooldown_serves_saved_without_model(client, world):
+    u = make_user()
+    ids = _wardrobe(client, u)
+    world.recs = _sections(ids)
+    first = client.post("/api/recommendations", headers=u.h)
+    assert first.status_code == 200 and "recs_post" in world.kinds()
+
+    world.calls.clear()
+    again = client.post("/api/recommendations", headers=u.h)
+    assert again.status_code == 200
+    assert world.kinds() == [], "повтор в пределах 5 минут не должен звать модель"
+    assert [s["title"] for s in _real(again.json())] == [s["title"] for s in _real(first.json())]

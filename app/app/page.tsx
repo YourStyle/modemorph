@@ -262,15 +262,9 @@ export default function HomePage() {
     })
   }
 
-  const handleTryOnSuccess = async ({ requestId, suggestion }) => {
-    // ⬇️ списание ПОСЛЕ успешной примерки
-    const res = await consume("vton_used", {
-      pagePath: "/app",
-      requestId,
-      outfitId: suggestion.id,
-    })
-    if (!res.ok && res.code === "payment_required") setPaywallOpen(true)
-  }
+  // Примерку списывает сервер (/api/vton) после готовой картинки. Здесь было
+  // второе списание той же примерки.
+  const handleTryOnSuccess = async () => {}
 
   // Handle item dislike
   const handleDislikeItem = async (itemId: string) => {

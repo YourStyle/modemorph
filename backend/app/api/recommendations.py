@@ -6,6 +6,7 @@ No n8n dependency — calls OpenRouter API directly from backend.
 import hashlib
 import json as json_lib
 import logging
+import time
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional
@@ -659,6 +660,11 @@ async def get_recommendations(
     return {"sections": [], "stale": True}
 
 
+# ponytail: таймер в памяти процесса — бэкенд один контейнер; при рестарте
+# обнуляется. Нужно общее хранилище, если бэкендов станет несколько.
+_REGEN_COOLDOWN_S = 300
+_last_manual_generation: dict[str, float] = {}
+
 @router.post("")
 async def generate_recommendations(
     request: Request,
@@ -669,6 +675,22 @@ async def generate_recommendations(
     api_key = settings.OPENROUTER_API_KEY
     if not api_key:
         raise HTTPException(status_code=500, detail="OPENROUTER_API_KEY not configured")
+
+    # Генерация дорогая (два вызова модели на 35-50 образов) и в тарифах не
+    # лимитирована: подборку раз в сутки делает крон. Ручной вызов чаще раза в
+    # _REGEN_COOLDOWN_S отдаёт уже сохранённую — прямой вызов в цикле больше не
+    # жжёт деньги.
+    now = time.monotonic()
+    last = _last_manual_generation.get(user["id"])
+    if last is not None and now - last < _REGEN_COOLDOWN_S:
+        cached = (await db.execute(
+            text("SELECT look_sections FROM main_recommendations WHERE user_id = :uid ORDER BY run_date DESC LIMIT 1"),
+            {"uid": user["id"]},
+        )).scalar()
+        sections = _normalize_sections(cached) if cached else []
+        if sections:
+            return _lock_for_free(await _enrich_sections(db, sections, user["id"]), await _is_paid(db, user["id"]))
+    _last_manual_generation[user["id"]] = now
 
     # Get gender
     profile = await db.execute(

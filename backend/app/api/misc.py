@@ -605,6 +605,11 @@ async def detect_clothing(
 ):
     """Detect clothing from uploaded image + generate flat-lay product photos."""
     import asyncio
+    from app.api.limits import require_feature, charge_feature
+
+    # Лимит — на сервере (см. require_feature). Единица — фото; списывается только
+    # за фото, на котором нашлись вещи: нераспознанное лимит не тратит.
+    limit_pid = await require_feature(db, user["id"], "wardrobe_items_anlyzed")
 
     # --- Read raw bytes ---
     if image:
@@ -780,6 +785,8 @@ Return ONLY a valid JSON array. No markdown."""
             "img_url": image_urls[i],
         })
 
+    if response_items:
+        await charge_feature(db, limit_pid, "wardrobe_items_anlyzed")
     return response_items
 
 
@@ -788,6 +795,8 @@ Return ONLY a valid JSON array. No markdown."""
 @router.post("/ai-assistant")
 async def ai_assistant(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """AI fashion assistant with RAG — searches catalog via CLIP for relevant items."""
+    from app.api.limits import require_feature, charge_feature
+    limit_pid = await require_feature(db, user["id"], "ai_requests")
     body = await request.json()
     prompt = body.get("prompt", "")
     weather = body.get("weather", {})
@@ -945,6 +954,8 @@ Always respond with JSON array. Use Russian for all text."""
             # "Произошла ошибка". Wrap it instead.
             parsed = [{"content": content.strip()}]
     parsed = _items_by_name(_ids_out_of_prose(parsed), wardrobe, catalog_items)
+    if parsed:
+        await charge_feature(db, limit_pid, "ai_requests")
     return _hydrate_items(parsed, wardrobe, catalog_items)
 
 
@@ -1078,12 +1089,12 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
     # упавшую генерацию человек не платил. Гонку это не закрывает полностью
     # (десять одновременных запросов пройдут все десять), но интерфейс делает
     # одну примерку за раз, а стоимость ошибки здесь — одна картинка, не сотня.
-    from app.api.limits import _get_profile_id, _can_use_feature
+    # С 28.09.2026 списание тоже здесь, после готовой картинки (charge_feature
+    # ниже): клиентское списание обходилось прямым вызовом, а на главной
+    # срабатывало дважды — в контексте примерки и в обработчике карточки.
+    from app.api.limits import require_feature, charge_feature
 
-    vton_profile_id = await _get_profile_id(db, user["id"])
-    allowed, _ = await _can_use_feature(db, vton_profile_id, "vton_used", 1)
-    if not allowed:
-        raise HTTPException(status_code=402, detail="payment_required")
+    vton_profile_id = await require_feature(db, user["id"], "vton_used")
 
     # Use avatar_url from request body if provided, otherwise fall back to profile
     avatar_url = body.get("avatar_url")
@@ -1276,6 +1287,7 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
         except Exception:
             pass
 
+    await charge_feature(db, vton_profile_id, "vton_used")
     return {"success": True, "result": {"image_url": image_data}}
 
 
@@ -1381,6 +1393,9 @@ async def style_check(
     db: AsyncSession = Depends(get_db),
 ):
     """Фото вещи из магазина → образы с ней из своего гардероба + предупреждение о дубле."""
+    from app.api.limits import require_feature, charge_feature
+    # «Брать?» — запрос к ИИ, как ассистент: тот же лимит ai_requests.
+    limit_pid = await require_feature(db, user["id"], "ai_requests")
     rows = (await db.execute(text("""
         SELECT id, item_name, clothing_type, color, image_url FROM wardrobe_user_items
         WHERE user_id = :uid AND COALESCE(is_hidden, false) = false AND image_url IS NOT NULL
@@ -1437,6 +1452,7 @@ async def style_check(
         return {"is_clothing": False, "item": None, "duplicates": [], "outfits": [], "wardrobe_size": len(wardrobe)}
 
     new_item, duplicates, outfits = _check_style_answer(parsed, wardrobe, nearest)
+    await charge_feature(db, limit_pid, "ai_requests")
 
     await record_usage_event(db, user["id"], "style_check", "check",
                              meta={"outfits": len(outfits), "duplicates": len(duplicates)})

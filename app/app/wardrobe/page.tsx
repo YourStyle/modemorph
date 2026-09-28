@@ -260,26 +260,9 @@ export default function WardrobePage() {
     fetchUserItems()
     setRefreshUserItems((prev) => prev + 1)
 
-    // считаем, сколько фото проанализировано успешно (есть items)
-    const succeeded = analysisResults.filter((r: any) => r.success && r.items && r.items.length > 0).length
-    if (succeeded <= 0) return
-
-    // спишем ровно за успешно распознанные фото, а не за все загруженные —
-    // нераспознанные/отклонённые ИИ фото лимит не тратят
-    const res = await consume(
-      "wardrobe_items_anlyzed",
-      {
-        pagePath: "/app/wardrobe",
-        requestId: batchId,
-        photosCount: photos.length,
-        succeeded,
-      },
-      succeeded,
-    )
-    if (!res.ok && res.code === "payment_required") {
-      setPaywallOpen(true)
-    }
-  }, [consume, selectedPhotos, setRefreshUserItems])
+    // Лимит списывает сервер (/api/detect-clothing) — только за фото, где нашлись
+    // вещи. Здесь было второе списание того же фото.
+  }, [selectedPhotos, setRefreshUserItems])
 
   // Регистрируем обработчик анализа в контексте
   useEffect(() => {

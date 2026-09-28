@@ -319,8 +319,10 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
         // ПРОВЕРКА ЛИМИТОВ ДО выполнения анализа
         setCheckingLimits(true)
         try {
+            // Только проверка (feature, не featureType): списывает сервер
+            // /api/detect-clothing — за каждое фото, где нашлись вещи.
             const limitCheck = await api.post("/api/check-limits", {
-                featureType: "wardrobe_items_anlyzed",
+                feature: "wardrobe_items_anlyzed",
                 count: photos.length,
                 meta: {},
             })

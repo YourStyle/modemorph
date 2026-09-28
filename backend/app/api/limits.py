@@ -208,6 +208,37 @@ async def refuse(db: AsyncSession, profile_id, user_id: str) -> None:
     raise HTTPException(status_code=402, detail="payment_required")
 
 
+async def require_feature(db: AsyncSession, user_id: str, feature: str, count: int = 1):
+    """Проверка лимита ДО дорогой работы (вызова модели). Нельзя — 402 с
+    пейволлом, модель не зовётся. Возвращает profile_id для charge_feature.
+
+    До 28.09.2026 лимиты проверял и списывал клиент: прямой вызов ручки обходил
+    потолок, а примерка и оцифровка местами списывались дважды.
+    Профиля ещё нет (человек посреди регистрации) — лимит не применяем.
+    """
+    try:
+        pid = await _get_profile_id(db, user_id)
+    except HTTPException:
+        return None
+    ok, _ = await _can_use_feature(db, pid, feature, count)
+    if not ok:
+        await refuse(db, pid, user_id)
+    return pid
+
+
+async def charge_feature(db: AsyncSession, profile_id, feature: str, count: int = 1) -> None:
+    """Списание ПОСЛЕ успешного результата: за упавшую генерацию не платят.
+
+    ponytail: между require и charge гонка не закрыта — параллельные запросы
+    пройдут проверку все; цена ошибки — несколько лишних ответов модели.
+    Закрывать бронированием в _claim, если начнут злоупотреблять.
+    """
+    if profile_id is None:
+        return
+    await _use_feature(db, profile_id, feature, count)
+    await db.commit()
+
+
 @router.post("/consume")
 async def consume_limit(
     body: ConsumeRequest,
