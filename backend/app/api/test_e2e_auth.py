@@ -178,3 +178,11 @@ def test_pre_profile_client_events_are_kept(client):
     ev = events("registration_step", anon=u.id)
     assert len(ev) == 1 and ev[0]["user_profile_id"] is None
     assert ev[0]["page_path"] == "/auth/mini-registration"
+
+
+def test_client_cannot_forge_source_open(client):
+    u = make_user()
+    r = client.post("/api/usage/log", headers=u.h, json={
+        "feature": "source_open", "meta": {"start_param": "src_fake", "user_id": u.id}})
+    assert r.status_code == 400
+    assert events("source_open", pid=u.pid) == []

@@ -57,13 +57,16 @@ def _verify_cron_auth(request: Request):
     cron job 401'd — weather never refreshed, recs/feeds never regenerated.
     Accepting both un-breaks all jobs without rebuilding the cron image."""
     import hmac
-    if settings.CRON_SECRET:
-        auth = request.headers.get("Authorization", "")
-        bearer = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
-        x_secret = request.headers.get("X-Cron-Secret", "")
-        token = bearer or x_secret
-        if not hmac.compare_digest(token, settings.CRON_SECRET):
-            raise HTTPException(status_code=401, detail="Invalid cron secret")
+    # Без секрета — закрыто, а не открыто всем: иначе потерянная переменная
+    # окружения молча отдавала бы генерацию на всю базу любому (e2e 28.09.2026).
+    if not settings.CRON_SECRET:
+        raise HTTPException(status_code=503, detail="CRON_SECRET not configured")
+    auth = request.headers.get("Authorization", "")
+    bearer = auth[len("Bearer "):] if auth.startswith("Bearer ") else ""
+    x_secret = request.headers.get("X-Cron-Secret", "")
+    token = bearer or x_secret
+    if not hmac.compare_digest(token, settings.CRON_SECRET):
+        raise HTTPException(status_code=401, detail="Invalid cron secret")
 
 
 # ---------------------------------------------------------------------------

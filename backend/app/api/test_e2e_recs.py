@@ -116,10 +116,6 @@ def test_every_served_outfit_covers_the_body(client, world):
             assert covers_body(sug["items"]), f"образ не одевает целиком: {sug}"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "БАГ: _enrich_sections не выбирает temp_min/temp_max из wardrobe_user_items, и repair_outfit "
-    "на выдаче судит по окнам, угаданным из названия: «футболка + ботинки» выбрасывается, "
-    "хотя реальные окна вещей (5..30 и -5..25) пересекаются и генератор их учёл"))
 def test_serving_respects_real_item_temperature_windows(client, world):
     u = make_user()
     give_plan(u.pid, "monthly")
@@ -252,8 +248,6 @@ def test_inspiration_feed_like_and_save(client):
     assert (row["views_count"], row["favorites_count"]) == (1, 1)
 
 
-@pytest.mark.xfail(strict=True, reason="БАГ: /api/outfits/save-to-looks создаёт user_looks, "
-                                       "но не пишет outfit_created (POST /api/user-looks пишет)")
 def test_saving_idea_from_feed_logs_outfit_created(client):
     u = make_user()
     oid, _ = _seed_feed_outfit()

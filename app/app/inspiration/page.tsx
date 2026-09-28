@@ -261,6 +261,9 @@ const BufferedImage = React.memo(({ src, alt, className }: { src: string; alt: s
 })
 BufferedImage.displayName = "BufferedImage"
 
+
+const isPaymentRequired = (e: any) => /\b402\b|payment_required/.test(String(e?.message || ""))
+
 export default function InspirationPage(): ReactElement {
   // Данные / состояние
   const [outfits, setOutfits] = useState<FeedOutfit[]>([])
@@ -358,7 +361,9 @@ export default function InspirationPage(): ReactElement {
       try {
         const data = await api.post("/api/check-limits", { limitType: "daily", usageType: "ideas_viewed" })
         if (!data.canUse) setIsBlurred(true)
-      } catch (_) {}
+      } catch (e: any) {
+        if (isPaymentRequired(e)) setIsBlurred(true)
+      }
     }
     checkDailyLimits()
   }, [])
@@ -376,7 +381,11 @@ export default function InspirationPage(): ReactElement {
         await api.post("/api/outfits/track-view", { outfitId: current.id })
         setViewedOutfits((prev) => new Set([...prev, current.id]))
         setDailyViewsUsed((prev) => prev + 1)
-      } catch (_) {}
+      } catch (e: any) {
+        // Лимит кончился — сервер отвечает 402, api-client бросает. Раньше это
+        // глоталось, и пейволл ленты не показывался никогда.
+        if (isPaymentRequired(e)) setIsBlurred(true)
+      }
     }, 1000)
     return () => clearTimeout(timer)
   }, [current, viewedOutfits, isBlurred])

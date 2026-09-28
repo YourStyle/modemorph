@@ -507,7 +507,7 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
     id_csv = ",".join(str(i) for i in all_ids)
 
     user_items = await db.execute(
-        text(f"SELECT id, image_url, item_name, color, shade, has_print, clothing_type, notes, user_id FROM wardrobe_user_items WHERE id IN ({id_csv}) AND user_id = :uid AND COALESCE(is_hidden, false) = false"),
+        text(f"SELECT id, image_url, item_name, color, shade, has_print, clothing_type, notes, user_id, temp_min, temp_max FROM wardrobe_user_items WHERE id IN ({id_csv}) AND user_id = :uid AND COALESCE(is_hidden, false) = false"),
         {"uid": user_id},
     )
     user_map = {r["id"]: dict(r) for r in user_items.mappings().all()}
@@ -515,7 +515,7 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
     catalog_items = await db.execute(
         text(
             f"SELECT id, image_url, item_name, item_name_en, clothing_type, color, shade, has_print, "
-            f"notes, brand, brand_source "
+            f"notes, brand, brand_source, temp_min, temp_max "
             f"FROM wardrobe_items WHERE id IN ({id_csv}) "
             f"AND COALESCE(is_hidden, false) = false AND COALESCE(is_kids, false) = false"
         ),
@@ -568,6 +568,11 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
                     item["color"] = item.get("color") or db_row.get("color")
                     item["shade"] = item.get("shade") or db_row.get("shade")
                     item["clothing_type"] = item.get("clothing_type") or db_row.get("clothing_type")
+                    # Реальные окна вещи, а не угаданные по названию: без них
+                    # repair_outfit ниже выбрасывал «футболку + ботинки», хотя
+                    # генератор эти окна учёл и вещи сочетаются.
+                    item["temp_min"] = db_row.get("temp_min")
+                    item["temp_max"] = db_row.get("temp_max")
                     enriched_items.append(item)
                 # If the catalog row is gone/hidden/kids (db_row is None), DROP it —
                 # don't re-show a stale cached item that's since been filtered out.

@@ -11,7 +11,6 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
   Menu,
   Home,
-  Settings,
   UserCheck,
   Package,
   Palette,
@@ -111,7 +110,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/admin/broadcasts", label: "Рассылки", icon: Send },
       { href: "/admin/reminders", label: "Напоминания", icon: Bell },
       { href: "/admin/audit-log", label: "Журнал действий", icon: ScrollText },
-      { href: "/admin/settings", label: "Настройки", icon: Settings },
     ]},
   ]
 

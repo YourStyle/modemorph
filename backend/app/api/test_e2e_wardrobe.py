@@ -152,10 +152,6 @@ def test_limits_reject_unknown_feature_and_missing_profile(client):
     assert _consume(client, nop, "ai_requests").status_code == 404
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "БАГ: лента идей при открытии шлёт «проверку» {limitType:'daily', usageType:'ideas_viewed'} "
-    "(app/app/inspiration/page.tsx:359), а /api/check-limits считает usageType списанием — "
-    "каждое открытие ленты сжигает один бесплатный просмотр"))
 def test_inspiration_open_check_does_not_consume(client):
     u = make_user()
     r = client.post("/api/check-limits", headers=u.h, json={"limitType": "daily", "usageType": "ideas_viewed"})

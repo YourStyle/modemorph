@@ -248,7 +248,10 @@ async def check_limits(request: Request, user: dict = Depends(get_current_user),
     if not isinstance(count, int) or count <= 0:
         count = 1
 
-    is_consume = bool(body.get("featureType") or body.get("usageType"))
+    # Списывает только featureType. usageType шлёт единственный клиент — проверка
+    # ленты идей при открытии, — и он хочет узнать остаток, а не тратить его: иначе
+    # каждое открытие ленты сжигало бесплатный просмотр (e2e 28.09.2026).
+    is_consume = bool(body.get("featureType"))
     profile_id = await _get_profile_id(db, user["id"])
 
     if is_consume:
@@ -308,6 +311,8 @@ async def bot_event(request: Request, db: AsyncSession = Depends(get_db)):
 
 # ── /api/usage/log ──
 
+_SERVER_ONLY_EVENTS = {"source_open"}
+
 @router.post("/usage/log")
 async def log_usage(request: Request, user: dict = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Client-side event sink.
@@ -323,10 +328,15 @@ async def log_usage(request: Request, user: dict = Depends(get_current_user), db
     Delegating means the pre-profile path is fixed once, for both callers.
     """
     body = await request.json()
+    feature = body.get("key") or body.get("feature")
+    # Серверные события клиенту не писать: по source_open считается таблица
+    # «Источники», и чужой user_id в метаданных подделал бы её.
+    if feature in _SERVER_ONLY_EVENTS:
+        raise HTTPException(status_code=400, detail="reserved event")
     await record_usage_event(
         db,
         user_id=user["id"],
-        feature=body.get("key") or body.get("feature"),
+        feature=feature,
         action=body.get("action", "view"),
         count=body.get("count", 1),
         meta=body.get("meta", {}),

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.services.outfit_compat import covers_body
+from app.services.usage import record_usage_event
 
 router = APIRouter()
 
@@ -608,8 +609,13 @@ async def save_to_looks(
         """),
         {"uid": user["id"], "name": outfit_row[0], "items": json_lib.dumps(items)},
     )
+    look = dict(result.mappings().first())
+    # То же событие, что пишет POST /api/user-looks: без него сохранения из
+    # ленты идей не попадали в таймлайн и ряд «образ создан».
+    await record_usage_event(db, user["id"], feature="outfit_created", action="create",
+                             meta={"lookId": look.get("id"), "itemsCount": len(items), "source": "inspiration"})
     await db.commit()
-    return {"success": True, "look": dict(result.mappings().first())}
+    return {"success": True, "look": look}
 
 
 @router.post("/save-as-look")
