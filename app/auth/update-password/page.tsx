@@ -43,7 +43,7 @@ export default function UpdatePasswordPage() {
         {ok ? (
           <div className="mt-8 animate-fade-up space-y-4">
             <p className="text-body text-ink">Пароль обновлён.</p>
-            <Link href="/auth" className="text-body font-medium text-ink underline underline-offset-4">
+            <Link href="/auth/login" className="text-body font-medium text-ink underline underline-offset-4">
               Вернуться к входу
             </Link>
           </div>
