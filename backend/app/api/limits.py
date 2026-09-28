@@ -226,7 +226,7 @@ async def require_feature(db: AsyncSession, user_id: str, feature: str, count: i
     return pid
 
 
-async def charge_feature(db: AsyncSession, profile_id, feature: str, count: int = 1) -> None:
+async def charge_feature(db: AsyncSession, profile_id, user_id: str, feature: str, count: int = 1) -> None:
     """Списание ПОСЛЕ успешного результата: за упавшую генерацию не платят.
 
     ponytail: между require и charge гонка не закрыта — параллельные запросы
@@ -235,7 +235,13 @@ async def charge_feature(db: AsyncSession, profile_id, feature: str, count: int 
     """
     if profile_id is None:
         return
-    await _use_feature(db, profile_id, feature, count)
+    ok, _ = await _use_feature(db, profile_id, feature, count)
+    if ok:
+        # consume_success — то, по чему дашборд считает ИИ-запросы, примерки и
+        # оцифровки (admin.py). С апреля его не писал никто: клиентский путь,
+        # который его ставил, удалили, и ряды показывали нули.
+        from app.services.usage import record_usage_event
+        await record_usage_event(db, user_id, feature, "consume_success", count=count)
     await db.commit()
 
 

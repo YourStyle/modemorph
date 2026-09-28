@@ -184,6 +184,7 @@ def test_vton_success_then_402_when_free_tryon_spent(client, world):
     assert world.kinds().count("image:vton") == 2  # генерация + доводка лица
 
     # списание — на сервере вместе с картинкой (с 28.09.2026); клиент больше не списывает
+    assert len(events("vton_used", pid=u.pid, action="consume_success")) == 1, "успешная примерка не записана"
     world.calls.clear()
     again = client.post("/api/vton", headers=u.h, json=body)
     assert again.status_code == 402
@@ -273,6 +274,8 @@ def test_server_charges_ai_features_only_after_success(client, world):
     world.assistant = [{"content": "Надень джинсы и белую футболку.", "items": []}]
     assert client.post("/api/ai-assistant", headers=u.h, json={"prompt": "что надеть?", "weather": {}}).status_code == 200
     assert _remaining(client, u, "ai_requests") == before - 1, "ассистент не списал запрос на сервере"
+    assert len(events("ai_requests", pid=u.pid, action="consume_success")) == 1, \
+        "дашборд считает ИИ-запросы по consume_success — событие не записано"
 
     photos = _remaining(client, u, "wardrobe_items_anlyzed")
     assert client.post("/api/detect-clothing", headers=u.h,
@@ -283,6 +286,7 @@ def test_server_charges_ai_features_only_after_success(client, world):
     assert client.post("/api/detect-clothing", headers=u.h,
                        files={"image": ("b.png", png(), "image/png")}).status_code == 200
     assert _remaining(client, u, "wardrobe_items_anlyzed") == photos - 1, "фото без вещей не должно тратить лимит"
+    assert len(events("wardrobe_items_anlyzed", pid=u.pid, action="consume_success")) == 1
 
 
 def test_server_refuses_before_calling_model_when_limit_spent(client, world):

@@ -786,7 +786,7 @@ Return ONLY a valid JSON array. No markdown."""
         })
 
     if response_items:
-        await charge_feature(db, limit_pid, "wardrobe_items_anlyzed")
+        await charge_feature(db, limit_pid, user["id"], "wardrobe_items_anlyzed")
     return response_items
 
 
@@ -955,7 +955,7 @@ Always respond with JSON array. Use Russian for all text."""
             parsed = [{"content": content.strip()}]
     parsed = _items_by_name(_ids_out_of_prose(parsed), wardrobe, catalog_items)
     if parsed:
-        await charge_feature(db, limit_pid, "ai_requests")
+        await charge_feature(db, limit_pid, user["id"], "ai_requests")
     return _hydrate_items(parsed, wardrobe, catalog_items)
 
 
@@ -1287,7 +1287,7 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
         except Exception:
             pass
 
-    await charge_feature(db, vton_profile_id, "vton_used")
+    await charge_feature(db, vton_profile_id, user["id"], "vton_used")
     return {"success": True, "result": {"image_url": image_data}}
 
 
@@ -1452,7 +1452,7 @@ async def style_check(
         return {"is_clothing": False, "item": None, "duplicates": [], "outfits": [], "wardrobe_size": len(wardrobe)}
 
     new_item, duplicates, outfits = _check_style_answer(parsed, wardrobe, nearest)
-    await charge_feature(db, limit_pid, "ai_requests")
+    await charge_feature(db, limit_pid, user["id"], "ai_requests")
 
     await record_usage_event(db, user["id"], "style_check", "check",
                              meta={"outfits": len(outfits), "duplicates": len(duplicates)})
