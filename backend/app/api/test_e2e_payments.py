@@ -40,10 +40,6 @@ def test_pricing_ships_limits_with_prices(client):
     assert body["free_limits"]["wardrobe_items_anlyzed"]["period"] == "once"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Накат миграций с нуля не создаёт тарифы monthly/yearly: 042/046 делают UPDATE строк, которых "
-    "в чистой базе нет, а проверка в 046 проходит на пустом множестве. Прод не затронут, но "
-    "e2e/CI проверяют деньги только на недельном тарифе"))
 def test_fresh_database_has_all_landing_plans():
     have = {r["plan_type"] for r in q("SELECT plan_type FROM subscription_pricing WHERE is_active")}
     assert {"weekly", "monthly", "yearly"} <= have
