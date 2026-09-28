@@ -25,7 +25,7 @@ import {useAuth} from "@/contexts/auth-context"
 import {api} from "@/lib/api-client"
 
 import {Eye, EyeOff, Loader2, Plus, Save, Settings, Shirt, Upload, X} from "lucide-react"
-import type {WardrobeItem} from "@/lib/wardrobe"
+import type {WardrobeItem} from "@/components/item-details-modal"
 
 const itemHasPrint = (val: any): boolean => {
     if (typeof val === "boolean") return val

@@ -162,7 +162,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                 setProgressText(existingSession.progressText)
                 setLoading(existingSession.status === "analyzing")
                 setHasAnalyzed(existingSession.status !== "idle")
-                setError(existingSession.error)
+                setError(existingSession.error ?? null)
 
                 console.log("[PhotoAnalysisForm] Restored session from context:", existingSession.id)
                 return
@@ -647,6 +647,7 @@ export function PhotoAnalysisForm({initialPhotos = [], batchId, onSuccess, onRes
                     isOpen={showRegenerationModal}
                     isFirstTime={isFirstTimeRegeneration}
                     onClose={closeRegenerationModal}
+                    onRegenerate={handleRegenerate}
                 />
             )}
 

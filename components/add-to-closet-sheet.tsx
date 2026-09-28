@@ -76,8 +76,8 @@ export function AddToClosetSheet({
     }
   }, [isOpen, aiAnalysis])
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || [])
+  const handleFileSelect = (fileList: FileList | null) => {
+    const files = Array.from(fileList || [])
     if (files.length === 0) return
 
     // Проверяем, есть ли активная сессия
@@ -117,7 +117,7 @@ export function AddToClosetSheet({
     fileInput.type = "file"
     fileInput.accept = "image/heic,image/jpeg,image/jpg,image/webp,image/png"
     fileInput.multiple = true
-    fileInput.onchange = handleFileSelect
+    fileInput.onchange = () => handleFileSelect(fileInput.files)
     fileInput.click()
   }
 

@@ -16,34 +16,8 @@ import { useAddToCloset } from "@/contexts/add-to-closet-context";
 import { PartnerItemsIntroSheet } from "@/components/partner-items-intro-sheet";
 import { InviteFriendCard } from "@/components/invite-friend-card";
 import { toast } from "sonner";
+import type { OutfitItem, OutfitSuggestion } from "@/lib/outfit-types";
 
-
-interface OutfitItem {
-  id: string
-  name: string
-  image_url: string
-  color: string
-  shade: string
-  has_print: string
-  notes?: string
-  user_id?: string
-  url?: string
-  /** Магазин (notes) и марка (wardrobe_items.brand) — разные вещи; до
-   *  2026-08-20 бэкенд слал магазин под именем brand. */
-  retailer?: string
-  brand?: string
-  /** feed_vendor / monobrand — марку назвал мерчант; dictionary — она выведена
-   *  из названия. Карточки рендерят эти два случая по-разному. */
-  brand_source?: string | null
-  price?: number | null
-}
-
-interface OutfitSuggestion {
-  id: string
-  title: string
-  items: OutfitItem[]
-  suggested_items_count: number
-}
 
 interface LookSection {
   title: string
@@ -252,7 +226,11 @@ export default function HomePage() {
     }
   }
 
-  const handleTryOnClick = ({ requestId, suggestion, items }) => {
+  const handleTryOnClick = ({ requestId, suggestion, items }: {
+    requestId: string
+    suggestion: OutfitSuggestion
+    items: OutfitItem[]
+  }) => {
     // ⬇️ РОВНО как у тебя было: лог клика
     void log("vton_used", "click", {
       pagePath: "/app",
@@ -353,7 +331,9 @@ export default function HomePage() {
 
   // Server already runs filterSections — no need to double-filter here.
   // Just ensure structural validity (arrays exist).
-  const processRecommendations = (recommendations: any[]) => {
+  // Ответ /api/recommendations — это LookSection[], но бэкенд не гарантирует,
+  // что suggestions/items всегда массивы, поэтому нормализуем.
+  const processRecommendations = (recommendations: LookSection[]): LookSection[] => {
     const validRecommendations = Array.isArray(recommendations) ? recommendations : []
     return validRecommendations
       .map((section) => ({
@@ -645,7 +625,9 @@ export default function HomePage() {
                                         >
                                           <OutfitCard
                                               suggestion={suggestion}
-                                              sectionSource={section.source}
+                                              // wardrobe_gap сюда не доходит (его рисует GapShelf выше), но
+                                              // сужение типа внутри вложенного map TypeScript теряет.
+                                              sectionSource={section.source === "wardrobe_gap" ? undefined : section.source}
                                               recSessionId={section.rec_session_id}
                                               onTryOnClick={handleTryOnClick}
                                               onTryOnSuccess={handleTryOnSuccess}

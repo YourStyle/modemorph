@@ -612,7 +612,7 @@ export default function AdminUsersPage() {
                     />
                     <Tooltip
                       labelFormatter={(value) => new Date(value).toLocaleDateString("ru")}
-                      formatter={(value: number) => [`${value} польз.`, "Регистраций"]}
+                      formatter={(value?: number) => [`${value} польз.`, "Регистраций"]}
                       contentStyle={{
                         backgroundColor: "rgba(255, 255, 255, 0.95)",
                         border: "1px solid #e5e7eb",
@@ -665,7 +665,7 @@ export default function AdminUsersPage() {
                     />
                     <Tooltip
                       labelFormatter={(value) => new Date(value).toLocaleDateString("ru")}
-                      formatter={(value: number) => [`${value} польз.`, "Активных"]}
+                      formatter={(value?: number) => [`${value} польз.`, "Активных"]}
                       contentStyle={{
                         backgroundColor: "rgba(255, 255, 255, 0.95)",
                         border: "1px solid #e5e7eb",

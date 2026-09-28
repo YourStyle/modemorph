@@ -5,16 +5,6 @@ import { sessionAuth } from "./session-auth"
 import { parseSupabaseExpiry } from "@/lib/auth-utils"
 import { fetchWithRetry, NetworkError, TimeoutError } from "@/lib/fetch-with-retry"
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        initData?: string
-        initDataUnsafe?: Record<string, any>
-      }
-    }
-  }
-}
 
 export interface TMAUser {
   id: string

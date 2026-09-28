@@ -2,22 +2,6 @@
 
 import { useEffect, useRef, type ReactNode } from "react"
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        ready: () => void
-        expand?: () => void
-        requestFullscreen?: () => void
-        setHeaderColor?: (c: string) => void
-        setBackgroundColor?: (c: string) => void
-        isVersionAtLeast?: (ver: string) => boolean
-        disableVerticalSwipes?: () => void
-        enableClosingConfirmation?: () => void
-      }
-    }
-  }
-}
 
 interface Props {
   children: ReactNode

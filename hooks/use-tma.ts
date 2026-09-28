@@ -3,17 +3,6 @@
 import { useEffect, useState } from "react"
 import { initTmaSafeArea } from "@/lib/tma/safe-area"
 
-declare global {
-  interface Window {
-    Telegram?: {
-      WebApp?: {
-        platform?: string
-        initData?: string
-        initDataUnsafe?: Record<string, any>
-      }
-    }
-  }
-}
 
 export function useTMA() {
   const [isTMA, setIsTMA] = useState(false)

@@ -10,31 +10,11 @@ import React, {
 } from "react"
 import { api } from "@/lib/api-client"
 import { useBackgroundTasks } from "@/contexts/background-tasks-context"
+import type { OutfitItem, OutfitSuggestion } from "@/lib/outfit-types"
 
 // ---------------------------------------------------------------------------
 // Domain types
 // ---------------------------------------------------------------------------
-
-export interface OutfitItem {
-  id: string
-  name: string
-  image_url: string
-  color?: string
-  shade?: string
-  style?: string
-  material?: string
-  has_print?: string
-  has_details?: string
-  notes?: string
-  user_id?: string
-}
-
-export interface OutfitSuggestion {
-  id: string
-  title: string
-  items: OutfitItem[]
-  suggested_items_count: number
-}
 
 export type VtonStatus = "confirming" | "loading" | "completed" | "error"
 

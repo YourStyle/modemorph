@@ -38,7 +38,7 @@ export interface AIAnalysisSession {
   progressText: string
   items: AnalyzedItem[]
   analysisResults: PhotoAnalysisResult[]
-  error?: string
+  error?: string | null
   photos: Array<{ file: File; preview: string; id: string }>
   startedAt: Date
   completedAt?: Date
@@ -155,7 +155,7 @@ export function AIAnalysisProvider({ children }: { children: ReactNode }) {
     setCurrentSessionId(null)
   }, [])
 
-  const currentSession = currentSessionId ? sessions.get(currentSessionId) : null
+  const currentSession = (currentSessionId ? sessions.get(currentSessionId) : undefined) ?? null
 
   return (
     <AIAnalysisContext.Provider

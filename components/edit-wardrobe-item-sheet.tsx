@@ -21,15 +21,15 @@ interface WardrobeItem {
   color?: string
   shade?: string
   has_print?: string | boolean
-  has_details?: string
+  has_details?: string | boolean
   size_type?: string
   notes?: string
   image_url?: string
   clothing_type?: string
   created_at?: string
-  basic_item_id?: number
+  basic_item_id?: number | null
   url?: string
-  gender?: string
+  gender?: string | null
 }
 
 interface EditWardrobeItemSheetProps {

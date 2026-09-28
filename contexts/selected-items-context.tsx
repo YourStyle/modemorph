@@ -1,22 +1,11 @@
 "use client"
 
 import { createContext, useContext, useState, type ReactNode } from "react"
+import type { WardrobeItem as CatalogWardrobeItem } from "@/components/item-details-modal"
 
-export interface WardrobeItem {
-  id: number
-  item_name: string
-  size_type?: string
-  color?: string
-  shade?: string
-  material?: string
-  style?: string
-  image_url?: string
-  is_basic?: boolean
-  has_print?: string
-  has_details?: string
-  notes?: string
+/** Вещь каталога в конструкторе образа — та же, что показывает карточка, плюс источник. */
+export type WardrobeItem = CatalogWardrobeItem & {
   type: "basic" | "user"
-  gender?: string
 }
 
 interface SelectedItemsContextType {
