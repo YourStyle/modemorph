@@ -1287,10 +1287,9 @@ async def virtual_tryon(request: Request, user: dict = Depends(get_current_user)
         f"refined={refined_hash} (dist={refined_dist})"
     )
 
-    refined_echo = refined and (
-        (refined_hash and avatar_hash and refined_hash == avatar_hash)
-        or (refined_dist is not None and refined_dist <= _VTON_ECHO_HAMMING_THRESHOLD)
-    )
+    # Тот же детектор, что для Pass 1 (хеш И цвет): по одному dHash доводка лица
+    # на студийных фото выбрасывалась как «повтор аватара» (прод 28.09.2026).
+    refined_echo = bool(refined) and _vton_is_echo(avatar_b64, avatar_hash, avatar_phash, refined)[0]
     if refined_echo:
         # Pass 2 echoed the avatar — discard and keep Pass 1 result
         print("[vton] Pass 2 echoed avatar — keeping Pass 1 result")
