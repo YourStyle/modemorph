@@ -304,3 +304,29 @@ def test_manual_regeneration_within_cooldown_serves_saved_without_model(client, 
     assert again.status_code == 200
     assert world.kinds() == [], "повтор в пределах 5 минут не должен звать модель"
     assert [s["title"] for s in _real(again.json())] == [s["title"] for s in _real(first.json())]
+
+
+def test_likes_steer_generation_and_disliked_outfit_disappears(client, world):
+    from app.api import recommendations as rec
+    u = make_user()
+    ids = _wardrobe(client, u)
+    world.recs = _sections(ids)
+    secs = [s for s in _real(client.post("/api/recommendations", headers=u.h).json()) if not s.get("locked")]
+    liked_sec, disliked_sec = secs[0], secs[1]
+    liked, disliked = liked_sec["suggestions"][0], disliked_sec["suggestions"][0]
+    for ev, sug, sec in (("like_outfit", liked, liked_sec), ("dislike_outfit", disliked, disliked_sec)):
+        assert client.post("/api/rec-event", headers=u.h, json={
+            "event": ev, "suggestion_id": sug["id"], "rec_session_id": sec.get("rec_session_id")}).status_code == 200
+
+    served = [s["id"] for sec in _real(client.get("/api/recommendations", headers=u.h).json()["sections"])
+              for s in sec["suggestions"]]
+    assert disliked["id"] not in served, "дизлайкнутый образ снова в выдаче"
+    assert liked["id"] in served
+
+    prompts = []
+    world.recs = lambda text: (prompts.append(text), _sections(ids))[1]
+    rec._last_manual_generation.clear()
+    assert client.post("/api/recommendations", headers=u.h).status_code == 200
+    assert prompts, "генератор не вызывался"
+    assert "ПОНРАВИЛИСЬ" in prompts[-1] and "НЕ ПОНРАВИЛИСЬ" in prompts[-1], "реакции не дошли до генератора"
+    assert liked["items"][0]["name"] in prompts[-1]

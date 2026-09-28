@@ -163,6 +163,90 @@ def _lock_for_free(sections: list, paid: bool) -> list:
     return out
 
 
+# ── Вкус по реакциям ──
+# Лайк/дизлайк образа на главной (/api/rec-event) хранит только suggestion_id —
+# состав не сохраняется, и до 28.09.2026 эти реакции не читал никто, хотя тост
+# обещал «подборки подстроятся». Состав восстанавливаем из main_recommendations
+# (хранятся за всю историю) по паре (rec_session_id, suggestion_id): у ночного
+# крона id позиционный и повторяется изо дня в день, одного id мало.
+_TASTE_DAYS = 30
+_TASTE_MAX = 8
+
+
+def _item_key_set(items: list) -> frozenset:
+    return frozenset(
+        (i.get("item_source") or ("user" if i.get("user_id") else "catalog"), str(i.get("id")))
+        for i in items if isinstance(i, dict) and i.get("id") is not None
+    )
+
+
+async def _taste_feedback(db: AsyncSession, user_id: str) -> dict:
+    """{"liked": [состав…], "disliked": [состав…], "disliked_sets": {frozenset…}}."""
+    liked_rows = (await db.execute(text(f"""
+        SELECT rec_session_id, suggestion_id FROM user_likes
+        WHERE user_id = :uid AND suggestion_id IS NOT NULL
+          AND created_at > NOW() - INTERVAL '{_TASTE_DAYS} days'
+        ORDER BY created_at DESC LIMIT 40
+    """), {"uid": user_id})).all()
+    disliked_rows = (await db.execute(text(f"""
+        SELECT rec_session_id, suggestion_id FROM user_item_dislikes
+        WHERE user_id = :uid AND item_source = 'recommendation' AND suggestion_id IS NOT NULL
+          AND created_at > NOW() - INTERVAL '{_TASTE_DAYS} days'
+        ORDER BY created_at DESC LIMIT 40
+    """), {"uid": user_id})).all()
+    # Лайки идей из ленты (outfits) — состав есть в outfit_items.
+    idea_rows = (await db.execute(text(f"""
+        SELECT string_agg(w.item_name, '; ' ORDER BY oi.position) AS names
+        FROM user_likes ul
+        JOIN outfit_items oi ON oi.outfit_id = ul.outfit_id
+        JOIN wardrobe_items w ON w.id = oi.wardrobe_item_id
+        WHERE ul.user_id = :uid AND ul.outfit_id IS NOT NULL
+          AND ul.created_at > NOW() - INTERVAL '{_TASTE_DAYS} days'
+        GROUP BY ul.outfit_id, ul.created_at ORDER BY ul.created_at DESC LIMIT {_TASTE_MAX}
+    """), {"uid": user_id})).all()
+
+    liked, disliked, disliked_sets = [], [], set()
+    wanted = {(r[0], r[1]): "like" for r in liked_rows}
+    wanted.update({(r[0], r[1]): "dislike" for r in disliked_rows})
+    if wanted:
+        recs = (await db.execute(text(f"""
+            SELECT look_sections FROM main_recommendations
+            WHERE user_id = :uid AND run_date > CURRENT_DATE - {_TASTE_DAYS + 1}
+            ORDER BY run_date DESC
+        """), {"uid": user_id})).scalars().all()
+        seen = set()
+        for raw in recs:
+            for sec in _normalize_sections(raw):
+                for sug in sec.get("suggestions") or []:
+                    items = sug.get("items") or []
+                    rsid = sec.get("rec_session_id") or next((i.get("rec_session_id") for i in items if isinstance(i, dict)), None)
+                    kind = wanted.get((rsid, sug.get("id"))) or wanted.get((None, sug.get("id")))
+                    if not kind or (rsid, sug.get("id")) in seen:
+                        continue
+                    seen.add((rsid, sug.get("id")))
+                    names = "; ".join(str(i.get("name") or "") for i in items if isinstance(i, dict))
+                    if kind == "like":
+                        liked.append(names)
+                    else:
+                        disliked.append(names)
+                        disliked_sets.add(_item_key_set(items))
+    liked = [n for n in [r[0] for r in idea_rows] + liked if n][:_TASTE_MAX]
+    return {"liked": liked, "disliked": [n for n in disliked if n][:_TASTE_MAX], "disliked_sets": disliked_sets}
+
+
+def _taste_block(taste: dict) -> str:
+    """Блок для промпта генератора; пустой, если реакций нет."""
+    parts = []
+    if taste.get("liked"):
+        parts.append("ЭТИ ОБРАЗЫ ПОЛЬЗОВАТЕЛЮ ПОНРАВИЛИСЬ — делай больше в том же духе "
+                      "(стиль, цвета, сочетания), но не копируй один в один:\n"
+                      + "\n".join(f"- {n}" for n in taste["liked"]))
+    if taste.get("disliked"):
+        parts.append("ЭТИ ОБРАЗЫ НЕ ПОНРАВИЛИСЬ — не повторяй такие сочетания и такой стиль:\n"
+                      + "\n".join(f"- {n}" for n in taste["disliked"]))
+    return ("\n" + "\n\n".join(parts) + "\n") if parts else ""
+
+
 # Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand).
 # See backend/brand.py — conflating the two is what put "ЦУМ" on a Saint Laurent
 # coat, on the card and in the Gemini prompt.
@@ -486,6 +570,9 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
         {"uid": user_id},
     )).mappings().first()
     current_temp = weather_row["temperature"] if weather_row else None
+    # Дизлайкнутый образ не показываем снова, даже если модель соберёт его
+    # заново: сравниваем состав, а не id (у крона id позиционные).
+    disliked_sets = (await _taste_feedback(db, user_id))["disliked_sets"]
 
     all_ids = set()
     for section in sections:
@@ -609,7 +696,8 @@ async def _enrich_sections(db: AsyncSession, sections: list, user_id: str) -> li
         # и порог выбрасывал вполне носибельный образ.
         section["suggestions"] = [
             s for s in section.get("suggestions", [])
-            if len(s.get("items") or []) >= 3 or covers_body(s.get("items") or [])
+            if (len(s.get("items") or []) >= 3 or covers_body(s.get("items") or []))
+            and _item_key_set(s.get("items") or []) not in disliked_sets
         ]
         # Образ без низа надеть нельзя. Ни температурная проверка, ни дедуп по
         # слотам этого не ловят: «рубашка + куртка» согласована по погоде и не
@@ -956,6 +1044,8 @@ async def generate_recommendations(
 - "partner_only" section: outfits entirely from [PARTNER] items. Create 1 such section."""
 
     capsule_block = f"\n{capsule_guide}\n" if capsule_guide else ""
+    # Лайки/дизлайки образов — чтобы подборки подстраивались под вкус.
+    capsule_block += _taste_block(await _taste_feedback(db, user["id"]))
 
     system_prompt = f"""You are a top fashion stylist AI. Generate MANY complete outfit recommendations.
 {style_hint}

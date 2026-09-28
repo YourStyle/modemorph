@@ -25,7 +25,7 @@ from app.services.weather_rules import TEMP_RANGES, temp_ok
 from app.services.catalog_filters import gender_ok, _FEMALE_KEYWORDS, _MALE_KEYWORDS
 from kids_detect import is_kids_item
 from app.services.capsule import capsule_style_guide
-from app.api.recommendations import _is_paid, _judge_outfits
+from app.api.recommendations import _is_paid, _judge_outfits, _taste_block, _taste_feedback
 # Retailer (the shop in `notes`) vs brand (the house, wardrobe_items.brand) —
 # see backend/brand.py.
 from brand import BRAND_GUESS_PROMPT_RULE, prompt_brand_field, retailer_from_notes
@@ -629,6 +629,8 @@ async def cron_generate_recommendations(
             # тизер при выдаче. Платному — 10 разделов по 4-5 образов.
             n_sections = 10 if paid else max(8, n_sections)
             capsule_guide = await capsule_style_guide(db, gender)
+            # Реакции на образы (лайк/дизлайк) — подборки подстраиваются под вкус.
+            capsule_guide = (capsule_guide or "") + _taste_block(await _taste_feedback(db, user_id))
             gemini_sections = await _gemini_organize(
                 user_items, partner_items, weather, gender, dominant_style, n_sections, capsule_guide,
                 user_cap=150 if paid else 50, partner_cap=300 if paid else 50,
