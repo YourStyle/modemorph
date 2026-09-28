@@ -3,6 +3,7 @@
 дизлайки и события рекомендаций."""
 
 import asyncio
+import json
 import os
 import re
 import sys
@@ -19,7 +20,7 @@ if "DATABASE_URL" not in os.environ:
 
 from app.api.e2e_harness import *  # noqa: E402,F401,F403
 from app.api.e2e_harness import (  # noqa: E402
-    CRON_SECRET, IMG, add_catalog_item, add_item, events, give_plan, jmeta, make_user, q, q1,
+    CRON_SECRET, IMG, add_catalog_item, add_item, events, give_plan, jmeta, make_user, q, q1, sql_run,
 )
 
 
@@ -330,3 +331,41 @@ def test_likes_steer_generation_and_disliked_outfit_disappears(client, world):
     assert prompts, "генератор не вызывался"
     assert "ПОНРАВИЛИСЬ" in prompts[-1] and "НЕ ПОНРАВИЛИСЬ" in prompts[-1], "реакции не дошли до генератора"
     assert liked["items"][0]["name"] in prompts[-1]
+
+
+def test_cron_generation_takes_likes_and_dislikes_into_account(client, world):
+    """Ночной крон — отдельный генератор (cron.py → _gemini_organize): вкус должен доходить и туда."""
+    u = make_user()
+    tag = uuid.uuid4().hex[:6]
+    tee = add_item(client, u, f"Изумрудная блузка {tag}", "blouse")
+    jeans = add_item(client, u, "Синие джинсы", "jeans")
+    boots = add_item(client, u, "Чёрные ботинки", "boots")
+    skirt = add_item(client, u, f"Леопардовая юбка {tag}", "skirt")
+
+    # Вчерашняя подборка крона: id позиционные, различает их только rec_session_id.
+    rs = f"rs-{tag}"
+    item = lambda i, n: {"id": i, "item_source": "user", "name": n, "user_id": u.id, "rec_session_id": rs}
+    sections = [{"title": "Вчера", "source": "user_only", "rec_session_id": rs, "suggestions": [
+        {"id": f"user_only_{u.id[:8]}_0_0", "title": "Понравился",
+         "items": [item(tee, f"Изумрудная блузка {tag}"), item(jeans, "Синие джинсы"), item(boots, "Чёрные ботинки")]},
+        {"id": f"user_only_{u.id[:8]}_0_1", "title": "Не понравился",
+         "items": [item(tee, f"Изумрудная блузка {tag}"), item(skirt, f"Леопардовая юбка {tag}"), item(boots, "Чёрные ботинки")]},
+    ]}]
+    sql_run("INSERT INTO main_recommendations (user_id, run_date, look_sections, source) "
+            "VALUES ($1::uuid, CURRENT_DATE - 1, $2::jsonb, 'gemini')", u.id, json.dumps(sections))
+    for ev, sid in (("like_outfit", "_0_0"), ("dislike_outfit", "_0_1")):
+        assert client.post("/api/rec-event", headers=u.h, json={
+            "event": ev, "suggestion_id": f"user_only_{u.id[:8]}{sid}", "rec_session_id": rs}).status_code == 200
+
+    prompts = []
+    world.recs = lambda text: (prompts.append(text), _cron_recs(text))[1]
+    r = client.post("/api/cron/generate-recommendations", headers={"X-Cron-Secret": CRON_SECRET})
+    assert r.status_code == 200, r.text
+
+    mine = [p for p in prompts if f"Изумрудная блузка {tag}" in p]
+    assert mine, "крон не сгенерировал подборку этому пользователю"
+    prompt = mine[-1]
+    liked = prompt.split("ПОНРАВИЛИСЬ")[1].split("НЕ ПОНРАВИЛИСЬ")[0] if "ПОНРАВИЛИСЬ" in prompt else ""
+    assert "Чёрные ботинки" in liked and "Синие джинсы" in liked, "лайк не дошёл до промпта крона"
+    assert "НЕ ПОНРАВИЛИСЬ" in prompt and f"Леопардовая юбка {tag}" in prompt.split("НЕ ПОНРАВИЛИСЬ")[1], \
+        "дизлайк не дошёл до промпта крона"
