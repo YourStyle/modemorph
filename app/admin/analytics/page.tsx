@@ -304,11 +304,13 @@ const xl = (v: Num | string): number | string => (v === null || v === undefined 
 export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [payingUsers, setPayingUsers] = useState<PayingUser[]>([])
+  const [sources, setSources] = useState<{ source: string; opens: number; users: number; new_users: number; with_items: number; paid_after: number }[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchAnalytics()
     fetchPayingUsers()
+    api.get("/api/admin/sources").then((r) => setSources(r.sources || [])).catch(() => {})
   }, [])
 
   const fetchAnalytics = async () => {
@@ -1673,6 +1675,50 @@ export default function AnalyticsPage() {
             Разрыв касается только ряда «активные пользователи» — он нарисован на графике
             «Активность» в разделе «Пользователи».
           </p>
+        </CardContent>
+      </Card>
+
+      {/* ── Источники переходов (посевы и приглашения) ─────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Target className="h-5 w-5" />
+            Источники ({sources.length})
+          </CardTitle>
+          <CardDescription>
+            Ссылка для посева: <code>t.me/modemorph_ai_bot?startapp=src_имя</code> (латиница, цифры, _ и -).
+            Приглашения друзей идут как ref_КОД. Оплатили — после первого перехода.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {sources.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Переходов по размеченным ссылкам пока не было.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Источник</TableHead>
+                  <TableHead className="text-right">Открытий</TableHead>
+                  <TableHead className="text-right">Людей</TableHead>
+                  <TableHead className="text-right">Новых</TableHead>
+                  <TableHead className="text-right">Добавили вещи</TableHead>
+                  <TableHead className="text-right">Оплатили</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sources.map((s) => (
+                  <TableRow key={s.source}>
+                    <TableCell className="font-mono text-sm">{s.source}</TableCell>
+                    <TableCell className="text-right">{s.opens}</TableCell>
+                    <TableCell className="text-right">{s.users}</TableCell>
+                    <TableCell className="text-right">{s.new_users}</TableCell>
+                    <TableCell className="text-right">{s.with_items}</TableCell>
+                    <TableCell className="text-right">{s.paid_after}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

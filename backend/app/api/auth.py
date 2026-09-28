@@ -5,6 +5,7 @@ Auth endpoints — with rate limiting and proper Telegram widget verification.
 import hashlib
 import hmac
 import json
+import re
 from uuid import uuid4
 
 import httpx
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.services.usage import record_usage_event
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -155,7 +157,20 @@ def _verify_miniapp_init_data(raw: str, bot_token: str) -> dict | None:
     return None
 
 
-async def _telegram_login_flow(tg_user: dict, db: AsyncSession) -> dict:
+# Откуда пришёл человек: t.me/<bot>?startapp=src_<канал> (посев) или ref_<код>
+# (приглашение друга). Telegram кладёт это в start_param внутри подписанного
+# initData, поэтому читаем здесь, после проверки подписи: клиентское событие
+# новичка терялось бы — сессии в момент открытия ещё нет.
+_START_PARAM_RE = re.compile(r"^(src|ref)_[A-Za-z0-9_-]{1,60}$")
+
+
+def _attribution_param(raw_init_data: str) -> str | None:
+    import urllib.parse
+    sp = dict(urllib.parse.parse_qsl(raw_init_data, keep_blank_values=True)).get("start_param", "")
+    return sp if _START_PARAM_RE.match(sp) else None
+
+
+async def _telegram_login_flow(tg_user: dict, db: AsyncSession, start_param: str | None = None) -> dict:
     """Shared login/register flow for Telegram users (miniapp and widget)."""
     tg_id = str(tg_user.get("id", ""))
     if not tg_id:
@@ -181,14 +196,18 @@ async def _telegram_login_flow(tg_user: dict, db: AsyncSession) -> dict:
     )
     user = result.first()
 
+    is_new = not user
     if user:
         user_id = str(user.id)
+        # Слияние, а не замена: иначе каждый вход стирал бы first_start_param.
         await db.execute(
-            text("UPDATE users SET raw_user_meta_data = CAST(:meta AS jsonb) WHERE id = :uid"),
+            text("UPDATE users SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb) || CAST(:meta AS jsonb) WHERE id = :uid"),
             {"meta": json.dumps(metadata), "uid": user_id},
         )
         await db.commit()
     else:
+        if start_param:
+            metadata["first_start_param"] = start_param  # первое касание, навсегда
         user_id = str(uuid4())
         hashed = hash_password(password)
         await db.execute(
@@ -202,6 +221,10 @@ async def _telegram_login_flow(tg_user: dict, db: AsyncSession) -> dict:
         {"uid": user_id},
     )
     p = prof.first()
+    if start_param:
+        await record_usage_event(db, user_id, "source_open", "open",
+                                 meta={"start_param": start_param, "new_user": is_new, "user_id": user_id})
+        await db.commit()
     return _make_session_response(user_id, email, p.is_admin if p else False, metadata)
 
 
@@ -216,7 +239,7 @@ async def telegram_miniapp_session(request: Request, body: TelegramSessionReques
     if not tg_user:
         raise HTTPException(status_code=401, detail="Invalid initData")
 
-    return await _telegram_login_flow(tg_user, db)
+    return await _telegram_login_flow(tg_user, db, _attribution_param(raw))
 
 
 # ── Telegram Login Widget (different verification) ──

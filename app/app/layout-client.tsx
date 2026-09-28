@@ -49,14 +49,10 @@ export default function AppClientLayout({
       (window as any).Telegram?.WebApp?.initDataUnsafe?.start_param || webParam
     // Приглашение друга: t.me/<bot>?startapp=ref_<код> (lib/referral.ts).
     // Запоминаем код до оплаты — лист подписки подставит его в промокод.
+    // Сам переход считает сервер при входе (source_open в auth.py).
     const ref = param?.match(/^ref_([A-Za-z0-9_-]{3,40})$/)?.[1]
     if (ref) {
-      try {
-        if (sessionStorage.getItem(`referral_open:${ref}`)) return
-        sessionStorage.setItem(`referral_open:${ref}`, "1")
-        localStorage.setItem(REF_CODE_KEY, ref)
-      } catch {}
-      void api.post("/api/usage/log", { feature: "referral_open", action: "click", meta: { code: ref } }).catch(() => {})
+      try { localStorage.setItem(REF_CODE_KEY, ref) } catch {}
       return
     }
     const m = param?.match(/^(bc|ap)(\d+)$/)

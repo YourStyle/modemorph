@@ -1438,6 +1438,43 @@ async def list_users(
     }
 
 
+@router.get("/sources")
+async def traffic_sources(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
+    """Воронка по источникам: t.me/<bot>?startapp=src_<канал> и ref_<код>.
+
+    source_open пишет вход в мини-приложение (auth.py, из подписанного
+    initData). Ключ — user_id в метаданных события: у новичка профиля в момент
+    входа ещё нет, и user_profile_id там пустой.
+    """
+    rows = (await db.execute(text(f"""
+        WITH ev AS (
+            SELECT e.metadata->>'start_param' AS source,
+                   e.metadata->>'user_id' AS uid,
+                   COALESCE((e.metadata->>'new_user')::boolean, false) AS new_user,
+                   e.occurred_at
+            FROM usage_events e
+            WHERE e.feature = 'source_open' AND e.metadata->>'user_id' IS NOT NULL
+        ), firsts AS (
+            SELECT source, uid, bool_or(new_user) AS new_user, min(occurred_at) AS first_at, count(*) AS opens
+            FROM ev GROUP BY source, uid
+        )
+        SELECT f.source,
+               sum(f.opens)::int AS opens,
+               count(*)::int AS users,
+               count(*) FILTER (WHERE f.new_user)::int AS new_users,
+               count(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM wardrobe_user_items w WHERE w.user_id::text = f.uid))::int AS with_items,
+               count(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM payments y WHERE y.user_id::text = f.uid AND y.status = 'paid'
+                     AND y.created_at >= f.first_at))::int AS paid_after
+        FROM firsts f
+        WHERE NOT EXISTS (SELECT 1 FROM user_profiles _tf WHERE _tf.user_id::text = f.uid AND _tf.is_test)
+        GROUP BY f.source
+        ORDER BY users DESC, f.source
+    """))).mappings().all()
+    return {"sources": [dict(r) for r in rows]}
+
+
 @router.get("/paying-users")
 async def paying_users(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """List all users who ever paid — subscriptions + credit purchases.
