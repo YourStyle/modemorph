@@ -123,6 +123,12 @@ jobs:
         working-directory: backend
         run: python3 app/api/test_ai_chats.py
 
+      # Браузерный smoke фронтенда (e2e/, `pnpm e2e:web`, Playwright + next dev,
+      # все /api/* на заглушках) сюда пока НЕ включён: прогон ~1–1.5 мин плюс
+      # установка Chromium и холодная сборка next dev, а в dev-режиме уже
+      # ловились зависания гидрации и петля Fast Refresh (см. e2e/playwright.config.ts).
+      # Запускать локально перед релизом фронта.
+
   typecheck:
     name: Type Check
     runs-on: ubuntu-latest
