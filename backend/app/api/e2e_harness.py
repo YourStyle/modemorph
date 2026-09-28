@@ -4,7 +4,9 @@
 
 Что настоящее: приложение целиком (роуты, зависимости, SQL, фильтры, лимиты) и
 база с миграциями, накатанными с нуля. Что подменено: только то, что уходит за
-пределы машины, — OpenRouter (Gemini), CLIP-сервис, картинки по URL, S3. Подмена
+пределы машины, — OpenRouter (Gemini), CLIP-сервис, картинки по URL, S3,
+Telegram Bot API, Web Push (requests.post в pywebpush), фиды Admitad и Яндекс ID
+(через world.routes). Подмена
 стоит на границе HTTP (httpx.AsyncClient получает MockTransport), поэтому вся
 логика между запросом пользователя и вызовом модели исполняется по-настоящему.
 
@@ -271,6 +273,26 @@ class World:
         self.wardrobe_fit_form = None
         self.assistant = [{"content": "Совет"}]
         self.clip_recommend = {"results": [], "rec_session_id": "rs-e2e"}
+        # JSON тел запросов к CLIP: [(путь, тело)] — видно, что именно ушло в сервис.
+        self.clip_json: list[tuple[str, dict]] = []
+        # /clip/pick-flatlay: urls -> ответ. По умолчанию «человека нет, первая картинка».
+        self.flatlay = lambda urls: {"url": urls[0] if urls else None, "has_person": False}
+        self.complement = {"outfits": []}   # ответ /clip/complement (виджет)
+        self.polish = None                  # ответ Gemini на полировку образов виджета
+        self.image_check = {"valid": True}  # проверка фото в публичном VTON API
+        self.digest_tips = [{"i": 0, "tip": "Проверьте срок жизни токена"}]
+        # Telegram Bot API: каждое sendMessage (тело запроса) и отказы по chat_id.
+        self.tg: list[dict] = []
+        self.tg_fail: dict[str, str] = {}   # chat_id -> description («bot was blocked…»)
+        self.tg_down = False                # весь Telegram недоступен (502)
+        # Web Push: POST на endpoint подписки (pywebpush ходит через requests).
+        self.push: list[dict] = []
+        self.push_status: dict[str, int] = {}   # endpoint -> HTTP-статус ответа (по умолч. 201)
+        # Файлы, «загруженные» в S3 через upload_fileobj: URL -> байты. GET по
+        # этому адресу отдаёт их обратно (фид партнёра: кабинет кладёт, крон читает).
+        self.blobs: dict[str, bytes] = {}
+        # Прочие внешние адреса: префикс URL -> handler(request) -> Response.
+        self.routes: dict[str, object] = {}
 
     # ── OpenRouter ──
     def openrouter(self, payload: dict) -> httpx.Response:
@@ -299,6 +321,19 @@ class World:
         if "думает купить" in text:
             self.calls.append(("openrouter", "chat", "style_check"))
             return httpx.Response(200, json=_chat(self.style or {"is_clothing": True, "outfits": []}))
+        if "Ниже готовые образы из товаров одного магазина" in text:
+            self.calls.append(("openrouter", "chat", "widget_polish"))
+            if self.polish is None:
+                return httpx.Response(500, json={"error": "polish off"})
+            return httpx.Response(200, json=_chat(self.polish))
+        if "Проанализируй это изображение" in text:
+            kind = "vton_check_person" if "реального человека" in text else "vton_check_clothing"
+            self.calls.append(("openrouter", "chat", kind))
+            verdict = self.image_check(kind) if callable(self.image_check) else self.image_check
+            return httpx.Response(200, json=_chat(verdict))
+        if "Ты дежурный инженер" in text:
+            self.calls.append(("openrouter", "chat", "error_digest"))
+            return httpx.Response(200, json=_chat(self.digest_tips))
         if "fashion stylist AI assistant" in text:
             self.calls.append(("openrouter", "chat", "assistant"))
             return httpx.Response(200, json=_chat(self.assistant))
@@ -331,7 +366,40 @@ class World:
                 return httpx.Response(200, json={"nearest": self.nearest})
             if path in ("/clip/search/text", "/clip/search"):
                 return httpx.Response(200, json={"results": []})
+            body = json.loads(request.content) if request.content and request.method == "POST" else {}
+            if isinstance(body, dict):
+                self.clip_json.append((path, body))
+            if path == "/clip/pick-flatlay":
+                res = self.flatlay(body.get("urls") or [])
+                return res if isinstance(res, httpx.Response) else httpx.Response(200, json=res)
+            if path == "/clip/complement":
+                return httpx.Response(200, json=self.complement)
             return httpx.Response(200, json={"ok": True})
+        if request.url.host == "api.telegram.org":
+            method = path.rsplit("/", 1)[-1]
+            if not path.startswith(f"/bot{BOT_TOKEN}/"):
+                self.unmocked.append(f"telegram: чужой токен бота в {path}")
+                return httpx.Response(401, json={"ok": False, "error_code": 401, "description": "Unauthorized"})
+            if method != "sendMessage":
+                self.unmocked.append(f"telegram: метод {method} не замокан")
+                return httpx.Response(404, json={"ok": False, "description": "Not Found"})
+            payload = json.loads(request.content or b"{}")
+            self.tg.append(payload)
+            if self.tg_down:
+                return httpx.Response(502, json={"ok": False, "error_code": 502, "description": "Bad Gateway"})
+            reason = self.tg_fail.get(str(payload.get("chat_id")))
+            if reason:
+                return httpx.Response(403, json={"ok": False, "error_code": 403, "description": reason})
+            return httpx.Response(200, json={"ok": True, "result": {
+                "message_id": len(self.tg), "chat": {"id": payload.get("chat_id")}, "text": payload.get("text")}})
+        blob = self.blobs.get(urllib.parse.unquote(request.url.path))
+        if blob is not None and request.method == "GET":
+            self.calls.append(("s3", path, request.method))
+            return httpx.Response(200, content=blob, headers={"content-type": "application/xml"})
+        for prefix, fn in self.routes.items():
+            if url.startswith(prefix):
+                self.calls.append(("ext", url, request.method))
+                return fn(request)
         if url.startswith(IMG):
             self.calls.append(("img", path, request.method))
             kind = "avatar" if "avatar" in path else "item"
@@ -340,13 +408,30 @@ class World:
         return httpx.Response(599, text="e2e: outbound call is not mocked")
 
 
+    def webpush_post(self, url, data=None, headers=None, timeout=None, **kw):
+        """Замена requests.post для pywebpush: доставка на endpoint подписки."""
+        import requests
+
+        self.push.append({"endpoint": url, "headers": dict(headers or {}), "size": len(data or b"")})
+        resp = requests.Response()
+        resp.status_code = self.push_status.get(url, 201)
+        resp._content = b""
+        resp.url = url
+        return resp
+
+
 class _FakeS3:
-    def __init__(self, world: World):
+    def __init__(self, world: World, endpoint: str | None = None):
         self.world = world
+        self.endpoint = endpoint
 
     def put_object(self, **kw):
         self.world.s3.append({k: v for k, v in kw.items() if k != "Body"})
         return {}
+
+    def upload_fileobj(self, fileobj, bucket, key, ExtraArgs=None):
+        self.world.s3.append({"Bucket": bucket, "Key": key, "ExtraArgs": ExtraArgs})
+        self.world.blobs[f"/{bucket}/{key}"] = fileobj.read()
 
 
 @pytest.fixture(autouse=True)
@@ -362,7 +447,19 @@ def world(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", MockedAsyncClient)
     import boto3
-    monkeypatch.setattr(boto3, "client", lambda *a, **kw: _FakeS3(w))
+    monkeypatch.setattr(boto3, "client", lambda *a, **kw: _FakeS3(w, kw.get("endpoint_url")))
+    # Web Push уходит через requests (pywebpush), а не httpx — своя заглушка.
+    try:
+        import pywebpush
+        monkeypatch.setattr(pywebpush.requests, "post", w.webpush_post)
+    except ImportError:
+        pass
+    # send_bot_message читает токен из окружения, а не из settings. Прокси из
+    # окружения убираем: httpx по HTTPS_PROXY собрал бы свой транспорт в обход
+    # заглушки и ушёл бы в настоящий интернет.
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", BOT_TOKEN)
+    for var in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(var, raising=False)
 
     for name, value in {
         "TELEGRAM_BOT_TOKEN": BOT_TOKEN, "CRON_SECRET": CRON_SECRET, "BOT_SECRET": "",
@@ -406,6 +503,64 @@ def robokassa_result(client, invoice_id: int, out_sum, *, pass2: str = RK_PASS2)
     sig = hashlib.md5(f"{out}:{invoice_id}:{pass2}".encode()).hexdigest().upper()
     return client.post("/api/payments/robokassa/result",
                        data={"OutSum": out, "InvId": str(invoice_id), "SignatureValue": sig})
+
+
+def cron(client, path: str, body: dict | None = None):
+    """Вызов крон-ручки так, как её зовёт контейнер cron (X-Cron-Secret)."""
+    return client.post(f"/api/cron/{path}", json=body or {}, headers={"X-Cron-Secret": CRON_SECRET})
+
+
+def set_telegram_id(user: "U", tg_id: int | str | None = None) -> str:
+    """Привязать к пользователю Telegram-аккаунт (как после входа из Mini App)."""
+    tg = str(tg_id or (uuid.uuid4().int % 10**10 + 10**9))
+    sql_run("UPDATE users SET raw_user_meta_data = raw_user_meta_data || jsonb_build_object('telegram_id', $2::text) "
+            "WHERE id = $1", uuid.UUID(user.id), tg)
+    return tg
+
+
+def push_keys() -> tuple[str, str]:
+    """Настоящие ключи подписки браузера (p256dh — точка P-256, auth — 16 байт):
+    pywebpush шифрует payload по-настоящему, фальшивые ключи он не примет."""
+    from app.services.webpush import _b64, generate_vapid
+
+    pub, _ = generate_vapid()
+    return pub, _b64(os.urandom(16))
+
+
+# ────────────────────────────── партнёры ──────────────────────────────
+
+_REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+PARTNER_CABINET_SQL = os.path.join(_REPO, "sql", "partner_cabinet.sql")
+
+
+def ensure_partner_cabinet_schema():
+    """partner_api_tokens / partner_api_usage / partner_feeds, wardrobe_items.feed_id
+    и wardrobe_items.price не создаёт НИ ОДНА миграция (см. test_e2e_partner::test_migrations_create_partner_cabinet_tables),
+    поэтому на базе «с нуля» кабинет падает 500 на первом же токене. Чтобы покрыть
+    сам кабинет, дотягиваем схему её же определением из репозитория
+    (sql/partner_cabinet.sql, всё через IF NOT EXISTS — повторный вызов ничего не делает)."""
+    with open(PARTNER_CABINET_SQL, encoding="utf-8") as f:
+        sql_run(f.read())
+    # wardrobe_items.price пишут оба импортёра фидов (cron process-feeds и
+    # import-feeds, import_catalog.py) и читает генерация подборок, а миграции
+    # этой колонки тоже нет. Тип на проде в репозитории не записан — NUMERIC.
+    sql_run("ALTER TABLE wardrobe_items ADD COLUMN IF NOT EXISTS price NUMERIC")
+
+
+def make_partner(client, *, company: str | None = None, approve: bool = True, admin: "U | None" = None):
+    """Партнёр так, как он появляется в жизни: регистрация в кабинете, затем
+    одобрение админом через /api/admin/partners. Возвращает (пользователь, partner_id)."""
+    u = make_user()
+    r = client.post("/api/partner/register", headers=u.h, json={
+        "company_name": company or f"Магазин {RUN}-{u.id[:4]}", "contact_name": "Анна",
+        "website": "https://shop.e2e"})
+    assert r.status_code == 200, r.text
+    pid = r.json()["partner"]["id"]
+    if approve:
+        admin = admin or make_user(role="admin")
+        r = client.patch(f"/api/admin/partners/{pid}", headers=admin.h, json={"status": "approved"})
+        assert r.status_code == 200, r.text
+    return u, pid
 
 
 __all__ = [n for n in dir() if not n.startswith("__")]
