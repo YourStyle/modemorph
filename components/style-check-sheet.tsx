@@ -3,9 +3,8 @@
 import { useState, useRef } from "react"
 import { CommonSheet } from "./common-sheet"
 import { Upload, Loader2, Sparkles, AlertCircle, Send } from "lucide-react"
-import { toast } from "sonner"
 import { api } from "@/lib/api-client"
-import { referralLink } from "@/lib/referral"
+import { appLink, referralLink, shareLink } from "@/lib/referral"
 import { useFeature } from "@/hooks/use-feature"
 import { SubscriptionSheet } from "@/components/subscription-sheet"
 
@@ -106,29 +105,23 @@ export function StyleCheckSheet({ isOpen, onClose }: StyleCheckSheetProps) {
     }
   }
 
-  // «Спросить подругу»: пересылка в чат Telegram со своей реферальной ссылкой —
+  // «Спросить подругу»: пересылка подруге со своей реферальной ссылкой —
   // тот же механизм, что «Пригласить друга» в профиле.
   const handleShare = async () => {
     if (!result?.item) return
     void log("style_check", "click", { action: "share", outfits: result.outfits.length })
-    let url = "https://t.me/modemorph_ai_bot"
+    let url = appLink()
     try {
       const d = await api.get("/api/discounts/mine")
       if (d?.referral?.code) url = referralLink(d.referral.code)
     } catch {
-      // без реферального кода делимся просто ссылкой на бота
+      // без реферального кода делимся просто ссылкой на приложение
     }
     const n = result.outfits.length
     const text = n > 0
       ? `Думаю купить: ${result.item.name}. ModeMorph собрал ${n} ${looksWord(n)} с ней из моего гардероба — брать?`
       : `Думаю купить: ${result.item.name}. Брать?`
-    const tg = (window as any)?.Telegram?.WebApp
-    if (tg?.openTelegramLink) {
-      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`)
-    } else {
-      void navigator.clipboard?.writeText(`${text} ${url}`)
-      toast.success("Текст скопирован")
-    }
+    void shareLink(url, text)
   }
 
   const reset = () => {

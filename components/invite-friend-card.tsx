@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Gift } from "lucide-react"
-import { toast } from "sonner"
 import { api } from "@/lib/api-client"
-import { referralLink } from "@/lib/referral"
+import { referralLink, shareLink } from "@/lib/referral"
 import { useFeature } from "@/hooks/use-feature"
 
 interface Referral {
@@ -33,16 +32,8 @@ export function InviteFriendCard({ title = "Пригласи подругу", pl
   const share = () => {
     void log("invite_share", "click", { place })
     const url = referralLink(referral.code)
-    const text = `Собираю образы из своего гардероба в Mode Morph. Заходи — тебе ${referral.percent_off}% скидки на подписку: ${url}`
-    // В Telegram — родной шэринг, вне его — копируем ссылку. navigator.share
-    // внутри TMA на iOS открывает системную шторку и часто не возвращает фокус.
-    const tg = (window as any)?.Telegram?.WebApp
-    if (tg?.openTelegramLink) {
-      tg.openTelegramLink(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`)
-    } else {
-      void navigator.clipboard?.writeText(url)
-      toast.success("Ссылка скопирована")
-    }
+    const text = `Собираю образы из своего гардероба в Mode Morph. Заходи — тебе ${referral.percent_off}% скидки на подписку:`
+    void shareLink(url, text)
   }
 
   return (
