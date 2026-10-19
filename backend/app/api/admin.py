@@ -1476,7 +1476,7 @@ async def traffic_sources(user: dict = Depends(get_admin_user), db: AsyncSession
 
 
 @router.get("/report")
-async def users_report(user: dict = Depends(get_staff_user), db: AsyncSession = Depends(get_db)):
+async def users_report(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """Данные для печатного отчёта по пользователям (app/admin/report).
 
     Отдельно от /analytics: тот считает текущий срез, а отчёту нужна история

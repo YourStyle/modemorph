@@ -19,9 +19,9 @@ if "DATABASE_URL" not in os.environ:
 from app.api.e2e_harness import *  # noqa: E402,F401,F403
 from app.api.e2e_harness import add_item, make_user, q  # noqa: E402
 
-READ_ONLY_STAFF = ["/api/admin/analytics", "/api/admin/report"]
+READ_ONLY_STAFF = ["/api/admin/analytics"]
 ADMIN_ONLY = ["/api/admin/sources", "/api/admin/paying-users", "/api/admin/users",
-              "/api/admin/discounts", "/api/admin/audit-log"]
+              "/api/admin/discounts", "/api/admin/audit-log", "/api/admin/report"]
 
 
 @pytest.mark.parametrize("path", READ_ONLY_STAFF + ADMIN_ONLY)
@@ -53,7 +53,7 @@ def test_analytics_computes_without_sql_errors(client):
     for key in ("onboarding", "engagement", "retention", "funnel", "timeline", "monetization"):
         assert key in body, f"в ответе нет раздела {key}"
 
-    rep = client.get("/api/admin/report", headers=analyst.h)
+    rep = client.get("/api/admin/report", headers=make_user(role="admin").h)
     assert rep.status_code == 200, rep.text
     rep = rep.json()
     assert rep["kpi"]["profiles"] >= 1 and rep["steps"]["item1"] >= 1, rep["kpi"]
