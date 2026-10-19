@@ -18,6 +18,7 @@ import {
   Sparkles,
   DollarSign,
   BarChart3,
+  FileText,
   Send,
   Bell,
   Building2,
@@ -85,6 +86,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const nav = role === "analyst" ? [
     { group: "Аналитика", items: [
       { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
+      { href: "/admin/report", label: "Отчёт PDF", icon: FileText },
       { href: "/admin/brands", label: "Бренды", icon: Building2 },
     ]},
   ] : [
@@ -92,6 +94,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       { href: "/admin", label: "Обзор", icon: Home },
       { href: "/admin/users", label: "Пользователи", icon: UserCheck },
       { href: "/admin/analytics", label: "Аналитика", icon: BarChart3 },
+      { href: "/admin/report", label: "Отчёт PDF", icon: FileText },
       { href: "/admin/brands", label: "Бренды", icon: Building2 },
       { href: "/admin/partners", label: "Партнёры", icon: Building2 },
       { href: "/admin/widget-keys", label: "Виджет-ключи", icon: Code2 },

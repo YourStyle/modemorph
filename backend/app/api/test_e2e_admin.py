@@ -19,7 +19,7 @@ if "DATABASE_URL" not in os.environ:
 from app.api.e2e_harness import *  # noqa: E402,F401,F403
 from app.api.e2e_harness import add_item, make_user, q  # noqa: E402
 
-READ_ONLY_STAFF = ["/api/admin/analytics"]
+READ_ONLY_STAFF = ["/api/admin/analytics", "/api/admin/report"]
 ADMIN_ONLY = ["/api/admin/sources", "/api/admin/paying-users", "/api/admin/users",
               "/api/admin/discounts", "/api/admin/audit-log"]
 
@@ -52,6 +52,12 @@ def test_analytics_computes_without_sql_errors(client):
     assert body["_errors"] == [], f"запросы дашборда падают на схеме из миграций: {body['_errors']}"
     for key in ("onboarding", "engagement", "retention", "funnel", "timeline", "monetization"):
         assert key in body, f"в ответе нет раздела {key}"
+
+    rep = client.get("/api/admin/report", headers=analyst.h)
+    assert rep.status_code == 200, rep.text
+    rep = rep.json()
+    assert rep["kpi"]["profiles"] >= 1 and rep["steps"]["item1"] >= 1, rep["kpi"]
+    assert rep["kpi"]["revenue"] is None, "выручка ушла в отчёт ниже порога платящих"
 
 
 def test_admin_users_and_timeline(client):

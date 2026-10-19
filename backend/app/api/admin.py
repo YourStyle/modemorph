@@ -1475,6 +1475,103 @@ async def traffic_sources(user: dict = Depends(get_admin_user), db: AsyncSession
     return {"sources": [dict(r) for r in rows]}
 
 
+@router.get("/report")
+async def users_report(user: dict = Depends(get_staff_user), db: AsyncSession = Depends(get_db)):
+    """Данные для печатного отчёта по пользователям (app/admin/report).
+
+    Отдельно от /analytics: тот считает текущий срез, а отчёту нужна история
+    по месяцам и неделям. Правила те же — тестовые аккаунты исключены, недельная
+    активность начинается после ACTIVITY_PING_CUTOFF (до него ряд мерил платные
+    действия, а не заходы), выручка закрыта порогом MIN_PAYERS_FOR_REVENUE.
+    """
+    async def q(sql: str):
+        return [dict(r) for r in (await db.execute(text(sql))).mappings().all()]
+
+    u_ok, d_ok, p_ok = not_test("u.id"), not_test("d.user_profile_id", "id"), not_test("p.user_id")
+    kpi = (await q(f"""
+        SELECT
+          (SELECT count(*) FROM users u WHERE {u_ok})::int AS accounts,
+          (SELECT count(*) FROM user_profiles WHERE NOT is_test)::int AS profiles,
+          (SELECT count(*) FROM users u WHERE {u_ok} AND u.created_at > now() - interval '30 days')::int AS accounts_30d,
+          (SELECT count(*) FROM users u WHERE {u_ok} AND u.created_at > now() - interval '60 days'
+                                                    AND u.created_at <= now() - interval '30 days')::int AS accounts_prev_30d,
+          (SELECT count(DISTINCT d.user_profile_id) FROM daily_user_activity d
+            WHERE {d_ok} AND d.activity_date > current_date - 7)::int AS active_7d,
+          (SELECT count(DISTINCT d.user_profile_id) FROM daily_user_activity d
+            WHERE {d_ok} AND d.activity_date > current_date - 30)::int AS active_30d,
+          (SELECT count(DISTINCT p.user_id) FROM payments p WHERE {p_ok} AND p.status = 'paid')::int AS payers,
+          (SELECT count(*) FROM payments p WHERE {p_ok} AND p.status = 'paid')::int AS paid_payments,
+          (SELECT count(DISTINCT p.user_id) FROM payments p WHERE {p_ok} AND p.status = 'pending'
+            AND NOT EXISTS (SELECT 1 FROM payments x WHERE x.user_id = p.user_id AND x.status = 'paid'))::int
+            AS abandoned_checkout_users,
+          (SELECT sum(p.amount) FROM payments p WHERE {p_ok} AND p.status = 'paid'
+            HAVING count(DISTINCT p.user_id) >= {MIN_PAYERS_FOR_REVENUE})::float AS revenue
+    """))[0]
+
+    monthly = await q(f"""
+        SELECT to_char(date_trunc('month', u.created_at), 'YYYY-MM') AS month,
+               count(*)::int AS accounts, count(pr.id)::int AS profiles
+        FROM users u LEFT JOIN user_profiles pr ON pr.user_id = u.id
+        WHERE {u_ok} GROUP BY 1 ORDER BY 1
+    """)
+    # С понедельника первой ПОЛНОЙ недели после смены инструментации.
+    weekly_active = await q(f"""
+        SELECT to_char(date_trunc('week', d.activity_date), 'YYYY-MM-DD') AS week,
+               count(DISTINCT d.user_profile_id)::int AS active
+        FROM daily_user_activity d
+        WHERE {d_ok} AND d.activity_date >= date_trunc('week', DATE '{ACTIVITY_PING_CUTOFF}' + 6)
+        GROUP BY 1 ORDER BY 1
+    """)
+    steps = (await q("""
+        WITH pr AS (SELECT user_id FROM user_profiles WHERE NOT is_test),
+             it AS (SELECT user_id, count(*) n FROM wardrobe_user_items GROUP BY 1)
+        SELECT
+          (SELECT count(*) FROM pr JOIN it USING (user_id))::int AS item1,
+          (SELECT count(*) FROM pr JOIN it USING (user_id) WHERE n >= 5)::int AS item5,
+          (SELECT count(*) FROM pr JOIN it USING (user_id) WHERE n >= 15)::int AS item15,
+          (SELECT count(*) FROM pr WHERE EXISTS (SELECT 1 FROM user_looks l WHERE l.user_id = pr.user_id))::int AS look1,
+          (SELECT count(*) FROM pr WHERE EXISTS (
+              SELECT 1 FROM payments y WHERE y.user_id = pr.user_id AND y.status = 'paid'))::int AS paid
+    """))[0]
+    recency = await q(f"""
+        SELECT CASE WHEN last > current_date - 7 THEN '≤ 7 дней'
+                    WHEN last > current_date - 30 THEN '8–30 дней'
+                    ELSE '> 30 дней или ни разу' END AS bucket, count(*)::int AS users
+        FROM (SELECT p.id, max(d.activity_date) AS last FROM user_profiles p
+              LEFT JOIN daily_user_activity d ON d.user_profile_id = p.id
+              WHERE NOT p.is_test GROUP BY p.id) x
+        GROUP BY 1 ORDER BY min(coalesce(current_date - last, 99999))
+    """)
+    wardrobe_size = await q("""
+        SELECT CASE WHEN n = 0 THEN '0' WHEN n < 5 THEN '1–4' WHEN n < 15 THEN '5–14'
+                    WHEN n < 30 THEN '15–29' ELSE '30+' END AS bucket, count(*)::int AS users
+        FROM (SELECT p.user_id, count(w.id) n FROM user_profiles p
+              LEFT JOIN wardrobe_user_items w ON w.user_id = p.user_id
+              WHERE NOT p.is_test GROUP BY 1) x
+        GROUP BY 1 ORDER BY min(n)
+    """)
+    features = await q(f"""
+        SELECT e.feature, e.action, count(*)::int AS events, count(DISTINCT e.user_profile_id)::int AS users
+        FROM usage_events e
+        WHERE {not_test("e.user_profile_id", "id")} AND e.occurred_at > now() - interval '30 days'
+          AND e.user_profile_id IS NOT NULL
+        GROUP BY 1, 2 ORDER BY users DESC, events DESC LIMIT 12
+    """)
+    paywall = await q(f"""
+        SELECT coalesce(e.metadata->>'source', '—') AS source, count(*)::int AS shows,
+               count(DISTINCT e.user_profile_id)::int AS users
+        FROM usage_events e
+        WHERE {not_test("e.user_profile_id", "id")} AND e.feature = 'paywall_shown'
+        GROUP BY 1 ORDER BY shows DESC LIMIT 8
+    """)
+    return {
+        "kpi": kpi, "steps": steps, "monthly": monthly, "weekly_active": weekly_active,
+        "recency": recency, "wardrobe_size": wardrobe_size, "features_30d": features,
+        "paywall": paywall,
+        "meta": {"activity_cutoff": ACTIVITY_PING_CUTOFF, "min_payers_for_revenue": MIN_PAYERS_FOR_REVENUE},
+    }
+
+
 @router.get("/paying-users")
 async def paying_users(user: dict = Depends(get_admin_user), db: AsyncSession = Depends(get_db)):
     """List all users who ever paid — subscriptions + credit purchases.
