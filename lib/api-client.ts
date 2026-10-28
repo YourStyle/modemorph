@@ -92,8 +92,10 @@ class ApiClient {
           reportError({ message: `Session refresh failed: ${e instanceof Error ? e.message : e}`,
                         location: `${method} ${url}`, status: 401 })
         }
-        sessionAuth.clearSession()
-        if (typeof window !== 'undefined') {
+        // refreshAccessToken drops the session itself, and only when it is really
+        // dead. A transient failure keeps it: this request fails, the next one
+        // refreshes again.
+        if (!sessionAuth.hasValidSession() && typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('auth:session-expired'))
         }
       }

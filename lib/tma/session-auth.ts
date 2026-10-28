@@ -117,40 +117,51 @@ export class TMASessionAuth {
     return this.getSession()?.refresh_token || null
   }
 
-  async refreshAccessToken(): Promise<void> {
+  // One refresh at a time: a page fires 5–10 requests together, and on an
+  // expired token they all 401 together.
+  private refreshing: Promise<void> | null = null
+
+  refreshAccessToken(): Promise<void> {
+    return (this.refreshing ??= this.doRefresh().finally(() => { this.refreshing = null }))
+  }
+
+  // The session is dropped only when the server rejects the refresh token (401).
+  // A 429, a 5xx or a network blip used to wipe it too — refresh token included —
+  // and every request after that went out with no header: "401 Missing token" on
+  // onboarding submit in Telegram (2026-10-27), stuck until the app was reopened.
+  private async doRefresh(): Promise<void> {
     const refreshToken = this.getRefreshToken()
     if (!refreshToken) {
+      this.clearSession()
       throw new Error('No refresh token available')
     }
 
-    try {
-      const response = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh_token: refreshToken }),
-      })
+    const response = await fetch('/api/auth/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
 
-      if (!response.ok) {
-        throw new Error(`Refresh failed: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      if (!data?.session?.access_token || !data?.session?.refresh_token) {
-        throw new Error('Refresh response missing session tokens')
-      }
-
-      this.saveSession({
-        access_token: data.session.access_token,
-        refresh_token: data.session.refresh_token,
-        user_id: data.user_id ?? data.user?.id,
-        expires_at: parseSupabaseExpiry(data.session.expires_at),
-      })
-    } catch (error) {
-      console.error('[SessionAuth] Failed to refresh token:', error)
-      this.clearSession()
-      throw error
+    if (response.status === 401) {
+      // Don't wipe a session someone saved meanwhile (a fresh Telegram handshake).
+      if (this.getRefreshToken() === refreshToken) this.clearSession()
+      throw new Error('Refresh token rejected')
     }
+    if (!response.ok) {
+      throw new Error(`Refresh failed: ${response.status}`)
+    }
+
+    const data = await response.json()
+    if (!data?.session?.access_token || !data?.session?.refresh_token) {
+      throw new Error('Refresh response missing session tokens')
+    }
+
+    this.saveSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      user_id: data.user_id ?? data.user?.id,
+      expires_at: parseSupabaseExpiry(data.session.expires_at),
+    })
   }
 
   debug(): void {
